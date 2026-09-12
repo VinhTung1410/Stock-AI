@@ -148,6 +148,9 @@ def fetch_macro_news(keywords: list = ["chứng khoán", "lãi suất", "giá d�
                 "link": entry.link,
                 "published": entry.get("published", ""),
             })
+    return news_items
+
+
 def get_stock_chart_data(symbol: str) -> pd.DataFrame:
     """Kéo dữ liệu nến lịch sử 1 năm của 1 cổ phiếu để vẽ TradingView Chart."""
     try:
