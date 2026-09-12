@@ -41,9 +41,9 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list):
                     from ai_analyst import generate_portfolio_analysis
                     news = fetch_macro_news()
                     ai_text = generate_portfolio_analysis(df_eval, news)
-                    summary_msg = f"📊 **BÁO CÁO NHANH DANH MỤC**\n- Tổng vốn: {total_cost:,.0f}đ\n- Thị giá: {total_market:,.0f}đ\n- Lãi/Lỗ: {total_pnl_vnd:+,.0f}đ ({total_pnl_pct:+.2f}%)\n\n🧠 **Nhận định AI:**\n{ai_text[:1200]}..."
-                    if send_discord_dm(summary_msg):
-                        st.success("✅ Bot đã gửi tin nhắn riêng (DM) vào Discord của bạn thành công!")
+                    embed = format_portfolio_embed(df_eval, ai_text, report_type="BÁO CÁO CÁ NHÂN (DM BOT)")
+                    if send_discord_dm(embeds=[embed]):
+                        st.success("✅ Bot đã gửi báo cáo đầy đủ (Rich Embed) vào tin nhắn riêng của bạn thành công!")
                     else:
                         st.error("❌ Gửi tin nhắn riêng thất bại. Vui lòng kiểm tra DISCORD_BOT_TOKEN và DISCORD_USER_ID trong file .env!")
 
