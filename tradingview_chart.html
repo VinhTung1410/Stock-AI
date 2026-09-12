@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingView Lightweight Charts - Candlestick & Volume SMA</title>
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: #131722;
+            color: #d1d4dc;
+            font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 20px;
+            background-color: #1e222d;
+            border-bottom: 1px solid #2a2e39;
+        }
+        .symbol-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .symbol-name { font-size: 18px; font-weight: 700; color: #f8fafc; }
+        .legend-indicator { font-size: 13px; font-weight: 500; }
+        .sma9 { color: #2962FF; }
+        .sma20 { color: #FF6D00; }
+        #chart-container {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="symbol-info">
+            <span class="symbol-name">VNINDEX • 1D • HOSE</span>
+            <span class="legend-indicator sma9">SMA 9</span>
+            <span class="legend-indicator sma20">SMA 20</span>
+        </div>
+        <div>
+            <span style="font-size: 12px; color: #787b86;">Lightweight Charts 60fps</span>
+        </div>
+    </div>
+
+    <div id="chart-container"></div>
+
+    <script>
+        // 1. Khởi tạo Chart Container & Options Dark Theme
+        const container = document.getElementById('chart-container');
+        const chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth,
+            height: container.clientHeight,
+            layout: {
+                background: { color: '#131722' },
+                textColor: '#d1d4dc',
+            },
+            grid: {
+                vertLines: { color: 'rgba(42, 46, 57, 0.5)' },
+                horzLines: { color: 'rgba(42, 46, 57, 0.5)' },
+            },
+            crosshair: {
+                mode: LightweightCharts.CrosshairMode.Normal,
+            },
+            rightPriceScale: {
+                borderColor: '#2a2e39',
+                scaleMargins: {
+                    top: 0.1,
+                    bottom: 0.25, // Dành 25% phía dưới cho Volume
+                },
+            },
+            timeScale: {
+                borderColor: '#2a2e39',
+                timeVisible: true,
+                secondsVisible: false,
+            },
+        });
+
+        // 2. Thêm Candlestick Series (Màu TradingView chuẩn)
+        const candleSeries = chart.addCandlestickSeries({
+            upColor: '#089981',
+            downColor: '#F23645',
+            borderVisible: false,
+            wickUpColor: '#089981',
+            wickDownColor: '#F23645',
+        });
+
+        // 3. Thêm Volume Histogram Series (chiếm 20% chiều cao dưới cùng)
+        const volumeSeries = chart.addHistogramSeries({
+            priceFormat: { type: 'volume' },
+            priceScaleId: '', // Overlay scale
+        });
+        volumeSeries.priceScale().applyOptions({
+            scaleMargins: {
+                top: 0.8, // Bắt đầu từ 80% từ trên xuống (chiếm 20% đáy)
+                bottom: 0,
+            },
+        });
+
+        // 4. Thêm 2 đường SMA 9 và SMA 20 đè lên nến
+        const sma9Series = chart.addLineSeries({
+            color: '#2962FF',
+            lineWidth: 2,
+            title: 'SMA 9',
+        });
+
+        const sma20Series = chart.addLineSeries({
+            color: '#FF6D00',
+            lineWidth: 2,
+            title: 'SMA 20',
+        });
+
+        // 5. Hàm Mock Data 100 nến ngẫu nhiên có xu hướng thực tế
+        function generateMockData(count = 100) {
+            const candleData = [];
+            const volumeData = [];
+            let time = new Date(Date.UTC(2025, 5, 1, 0, 0, 0, 0));
+            let currentPrice = 1250.0;
+
+            for (let i = 0; i < count; i++) {
+                // Bỏ qua Thứ 7 & Chủ Nhật
+                if (time.getUTCDay() === 6) time.setUTCDate(time.getUTCDate() + 2);
+                if (time.getUTCDay() === 0) time.setUTCDate(time.getUTCDate() + 1);
+
+                const dateStr = time.toISOString().split('T')[0];
+                const change = (Math.random() - 0.48) * 20; // Hơi thiên xu hướng tăng nhẹ
+                const open = currentPrice;
+                const close = open + change;
+                const high = Math.max(open, close) + Math.random() * 8;
+                const low = Math.min(open, close) - Math.random() * 8;
+                const volume = Math.floor(400000000 + Math.random() * 500000000);
+                const isUp = close >= open;
+
+                candleData.push({
+                    time: dateStr,
+                    open: parseFloat(open.toFixed(2)),
+                    high: parseFloat(high.toFixed(2)),
+                    low: parseFloat(low.toFixed(2)),
+                    close: parseFloat(close.toFixed(2)),
+                });
+
+                volumeData.push({
+                    time: dateStr,
+                    value: volume,
+                    color: isUp ? 'rgba(8, 153, 129, 0.45)' : 'rgba(242, 54, 69, 0.45)',
+                });
+
+                currentPrice = close;
+                time.setUTCDate(time.getUTCDate() + 1);
+            }
+            return { candleData, volumeData };
+        }
+
+        // Tính Simple Moving Average
+        function calculateSMA(data, period) {
+            const smaData = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i < period - 1) continue;
+                let sum = 0;
+                for (let j = 0; j < period; j++) {
+                    sum += data[i - j].close;
+                }
+                smaData.push({
+                    time: data[i].time,
+                    value: parseFloat((sum / period).toFixed(2)),
+                });
+            }
+            return smaData;
+        }
+
+        // 6. Nạp dữ liệu và tối ưu 60fps
+        const { candleData, volumeData } = generateMockData(120);
+        candleSeries.setData(candleData);
+        volumeSeries.setData(volumeData);
+        sma9Series.setData(calculateSMA(candleData, 9));
+        sma20Series.setData(calculateSMA(candleData, 20));
+
+        // Tự động resize mượt mà khi đổi kích thước màn hình
+        window.addEventListener('resize', () => {
+            chart.resize(container.clientWidth, container.clientHeight);
+        });
+    </script>
+</body>
+</html>
