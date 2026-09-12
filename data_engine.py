@@ -198,6 +198,92 @@ def get_vnindex_valuation_data() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def get_financial_ratios(symbol: str) -> dict:
+    """
+    Lấy các chỉ số tài chính cơ bản & định giá chuyên sâu phục vụ báo cáo 8 trụ cột:
+    P/E, P/B, P/S, EV/EBITDA, ROE, ROA, Nợ/VCSH, Biên LN gộp, Biên LN ròng, Vốn hóa...
+    """
+    try:
+        from vnstock import Vnstock
+        v = Vnstock().stock(symbol=symbol, source="VCI")
+        df_ratio = v.finance.ratio()
+        if df_ratio is None or df_ratio.empty:
+            return {}
+
+        data_cols = [c for c in df_ratio.columns if c not in ["item", "item_en", "item_id"]]
+        if not data_cols:
+            return {}
+        latest_col = data_cols[-1]
+
+        metric_map = {}
+        for _, row in df_ratio.iterrows():
+            item_name = str(row.get("item", "")).strip()
+            val = row.get(latest_col)
+            try:
+                val_num = float(val) if pd.notnull(val) else None
+            except (ValueError, TypeError):
+                val_num = None
+            if item_name:
+                metric_map[item_name] = val_num
+
+        def get_m(name, default=None):
+            return metric_map.get(name, default)
+
+        pe = get_m("P/E")
+        pb = get_m("P/B")
+        ps = get_m("P/S")
+        ev_ebitda = get_m("EV/EBITDA")
+        p_cf = get_m("Giá/ Dòng tiền")
+        roe = get_m("ROE (%)")
+        if roe is not None and roe < 1.0:
+            roe = roe * 100
+        roa = get_m("ROA (%)")
+        if roa is not None and roa < 1.0:
+            roa = roa * 100
+        roic = get_m("ROIC")
+        if roic is not None and roic < 1.0:
+            roic = roic * 100
+        debt_equity = get_m("Nợ/Vốn chủ") or get_m("Nợ trên vốn chủ")
+        financial_leverage = get_m("Đòn bẩy tài chính")
+        gross_margin = get_m("Biên LN gộp (%)")
+        if gross_margin is not None and gross_margin < 1.0:
+            gross_margin = gross_margin * 100
+        net_margin = get_m("Biên LN sau thuế (%)")
+        if net_margin is not None and net_margin < 1.0:
+            net_margin = net_margin * 100
+        current_ratio = get_m("Hệ số thanh toán hiện hành")
+        quick_ratio = get_m("Hệ số thanh toán nhanh")
+        market_cap = get_m("Vốn hóa")
+        dividend_yield = get_m("Tỷ suất cổ tức (%)")
+        if dividend_yield is not None and dividend_yield < 1.0:
+            dividend_yield = dividend_yield * 100
+
+        return {
+            "symbol": symbol,
+            "period": latest_col,
+            "pe": round(pe, 2) if pe is not None else None,
+            "pb": round(pb, 2) if pb is not None else None,
+            "ps": round(ps, 2) if ps is not None else None,
+            "ev_ebitda": round(ev_ebitda, 2) if ev_ebitda is not None else None,
+            "p_cf": round(p_cf, 2) if p_cf is not None else None,
+            "roe": round(roe, 2) if roe is not None else None,
+            "roa": round(roa, 2) if roa is not None else None,
+            "roic": round(roic, 2) if roic is not None else None,
+            "debt_equity": round(debt_equity, 2) if debt_equity is not None else None,
+            "financial_leverage": round(financial_leverage, 2) if financial_leverage is not None else None,
+            "gross_margin": round(gross_margin, 2) if gross_margin is not None else None,
+            "net_margin": round(net_margin, 2) if net_margin is not None else None,
+            "current_ratio": round(current_ratio, 2) if current_ratio is not None else None,
+            "quick_ratio": round(quick_ratio, 2) if quick_ratio is not None else None,
+            "market_cap_bil": round(market_cap / 1e9, 1) if market_cap is not None else None,
+            "dividend_yield": round(dividend_yield, 2) if dividend_yield is not None else None,
+        }
+    except Exception as e:
+        logging.error(f"Lỗi khi lấy chỉ số tài chính cho {symbol}: {e}")
+        return {}
+
+
+
 if __name__ == "__main__":
     print("=== KIỂM TRA SPRINT 1: DATA ENGINE ===")
     portfolio = load_portfolio()

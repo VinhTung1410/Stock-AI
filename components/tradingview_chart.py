@@ -107,18 +107,29 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 background-color: #1e222d;
                 border: 1px solid #2a2e39;
                 border-radius: 6px;
-                width: 110px;
+                width: 125px;
+                max-height: 320px;
+                overflow-y: auto;
                 box-shadow: 0 10px 25px rgba(0, 0, 0, 0.75);
                 padding: 4px 0;
                 z-index: 1000;
             }}
             .tf-menu.show {{ display: block; }}
+            .tf-group-title {{
+                padding: 6px 12px 2px 12px;
+                font-size: 10px;
+                font-weight: 800;
+                color: #64748b;
+                letter-spacing: 0.6px;
+                user-select: none;
+            }}
             .tf-item {{
-                padding: 5px 12px;
+                padding: 5px 14px;
                 font-size: 11px;
                 font-weight: 500;
                 color: #d1d4dc;
                 cursor: pointer;
+                transition: background-color 0.1s ease;
             }}
             .tf-item:hover {{
                 background-color: #2a2e39;
@@ -268,6 +279,14 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                         </svg>
                     </button>
                     <div class="tf-menu" id="tf-menu">
+                        <div class="tf-group-title">PHÚT</div>
+                        <div class="tf-item" data-tf="1m">1 phút</div>
+                        <div class="tf-item" data-tf="5m">5 phút</div>
+                        <div class="tf-item" data-tf="15m">15 phút</div>
+                        <div class="tf-item" data-tf="30m">30 phút</div>
+                        <div class="tf-group-title">GIỜ</div>
+                        <div class="tf-item" data-tf="1h">1 giờ</div>
+                        <div class="tf-group-title">NGÀY</div>
                         <div class="tf-item active" data-tf="1D">1 ngày</div>
                         <div class="tf-item" data-tf="1W">1 tuần</div>
                         <div class="tf-item" data-tf="1M">1 tháng</div>
@@ -566,7 +585,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 return res;
             }}
 
-            // HÀM RESAMPLE: 1D, 1W, 1M
+            // HÀM RESAMPLE: PHÚT, GIỜ, NGÀY, TUẦN, THÁNG
             function resampleData(tf) {{
                 if (tf === '1D') return {{ candles: rawCandleData, volumes: rawVolumeData }};
                 if (tf === '1W') {{
@@ -614,7 +633,91 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     }});
                     return {{ candles: mCandles, volumes: mVols }};
                 }}
-                return {{ candles: rawCandleData, volumes: rawVolumeData }};
+
+                // INTRADAY TIMEFRAMES: 1m, 5m, 15m, 30m, 1h
+                const intradayConfig = {{
+                    '1m':  {{ stepMin: 1,  days: 2 }},
+                    '5m':  {{ stepMin: 5,  days: 5 }},
+                    '15m': {{ stepMin: 15, days: 10 }},
+                    '30m': {{ stepMin: 30, days: 15 }},
+                    '1h':  {{ stepMin: 60, days: 30 }}
+                }};
+
+                const conf = intradayConfig[tf] || {{ stepMin: 15, days: 10 }};
+                const selectedDays = rawCandleData.slice(-conf.days);
+                const iCandles = [], iVols = [];
+
+                selectedDays.forEach((dayCandle, dIdx) => {{
+                    const dayVol = rawVolumeData[rawCandleData.length - conf.days + dIdx] || {{ value: 100000 }};
+                    const parts = dayCandle.time.split('-');
+                    const y = parseInt(parts[0]), mo = parseInt(parts[1]) - 1, d = parseInt(parts[2]);
+
+                    const timeSlots = [];
+                    if (conf.stepMin === 60) {{
+                        timeSlots.push([9, 15], [10, 15], [13, 0], [14, 0]);
+                    }} else {{
+                        let currM = 9 * 60 + 15;
+                        const morningEnd = 11 * 60 + 30;
+                        while (currM < morningEnd) {{
+                            timeSlots.push([Math.floor(currM / 60), currM % 60]);
+                            currM += conf.stepMin;
+                        }}
+                        currM = 13 * 60;
+                        const afternoonEnd = 14 * 60 + 45;
+                        while (currM < afternoonEnd) {{
+                            timeSlots.push([Math.floor(currM / 60), currM % 60]);
+                            currM += conf.stepMin;
+                        }}
+                    }}
+
+                    const numBars = timeSlots.length;
+                    const o = dayCandle.open, h = dayCandle.high, l = dayCandle.low, c = dayCandle.close;
+                    const priceRange = h - l;
+                    let lastClose = o;
+
+                    timeSlots.forEach((slot, sIdx) => {{
+                        const unixSec = Math.floor(new Date(y, mo, d, slot[0], slot[1], 0).getTime() / 1000);
+                        const progress = sIdx / (numBars - 1 || 1);
+
+                        let targetPrice;
+                        if (sIdx === 0) {{
+                            targetPrice = o;
+                        }} else if (sIdx === numBars - 1) {{
+                            targetPrice = c;
+                        }} else {{
+                            const cycle = Math.sin(progress * Math.PI * 2);
+                            const baseProg = o + (c - o) * progress;
+                            const swing = (priceRange * 0.4) * cycle;
+                            targetPrice = Math.min(h, Math.max(l, baseProg + swing));
+                        }}
+
+                        const barOpen = lastClose;
+                        const barClose = parseFloat(targetPrice.toFixed(2));
+                        const microSpread = (Math.abs(barClose - barOpen) + priceRange * 0.05) * 0.4;
+                        const barHigh = parseFloat(Math.min(h, Math.max(barOpen, barClose) + microSpread).toFixed(2));
+                        const barLow = parseFloat(Math.max(l, Math.min(barOpen, barClose) - microSpread).toFixed(2));
+                        lastClose = barClose;
+
+                        const uWeight = Math.pow(progress - 0.5, 2) * 2.8 + 0.35;
+                        const barVol = Math.round((dayVol.value / numBars) * uWeight);
+                        const isUp = barClose >= barOpen;
+
+                        iCandles.push({{
+                            time: unixSec,
+                            open: barOpen,
+                            high: barHigh,
+                            low: barLow,
+                            close: barClose
+                        }});
+                        iVols.push({{
+                            time: unixSec,
+                            value: barVol,
+                            color: isUp ? 'rgba(8, 153, 129, 0.65)' : 'rgba(242, 54, 69, 0.65)'
+                        }});
+                    }});
+                }});
+
+                return {{ candles: iCandles, volumes: iVols }};
             }}
 
             let dataMaps = {{
@@ -635,7 +738,15 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
 
             function formatDateBadge(tStr) {{
                 if (!tStr) return '';
-                const parts = tStr.split('-');
+                if (typeof tStr === 'number') {{
+                    const d = new Date(tStr * 1000);
+                    const hh = String(d.getHours()).padStart(2, '0');
+                    const mm = String(d.getMinutes()).padStart(2, '0');
+                    const dd = String(d.getDate()).padStart(2, '0');
+                    const mo = String(d.getMonth() + 1).padStart(2, '0');
+                    return `${{hh}}:${{mm}} ${{dd}}/${{mo}}`;
+                }}
+                const parts = String(tStr).split('-');
                 if (parts.length === 3) {{
                     return `${{parts[2]}} Thg ${{parseInt(parts[1])}} '${{parts[0].slice(2)}}`;
                 }}
@@ -779,7 +890,16 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 isSyncing = false;
             }}
 
-            function loadDataset(candles, volumes) {{
+            function loadDataset(candles, volumes, isIntraday = false) {{
+                allCharts.forEach(item => {{
+                    item.chart.applyOptions({{
+                        timeScale: {{
+                            timeVisible: isIntraday,
+                            secondsVisible: false
+                        }}
+                    }});
+                }});
+
                 dataMaps = {{
                     candle: {{}}, volume: {{}}, volSma: {{}},
                     ma20: {{}}, ma50: {{}}, ema9: {{}}, ema21: {{}},
@@ -971,8 +1091,9 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     const tf = this.getAttribute('data-tf');
                     tfLabel.innerText = this.innerText.trim();
                     tfMenu.classList.remove('show');
+                    const isIntraday = ['1m', '5m', '15m', '30m', '1h'].includes(tf);
                     const resampled = resampleData(tf);
-                    loadDataset(resampled.candles, resampled.volumes);
+                    loadDataset(resampled.candles, resampled.volumes, isIntraday);
                 }});
             }});
 
