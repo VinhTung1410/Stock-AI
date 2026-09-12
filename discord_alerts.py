@@ -7,31 +7,91 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
+DISCORD_USER_ID = os.environ.get("DISCORD_USER_ID")
+
+
+def send_discord_dm(content: str = None, embeds: list = None) -> bool:
+    """
+    Gửi tin nhắn riêng (Direct Message - DM) trực tiếp vào hộp thư cá nhân của bạn.
+    """
+    if not DISCORD_BOT_TOKEN or not DISCORD_USER_ID:
+        logging.warning("Chưa cấu hình DISCORD_BOT_TOKEN hoặc DISCORD_USER_ID trong .env!")
+        return False
+
+    headers = {
+        "Authorization": f"Bot {DISCORD_BOT_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        # Bước 1: Mở kênh DM với User ID
+        dm_res = requests.post(
+            "https://discord.com/api/v10/users/@me/channels",
+            headers=headers,
+            json={"recipient_id": DISCORD_USER_ID},
+            timeout=10
+        )
+        if dm_res.status_code != 200:
+            logging.error(f"Lỗi khi mở kênh DM: {dm_res.status_code} - {dm_res.text}")
+            return False
+
+        channel_id = dm_res.json().get("id")
+        if not channel_id:
+            return False
+
+        # Bước 2: Gửi nội dung tin nhắn / Embed vào kênh DM
+        payload = {}
+        if content:
+            payload["content"] = content
+        if embeds:
+            payload["embeds"] = embeds
+
+        msg_res = requests.post(
+            f"https://discord.com/api/v10/channels/{channel_id}/messages",
+            headers=headers,
+            json=payload,
+            timeout=10
+        )
+        if msg_res.status_code in [200, 201]:
+            logging.info("Đã gửi tin nhắn riêng (DM) đến bạn thành công!")
+            return True
+        else:
+            logging.error(f"Lỗi khi gửi tin nhắn DM: {msg_res.status_code} - {msg_res.text}")
+            return False
+    except Exception as e:
+        logging.error(f"Ngoại lệ khi gửi DM: {e}")
+        return False
 
 
 def send_discord_message(content: str = None, embeds: list = None) -> bool:
-    """Gửi tin nhắn hoặc Embed qua Discord Webhook."""
-    if not DISCORD_WEBHOOK_URL:
-        logging.error("Chưa cấu hình DISCORD_WEBHOOK_URL trong file .env!")
-        return False
+    """
+    Gửi thông báo: Ưu tiên gửi tin nhắn riêng (DM), đồng thời gửi qua Webhook nếu có.
+    """
+    success = False
+    
+    # 1. Gửi vào tin nhắn riêng (DM) nếu có Bot Token
+    if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
+        dm_success = send_discord_dm(content=content, embeds=embeds)
+        if dm_success:
+            success = True
 
-    payload = {}
-    if content:
-        payload["content"] = content
-    if embeds:
-        payload["embeds"] = embeds
+    # 2. Gửi vào Kênh qua Webhook nếu có
+    if DISCORD_WEBHOOK_URL:
+        payload = {}
+        if content:
+            payload["content"] = content
+        if embeds:
+            payload["embeds"] = embeds
+        try:
+            response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+            if response.status_code in [200, 204]:
+                logging.info("Đã gửi tin nhắn qua Webhook thành công!")
+                success = True
+        except Exception as e:
+            logging.error(f"Lỗi khi gửi Webhook: {e}")
 
-    try:
-        response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
-        if response.status_code in [200, 204]:
-            logging.info("Đã gửi tin nhắn đến Discord thành công!")
-            return True
-        else:
-            logging.error(f"Lỗi khi gửi Discord: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        logging.error(f"Ngoại lệ khi gửi Discord: {e}")
-        return False
+    return success
 
 
 def split_ai_summary_into_fields(ai_summary: str) -> list:
