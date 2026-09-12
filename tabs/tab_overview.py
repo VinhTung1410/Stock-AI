@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from data_engine import fetch_macro_news
-from discord_alerts import send_discord_message, format_portfolio_embed, send_discord_dm
+from discord_alerts import send_discord_webhook, format_portfolio_embed, send_discord_dm
 
 def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list):
     """Render Tab 1: Tổng quan danh mục, Bảng trạng thái, Cảnh báo Discord & Tin tức vĩ mô."""
@@ -30,7 +30,7 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list):
                     news = fetch_macro_news()
                     ai_text = generate_portfolio_analysis(df_eval, news)
                     embed = format_portfolio_embed(df_eval, ai_text, report_type="CẢNH BÁO THỦ CÔNG TỪ DASHBOARD")
-                    if send_discord_message(embeds=[embed]):
+                    if send_discord_webhook(embeds=[embed]):
                         st.success("✅ Đã gửi báo cáo thành công vào Kênh Discord!")
                     else:
                         st.error("❌ Gửi thất bại, vui lòng kiểm tra lại Webhook trong file .env!")
@@ -42,7 +42,7 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list):
                     news = fetch_macro_news()
                     ai_text = generate_portfolio_analysis(df_eval, news)
                     summary_msg = f"📊 **BÁO CÁO NHANH DANH MỤC**\n- Tổng vốn: {total_cost:,.0f}đ\n- Thị giá: {total_market:,.0f}đ\n- Lãi/Lỗ: {total_pnl_vnd:+,.0f}đ ({total_pnl_pct:+.2f}%)\n\n🧠 **Nhận định AI:**\n{ai_text[:1200]}..."
-                    if send_personal_dm(summary_msg):
+                    if send_discord_dm(summary_msg):
                         st.success("✅ Bot đã gửi tin nhắn riêng (DM) vào Discord của bạn thành công!")
                     else:
                         st.error("❌ Gửi tin nhắn riêng thất bại. Vui lòng kiểm tra DISCORD_BOT_TOKEN và DISCORD_USER_ID trong file .env!")

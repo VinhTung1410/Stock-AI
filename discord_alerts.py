@@ -64,34 +64,46 @@ def send_discord_dm(content: str = None, embeds: list = None) -> bool:
         return False
 
 
+def send_discord_webhook(content: str = None, embeds: list = None) -> bool:
+    """
+    Gửi thông báo độc quyền vào Kênh Discord thông qua Webhook URL (không gửi vào tin nhắn riêng).
+    """
+    if not DISCORD_WEBHOOK_URL:
+        logging.warning("Chưa cấu hình DISCORD_WEBHOOK_URL trong .env!")
+        return False
+
+    payload = {}
+    if content:
+        payload["content"] = content
+    if embeds:
+        payload["embeds"] = embeds
+
+    try:
+        response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
+        if response.status_code in [200, 204]:
+            logging.info("Đã gửi tin nhắn qua Webhook thành công!")
+            return True
+        else:
+            logging.error(f"Lỗi khi gửi Webhook: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        logging.error(f"Lỗi khi gửi Webhook: {e}")
+        return False
+
+
 def send_discord_message(content: str = None, embeds: list = None) -> bool:
     """
-    Gửi thông báo: Ưu tiên gửi tin nhắn riêng (DM), đồng thời gửi qua Webhook nếu có.
+    Gửi thông báo tự động: Ưu tiên gửi qua Webhook vào Kênh chung nếu có, 
+    nếu không có Webhook thì fallback gửi vào tin nhắn riêng (DM), không bao giờ gửi trùng 2 lần.
     """
-    success = False
-    
-    # 1. Gửi vào tin nhắn riêng (DM) nếu có Bot Token
-    if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
-        dm_success = send_discord_dm(content=content, embeds=embeds)
-        if dm_success:
-            success = True
-
-    # 2. Gửi vào Kênh qua Webhook nếu có
     if DISCORD_WEBHOOK_URL:
-        payload = {}
-        if content:
-            payload["content"] = content
-        if embeds:
-            payload["embeds"] = embeds
-        try:
-            response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
-            if response.status_code in [200, 204]:
-                logging.info("Đã gửi tin nhắn qua Webhook thành công!")
-                success = True
-        except Exception as e:
-            logging.error(f"Lỗi khi gửi Webhook: {e}")
+        return send_discord_webhook(content=content, embeds=embeds)
+    elif DISCORD_BOT_TOKEN and DISCORD_USER_ID:
+        return send_discord_dm(content=content, embeds=embeds)
+    else:
+        logging.warning("Chưa cấu hình cả Webhook lẫn Bot Token trong .env!")
+        return False
 
-    return success
 
 
 def split_ai_summary_into_fields(ai_summary: str) -> list:
