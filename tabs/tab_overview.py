@@ -13,12 +13,54 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
         total_pnl_vnd = total_market - total_cost
         total_pnl_pct = (total_pnl_vnd / total_cost * 100) if total_cost > 0 else 0.0
 
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Tổng vốn đầu tư", f"{total_cost:,.0f} đ")
-        col2.metric("Tổng giá trị thị trường", f"{total_market:,.0f} đ")
-        col3.metric("Lãi / Lỗ danh mục", f"{total_pnl_vnd:+,.0f} đ", f"{total_pnl_pct:+.2f}%")
-        wl_count = len(df_wl) if df_wl is not None else 0
-        col4.metric("Quy mô danh mục", f"{len(df_eval)} mã nắm giữ", f"+{wl_count} mã theo dõi")
+        pnl_color = "#15803d" if total_pnl_vnd >= 0 else "#dc2626"
+        pnl_bg = "rgba(22, 163, 74, 0.1)" if total_pnl_vnd >= 0 else "rgba(220, 38, 38, 0.1)"
+        pnl_sign = "+" if total_pnl_vnd > 0 else ""
+        wl_count = len(df_wl[df_wl["Mã CP"].astype(str).str.strip().str.len() >= 3]) if df_wl is not None and not df_wl.empty else 0
+
+        hero_metrics_html = textwrap.dedent(f"""
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 22px;">
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                <div style="font-size: 11.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">TỔNG VỐN ĐẦU TƯ</div>
+                <div style="font-size: 26px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1.2;">
+                    {total_cost:,.0f} <span style="font-size: 16px; font-weight: 600; color: #64748b; margin-left: 2px;">đ</span>
+                </div>
+                <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px;">Vốn gốc đã giải ngân</div>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                <div style="font-size: 11.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">TỔNG GIÁ TRỊ THỊ TRƯỜNG</div>
+                <div style="font-size: 26px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1.2;">
+                    {total_market:,.0f} <span style="font-size: 16px; font-weight: 600; color: #64748b; margin-left: 2px;">đ</span>
+                </div>
+                <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px;">Thị giá danh mục hiện tại</div>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                <div style="font-size: 11.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">LÃI / LỖ DANH MỤC</div>
+                <div style="display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                    <div style="font-size: 26px; font-weight: 800; color: {pnl_color}; letter-spacing: -0.5px; line-height: 1.2;">
+                        {total_pnl_vnd:+,.0f} <span style="font-size: 16px; font-weight: 600; color: #64748b; margin-left: 2px;">đ</span>
+                    </div>
+                    <span style="background: {pnl_bg}; color: {pnl_color}; font-size: 12.5px; font-weight: 700; padding: 2px 8px; border-radius: 6px;">
+                        {pnl_sign}{total_pnl_pct:+.2f}%
+                    </span>
+                </div>
+                <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px;">Hiệu suất đầu tư tạm tính</div>
+            </div>
+            <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
+                <div style="font-size: 11.5px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">QUY MÔ DANH MỤC</div>
+                <div style="display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                    <div style="font-size: 26px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1.2;">
+                        {len(df_eval)} <span style="font-size: 15px; font-weight: 600; color: #64748b; margin-left: 2px;">mã</span>
+                    </div>
+                    <span style="background: rgba(37,99,235,0.08); color: #2563eb; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 6px;">
+                        +{wl_count} theo dõi
+                    </span>
+                </div>
+                <div style="font-size: 11.5px; color: #94a3b8; margin-top: 6px;">Đang giám sát realtime</div>
+            </div>
+        </div>
+        """).strip()
+        st.html(hero_metrics_html)
 
         st.divider()
 
@@ -61,8 +103,10 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
         # 1. BẢNG TRẠNG THÁI CỔ PHIẾU ĐANG NẮM GIỮ (HOLDINGS)
         st.subheader("📋 Danh mục Cổ phiếu Đang Nắm Giữ (Holdings)")
         st.caption("Quản trị lãi/lỗ và vị thế kỹ thuật của từng cổ phiếu trong tài khoản.")
+        df_eval_clean = df_eval[df_eval["Mã CP"].astype(str).str.strip().str.len() >= 3].copy()
+        eval_height = min(360, (len(df_eval_clean) + 1) * 36 + 6)
         st.dataframe(
-            df_eval.style.format({
+            df_eval_clean.style.format({
                 "Giá vốn (k)": "{:.2f}",
                 "Thị giá (k)": "{:.2f}",
                 "Thay đổi (%)": "{:+.2f}%",
@@ -72,7 +116,8 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
                 "Vol/TB20": "{:.2f}",
             }),
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
+            height=eval_height
         )
 
         st.divider()
@@ -81,18 +126,24 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
         st.subheader("🎯 Danh mục Cổ phiếu Đang Theo Dõi (Watchlist)")
         st.caption("Các mã cổ phiếu bạn đang canh mua. Trading Bot sẽ tự động bắn tin nhắn riêng (DM) khi xuất hiện điểm mua hoặc giá về vùng an toàn.")
         if df_wl is not None and not df_wl.empty:
-            st.dataframe(
-                df_wl.style.format({
-                    "Thị giá (k)": "{:.2f}",
-                    "Thay đổi (%)": "{:+.2f}%",
-                    "Giá chờ mua (k)": "{:.2f}",
-                    "Khoảng cách (%)": "{:+.2f}%",
-                    "RSI(14)": lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
-                    "Vol/TB20": "{:.2f}",
-                }),
-                use_container_width=True,
-                hide_index=True
-            )
+            df_wl_clean = df_wl[df_wl["Mã CP"].astype(str).str.strip().str.len() >= 3].copy()
+            if not df_wl_clean.empty:
+                wl_height = min(360, (len(df_wl_clean) + 1) * 36 + 6)
+                st.dataframe(
+                    df_wl_clean.style.format({
+                        "Thị giá (k)": "{:.2f}",
+                        "Thay đổi (%)": "{:+.2f}%",
+                        "Giá chờ mua (k)": "{:.2f}",
+                        "Khoảng cách (%)": "{:+.2f}%",
+                        "RSI(14)": lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
+                        "Vol/TB20": "{:.2f}",
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=wl_height
+                )
+            else:
+                st.info("Hiện chưa có mã nào trong Watchlist. Bạn có thể thêm vào file `watchlist.json` hoặc cột loại 'WATCH' trên Google Sheet.")
         else:
             st.info("Hiện chưa có mã nào trong Watchlist. Bạn có thể thêm vào file `watchlist.json` hoặc cột loại 'WATCH' trên Google Sheet.")
 

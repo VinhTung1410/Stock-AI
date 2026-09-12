@@ -43,7 +43,7 @@ st.markdown("""
         color: #0f172a;
     }
 
-    /* 2. THANH ĐIỀU HƯỚNG TABS (FIX LỆCH GẠCH CHÂN & LỖI ĐÈ CHỮ ICON CUỘN) */
+    /* 2. THANH ĐIỀU HƯỚNG TABS (BRAND BLUE #2563eb, TUYỆT ĐỐI KHÔNG ĐỎ) */
     div[data-baseweb="tab-list"] {
         gap: 8px !important;
         border-bottom: 2px solid #e2e8f0 !important;
@@ -57,7 +57,7 @@ st.markdown("""
         font-weight: 600 !important;
         color: #64748b !important;
         border: none !important;
-        border-bottom: 2px solid transparent !important;
+        border-bottom: 2.5px solid transparent !important;
         margin-bottom: -2px !important;
         background: transparent !important;
         border-radius: 6px 6px 0 0 !important;
@@ -69,17 +69,23 @@ st.markdown("""
         background: rgba(241, 245, 249, 0.6) !important;
     }
 
-    /* Tab đang Active: Màu Xanh thương hiệu, gạch chân chuẩn hàng, KHÔNG đỏ */
+    /* Tab đang Active: Màu Xanh thương hiệu đồng nhất với Primary Buttons */
     button[data-baseweb="tab"][aria-selected="true"] {
-        color: #1d4ed8 !important;
-        border-bottom: 2px solid #2563eb !important;
+        color: #2563eb !important;
+        border-bottom: 2.5px solid #2563eb !important;
         background: transparent !important;
     }
+    button[data-baseweb="tab"][aria-selected="true"] p,
+    button[data-baseweb="tab"][aria-selected="true"] span {
+        color: #2563eb !important;
+        font-weight: 700 !important;
+    }
 
-    /* Ẩn hoặc đồng bộ line mặc định màu đỏ của Streamlit */
+    /* Vạch gạch chân chuyển động của Streamlit: Ép buộc 100% về Brand Blue */
     div[data-baseweb="tab-highlight"] {
         background-color: #2563eb !important;
-        height: 2px !important;
+        height: 2.5px !important;
+        border-radius: 2px 2px 0 0 !important;
     }
     div[data-baseweb="tab-border"] {
         background-color: transparent !important;
@@ -96,7 +102,7 @@ st.markdown("""
         margin: 0 4px !important;
     }
 
-    /* 3. NÚT BẤM HÀNH ĐỘNG CHÍNH (UX PRIMARY BUTTON: ĐỔI TỪ ĐỎ SANG XANH DƯƠNG BRAND) */
+    /* 3. NÚT BẤM HÀNH ĐỘNG CHÍNH (UX PRIMARY BUTTON: ĐỒNG NHẤT XANH DƯƠNG BRAND #2563eb) */
     button[kind="primary"], button[data-testid="baseButton-primary"] {
         background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
         border: 1px solid #1d4ed8 !important;
@@ -129,17 +135,54 @@ st.markdown("""
         color: #0f172a !important;
     }
 
-    /* 4. Ô NHẬP LIỆU (INPUT & TEXTAREA FOCUS RING) */
-    div[data-baseweb="input"], div[data-baseweb="textarea"] {
-        border-radius: 8px !important;
-        border: 1px solid #cbd5e1 !important;
+    /* 4. ĐỒNG BỘ TUYỆT ĐỐI Ô NHẬP LIỆU & DROPDOWN SELECTBOX (CHÍNH XÁC TỪNG PIXEL) */
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="input"],
+    div[data-baseweb="base-input"] {
         background-color: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        min-height: 42px !important;
+        height: 42px !important;
+        box-sizing: border-box !important;
         transition: all 0.2s ease !important;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03) !important;
     }
 
-    div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within {
+    div[data-baseweb="select"] > div:hover,
+    div[data-baseweb="input"]:hover {
+        border-color: #94a3b8 !important;
+    }
+
+    div[data-baseweb="select"] > div:focus-within,
+    div[data-baseweb="input"]:focus-within,
+    div[data-baseweb="textarea"]:focus-within {
         border-color: #2563eb !important;
         box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16) !important;
+        background-color: #ffffff !important;
+    }
+
+    div[data-baseweb="input"] input,
+    div[data-baseweb="select"] input {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        font-size: 13.5px !important;
+        color: #0f172a !important;
+        height: 40px !important;
+        line-height: 40px !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        background: transparent !important;
+    }
+
+    /* Đảm bảo Label của Widget đồng bộ in hoa, gọn gàng */
+    label[data-testid="stWidgetLabel"] p {
+        font-family: 'Inter', sans-serif !important;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.4px !important;
+        color: #475569 !important;
+        margin-bottom: 6px !important;
     }
 
     /* 5. BẢNG DỮ LIỆU (TABLE UI HEADER ĐẬM & HOVER EFFECT) */
@@ -169,12 +212,12 @@ st.markdown("""
         border-color: #cbd5e1 !important;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
     }
-    [data-testid="stMetricLabel"] {
-        font-size: 12px !important;
+    [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] p {
+        font-size: 11.5px !important;
         font-weight: 700 !important;
         color: #64748b !important;
         text-transform: uppercase !important;
-        letter-spacing: 0.4px !important;
+        letter-spacing: 0.5px !important;
     }
     [data-testid="stMetricValue"] {
         font-size: 22px !important;
