@@ -41,24 +41,33 @@ def send_discord_dm(content: str = None, embeds: list = None) -> bool:
             return False
 
         # Bước 2: Gửi nội dung tin nhắn / Embed vào kênh DM
-        payload = {}
-        if content:
-            payload["content"] = content
         if embeds:
-            payload["embeds"] = embeds
+            msg_res = requests.post(
+                f"https://discord.com/api/v10/channels/{channel_id}/messages",
+                headers=headers,
+                json={"embeds": embeds},
+                timeout=10
+            )
+            if msg_res.status_code not in [200, 201]:
+                logging.error(f"Lỗi khi gửi Embed DM: {msg_res.status_code} - {msg_res.text}")
+                return False
 
-        msg_res = requests.post(
-            f"https://discord.com/api/v10/channels/{channel_id}/messages",
-            headers=headers,
-            json=payload,
-            timeout=10
-        )
-        if msg_res.status_code in [200, 201]:
-            logging.info("Đã gửi tin nhắn riêng (DM) đến bạn thành công!")
-            return True
-        else:
-            logging.error(f"Lỗi khi gửi tin nhắn DM: {msg_res.status_code} - {msg_res.text}")
-            return False
+        if content:
+            # Tự động chia nhỏ tin nhắn nếu dài hơn 1900 ký tự (tránh giới hạn 2000 ký tự của Discord)
+            chunks = [content[i:i+1900] for i in range(0, len(content), 1900)]
+            for chunk in chunks:
+                msg_res = requests.post(
+                    f"https://discord.com/api/v10/channels/{channel_id}/messages",
+                    headers=headers,
+                    json={"content": chunk},
+                    timeout=10
+                )
+                if msg_res.status_code not in [200, 201]:
+                    logging.error(f"Lỗi khi gửi text DM: {msg_res.status_code} - {msg_res.text}")
+                    return False
+
+        logging.info("Đã gửi tin nhắn riêng (DM) đến bạn thành công!")
+        return True
     except Exception as e:
         logging.error(f"Ngoại lệ khi gửi DM: {e}")
         return False
