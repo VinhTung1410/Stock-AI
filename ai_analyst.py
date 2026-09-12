@@ -44,7 +44,15 @@ Nhiệm vụ của bạn:
    - **Trung hạn (3 - 6 tháng):** Chiến lược cơ cấu, gia tăng tỷ trọng hay hạ bớt.
 4. **Ngành/Cổ phiếu tiềm năng:** Gợi ý ngắn gọn 1 nhóm ngành đang có dòng tiền hoặc hưởng lợi vĩ mô để chuẩn bị đón sóng.
 
-Yêu cầu định dạng: Markdown chuyên nghiệp, súc tích, gạch đầu dòng rõ ràng, không vòng vo sáo rỗng.
+Yêu cầu định dạng đặc biệt cho Discord & Web:
+- TUYỆT ĐỐI KHÔNG DÙNG BẢNG MARKDOWN (| Cột | Cột |) vì Discord không hỗ trợ hiển thị bảng và sẽ bị vỡ nát trên điện thoại.
+- TUYỆT ĐỐI KHÔNG DÙNG DẤU `###`. Thay bằng tiêu đề in đậm rõ ràng (Ví dụ: `**I. ĐÁNH GIÁ SỨC KHỎE DANH MỤC**`).
+- Dùng bullet point dạng `• ` hoặc `> ` kèm emoji để tạo giao diện trực quan, sang trọng.
+- Chia rõ ràng 4 mục lớn:
+  **I. ĐÁNH GIÁ SỨC KHỎE DANH MỤC**
+  **II. TÁC ĐỘNG VĨ MÔ & DÒNG TIỀN**
+  **III. KỊCH BẢN & CHIẾN LƯỢC HÀNH ĐỘNG**
+  **IV. CỔ PHIẾU / NGÀNH ĐÓN SÓNG TIỀM NĂNG**
 """
 
     if custom_question:

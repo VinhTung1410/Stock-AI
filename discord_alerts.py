@@ -34,9 +34,74 @@ def send_discord_message(content: str = None, embeds: list = None) -> bool:
         return False
 
 
+def split_ai_summary_into_fields(ai_summary: str) -> list:
+    """
+    Tách bài phân tích của AI thành các Field của Discord Embed (mỗi field < 1024 ký tự),
+    loại bỏ các dấu ### và tự động dọn sạch định dạng để hiển thị hoàn hảo trên Discord.
+    """
+    clean_text = ai_summary.replace("### ", "").replace("## ", "").strip()
+    
+    # Định nghĩa các mốc tiêu đề phổ biến
+    sections = [
+        "I. ĐÁNH GIÁ SỨC KHỎE DANH MỤC",
+        "II. TÁC ĐỘNG VĨ MÔ & DÒNG TIỀN",
+        "III. KỊCH BẢN & CHIẾN LƯỢC HÀNH ĐỘNG",
+        "IV. CỔ PHIẾU / NGÀNH ĐÓN SÓNG TIỀM NĂNG"
+    ]
+    
+    fields = []
+    paragraphs = clean_text.split("\n\n")
+    current_title = "🧠 Nhận định & Khuyến nghị Chiến lược"
+    current_chunk = ""
+
+    for p in paragraphs:
+        # Kiểm tra xem đoạn p có chứa tiêu đề mục lớn không
+        matched_section = None
+        for s in sections:
+            if s in p:
+                matched_section = s
+                break
+        
+        if matched_section:
+            if current_chunk.strip():
+                fields.append({
+                    "name": current_title,
+                    "value": current_chunk.strip()[:1024],
+                    "inline": False
+                })
+                current_chunk = ""
+            
+            # Tách tiêu đề và nội dung
+            parts = p.split(matched_section, 1)
+            current_title = f"📌 {matched_section}"
+            remainder = parts[1].lstrip("*\n :")
+            if remainder:
+                current_chunk = remainder + "\n\n"
+        else:
+            if len(current_chunk) + len(p) + 2 > 1000:
+                fields.append({
+                    "name": current_title,
+                    "value": current_chunk.strip()[:1024],
+                    "inline": False
+                })
+                current_title = f"{current_title} (tiếp theo)"
+                current_chunk = p.strip() + "\n\n"
+            else:
+                current_chunk += p.strip() + "\n\n"
+
+    if current_chunk.strip():
+        fields.append({
+            "name": current_title,
+            "value": current_chunk.strip()[:1024],
+            "inline": False
+        })
+
+    return fields if fields else [{"name": "🧠 Phân tích AI", "value": clean_text[:1024], "inline": False}]
+
+
 def format_portfolio_embed(portfolio_df, ai_summary: str, report_type: str = "BÁO CÁO PHIÊN") -> dict:
     """
-    Format báo cáo danh mục thành Discord Rich Embed sang trọng, trực quan.
+    Format báo cáo danh mục thành Discord Rich Embed sang trọng, trực quan, không bị cắt chữ.
     """
     # Tính tổng lãi lỗ danh mục
     total_cost = (portfolio_df["Khối lượng"] * portfolio_df["Giá vốn (k)"] * 1000).sum()
@@ -60,20 +125,13 @@ def format_portfolio_embed(portfolio_df, ai_summary: str, report_type: str = "B�
     portfolio_desc = "\n".join(portfolio_lines)
     summary_pnl = f"**Tổng tài sản danh mục:** `{int(total_market):,}đ` | **Lãi/Lỗ:** `{int(total_pnl_vnd):+,}đ` (**{total_pnl_pct:+.2f}%**)"
 
-    # Cắt ngắn bài phân tích AI nếu quá dài (giới hạn Discord field là 1024 ký tự)
-    ai_display = ai_summary[:1000] + "..." if len(ai_summary) > 1000 else ai_summary
+    ai_fields = split_ai_summary_into_fields(ai_summary)
 
     embed = {
         "title": f"📊 AI STOCK COPILOT - {report_type.upper()}",
         "description": f"{summary_pnl}\n\n**Chi tiết từng mã:**\n{portfolio_desc}",
         "color": color,
-        "fields": [
-            {
-                "name": "🧠 Nhận định & Khuyến nghị Chiến lược (Gemini Pro)",
-                "value": ai_display,
-                "inline": False,
-            }
-        ],
+        "fields": ai_fields,
         "footer": {
             "text": "Stock AI Assistant • Dữ liệu vnstock • Phân tích bởi Gemini",
         },
