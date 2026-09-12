@@ -22,7 +22,7 @@ def render_tab_market(df_vnindex: pd.DataFrame):
         # 1. BIỂU ĐỒ NẾN NHẬT VN-INDEX
         st.subheader("📉 Biểu đồ Kỹ thuật Chỉ số VN-INDEX")
         tv_vnindex_html = generate_tradingview_html(df_vnindex, "VNINDEX")
-        components.html(tv_vnindex_html, height=600)
+        components.html(tv_vnindex_html, height=725)
 
         st.divider()
 
