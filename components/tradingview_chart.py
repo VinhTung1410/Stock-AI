@@ -4,14 +4,16 @@ import pandas as pd
 def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
     """
     Tạo mã HTML/JS nhúng TradingView Lightweight Charts tương tác chuẩn TradingView Pro:
-    - Bố cục Multi-Pane riêng biệt xếp chồng với chiều cao pixel cố định:
-      + Pane 1: Nến Candlestick + MA (20, 50) + EMA (9, 21) + BOLL (20, 2)
-      + Pane 2: Đồ thị Khối lượng Volume tách riêng ở dưới + SMA 20 của Khối lượng
-      + Pane 3 (Sub-panel): MACD (Line, Signal, Histogram)
-      + Pane 4 (Sub-panel): RSI (14) + đường mốc 70/30
-    - Mỗi pane có header riêng hiển thị chính xác số liệu realtime khi trỏ chuột vào bất kỳ ngày nào.
-    - Nến tự động căng đều toàn màn hình (barSpacing 9, fixLeft/RightEdge), triệt tiêu lỗi co cụm góc phải.
-    - Lọc khung thời gian: 1 ngày, 1 tuần, 1 tháng.
+    - Bố cục Multi-Pane tự co giãn chiếm 100% chiều cao, không bị tràn màn hình:
+      + Header trên đỉnh: Tên mã, Khung thời gian (1D/1W/1M), Nút bật/tắt MA, EMA, BOLL, Vol, MACD, RSI, OHLCV realtime.
+      + Pane 1: Đồ thị nến Candlestick + MA + EMA + BOLL.
+      + Pane 2: Đồ thị Khối lượng Volume tách riêng + SMA 20.
+      + Pane 3: Sub-panel MACD (Line, Signal, Histogram).
+      + Pane 4: Sub-panel RSI (14) + 70/30.
+    - Hàm recalcLayout(): Tự động co giãn nến chiếm toàn bộ không gian khi tắt các subpanel,
+      hoàn toàn không để khoảng trống đen vô nghĩa (triệt tiêu lỗi hình 2).
+    - Nút chỉ báo đưa lên Header đỉnh: Luôn hiển thị 100%, không bị mất lựa chọn khi khung nhỏ.
+    - Đồng bộ Crosshair & Header: Trỏ chuột vào bất kỳ ngày nào, toàn bộ 4 pane đều nhảy đúng số liệu ngày đó.
     """
     candle_list = []
     volume_list = []
@@ -24,7 +26,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
         volume_list.append({
             "time": t,
             "value": v,
-            "color": "rgba(8, 153, 129, 0.55)" if is_up else "rgba(242, 54, 69, 0.55)"
+            "color": "rgba(8, 153, 129, 0.65)" if is_up else "rgba(242, 54, 69, 0.65)"
         })
 
     candle_json = json.dumps(candle_list)
@@ -32,42 +34,48 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
 
     html = f"""
     <!DOCTYPE html>
-    <html>
+    <html lang="vi">
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
         <style>
             * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-            body {{
+            html, body {{
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
                 background-color: #131722;
                 color: #d1d4dc;
                 font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif;
                 display: flex;
                 flex-direction: column;
-                min-height: 100vh;
-                overflow-x: hidden;
             }}
 
-            /* 1. THANH HEADER CHÍNH */
+            /* 1. THANH HEADER CHÍNH TRÊN ĐỈNH - KHÔNG BAO GIỜ BỊ MẤT LỰA CHỌN */
             .main-header {{
                 display: flex;
-                flex-direction: column;
-                gap: 4px;
-                padding: 8px 16px;
+                align-items: center;
+                justify-content: space-between;
+                padding: 6px 14px;
                 background-color: #1e222d;
                 border-bottom: 1px solid #2a2e39;
                 flex-shrink: 0;
+                gap: 10px;
+                flex-wrap: wrap;
+                z-index: 100;
             }}
-            .main-title-row {{
+            .header-left {{
                 display: flex;
                 align-items: center;
-                gap: 12px;
+                gap: 8px;
                 flex-wrap: wrap;
             }}
             .symbol-title {{
-                font-size: 16px;
-                font-weight: 700;
+                font-size: 15px;
+                font-weight: 800;
                 color: #f8fafc;
+                letter-spacing: 0.5px;
             }}
 
             /* DROPDOWN CHỌN KHUNG THỜI GIAN */
@@ -80,18 +88,17 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 color: #f8fafc;
                 border: 1px solid #363a45;
                 border-radius: 4px;
-                padding: 3px 10px;
-                font-size: 12px;
+                padding: 3px 8px;
+                font-size: 11px;
                 font-weight: 600;
                 cursor: pointer;
                 display: flex;
                 align-items: center;
-                gap: 5px;
+                gap: 4px;
                 transition: all 0.15s ease;
             }}
             .tf-btn:hover {{
                 background-color: #363a45;
-                border-color: #4a5060;
             }}
             .tf-menu {{
                 display: none;
@@ -101,17 +108,15 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 background-color: #1e222d;
                 border: 1px solid #2a2e39;
                 border-radius: 6px;
-                width: 120px;
+                width: 110px;
                 box-shadow: 0 10px 25px rgba(0, 0, 0, 0.75);
                 padding: 4px 0;
                 z-index: 1000;
             }}
-            .tf-menu.show {{
-                display: block;
-            }}
+            .tf-menu.show {{ display: block; }}
             .tf-item {{
-                padding: 6px 14px;
-                font-size: 12px;
+                padding: 5px 12px;
+                font-size: 11px;
                 font-weight: 500;
                 color: #d1d4dc;
                 cursor: pointer;
@@ -123,45 +128,69 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             .tf-item.active {{
                 background-color: #2962FF !important;
                 color: #ffffff !important;
-                font-weight: 600;
-            }}
-
-            /* DÒNG THÔNG SỐ NẾN OHLCV */
-            .ohlc-text {{
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                font-size: 12px;
-                font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, monospace;
-                color: #94a3b8;
-            }}
-            .ohlc-text b {{
-                font-weight: 600;
-                color: #f8fafc;
-            }}
-            .ind-main-text {{
-                display: flex;
-                align-items: center;
-                gap: 12px;
-                font-size: 11px;
-                font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, monospace;
-            }}
-            .badge-val {{
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-            }}
-            .badge-val b {{
                 font-weight: 700;
             }}
 
-            /* 2. CÁC PANE ĐỒ THỊ RIÊNG BIỆT (MULTI-PANE LAYOUT) */
+            .v-sep {{
+                width: 1px;
+                height: 18px;
+                background-color: #363a45;
+                margin: 0 2px;
+            }}
+
+            /* NHÓM NÚT BẬT TẮT CHỈ BÁO TRÊN HEADER */
+            .btn-group {{
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }}
+            .btn-tag {{
+                background-color: #262b38;
+                color: #848e9c;
+                border: 1px solid #363a45;
+                border-radius: 4px;
+                padding: 2px 8px;
+                font-size: 11px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                outline: none;
+            }}
+            .btn-tag:hover {{
+                background-color: #363a45;
+                color: #f8fafc;
+            }}
+            .btn-tag.active {{
+                background-color: #2962FF;
+                color: #ffffff;
+                border-color: #2962FF;
+                box-shadow: 0 0 8px rgba(41, 98, 255, 0.4);
+            }}
+
+            /* DÒNG THÔNG SỐ NẾN OHLCV */
+            .header-right {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 11px;
+                font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, monospace;
+                color: #94a3b8;
+                flex-wrap: wrap;
+            }}
+            .header-right span b {{
+                color: #f8fafc;
+                font-weight: 600;
+            }}
+
+            /* 2. CÁC PANE ĐỒ THỊ RIÊNG BIỆT (MULTI-PANE CONTAINER) */
             .panes-wrapper {{
                 flex: 1;
                 display: flex;
                 flex-direction: column;
                 width: 100%;
+                height: 100%;
                 background-color: #131722;
+                overflow: hidden;
             }}
             .pane-box {{
                 width: 100%;
@@ -169,79 +198,43 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 display: flex;
                 flex-direction: column;
                 background-color: #131722;
+                border-bottom: 1px solid #2a2e39;
             }}
             .pane-header-bar {{
-                height: 24px;
-                padding: 2px 14px;
-                background-color: #171b26;
+                height: 22px;
+                padding: 0 12px;
+                background-color: #161a25;
                 display: flex;
                 align-items: center;
-                gap: 12px;
+                gap: 10px;
                 font-size: 11px;
                 font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, monospace;
-                border-bottom: 1px solid rgba(42, 46, 57, 0.4);
-                color: #cbd5e1;
+                color: #94a3b8;
                 flex-shrink: 0;
                 z-index: 10;
+                user-select: none;
             }}
             .pane-header-bar b {{
                 font-weight: 700;
             }}
             .pane-chart-container {{
                 width: 100%;
+                flex: 1;
                 position: relative;
-            }}
-            .pane-divider {{
-                height: 2px;
-                background-color: #2a2e39;
-                flex-shrink: 0;
-            }}
-
-            /* 3. TOOLBAR ĐÁY BẬT TẮT CHỈ BÁO */
-            .tv-bottom-toolbar {{
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                gap: 8px;
-                padding: 8px 12px;
-                background-color: #131722;
-                border-top: 1px solid #2a2e39;
-                flex-shrink: 0;
-            }}
-            .btn-ind {{
-                background-color: #2a2e39;
-                color: #848e9c;
-                border: 1px solid #363a45;
-                border-radius: 6px;
-                padding: 5px 16px;
-                font-size: 12px;
-                font-weight: 700;
-                cursor: pointer;
-                transition: all 0.15s ease;
-                outline: none;
-            }}
-            .btn-ind:hover {{
-                background-color: #363a45;
-                color: #f8fafc;
-            }}
-            .btn-ind.active {{
-                background-color: #2962FF;
-                color: #ffffff;
-                border-color: #2962FF;
-                box-shadow: 0 0 10px rgba(41, 98, 255, 0.4);
             }}
         </style>
     </head>
     <body>
-        <!-- 1. MAIN HEADER -->
-        <div class="main-header">
-            <div class="main-title-row">
+        <!-- 1. THANH HEADER CHÍNH TRÊN ĐỈNH -->
+        <div class="main-header" id="main-header">
+            <div class="header-left">
                 <span class="symbol-title">{symbol}</span>
                 
+                <!-- DROPDOWN CHỌN KHUNG THỜI GIAN -->
                 <div class="tf-dropdown">
                     <button class="tf-btn" id="tf-btn">
                         <span id="tf-label">1 ngày</span>
-                        <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+                        <svg width="7" height="5" viewBox="0 0 8 6" fill="none">
                             <path d="M1 1.5L4 4.5L7 1.5" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/>
                         </svg>
                     </button>
@@ -252,45 +245,61 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     </div>
                 </div>
 
-                <div class="ohlc-text" id="ohlc-text">
-                    <span>O <b id="val-open">--</b></span>
-                    <span>H <b id="val-high">--</b></span>
-                    <span>L <b id="val-low">--</b></span>
-                    <span>C <b id="val-close">--</b></span>
-                    <span id="val-change" style="font-weight:700;">--</span>
+                <div class="v-sep"></div>
+
+                <!-- CÁC NÚT CHỈ BÁO TRÊN ĐỒ THỊ CHÍNH -->
+                <div class="btn-group">
+                    <button class="btn-tag active" id="btn-ma" title="Đường trung bình MA (20, 50)">MA</button>
+                    <button class="btn-tag" id="btn-ema" title="Đường trung bình hàm mũ EMA (9, 21)">EMA</button>
+                    <button class="btn-tag" id="btn-boll" title="Dải băng Bollinger Bands (20, 2)">BOLL</button>
+                </div>
+
+                <div class="v-sep"></div>
+
+                <!-- CÁC NÚT BẬT TẮT SUBPANEL ĐỒ THỊ PHỤ -->
+                <div class="btn-group">
+                    <button class="btn-tag active" id="btn-vol" title="Đồ thị Khối lượng tách riêng">Khối lượng</button>
+                    <button class="btn-tag" id="btn-macd" title="Đồ thị MACD tách riêng">MACD</button>
+                    <button class="btn-tag active" id="btn-rsi" title="Đồ thị RSI (14) tách riêng">RSI</button>
                 </div>
             </div>
 
-            <div class="ind-main-text" id="ind-main-text">
-                <span class="badge-val" id="badge-ma20" style="color: #f59e0b;">MA 20: <b>--</b></span>
-                <span class="badge-val" id="badge-ma50" style="color: #3b82f6;">MA 50: <b>--</b></span>
-                <span class="badge-val" id="badge-ema9" style="color: #10b981; display: none;">EMA 9: <b>--</b></span>
-                <span class="badge-val" id="badge-ema21" style="color: #ec4899; display: none;">EMA 21: <b>--</b></span>
-                <span class="badge-val" id="badge-boll" style="color: #38bdf8; display: none;">BOLL(20,2): Up <b>--</b> Mid <b>--</b> Low <b>--</b></span>
+            <!-- CHỈ SỐ OHLCV REALTIME CỦA NGÀY TRỎ CHUỘT -->
+            <div class="header-right" id="header-ohlc">
+                <span>O <b id="val-open">--</b></span>
+                <span>H <b id="val-high">--</b></span>
+                <span>L <b id="val-low">--</b></span>
+                <span>C <b id="val-close">--</b></span>
+                <span id="val-change" style="font-weight:700;">--</span>
             </div>
         </div>
 
-        <!-- 2. MULTI-PANE CHARTS WRAPPER -->
+        <!-- 2. BỐ CỤC CÁC PANE ĐỒ THỊ (TỰ CO GIÃN 100% CHIỀU CAO) -->
         <div class="panes-wrapper" id="panes-wrapper">
-            <!-- PANE 1: BIỂU ĐỒ NẾN CHÍNH (Chiếm 330px) -->
+            <!-- PANE 1: BIỂU ĐỒ NẾN CHÍNH (Tự co giãn chiếm toàn bộ không gian còn lại) -->
             <div class="pane-box" id="pane-main">
-                <div class="pane-chart-container" id="container-main" style="height: 330px;"></div>
+                <div class="pane-header-bar" id="hdr-main">
+                    <span id="badge-ma20" style="color: #f59e0b;">MA 20: <b>--</b></span>
+                    <span id="badge-ma50" style="color: #3b82f6;">MA 50: <b>--</b></span>
+                    <span id="badge-ema9" style="color: #10b981; display: none;">EMA 9: <b>--</b></span>
+                    <span id="badge-ema21" style="color: #ec4899; display: none;">EMA 21: <b>--</b></span>
+                    <span id="badge-boll" style="color: #38bdf8; display: none;">BOLL(20,2): Up <b>--</b> Mid <b>--</b> Low <b>--</b></span>
+                </div>
+                <div class="pane-chart-container" id="container-main"></div>
             </div>
 
-            <div class="pane-divider"></div>
-
-            <!-- PANE 2: ĐỒ THỊ KHỐI LƯỢNG VOLUME TÁCH RIÊNG Ở DƯỚI (Chiếm 115px) -->
+            <!-- PANE 2: ĐỒ THỊ KHỐI LƯỢNG TÁCH RIÊNG Ở DƯỚI -->
             <div class="pane-box" id="pane-vol">
                 <div class="pane-header-bar">
-                    <span>Khối lượng <span style="color:#787b86;">20</span> SMA <span style="color:#787b86;">20</span></span>
+                    <span style="color:#f8fafc; font-weight:700;">Khối lượng</span>
+                    <span style="color:#787b86;">20 SMA 20</span>
                     <span style="color: #38bdf8;" id="hdr-vol-val">Vol: <b>--</b></span>
                     <span style="color: #f59e0b;" id="hdr-vol-sma">SMA 20: <b>--</b></span>
                 </div>
-                <div class="pane-chart-container" id="container-vol" style="height: 90px;"></div>
+                <div class="pane-chart-container" id="container-vol"></div>
             </div>
 
-            <!-- PANE 3: ĐỒ THỊ MACD TÁCH RIÊNG (Chiếm 130px - Khi bật MACD) -->
-            <div class="pane-divider" id="sep-macd" style="display: none;"></div>
+            <!-- PANE 3: ĐỒ THỊ MACD TÁCH RIÊNG (Ẩn mặc định, bật khi click MACD) -->
             <div class="pane-box" id="pane-macd" style="display: none;">
                 <div class="pane-header-bar">
                     <span style="color:#f8fafc; font-weight:700;">MACD</span>
@@ -299,28 +308,18 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     <span style="color: #f97316;" id="hdr-macd-sig">Signal: <b>--</b></span>
                     <span id="hdr-macd-hist">Hist: <b>--</b></span>
                 </div>
-                <div class="pane-chart-container" id="container-macd" style="height: 105px;"></div>
+                <div class="pane-chart-container" id="container-macd"></div>
             </div>
 
-            <!-- PANE 4: ĐỒ THỊ RSI TÁCH RIÊNG (Chiếm 120px - Khi bật RSI) -->
-            <div class="pane-divider" id="sep-rsi"></div>
+            <!-- PANE 4: ĐỒ THỊ RSI TÁCH RIÊNG (Bật mặc định) -->
             <div class="pane-box" id="pane-rsi">
                 <div class="pane-header-bar">
                     <span style="color:#f8fafc; font-weight:700;">RSI</span>
                     <span style="color:#787b86;">14</span>
                     <span style="color: #a855f7;" id="hdr-rsi-val">RSI: <b>--</b></span>
                 </div>
-                <div class="pane-chart-container" id="container-rsi" style="height: 95px;"></div>
+                <div class="pane-chart-container" id="container-rsi"></div>
             </div>
-        </div>
-
-        <!-- 3. TOOLBAR ĐÁY BẬT TẮT CHỈ BÁO -->
-        <div class="tv-bottom-toolbar">
-            <button class="btn-ind active" id="btn-ma">MA</button>
-            <button class="btn-ind" id="btn-ema">EMA</button>
-            <button class="btn-ind" id="btn-macd">MACD</button>
-            <button class="btn-ind active" id="btn-rsi">RSI</button>
-            <button class="btn-ind" id="btn-boll">BOLL</button>
         </div>
 
         <script>
@@ -329,12 +328,12 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             const cMacd = document.getElementById('container-macd');
             const cRsi = document.getElementById('container-rsi');
 
-            const paneMacd = document.getElementById('pane-macd');
-            const sepMacd = document.getElementById('sep-macd');
-            const paneRsi = document.getElementById('pane-rsi');
-            const sepRsi = document.getElementById('sep-rsi');
+            const pMain = document.getElementById('pane-main');
+            const pVol = document.getElementById('pane-vol');
+            const pMacd = document.getElementById('pane-macd');
+            const pRsi = document.getElementById('pane-rsi');
 
-            // CẤU HÌNH TIME SCALE: Chống co cụm nến (fixRightEdge + barSpacing 9) và loại bỏ 00:00:00
+            // CẤU HÌNH TIME SCALE: Chống co cụm nến (minBarSpacing: 1, fitContent linh hoạt)
             const makeTimeScale = (showTimeAxis) => ({{
                 borderColor: '#2a2e39',
                 timeVisible: false,
@@ -342,9 +341,8 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 visible: showTimeAxis,
                 fixLeftEdge: true,
                 fixRightEdge: true,
-                minBarSpacing: 4,
-                barSpacing: 9,
-                rightOffset: 6,
+                minBarSpacing: 1,
+                rightOffset: 2,
             }});
 
             const makeOptions = (showTimeAxis) => ({{
@@ -384,7 +382,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             const macdSignal = chartMacd.addLineSeries({{ color: '#f97316', lineWidth: 1.5 }});
             const macdHist = chartMacd.addHistogramSeries();
 
-            // 4. Chart RSI Tách Riêng (Hiện trục thời gian ở đáy cùng)
+            // 4. Chart RSI Tách Riêng
             const chartRsi = LightweightCharts.createChart(cRsi, makeOptions(true));
             const rsiSeries = chartRsi.addLineSeries({{ color: '#a855f7', lineWidth: 1.8 }});
             const rsiUp = chartRsi.addLineSeries({{ color: '#ef4444', lineWidth: 1, lineStyle: 2 }});
@@ -392,14 +390,20 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
 
             const allCharts = [chartMain, chartVol, chartMacd, chartRsi];
 
-            // ĐỒNG BỘ CUỘN VÀ ZOOM GIỮA TẤT CẢ CÁC PANE
+            // TRẠNG THÁI HIỂN THỊ CÁC CHỈ BÁO & SUBPANEL
+            let isMA = true, isEMA = false, isBOLL = false;
+            let isVol = true, isMacd = false, isRsi = true;
             let isSyncing = false;
+
+            // ĐỒNG BỘ CUỘN VÀ ZOOM GIỮA CÁC PANE (CHỈ ĐỒNG BỘ KHI NGƯỜI DÙNG TƯƠNG TÁC)
             allCharts.forEach((source, sIdx) => {{
                 source.timeScale().subscribeVisibleLogicalRangeChange(range => {{
                     if (isSyncing || !range) return;
                     isSyncing = true;
                     allCharts.forEach((target, tIdx) => {{
-                        if (sIdx !== tIdx) target.timeScale().setVisibleLogicalRange(range);
+                        if (sIdx !== tIdx) {{
+                            target.timeScale().setVisibleLogicalRange(range);
+                        }}
                     }});
                     isSyncing = false;
                 }});
@@ -408,6 +412,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             const rawCandleData = {candle_json};
             const rawVolumeData = {volume_json};
 
+            // HÀM TÍNH TOÁN CÁC CHỈ BÁO KỸ THUẬT
             function calculateSMA(data, period) {{
                 const res = [];
                 for (let i = 0; i < data.length; i++) {{
@@ -456,45 +461,54 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 if (data.length <= period) return res;
                 let gains = 0, losses = 0;
                 for (let i = 1; i <= period; i++) {{
-                    const d = data[i].close - data[i - 1].close;
-                    if (d >= 0) gains += d; else losses -= d;
+                    const diff = data[i].close - data[i - 1].close;
+                    if (diff >= 0) gains += diff; else losses -= diff;
                 }}
-                let avgG = gains / period, avgL = losses / period;
-                let rs = avgL === 0 ? 100 : avgG / avgL;
+                let avgGain = gains / period;
+                let avgLoss = losses / period;
+                let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
                 res.push({{ time: data[period].time, value: parseFloat((100 - (100 / (1 + rs))).toFixed(2)) }});
+
                 for (let i = period + 1; i < data.length; i++) {{
-                    const d = data[i].close - data[i - 1].close;
-                    avgG = (avgG * (period - 1) + (d > 0 ? d : 0)) / period;
-                    avgL = (avgL * (period - 1) + (d < 0 ? -d : 0)) / period;
-                    rs = avgL === 0 ? 100 : avgG / avgL;
+                    const diff = data[i].close - data[i - 1].close;
+                    const g = diff >= 0 ? diff : 0;
+                    const l = diff < 0 ? -diff : 0;
+                    avgGain = (avgGain * (period - 1) + g) / period;
+                    avgLoss = (avgLoss * (period - 1) + l) / period;
+                    rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
                     res.push({{ time: data[i].time, value: parseFloat((100 - (100 / (1 + rs))).toFixed(2)) }});
                 }}
                 return res;
             }}
 
             function calculateMACD(data) {{
-                const e12 = calculateEMA(data, 12);
-                const e26 = calculateEMA(data, 26);
-                const map12 = {{}};
-                e12.forEach(d => map12[d.time] = d.value);
-                const mLine = [];
-                e26.forEach(d => {{
-                    if (map12[d.time] !== undefined) {{
-                        const val = map12[d.time] - d.value;
-                        mLine.push({{ time: d.time, value: parseFloat(val.toFixed(2)), close: val }});
+                const ema12 = calculateEMA(data, 12);
+                const ema26 = calculateEMA(data, 26);
+                const map26 = {{}};
+                ema26.forEach(d => map26[d.time] = d.value);
+
+                const macdRaw = [];
+                ema12.forEach(d => {{
+                    if (map26[d.time] !== undefined) {{
+                        macdRaw.push({{ time: d.time, close: parseFloat((d.value - map26[d.time]).toFixed(2)) }});
                     }}
                 }});
-                const sLine = calculateEMA(mLine, 9);
-                const sMap = {{}};
-                sLine.forEach(d => sMap[d.time] = d.value);
-                const hList = [];
-                mLine.forEach(d => {{
-                    if (sMap[d.time] !== undefined) {{
-                        const diff = d.value - sMap[d.time];
+
+                const signalRaw = calculateEMA(macdRaw, 9);
+                const mapSig = {{}};
+                signalRaw.forEach(d => mapSig[d.time] = d.value);
+
+                const mLine = [], sLine = [], hList = [];
+                macdRaw.forEach(d => {{
+                    const sVal = mapSig[d.time];
+                    mLine.push({{ time: d.time, value: d.close }});
+                    if (sVal !== undefined) {{
+                        sLine.push({{ time: d.time, value: sVal }});
+                        const diff = parseFloat((d.close - sVal).toFixed(2));
                         hList.push({{
                             time: d.time,
-                            value: parseFloat(diff.toFixed(2)),
-                            color: diff >= 0 ? '#22c55e' : '#ef4444'
+                            value: diff,
+                            color: diff >= 0 ? '#26a69a' : '#ef5350'
                         }});
                     }}
                 }});
@@ -535,7 +549,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                         const vol = items.reduce((sum, i) => sum + i.volume.value, 0);
                         const isUp = close >= open;
                         wCandles.push({{ time: mon, open, high, low, close }});
-                        wVols.push({{ time: mon, value: vol, color: isUp ? 'rgba(8, 153, 129, 0.55)' : 'rgba(242, 54, 69, 0.55)' }});
+                        wVols.push({{ time: mon, value: vol, color: isUp ? 'rgba(8, 153, 129, 0.65)' : 'rgba(242, 54, 69, 0.65)' }});
                     }});
                     return {{ candles: wCandles, volumes: wVols }};
                 }}
@@ -556,14 +570,14 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                         const vol = items.reduce((sum, i) => sum + i.volume.value, 0);
                         const isUp = close >= open;
                         mCandles.push({{ time: mKey, open, high, low, close }});
-                        mVols.push({{ time: mKey, value: vol, color: isUp ? 'rgba(8, 153, 129, 0.55)' : 'rgba(242, 54, 69, 0.55)' }});
+                        mVols.push({{ time: mKey, value: vol, color: isUp ? 'rgba(8, 153, 129, 0.65)' : 'rgba(242, 54, 69, 0.65)' }});
                     }});
                     return {{ candles: mCandles, volumes: mVols }};
                 }}
                 return {{ candles: rawCandleData, volumes: rawVolumeData }};
             }}
 
-            // BẢNG MAP O(1) CHO PHÉP NHẢY SỐ TỨC THÌ TỪNG NGÀY KHI RÊ CHUỘT
+            // BẢNG MAP DỮ LIỆU ĐỂ TRUY XUẤT NHANH KHI RÊ CHUỘT
             let dataMaps = {{
                 candle: {{}}, volume: {{}}, volSma: {{}},
                 ma20: {{}}, ma50: {{}}, ema9: {{}}, ema21: {{}},
@@ -597,7 +611,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 const mS = dataMaps.macdSig[t];
                 const mH = dataMaps.macdHist[t];
 
-                // 1. Pane Nến Chính
+                // 1. Header chính: OHLCV
                 if (c) {{
                     const diff = c.close - c.open;
                     const pct = (diff / c.open) * 100;
@@ -616,6 +630,8 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     chgEl.innerText = `${{diff >= 0 ? '+' : ''}}${{diff.toFixed(2)}} (${{diff >= 0 ? '+' : ''}}${{pct.toFixed(2)}}%)`;
                     chgEl.style.color = col;
                 }}
+
+                // Pane Nến: MA, EMA, BOLL
                 document.querySelector('#badge-ma20 b').innerText = m20 !== undefined ? m20.toFixed(2) : '--';
                 document.querySelector('#badge-ma50 b').innerText = m50 !== undefined ? m50.toFixed(2) : '--';
                 document.querySelector('#badge-ema9 b').innerText = e9 !== undefined ? e9.toFixed(2) : '--';
@@ -637,7 +653,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     document.querySelector('#hdr-macd-line b').innerText = mL.toFixed(2);
                     document.querySelector('#hdr-macd-sig b').innerText = mS !== undefined ? mS.toFixed(2) : '--';
                     const histVal = mH !== undefined ? mH : 0;
-                    document.querySelector('#hdr-macd-hist').innerHTML = `Hist: <b style="color:${{histVal >= 0 ? '#22c55e' : '#ef4444'}};">${{histVal >= 0 ? '+' : ''}}${{histVal.toFixed(2)}}</b>`;
+                    document.querySelector('#hdr-macd-hist').innerHTML = `Hist: <b style="color:${{histVal >= 0 ? '#26a69a' : '#ef5350'}};">${{histVal >= 0 ? '+' : ''}}${{histVal.toFixed(2)}}</b>`;
                 }}
 
                 // 4. Pane RSI
@@ -646,21 +662,82 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 }}
             }}
 
-            // TỰ ĐỘNG CĂNG TRÀN ĐỒ THỊ 100% CHIỀU NGANG KHI LOAD
-            function fitAll() {{
-                const w = document.getElementById('panes-wrapper').clientWidth || window.innerWidth;
-                if (!w || w === 0) return;
+            // HÀM QUAN TRỌNG: TỰ TÍNH TOÁN BỐ CỤC KHÔNG ĐỂ KHOẢNG TRỐNG VÀ KHÔNG BỊ TRÀN KHUNG
+            function recalcLayout() {{
+                const wrapper = document.getElementById('panes-wrapper');
+                const totalW = wrapper.clientWidth || window.innerWidth;
+                const totalH = wrapper.clientHeight || (window.innerHeight - 48);
 
-                chartMain.resize(w, cMain.clientHeight);
-                chartVol.resize(w, cVol.clientHeight);
-                chartMacd.resize(w, cMacd.clientHeight);
-                chartRsi.resize(w, cRsi.clientHeight);
+                if (!totalW || totalW <= 50 || !totalH || totalH <= 100) return;
 
-                setTimeout(() => {{
-                    allCharts.forEach(chart => {{
-                        chart.timeScale().fitContent();
-                    }});
-                }}, 50);
+                // Đo chiều cao phân bổ cho từng subpanel đang bật
+                const volH = isVol ? 100 : 0;
+                const macdH = isMacd ? 115 : 0;
+                const rsiH = isRsi ? 105 : 0;
+
+                // Nến chính chiếm trọn vẹn 100% không gian còn lại (không để trống như hình 2)
+                const mainH = Math.max(160, totalH - (volH + macdH + rsiH));
+
+                // 1. Áp dụng hiển thị / ẩn và chiều cao cho Pane Nến chính
+                pMain.style.height = mainH + 'px';
+                cMain.style.height = (mainH - 22) + 'px';
+
+                // 2. Áp dụng cho Pane Volume
+                if (isVol) {{
+                    pVol.style.display = 'flex';
+                    pVol.style.height = volH + 'px';
+                    cVol.style.height = (volH - 22) + 'px';
+                }} else {{
+                    pVol.style.display = 'none';
+                }}
+
+                // 3. Áp dụng cho Pane MACD
+                if (isMacd) {{
+                    pMacd.style.display = 'flex';
+                    pMacd.style.height = macdH + 'px';
+                    cMacd.style.height = (macdH - 22) + 'px';
+                }} else {{
+                    pMacd.style.display = 'none';
+                }}
+
+                // 4. Áp dụng cho Pane RSI
+                if (isRsi) {{
+                    pRsi.style.display = 'flex';
+                    pRsi.style.height = rsiH + 'px';
+                    cRsi.style.height = (rsiH - 22) + 'px';
+                }} else {{
+                    pRsi.style.display = 'none';
+                }}
+
+                // Tìm pane thấp nhất để hiển thị Trục thời gian (TimeScale)
+                const activeList = [
+                    {{ chart: chartMain, active: true }},
+                    {{ chart: chartVol, active: isVol }},
+                    {{ chart: chartMacd, active: isMacd }},
+                    {{ chart: chartRsi, active: isRsi }}
+                ].filter(item => item.active);
+
+                activeList.forEach((item, idx) => {{
+                    const isLast = (idx === activeList.length - 1);
+                    item.chart.applyOptions({{ timeScale: {{ visible: isLast }} }});
+                }});
+
+                // Resize các chart theo kích thước thực
+                chartMain.resize(totalW, mainH - 22);
+                if (isVol) chartVol.resize(totalW, volH - 22);
+                if (isMacd) chartMacd.resize(totalW, macdH - 22);
+                if (isRsi) chartRsi.resize(totalW, rsiH - 22);
+
+                // Căng nến trải đều màn hình
+                isSyncing = true;
+                chartMain.timeScale().fitContent();
+                const vRange = chartMain.timeScale().getVisibleLogicalRange();
+                if (vRange) {{
+                    if (isVol) chartVol.timeScale().setVisibleLogicalRange(vRange);
+                    if (isMacd) chartMacd.timeScale().setVisibleLogicalRange(vRange);
+                    if (isRsi) chartRsi.timeScale().setVisibleLogicalRange(vRange);
+                }}
+                isSyncing = false;
             }}
 
             function loadDataset(candles, volumes) {{
@@ -727,7 +804,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     updateAllPanes(latestTime);
                 }}
 
-                fitAll();
+                recalcLayout();
             }}
 
             // ĐỒNG BỘ RÊ CHUỘT CROSSHAIR MOVE
@@ -741,22 +818,16 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 }});
             }});
 
+            // NẠP DỮ LIỆU BAN ĐẦU
             loadDataset(rawCandleData, rawVolumeData);
 
-            window.addEventListener('load', fitAll);
-            window.addEventListener('resize', fitAll);
-            setTimeout(fitAll, 100);
-            setTimeout(fitAll, 300);
-
-            // BẬT / TẮT CHỈ BÁO
-            let isMA = true, isEMA = false, isBOLL = false, isMACD = false, isRSI = true;
-
+            // BẬT / TẮT CHỈ BÁO NẾN TRÊN HEADER
             document.getElementById('btn-ma').addEventListener('click', function() {{
                 isMA = !isMA;
                 ma20.applyOptions({{ visible: isMA }});
                 ma50.applyOptions({{ visible: isMA }});
-                document.getElementById('badge-ma20').style.display = isMA ? 'inline-flex' : 'none';
-                document.getElementById('badge-ma50').style.display = isMA ? 'inline-flex' : 'none';
+                document.getElementById('badge-ma20').style.display = isMA ? 'inline-block' : 'none';
+                document.getElementById('badge-ma50').style.display = isMA ? 'inline-block' : 'none';
                 this.classList.toggle('active', isMA);
             }});
 
@@ -764,8 +835,8 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 isEMA = !isEMA;
                 ema9.applyOptions({{ visible: isEMA }});
                 ema21.applyOptions({{ visible: isEMA }});
-                document.getElementById('badge-ema9').style.display = isEMA ? 'inline-flex' : 'none';
-                document.getElementById('badge-ema21').style.display = isEMA ? 'inline-flex' : 'none';
+                document.getElementById('badge-ema9').style.display = isEMA ? 'inline-block' : 'none';
+                document.getElementById('badge-ema21').style.display = isEMA ? 'inline-block' : 'none';
                 this.classList.toggle('active', isEMA);
             }});
 
@@ -774,29 +845,30 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 bollUpper.applyOptions({{ visible: isBOLL }});
                 bollMid.applyOptions({{ visible: isBOLL }});
                 bollLower.applyOptions({{ visible: isBOLL }});
-                document.getElementById('badge-boll').style.display = isBOLL ? 'inline-flex' : 'none';
+                document.getElementById('badge-boll').style.display = isBOLL ? 'inline-block' : 'none';
                 this.classList.toggle('active', isBOLL);
             }});
 
+            // BẬT / TẮT SUBPANEL ĐỒ THỊ PHỤ - NẾN CHÍNH TỰ ĐỘNG MỞ RỘNG/THU HẸP
+            document.getElementById('btn-vol').addEventListener('click', function() {{
+                isVol = !isVol;
+                this.classList.toggle('active', isVol);
+                recalcLayout();
+            }});
+
             document.getElementById('btn-macd').addEventListener('click', function() {{
-                isMACD = !isMACD;
-                this.classList.toggle('active', isMACD);
-                paneMacd.style.display = isMACD ? 'flex' : 'none';
-                sepMacd.style.display = isMACD ? 'block' : 'none';
-                fitAll();
+                isMacd = !isMacd;
+                this.classList.toggle('active', isMacd);
+                recalcLayout();
             }});
 
             document.getElementById('btn-rsi').addEventListener('click', function() {{
-                isRSI = !isRSI;
-                this.classList.toggle('active', isRSI);
-                paneRsi.style.display = isRSI ? 'flex' : 'none';
-                sepRsi.style.display = isRSI ? 'block' : 'none';
-                chartMacd.applyOptions({{ timeScale: {{ visible: !isRSI && isMACD }} }});
-                chartVol.applyOptions({{ timeScale: {{ visible: !isRSI && !isMACD }} }});
-                fitAll();
+                isRsi = !isRsi;
+                this.classList.toggle('active', isRsi);
+                recalcLayout();
             }});
 
-            // DROPDOWN TIMEFRAME
+            // DROPDOWN CHỌN KHUNG THỜI GIAN (1D, 1W, 1M)
             const tfBtn = document.getElementById('tf-btn');
             const tfMenu = document.getElementById('tf-menu');
             const tfLabel = document.getElementById('tf-label');
@@ -817,6 +889,20 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     loadDataset(resampled.candles, resampled.volumes);
                 }});
             }});
+
+            // TỰ ĐỘNG BÁM SÁT KÍCH THƯỚC IFRAME STREAMLIT VÀ KHI CHUYỂN TAB
+            window.addEventListener('resize', recalcLayout);
+            window.addEventListener('load', recalcLayout);
+            setTimeout(recalcLayout, 50);
+            setTimeout(recalcLayout, 150);
+            setTimeout(recalcLayout, 400);
+
+            if (window.ResizeObserver) {{
+                const ro = new ResizeObserver(() => {{
+                    recalcLayout();
+                }});
+                ro.observe(document.getElementById('panes-wrapper'));
+            }}
         </script>
     </body>
     </html>
