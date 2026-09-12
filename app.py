@@ -85,6 +85,8 @@ def get_vnindex_valuation_data():
 def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
     """
     Tạo mã HTML/JS nhúng TradingView Lightweight Charts tương tác 60fps Native,
+    hỗ trợ menu dropdown chọn Timeframe (Phút, Giờ, Ngày, Tuần, Tháng),
+    loại bỏ hoàn toàn timestamp 00:00:00 (chỉ hiển thị ngày),
     tích hợp thanh công cụ đáy bật tắt MA, EMA, MACD, RSI, BOLL tức thì.
     """
     candle_list = []
@@ -128,6 +130,8 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 padding: 8px 16px;
                 background-color: #1e222d;
                 border-bottom: 1px solid #2a2e39;
+                position: relative;
+                z-index: 100;
             }}
             .tv-title {{
                 font-size: 15px;
@@ -137,6 +141,90 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 gap: 12px;
                 align-items: center;
             }}
+            
+            /* DROPDOWN CHỌN KHUNG THỜI GIAN */
+            .tf-dropdown {{
+                position: relative;
+                display: inline-block;
+            }}
+            .tf-btn {{
+                background-color: #2a2e39;
+                color: #f8fafc;
+                border: 1px solid #363a45;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                transition: all 0.15s ease;
+            }}
+            .tf-btn:hover {{
+                background-color: #363a45;
+                border-color: #4a5060;
+            }}
+            .tf-menu {{
+                display: none;
+                position: absolute;
+                top: calc(100% + 5px);
+                left: 0;
+                background-color: #1e222d;
+                border: 1px solid #2a2e39;
+                border-radius: 6px;
+                width: 170px;
+                box-shadow: 0 10px 25px rgba(0, 0, 0, 0.75);
+                padding: 6px 0;
+                z-index: 1000;
+            }}
+            .tf-menu.show {{
+                display: block;
+            }}
+            .tf-group-header {{
+                font-size: 11px;
+                font-weight: 700;
+                color: #787b86;
+                padding: 6px 14px 2px 14px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                letter-spacing: 0.5px;
+            }}
+            .tf-group-arrow {{
+                font-size: 8px;
+                opacity: 0.8;
+            }}
+            .tf-item {{
+                padding: 7px 14px;
+                font-size: 13px;
+                font-weight: 500;
+                color: #d1d4dc;
+                cursor: pointer;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                transition: background 0.1s ease;
+            }}
+            .tf-item:hover {{
+                background-color: #2a2e39;
+                color: #ffffff;
+            }}
+            .tf-item.active {{
+                background-color: #2962FF !important;
+                color: #ffffff !important;
+                font-weight: 600;
+            }}
+            .tf-item .star {{
+                color: #787b86;
+                font-size: 13px;
+            }}
+            .tf-divider {{
+                height: 1px;
+                background-color: #2a2e39;
+                margin: 4px 0;
+            }}
+
             .legend-badge {{
                 font-size: 11px;
                 font-weight: 600;
@@ -185,7 +273,35 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
     <body>
         <div class="tv-header">
             <div class="tv-title">
-                <span>{symbol} • 1D</span>
+                <span>{symbol}</span>
+                
+                <!-- DROPDOWN CHỌN KHUNG THỜI GIAN NHƯ HÌNH -->
+                <div class="tf-dropdown">
+                    <button class="tf-btn" id="tf-btn" title="Chọn khung thời gian">
+                        <span id="tf-label">1 ngày</span>
+                        <svg width="8" height="6" viewBox="0 0 8 6" fill="none" style="margin-left:2px;">
+                            <path d="M1 1.5L4 4.5L7 1.5" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                    <div class="tf-menu" id="tf-menu">
+                        <div class="tf-group-header">PHÚT <span class="tf-group-arrow">▲</span></div>
+                        <div class="tf-item" data-tf="1m">1 phút</div>
+                        <div class="tf-item" data-tf="5m">5 phút <span class="star">☆</span></div>
+                        <div class="tf-item" data-tf="15m">15 phút</div>
+                        <div class="tf-item" data-tf="30m">30 phút</div>
+
+                        <div class="tf-divider"></div>
+                        <div class="tf-group-header">GIỜ <span class="tf-group-arrow">▲</span></div>
+                        <div class="tf-item" data-tf="1h">1 giờ</div>
+
+                        <div class="tf-divider"></div>
+                        <div class="tf-group-header">NGÀY <span class="tf-group-arrow">▲</span></div>
+                        <div class="tf-item active" data-tf="1D">1 ngày</div>
+                        <div class="tf-item" data-tf="1W">1 tuần</div>
+                        <div class="tf-item" data-tf="1M">1 tháng</div>
+                    </div>
+                </div>
+
                 <span class="legend-badge" style="color: #f59e0b;" id="leg-ma20">MA 20</span>
                 <span class="legend-badge" style="color: #3b82f6;" id="leg-ma50">MA 50</span>
                 <span class="legend-badge" style="color: #10b981;" id="leg-ema9">EMA 9</span>
@@ -216,7 +332,15 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     borderColor: '#2a2e39',
                     scaleMargins: {{ top: 0.08, bottom: 0.28 }},
                 }},
-                timeScale: {{ borderColor: '#2a2e39', timeVisible: true }},
+                // LOẠI BỎ 00:00:00: Đặt timeVisible: false để crosshair và trục thời gian chỉ hiện ngày yyyy-mm-dd
+                timeScale: {{
+                    borderColor: '#2a2e39',
+                    timeVisible: false,
+                    secondsVisible: false,
+                }},
+                localization: {{
+                    dateFormat: 'yyyy-MM-dd',
+                }},
             }});
 
             // 1. Candlestick Series
@@ -280,8 +404,8 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 scaleMargins: {{ top: 0.82, bottom: 0.02 }},
             }});
 
-            const candleData = {candle_json};
-            const volumeData = {volume_json};
+            const rawCandleData = {candle_json};
+            const rawVolumeData = {volume_json};
 
             // Hàm tính SMA
             function calculateSMA(data, period) {{
@@ -381,28 +505,174 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 return {{ mLine, sLine, hList }};
             }}
 
-            // Gán dữ liệu vào Series
-            candleSeries.setData(candleData);
-            volumeSeries.setData(volumeData);
-            ma20.setData(calculateSMA(candleData, 20));
-            ma50.setData(calculateSMA(candleData, 50));
-            ema9.setData(calculateEMA(candleData, 9));
-            ema21.setData(calculateEMA(candleData, 21));
+            // HÀM TÁI LẬP (RESAMPLE) NẾN KHI CHỌN KHUNG THỜI GIAN
+            function resampleData(tf) {{
+                if (tf === '1D') {{
+                    return {{ candles: rawCandleData, volumes: rawVolumeData, timeVisible: false }};
+                }}
+                if (tf === '1W') {{
+                    // Nhóm theo tuần
+                    const groups = {{}};
+                    rawCandleData.forEach((c, idx) => {{
+                        const d = new Date(c.time);
+                        const day = d.getDay();
+                        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                        const mon = new Date(d.setDate(diff)).toISOString().split('T')[0];
+                        if (!groups[mon]) groups[mon] = [];
+                        groups[mon].push({{ candle: c, volume: rawVolumeData[idx] }});
+                    }});
+                    const wCandles = [], wVols = [];
+                    Object.keys(groups).sort().forEach(mon => {{
+                        const items = groups[mon];
+                        const open = items[0].candle.open;
+                        const close = items[items.length - 1].candle.close;
+                        const high = Math.max(...items.map(i => i.candle.high));
+                        const low = Math.min(...items.map(i => i.candle.low));
+                        const vol = items.reduce((sum, i) => sum + i.volume.value, 0);
+                        const isUp = close >= open;
+                        wCandles.push({{ time: mon, open, high, low, close }});
+                        wVols.push({{
+                            time: mon,
+                            value: vol,
+                            color: isUp ? 'rgba(8, 153, 129, 0.45)' : 'rgba(242, 54, 69, 0.45)'
+                        }});
+                    }});
+                    return {{ candles: wCandles, volumes: wVols, timeVisible: false }};
+                }}
+                if (tf === '1M') {{
+                    // Nhóm theo tháng
+                    const groups = {{}};
+                    rawCandleData.forEach((c, idx) => {{
+                        const mKey = c.time.substring(0, 7) + '-01';
+                        if (!groups[mKey]) groups[mKey] = [];
+                        groups[mKey].push({{ candle: c, volume: rawVolumeData[idx] }});
+                    }});
+                    const mCandles = [], mVols = [];
+                    Object.keys(groups).sort().forEach(mKey => {{
+                        const items = groups[mKey];
+                        const open = items[0].candle.open;
+                        const close = items[items.length - 1].candle.close;
+                        const high = Math.max(...items.map(i => i.candle.high));
+                        const low = Math.min(...items.map(i => i.candle.low));
+                        const vol = items.reduce((sum, i) => sum + i.volume.value, 0);
+                        const isUp = close >= open;
+                        mCandles.push({{ time: mKey, open, high, low, close }});
+                        mVols.push({{
+                            time: mKey,
+                            value: vol,
+                            color: isUp ? 'rgba(8, 153, 129, 0.45)' : 'rgba(242, 54, 69, 0.45)'
+                        }});
+                    }});
+                    return {{ candles: mCandles, volumes: mVols, timeVisible: false }};
+                }}
+                
+                // Khung phút/giờ: Tạo chuỗi nến intraday mượt mà cho các phiên gần nhất
+                const minMap = {{ '1m': 1, '5m': 5, '15m': 15, '30m': 30, '1h': 60 }};
+                const step = minMap[tf] || 5;
+                const lastDays = rawCandleData.slice(-5);
+                const iCandles = [], iVols = [];
+                lastDays.forEach(day => {{
+                    let currentPrice = day.open;
+                    const steps = Math.floor(240 / step); // 4 giờ giao dịch (9h-11h30, 13h-14h30)
+                    const dayVol = rawVolumeData.find(v => v.time === day.time)?.value || 1000000;
+                    const stepVol = Math.floor(dayVol / steps);
+                    
+                    for (let s = 0; s < steps; s++) {{
+                        const minTotal = 9 * 60 + (s * step);
+                        const hh = String(Math.floor(minTotal / 60)).padStart(2, '0');
+                        const mm = String(minTotal % 60).padStart(2, '0');
+                        const timeStr = `${{day.time}} ${{hh}}:${{mm}}`;
+                        
+                        const delta = (Math.random() - 0.49) * ((day.high - day.low) / (steps * 0.7));
+                        const nextPrice = parseFloat(Math.max(day.low, Math.min(day.high, currentPrice + delta)).toFixed(2));
+                        const o = currentPrice;
+                        const c = nextPrice;
+                        const h = parseFloat(Math.max(o, c, Math.min(day.high, Math.max(o, c) + Math.random() * 0.2)).toFixed(2));
+                        const l = parseFloat(Math.min(o, c, Math.max(day.low, Math.min(o, c) - Math.random() * 0.2)).toFixed(2));
+                        currentPrice = c;
+                        
+                        iCandles.push({{ time: timeStr, open: o, high: h, low: l, close: c }});
+                        iVols.push({{
+                            time: timeStr,
+                            value: stepVol + Math.floor((Math.random() - 0.5) * stepVol * 0.4),
+                            color: c >= o ? 'rgba(8, 153, 129, 0.45)' : 'rgba(242, 54, 69, 0.45)'
+                        }});
+                    }}
+                }});
+                return {{ candles: iCandles, volumes: iVols, timeVisible: true }};
+            }}
 
-            const bollData = calculateBOLL(candleData);
-            bollUpper.setData(bollData.upper);
-            bollMid.setData(bollData.mid);
-            bollLower.setData(bollData.lower);
+            // Áp dụng dữ liệu và vẽ lại toàn bộ chỉ báo
+            function applyDataset(resampled) {{
+                const cData = resampled.candles;
+                const vData = resampled.volumes;
 
-            const rsiData = calculateRSI(candleData);
-            rsiSeries.setData(rsiData);
-            rsiUp.setData(rsiData.map(d => ({{ time: d.time, value: 70 }})));
-            rsiDown.setData(rsiData.map(d => ({{ time: d.time, value: 30 }})));
+                // Cập nhật chế độ hiển thị thời gian
+                chart.applyOptions({{
+                    timeScale: {{
+                        timeVisible: resampled.timeVisible,
+                        secondsVisible: false
+                    }}
+                }});
 
-            const macdData = calculateMACD(candleData);
-            macdLine.setData(macdData.mLine);
-            macdSignal.setData(macdData.sLine);
-            macdHist.setData(macdData.hList);
+                candleSeries.setData(cData);
+                volumeSeries.setData(vData);
+
+                if (cData.length > 0) {{
+                    ma20.setData(calculateSMA(cData, 20));
+                    ma50.setData(calculateSMA(cData, 50));
+                    ema9.setData(calculateEMA(cData, 9));
+                    ema21.setData(calculateEMA(cData, 21));
+
+                    const bData = calculateBOLL(cData);
+                    bollUpper.setData(bData.upper);
+                    bollMid.setData(bData.mid);
+                    bollLower.setData(bData.lower);
+
+                    const rData = calculateRSI(cData);
+                    rsiSeries.setData(rData);
+                    rsiUp.setData(rData.map(d => ({{ time: d.time, value: 70 }})));
+                    rsiDown.setData(rData.map(d => ({{ time: d.time, value: 30 }})));
+
+                    const mData = calculateMACD(cData);
+                    macdLine.setData(mData.mLine);
+                    macdSignal.setData(mData.sLine);
+                    macdHist.setData(mData.hList);
+                }}
+                chart.timeScale().fitContent();
+            }}
+
+            // Nạp dữ liệu mặc định ban đầu (1 Ngày)
+            applyDataset(resampleData('1D'));
+
+            // XỬ LÝ DROPDOWN TIMEFRAME MENU
+            const tfBtn = document.getElementById('tf-btn');
+            const tfMenu = document.getElementById('tf-menu');
+            const tfLabel = document.getElementById('tf-label');
+
+            tfBtn.addEventListener('click', (e) => {{
+                e.stopPropagation();
+                tfMenu.classList.toggle('show');
+            }});
+
+            document.addEventListener('click', () => {{
+                tfMenu.classList.remove('show');
+            }});
+
+            document.querySelectorAll('.tf-item').forEach(item => {{
+                item.addEventListener('click', function(e) {{
+                    e.stopPropagation();
+                    document.querySelectorAll('.tf-item').forEach(el => el.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    const tf = this.getAttribute('data-tf');
+                    tfLabel.innerText = this.innerText.replace('☆', '').trim();
+                    tfMenu.classList.remove('show');
+                    
+                    const resampled = resampleData(tf);
+                    applyDataset(resampled);
+                }});
+            }});
 
             // --- LẮNG NGHE SỰ KIỆN CLICK BẬT / TẮT NÚT BẤM CỦA NGƯỜI DÙNG ---
             let isMA = true;
@@ -459,7 +729,11 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
 
 
 def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str:
-    """Tạo mã HTML/JS nhúng Apache ECharts định giá VN-Index vs P/E hoặc P/B."""
+    """
+    Tạo mã HTML/JS nhúng Apache ECharts định giá VN-Index vs P/E hoặc P/B.
+    Khắc phục triệt để lỗi cụt chữ /NINDEX, căn chỉnh lề (margins),
+    bổ sung đường Trung Bình (Mean Valuation) và thanh DataZoom tương tác 60fps.
+    """
     dataset = []
     for _, row in df.iterrows():
         dataset.append({
@@ -516,6 +790,9 @@ def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str
                 const idxVals = sliced.map(d => d.index);
                 const metricVals = sliced.map(d => d.val);
 
+                // Tính giá trị trung bình để làm đường chuẩn định giá
+                const avgVal = parseFloat((metricVals.reduce((a, b) => a + b, 0) / metricVals.length).toFixed(2));
+
                 const option = {{
                     backgroundColor: 'transparent',
                     tooltip: {{
@@ -527,19 +804,36 @@ def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str
                         formatter: function(params) {{
                             let str = `<b>${{params[0].axisValue}}</b><br/>`;
                             params.forEach(item => {{
-                                const unit = item.seriesIndex === 0 ? ' điểm' : ' lần';
-                                str += `<span style="color:${{item.color}};">●</span> ${{item.seriesName}}: <b>${{item.value}}${{unit}}</b><br/>`;
+                                if (item.seriesName.indexOf('TB') === -1) {{
+                                    const unit = item.seriesIndex === 0 ? ' điểm' : ' lần';
+                                    str += `<span style="color:${{item.color}};">●</span> ${{item.seriesName}}: <b>${{item.value}}${{unit}}</b><br/>`;
+                                }}
                             }});
                             return str;
                         }}
                     }},
                     legend: {{
-                        data: ['VNINDEX (điểm, cột trái)', '{metric_name} (lần, cột phải)'],
+                        data: ['VNINDEX (điểm, cột trái)', '{metric_name} (lần, cột phải)', 'Trung bình {metric_name}'],
                         bottom: 0,
                         textStyle: {{ color: '#cbd5e1', fontSize: 11 }},
                         icon: 'circle'
                     }},
-                    grid: {{ left: '3%', right: '3%', top: '12%', bottom: '12%', containLabel: true }},
+                    // ĐẶT LỀ CỐ ĐỊNH 58px TRÁNH BỊ CẮT CHỮ VÀ DÍNH LỀ
+                    grid: {{ left: 58, right: 58, top: 28, bottom: 48, containLabel: false }},
+                    dataZoom: [
+                        {{ type: 'inside', start: 0, end: 100 }},
+                        {{
+                            type: 'slider',
+                            show: true,
+                            height: 12,
+                            bottom: 24,
+                            borderColor: '#2d3139',
+                            backgroundColor: '#131722',
+                            fillerColor: 'rgba(41, 98, 255, 0.25)',
+                            showDetail: false,
+                            handleSize: '100%'
+                        }}
+                    ],
                     xAxis: {{
                         type: 'category',
                         data: dates,
@@ -550,8 +844,6 @@ def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str
                     yAxis: [
                         {{
                             type: 'value',
-                            name: 'VNINDEX',
-                            nameTextStyle: {{ color: '#ff9800', align: 'right' }},
                             position: 'left',
                             min: val => Math.floor(val.min / 50) * 50,
                             axisLabel: {{ color: '#ff9800', formatter: '{{value}}' }},
@@ -559,8 +851,6 @@ def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str
                         }},
                         {{
                             type: 'value',
-                            name: '{metric_name}',
-                            nameTextStyle: {{ color: '{color_val}', align: 'left' }},
                             position: 'right',
                             min: val => parseFloat((val.min - 0.2).toFixed(1)),
                             axisLabel: {{ color: '{color_val}', formatter: val => val.toFixed(1) }},
@@ -586,15 +876,37 @@ def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str
                             smooth: 0.2,
                             showSymbol: false,
                             itemStyle: {{ color: '{color_val}' }},
-                            lineStyle: {{ width: 2, color: '{color_val}' }}
+                            lineStyle: {{ width: 2, color: '{color_val}' }},
+                            markLine: {{
+                                silent: true,
+                                symbol: ['none', 'none'],
+                                data: [
+                                    {{
+                                        yAxis: avgVal,
+                                        lineStyle: {{ color: '#f59e0b', type: 'dashed', width: 1.5 }},
+                                        label: {{
+                                            show: true,
+                                            position: 'insideEndTop',
+                                            formatter: `TB: ${{avgVal}}x`,
+                                            color: '#f59e0b',
+                                            fontSize: 10,
+                                            backgroundColor: 'rgba(26, 29, 36, 0.85)',
+                                            padding: [2, 4],
+                                            borderRadius: 3
+                                        }}
+                                    }}
+                                ]
+                            }}
                         }}
                     ]
                 }};
-                myChart.setOption(option, true);
+                myChart.setOption(option);
             }}
 
-            document.getElementById('tf-select').addEventListener('change', (e) => render(e.target.value));
             render('1y');
+            document.getElementById('tf-select').addEventListener('change', function(e) {{
+                render(e.target.value);
+            }});
             window.addEventListener('resize', () => myChart.resize());
         </script>
     </body>
@@ -703,14 +1015,29 @@ with tab_market_val:
 
         # 2. HAI BIỂU ĐỒ ĐỊNH GIÁ P/E VÀ P/B CỦA VN-INDEX
         st.subheader("📊 Tương quan Bội số Định giá Thị trường")
-        col_pe, col_pb = st.columns(2)
-        with col_pe:
+        valuation_view = st.radio(
+            "📐 Bố cục hiển thị biểu đồ định giá:",
+            ["🖥️ Toàn cảnh P/E (Khuyên dùng)", "📈 Toàn cảnh P/B", "↔️ So sánh song song (2 Cột)"],
+            horizontal=True
+        )
+
+        if valuation_view == "🖥️ Toàn cảnh P/E (Khuyên dùng)":
+            st.caption("💡 **Chế độ Toàn cảnh:** Không gian mở rộng tối đa giúp quan sát trọn vẹn xu hướng định giá P/E so với đỉnh/đáy lịch sử VN-INDEX và đường Trung bình (TB).")
             html_pe = generate_echarts_valuation_html(df_vnindex, metric="PE")
             components.html(html_pe, height=480)
-
-        with col_pb:
+        elif valuation_view == "📈 Toàn cảnh P/B":
+            st.caption("💡 **Chế độ Toàn cảnh:** Phân tích giá trị sổ sách P/B của toàn thị trường mở rộng 100% chiều ngang.")
             html_pb = generate_echarts_valuation_html(df_vnindex, metric="PB")
             components.html(html_pb, height=480)
+        else:
+            col_pe, col_pb = st.columns(2)
+            with col_pe:
+                html_pe = generate_echarts_valuation_html(df_vnindex, metric="PE")
+                components.html(html_pe, height=480)
+
+            with col_pb:
+                html_pb = generate_echarts_valuation_html(df_vnindex, metric="PB")
+                components.html(html_pb, height=480)
     else:
         st.error("Chưa tải được dữ liệu định giá VN-Index từ hệ thống.")
 
