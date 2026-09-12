@@ -36,10 +36,10 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
         height=p_height,
         key="editor_portfolio",
         column_config={
-            "symbol": st.column_config.TextColumn("Mã CP", required=True, placeholder="+ Nhập mã (FPT, HPG...)"),
-            "volume": st.column_config.NumberColumn("Số lượng", min_value=0, step=10, required=True, placeholder="100"),
-            "cost_price": st.column_config.NumberColumn("Giá vốn (k)", min_value=0.0, step=0.05, format="%.2f", required=True, placeholder="25.50"),
-            "note": st.column_config.TextColumn("Ghi chú / Nhóm ngành", placeholder="+ Thêm ghi chú..."),
+            "symbol": st.column_config.TextColumn("Mã CP", required=True, help="Nhập mã 3 ký tự (Ví dụ: FPT, HPG, SSI...)"),
+            "volume": st.column_config.NumberColumn("Số lượng", min_value=0, step=10, required=True, help="Khối lượng cổ phiếu nắm giữ"),
+            "cost_price": st.column_config.NumberColumn("Giá vốn (k)", min_value=0.0, step=0.05, format="%.2f", required=True, help="Giá vốn tính theo nghìn đồng (k)"),
+            "note": st.column_config.TextColumn("Ghi chú / Nhóm ngành", help="Ghi chú hoặc phân loại ngành"),
         }
     )
 
@@ -80,9 +80,9 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
         height=wl_height,
         key="editor_watchlist",
         column_config={
-            "symbol": st.column_config.TextColumn("Mã CP", required=True, placeholder="+ Nhập mã canh mua..."),
-            "target_buy": st.column_config.NumberColumn("Giá canh mua (k)", min_value=0.0, step=0.05, format="%.2f", placeholder="28.50"),
-            "note": st.column_config.TextColumn("Câu chuyện / Lý do theo dõi", placeholder="+ Lý do / điểm mua..."),
+            "symbol": st.column_config.TextColumn("Mã CP", required=True, help="Nhập mã 3 ký tự canh mua (Ví dụ: VHM, MWG...)"),
+            "target_buy": st.column_config.NumberColumn("Giá canh mua (k)", min_value=0.0, step=0.05, format="%.2f", help="Vùng giá hỗ trợ muốn canh giải ngân"),
+            "note": st.column_config.TextColumn("Câu chuyện / Lý do theo dõi", help="Luận điểm đầu tư hoặc chất xúc tác"),
         }
     )
 
