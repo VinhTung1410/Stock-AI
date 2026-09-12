@@ -49,9 +49,17 @@ Stock - learning/
 │                               # - send_discord_message(): Gửi thông báo tự động (ưu tiên Webhook, fallback DM)
 │                               # - format_portfolio_embed(): Định dạng màu sắc và bảng dữ liệu theo chuẩn Discord
 │
+├── trading_bot.py              # 🤖 TẦNG TỰ ĐỘNG HÓA 24/7 (Trading Bot Daemon)
+│                               # - Chạy nền 24/7 độc lập theo múi giờ Asia/Ho_Chi_Minh (UTC+7)
+│                               # - Quét rủi ro mỗi 30s: Cảnh báo Stop Loss (-5%/-7%), gãy MA20 (< 0.5s)
+│                               # - Đặt lịch gửi báo cáo chiến lược AI: 08:45 (ATO), 11:30 (Trưa), 14:45 (ATC)
+│
+├── run_cloud.py                # ☁️ Kịch bản chạy song song Streamlit Web + Bot Daemon trên Cloud
+├── Procfile                    # Chỉ thị lệnh khởi chạy cho Render.com / Koyeb
 ├── portfolio.json              # 💾 Dữ liệu danh mục cổ phiếu mẫu (symbol, volume, cost_price, note)
 ├── requirements.txt            # Danh sách thư viện Python cần cài đặt
 ├── run_dashboard.bat           # File kịch bản chạy nhanh dashboard trên Windows với 1 cú click
+├── run_bot.bat                 # File kịch bản chạy nhanh bot ngầm trên Windows với 1 cú click
 ├── .env.example                # File mẫu cấu hình biến môi trường (API Key, Webhook URL, Bot Token)
 └── .env                        # [BẢO MẬT - GITIGNORED] Chứa API Key thật của bạn
 ```
