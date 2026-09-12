@@ -73,7 +73,7 @@ df_eval, raw_portfolio = get_cached_portfolio_eval()
 tab_overview, tab_market_val, tab_charts, tab_portfolio, tab_ai = st.tabs([
     "📊 Tổng quan Danh mục", 
     "🏛️ Thị Trường & Định Giá (VN-Index, P/E, P/B)",
-    "📈 Biểu đồ Kỹ thuật (TradingView 60 FPS)", 
+    "📈 Biểu đồ Kỹ thuật", 
     "⚙️ Quản lý Danh mục", 
     "🧠 Trợ lý Phân tích AI"
 ])
