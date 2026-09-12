@@ -35,12 +35,39 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-    /* 1. TYPOGRAPHY & FONT CHUẨN TIẾNG VIỆT (KHÔNG LỖI CHÂN CHỮ / KHÔNG VỠ FONT) */
-    html, body, [class*="css"], [class*="st-"], h1, h2, h3, h4, h5, p, span, div, a, button, input {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+    /* 1. TYPOGRAPHY & BẢO VỆ FONT ICON (TRÁNH LỖI HIỂN THỊ CHỮ keyboard_double) */
+    html, body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         color: #0f172a;
+    }
+
+    /* Các thẻ văn bản thông thường */
+    p, h1, h2, h3, h4, h5, h6, label, input, textarea, select {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    }
+
+    /* BẢO VỆ FONT ICON MATERIAL: Tuyệt đối không để font Inter ghi đè lên icon */
+    [data-testid="stIconMaterial"],
+    [data-testid="stSidebarCollapseButton"] *,
+    button[kind="header"] *,
+    [data-testid="stBaseButton-header"] *,
+    .material-symbols-rounded,
+    .material-symbols-outlined,
+    .material-icons,
+    [class*="material-symbols"],
+    [class*="stIcon"] {
+        font-family: 'Material Symbols Rounded', 'Material Symbols Outlined', 'Material Icons' !important;
+        font-weight: normal !important;
+        font-style: normal !important;
+        line-height: 1 !important;
+        letter-spacing: normal !important;
+        text-transform: none !important;
+        display: inline-block !important;
+        white-space: nowrap !important;
+        word-wrap: normal !important;
+        direction: ltr !important;
     }
 
     /* 2. THANH ĐIỀU HƯỚNG TABS (BRAND BLUE #2563eb, TUYỆT ĐỐI KHÔNG ĐỎ) */
@@ -102,36 +129,62 @@ st.markdown("""
         margin: 0 4px !important;
     }
 
-    /* 3. NÚT BẤM HÀNH ĐỘNG CHÍNH (UX PRIMARY BUTTON: ĐỒNG NHẤT XANH DƯƠNG BRAND #2563eb) */
-    button[kind="primary"], button[data-testid="baseButton-primary"] {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
+    /* 3. NÚT BẤM HÀNH ĐỘNG CHÍNH (PRIMARY BUTTON: NỀN XANH SÁNG #2563eb, CHỮ TRẮNG SẮC NÉT #ffffff) */
+    button[kind="primary"], 
+    button[data-testid="baseButton-primary"] {
+        background: #2563eb !important;
         border: 1px solid #1d4ed8 !important;
-        color: #ffffff !important;
-        font-weight: 600 !important;
         border-radius: 8px !important;
-        padding: 8px 18px !important;
-        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2) !important;
+        padding: 9px 20px !important;
+        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25) !important;
         transition: all 0.2s ease !important;
     }
 
-    button[kind="primary"]:hover, button[data-testid="baseButton-primary"]:hover {
+    /* Chữ bên trong nút Primary LUÔN LUÔN TRẮNG TINH (Tuyệt đối không bị chữ đen làm chìm) */
+    button[kind="primary"] *,
+    button[data-testid="baseButton-primary"] *,
+    button[kind="primary"] p,
+    button[data-testid="baseButton-primary"] p,
+    button[kind="primary"] span,
+    button[data-testid="baseButton-primary"] span {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.2px !important;
+    }
+
+    button[kind="primary"]:hover, 
+    button[data-testid="baseButton-primary"]:hover {
         background: #1d4ed8 !important;
-        box-shadow: 0 4px 10px rgba(37, 99, 235, 0.35) !important;
+        border-color: #1e40af !important;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
         transform: translateY(-1px) !important;
     }
 
-    button[kind="secondary"], button[data-testid="baseButton-secondary"] {
+    /* Nút phụ (Secondary Button): Nền trắng, viền rõ, chữ đậm không mờ */
+    button[kind="secondary"], 
+    button[data-testid="baseButton-secondary"] {
         background: #ffffff !important;
         border: 1px solid #cbd5e1 !important;
-        color: #334155 !important;
-        font-weight: 600 !important;
         border-radius: 8px !important;
+        padding: 8px 18px !important;
         transition: all 0.2s ease !important;
     }
 
-    button[kind="secondary"]:hover, button[data-testid="baseButton-secondary"]:hover {
+    button[kind="secondary"] *,
+    button[data-testid="baseButton-secondary"] *,
+    button[kind="secondary"] p,
+    button[data-testid="baseButton-secondary"] p {
+        color: #1e293b !important;
+        font-weight: 600 !important;
+    }
+
+    button[kind="secondary"]:hover, 
+    button[data-testid="baseButton-secondary"]:hover {
         background: #f8fafc !important;
         border-color: #94a3b8 !important;
+    }
+    button[kind="secondary"]:hover p,
+    button[data-testid="baseButton-secondary"]:hover p {
         color: #0f172a !important;
     }
 

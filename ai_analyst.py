@@ -9,7 +9,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-MODEL_NAME = "gemini-3.6-flash"  # Model tối ưu tốc độ, context và free tier của Gemini
+MODEL_NAME = "gemini-3.5-flash-lite"  # Model tối ưu tốc độ, token và ổn định quota cao của Gemini
 
 
 def get_ai_client():
@@ -104,6 +104,9 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
     idx_ma50 = vnindex_tech.get("ma50", 0.0)
     idx_rsi = vnindex_tech.get("rsi14", 0.0)
     idx_status = vnindex_tech.get("status_ma20", "")
+
+    p_str = portfolio_df.to_string(index=False) if portfolio_df is not None and not portfolio_df.empty else "Chưa có mã nắm giữ."
+    w_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else "Chưa có mã trong Watchlist."
 
     idx_context = f"""=== 0. DỮ LIỆU THỰC TẾ CHỈ SỐ VN-INDEX (CẬP NHẬT TỨC THỜI) ===
 - Điểm số đóng cửa phiên gần nhất: {idx_price:.2f} điểm (Thay đổi: {idx_chg:+.2f}%)
