@@ -1,97 +1,119 @@
-# 📈 AI Stock Copilot (Hệ thống Trợ lý Đầu tư & Cảnh báo Tự động)
+# 📈 AI Stock Copilot (Trợ Lý Đầu Tư & Cảnh Báo Chứng Khoán Tự Động)
 
-Hệ sinh thái phân tích chứng khoán tự động kết hợp **vnstock**, **Gemini Pro (Google GenAI)**, **Discord Webhook** và **Streamlit Cloud Dashboard** với chi phí 0đ.
+Hệ sinh thái phân tích chứng khoán tự động chuyên nghiệp kết hợp **vnstock (VCI)**, **Gemini 2.5 Pro (Google GenAI)**, **TradingView Lightweight Charts (60 FPS Native)**, **Apache ECharts Bội số Định giá**, **Discord Webhook / Bot DM**, và kiến trúc vận hành 24/7 trên **Render.com / Streamlit Cloud**.
 
 ---
 
 ## 🌟 Tính Năng Cốt Lõi
 
-1. **Dữ liệu Kỹ thuật Real-time (vnstock):**
-   - Tự động kéo giá nến OHLCV, tính MA20, MA50, RSI(14), so sánh thanh khoản so với trung bình 20 phiên.
-2. **Biểu đồ TradingView 60 FPS Native & Dropdown Timeframe:**
-   - Hỗ trợ chọn khung thời gian: 1m, 5m, 15m, 30m, 1h, 1 ngày, 1 tuần, 1 tháng.
-   - Bật/tắt tức thì các chỉ báo MA, EMA, MACD, RSI, BOLL ở thanh công cụ đáy.
-   - Crosshair ngày sạch sẽ (loại bỏ hoàn toàn 00:00:00).
-3. **Phân tích Bội số Định giá Thị trường (P/E & P/B ECharts):**
-   - Biểu đồ định giá kép với thanh DataZoom tương tác và đường Trung bình lịch sử (Mean Valuation Line).
-   - Bộ chọn bố cục thông minh: Toàn cảnh P/E, Toàn cảnh P/B, So sánh song song.
-4. **Theo dõi Danh mục Cá nhân hóa:**
-   - Quản lý các mã đang nắm giữ (BSR, MSB, SSI...), tự động tính toán lãi/lỗ (VND và %).
-   - Chỉnh sửa danh mục trực tiếp trên web bằng bảng tương tác `st.data_editor`.
-5. **Đầu não Phân tích AI (Gemini Flash):**
-   - Đọc dữ liệu danh mục kết hợp tin tức vĩ mô crawl tự động qua RSS để đưa ra nhận định đa chiều.
-   - Xuất kịch bản T+ (Ngắn hạn), Trung hạn (3-6 tháng) và quản trị rủi ro Stop Loss / Take Profit.
-6. **Cảnh báo Tự động qua Discord (Kênh chung & DM cá nhân):**
-   - Báo cáo phân tích định dạng Rich Embed đẹp mắt gửi vào Kênh Discord qua Webhook.
-   - Bot Discord bắn thông báo riêng (DM) trực tiếp vào tài khoản Discord của bạn.
+1. **Biểu đồ TradingView 60 FPS Native & Dropdown Khung Thời Gian:**
+   * Đa khung thời gian: `1m`, `5m`, `15m`, `30m`, `1h`, `1 ngày (1D)`, `1 tuần (1W)`, `1 tháng (1M)`.
+   * Tách riêng 3 subpanel phân tích: **Khối lượng (Volume)**, **MACD**, và **RSI**.
+   * Hỗ trợ **kéo thả chuột trực tiếp để chỉnh độ cao** từng subpanel (`pane-resizer`).
+   * **Đường dóng dọc liền mạch tuyệt đối** từ đỉnh nến chính xuyên suốt qua tất cả các subpanel.
+   * Định dạng mốc thời gian chuẩn Tiếng Việt: `29 Tháng Năm '26` trên nhãn chuột, và `Tháng Mười hai`, `Tháng Hai`... trên trục thời gian.
+   * Bật/tắt linh hoạt các chỉ báo kỹ thuật: `MA20`, `MA50`, `EMA9`, `EMA21`, `Bollinger Bands`.
+
+2. **Phân tích Bội số Định giá Thị trường (P/E & P/B ECharts):**
+   * Biểu đồ kép tương tác trực quan: Điểm số VN-INDEX (cột trái) đối chiếu với P/E hoặc P/B (cột phải).
+   * Đường định giá trung bình lịch sử (`TB: ...x`).
+   * Thanh trượt **DataZoom** tương tác mượt mà, chống đè chữ và che nhãn ngày tháng.
+   * Tùy chọn 3 bố cục: *Toàn cảnh P/E*, *Toàn cảnh P/B*, và *So sánh song song (2 cột)*.
+
+3. **Header Thị Trường & Thanh Khoản Chuẩn Ngữ Nghĩa Tài Chính:**
+   * Card giao diện Responsive Card: Sử dụng dynamic font `clamp()` và `min-width: max-content`, **chặn đứng hoàn toàn lỗi cắt xén số liệu thành dấu ba chấm (`...`)**.
+   * Màu sắc đơn vị chuẩn tài chính: `CP` và `Tỷ` mang màu xám trung tính, không bị xung đột ngữ nghĩa với mã màu vàng tham chiếu.
+   * Độ rộng thị trường chi tiết: Số mã tăng (trần tím), giảm (sàn xanh lơ), tham chiếu vàng và trạng thái phiên khớp lệnh.
+
+4. **Trợ Lý Phân Tích AI Chiến Lược (Gemini 2.5 Pro):**
+   * **Phân tích chuyên sâu 8 trụ cột**: Đánh giá toàn diện mô hình kinh doanh, sức khỏe tài chính, lợi thế cạnh tranh, định giá P/B Justified & Graham, kỹ thuật và rủi ro.
+   * **Báo cáo tóm tắt 3 màu cảnh báo trực quan**: Huy hiệu `🟢 Tốt`, `🟡 Trung bình`, `🔴 Rủi ro` giúp nhà đầu tư nắm bắt cơ hội trong 30 giây.
+   * **Mô phỏng 3-4 kịch bản rủi ro thị trường**: Lạc quan (Bull), Cơ sở (Base), Bi quan (Bear) kèm xác suất, điều kiện kích hoạt và nhóm ngành hưởng lợi.
+
+5. **Theo dõi Danh mục Cá nhân hóa:**
+   * Quản lý các mã cổ phiếu đang nắm giữ, tự động tính toán lãi/lỗ (VND và %).
+   * Chỉnh sửa trực tiếp trên giao diện web với bảng `st.data_editor` và lưu trữ bền vững vào `portfolio.json`.
+
+6. **Hệ Thống Cảnh Báo Đa Kênh Tự Động (Discord):**
+   * Gửi Rich Embed thông tin danh mục, tín hiệu Stop Loss và khuyến nghị mua/bán vào Kênh Discord qua Webhook.
+   * Gửi tin nhắn riêng tư (DM) trực tiếp vào tài khoản Discord cá nhân.
+   * Bot ngầm giám sát 24/7 theo lịch trình ATO (08:45), Nghỉ trưa (11:30) và ATC (14:45).
 
 ---
 
 ## 🏛️ Cấu Trúc Dự Án (Project Structure)
 
-> 📘 **Xem tài liệu kiến trúc chi tiết tại:** [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
-
-Dự án được xây dựng theo mô hình module hóa cao (Modular Architecture):
+> 📘 **Xem tài liệu kiến trúc kỹ thuật chi tiết tại:** [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)
 
 ```text
 Stock - learning/
 │
-├── app.py                      # 🚀 Tầng điều phối Streamlit chính (~85 dòng)
-├── components/                 # 📊 Các bộ sinh đồ thị tương tác
-│   ├── tradingview_chart.py    # Biểu đồ nến TradingView 60 FPS
-│   └── echarts_valuation.py    # Biểu đồ định giá P/E, P/B ECharts
-├── tabs/                       # 📑 Từng Tab chức năng riêng biệt
-│   ├── tab_overview.py         # Tab 1: Tổng quan danh mục & Cảnh báo Discord
-│   ├── tab_market.py           # Tab 2: Thị trường VN-Index & Định giá P/E, P/B
-│   ├── tab_charts.py           # Tab 3: Biểu đồ kỹ thuật từng cổ phiếu
-│   ├── tab_portfolio.py        # Tab 4: Quản lý & chỉnh sửa danh mục
-│   └── tab_ai.py               # Tab 5: Trợ lý phân tích chiến lược AI
-├── data_engine.py              # ⚙️ Tầng dữ liệu chứng khoán & tính toán chỉ báo
-├── ai_analyst.py               # 🧠 Tầng trí tuệ nhân tạo Gemini Flash
-├── discord_alerts.py           # 🔔 Tầng cảnh báo Discord (Webhook + DM Bot)
-├── portfolio.json              # 💾 Dữ liệu danh mục cổ phiếu
-└── run_dashboard.bat           # ⚡ Kịch bản khởi chạy nhanh 1-click
+├── app.py                      # 🚀 Tầng điều phối Streamlit Web chính
+├── components/                 # 📊 Tầng biểu đồ TradingView & ECharts
+├── tabs/                       # 📑 5 Tab chức năng nghiệp vụ riêng biệt
+├── data_engine.py              # ⚙️ Tầng dữ liệu & tính toán chỉ báo kỹ thuật
+├── ai_analyst.py               # 🧠 Tầng trí tuệ nhân tạo Gemini 2.5 Pro
+├── discord_alerts.py           # 🔔 Tầng cảnh báo Discord (Webhook & DM)
+├── trading_bot.py              # 🤖 Tầng tự động hóa giám sát thị trường 24/7
+├── run_cloud.py                # ☁️ Tiến trình khởi chạy kép trên Cloud (Render/Linux)
+├── scripts/                    # 🛠️ Bộ công cụ & kịch bản khởi chạy Windows
+│   ├── run_dashboard.bat       # Khởi chạy Web Dashboard trên Local
+│   ├── run_bot.bat             # Khởi chạy Trading Bot ngầm
+│   └── clean_cache.bat         # 1-click dọn sạch thư mục cache bytecode
+├── portfolio.json              # 💾 Cơ sở dữ liệu danh mục đầu tư mẫu
+├── requirements.txt            # Danh mục thư viện Python phụ thuộc
+├── Procfile                    # Chỉ thị tiến trình triển khai Web trên Cloud
+└── RENDER_DEPLOY_GUIDE.md      # Cẩm nang hướng dẫn chi tiết Deploy 24/7
 ```
 
 ---
 
-## 🚀 Hướng Dẫn Cài Đặt & Chạy Cục Bộ (Local)
+## 🚀 Hướng Dẫn Cài Đặt & Chạy Local
 
-### 1. Kích hoạt môi trường ảo:
+### 1. Kích hoạt môi trường ảo Python:
 ```powershell
 & "$HOME\.venv\Scripts\Activate.ps1"
 ```
 
-### 2. Cấu hình biến môi trường (`.env`):
-Tạo file `.env` và điền key của bạn:
+### 2. Cài đặt thư viện:
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Cấu hình biến môi trường (`.env`):
+Tạo file `.env` ở thư mục gốc và điền các khóa API của bạn:
 ```env
-GEMINI_API_KEY="your_gemini_api_key"
+GEMINI_API_KEY="your_gemini_api_key_here"
 DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
+DISCORD_BOT_TOKEN="your_discord_bot_token"
+DISCORD_USER_ID="your_discord_user_id"
+VNSTOCK_API_KEY="your_vnstock_key_if_sponsor"
 ```
 
-### 3. Chạy Dashboard Streamlit:
-```bash
-streamlit run app.py
-```
-
-### 4. Gửi báo cáo thử nghiệm đến Discord:
-```bash
-python discord_alerts.py
-```
+### 4. Khởi chạy ứng dụng:
+* **Cách 1**: Nhấp đúp vào file [run_dashboard.bat](run_dashboard.bat) ở thư mục gốc hoặc trong thư mục `scripts/`.
+* **Cách 2**: Chạy qua dòng lệnh Terminal:
+  ```bash
+  streamlit run app.py
+  ```
+* Ứng dụng sẽ mở tự động tại: `http://localhost:8501`.
 
 ---
 
-## ☁️ Hướng Dẫn Triển Khai Miễn Phí Lên Streamlit Cloud
+## ☁️ Hướng Dẫn Triển Khai Production 24/7 (Render.com)
 
-1. Đẩy mã nguồn lên GitHub:
+> 📘 **Xem hướng dẫn chi tiết từng bước tại:** [RENDER_DEPLOY_GUIDE.md](RENDER_DEPLOY_GUIDE.md)
+
+1. Đẩy mã nguồn lên kho lưu trữ GitHub của bạn:
    ```bash
-   git push -u origin main
+   git add .
+   git commit -m "feat: complete professional stock dashboard with gemini ai"
+   git push origin main
    ```
-2. Truy cập [share.streamlit.io](https://share.streamlit.io/) và đăng nhập bằng GitHub.
-3. Nhấn **"New app"** -> Chọn Repository `VinhTung1410/Stock-AI` -> Main file: `app.py`.
-4. Trong mục **Advanced Settings -> Secrets**, dán nội dung từ file `.env`:
-   ```toml
-   GEMINI_API_KEY = "your_key"
-   DISCORD_WEBHOOK_URL = "your_webhook_url"
-   ```
-5. Nhấn **Deploy**! Bạn sẽ có ngay một Web Dashboard online 24/7 để cả nhóm cùng truy cập.
+2. Đăng nhập [Render.com](https://dashboard.render.com/) và tạo một **Web Service** mới liên kết với repository của bạn.
+3. Thiết lập thông số:
+   * **Runtime**: `Python 3`
+   * **Build Command**: `pip install -r requirements.txt`
+   * **Start Command**: `python run_cloud.py` (Khởi chạy đồng thời cả Web Streamlit và Bot 24/7).
+4. Thêm các biến môi trường tương ứng trong tab **Environment** của Render.
+5. Cài đặt [UptimeRobot](https://uptimerobot.com) ping kiểm tra HTTP 5 phút/lần vào địa chỉ web Render để giữ cho dịch vụ thức liên tục 24/7/365 hoàn toàn miễn phí!

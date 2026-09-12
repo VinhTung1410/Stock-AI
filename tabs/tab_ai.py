@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import pandas as pd
 from data_engine import (
@@ -23,9 +24,9 @@ def render_tab_ai(df_eval: pd.DataFrame):
     st.caption("Trí tuệ nhân tạo chuyên sâu tài chính: Tích hợp dữ liệu giao dịch realtime, báo cáo tài chính định chế và dòng tiền vĩ mô.")
 
     sub_tab1, sub_tab2, sub_tab3 = st.tabs([
-        "📊 Đánh Giá Danh Mục",
-        "🗺️ Kịch Bản Rủi Ro Thị Trường & Sóng",
-        "🔬 Nghiên Cứu Cổ Phiếu Chuyên Sâu (8 Trụ Cột)"
+        "Đánh giá Danh mục",
+        "Kịch bản Rủi ro & Sóng",
+        "Nghiên cứu Định chế 8 Trụ cột"
     ])
 
     # -------------------------------------------------------------
@@ -45,14 +46,17 @@ def render_tab_ai(df_eval: pd.DataFrame):
             with st.spinner("Gemini Flash đang đọc dữ liệu danh mục và lập kế hoạch hành động..."):
                 news = fetch_macro_news()
                 analysis_result = generate_portfolio_analysis(df_eval, news, custom_question=custom_q)
-                st.markdown(analysis_result)
+                st.session_state["cached_portfolio_ai"] = analysis_result
+
+        if "cached_portfolio_ai" in st.session_state:
+            st.markdown(st.session_state["cached_portfolio_ai"])
 
     # -------------------------------------------------------------
     # SUB-TAB 2: KỊCH BẢN RỦI RO THỊ TRƯỜNG & DỰ BÁO SÓNG
     # -------------------------------------------------------------
     with sub_tab2:
         st.markdown("##### 🗺️ Ma Trận Kịch Bản Rủi Ro Thị Trường & Chu Kỳ Sóng")
-        st.caption("Mô hình hóa ít nhất 3-4 kịch bản thị trường (Lạc quan, Trung lập, Bi quan, Thiên nga đen) kèm xác suất, điều kiện kích hoạt, tỷ lệ phân bổ vốn và định vị chu kỳ sóng Elliott / Wyckoff.")
+        st.caption("Mô hình hóa 4 kịch bản thị trường (Lạc quan, Trung lập, Bi quan, Thiên nga đen) kèm xác suất, điều kiện kích hoạt, tỷ lệ phân bổ vốn và định vị chu kỳ sóng Elliott / Wyckoff.")
 
         col_m1, col_m2 = st.columns([3, 1])
         with col_m1:
@@ -65,16 +69,18 @@ def render_tab_ai(df_eval: pd.DataFrame):
                 vnindex_df = get_vnindex_valuation_data()
                 news = fetch_macro_news()
                 market_report = generate_market_risk_scenarios(vnindex_df, news)
-                st.markdown(market_report)
+                st.session_state["cached_market_scenarios"] = market_report
+
+        if "cached_market_scenarios" in st.session_state:
+            st.markdown(st.session_state["cached_market_scenarios"])
 
     # -------------------------------------------------------------
     # SUB-TAB 3: NGHIÊN CỨU CỔ PHIẾU CHUYÊN SÂU (8 TRỤ CỘT & 100 ĐIỂM)
     # -------------------------------------------------------------
     with sub_tab3:
         st.markdown("##### 🔬 Institutional Equity Research - Báo Cáo Định Chế 8 Trụ Cột")
-        st.caption("Chuẩn mực phân tích CFA: Kiểm tra dữ liệu, Cơ bản, Định giá & Biên an toàn, Kỹ thuật, Dòng tiền Big Boys, Rủi ro, 3 Kịch bản và Chấm điểm thang 100 kèm tóm tắt 5 dòng.")
+        st.caption("Chuẩn mực phân tích CFA: Tóm tắt điều hành trên đầu, Bảng tín hiệu nhanh từng trụ cột, Định giá Fair Value gãy gọn và Chấm điểm thang 100.")
 
-        # Lấy danh sách mã gợi ý từ danh mục
         portfolio_symbols = df_eval["Mã CP"].tolist() if "Mã CP" in df_eval.columns else ["BSR", "MSB", "SSI"]
         default_options = list(dict.fromkeys(portfolio_symbols + ["FPT", "HPG", "VNM", "VCB", "MWG", "DGC"]))
 
@@ -95,7 +101,7 @@ def render_tab_ai(df_eval: pd.DataFrame):
 
         target_symbol = custom_ticker if custom_ticker else selected_choice
 
-        # Hiển thị snapshot nhanh các chỉ số nếu có
+        # Snapshot nhanh các chỉ số
         tech_data = fetch_stock_technical(target_symbol)
         fin_data = get_financial_ratios(target_symbol)
 
@@ -107,8 +113,52 @@ def render_tab_ai(df_eval: pd.DataFrame):
             c4.metric("P/B", f"{fin_data.get('pb', 'N/A')}")
             c5.metric("ROE (%)", f"{fin_data.get('roe', 'N/A')}%" if fin_data.get('roe') is not None else "N/A")
 
-        if st.button(f"⚡ Lập Báo Cáo Chuyên Sâu 8 Trụ Cột Cho [{target_symbol}]", type="primary", use_container_width=True, key=f"btn_run_deep_{target_symbol}"):
+        btn_key = f"btn_run_deep_{target_symbol}"
+        if st.button(f"⚡ Lập Báo Cáo Chuyên Sâu 8 Trụ Cột Cho [{target_symbol}]", type="primary", use_container_width=True, key=btn_key):
             with st.spinner(f"Chuyên gia AI đang phân tích toàn diện 8 trụ cột cho mã {target_symbol}..."):
                 news = fetch_macro_news(keywords=[target_symbol, "chứng khoán", "kết quả kinh doanh"])
                 report = generate_institutional_stock_report(target_symbol, fin_data, tech_data, news)
-                st.markdown(report)
+                st.session_state[f"cached_stock_report_{target_symbol}"] = report
+
+        cache_key = f"cached_stock_report_{target_symbol}"
+        if cache_key in st.session_state:
+            report_text = st.session_state[cache_key]
+
+            st.divider()
+
+            # Nhận diện tín hiệu để hiển thị Banner Cảnh Báo Màu Sắc (Xanh / Vàng / Đỏ)
+            up_text = report_text.upper()
+            if "MUA MẠNH" in up_text or "MUA" in up_text[:600]:
+                alert_theme = {
+                    "bg": "rgba(34, 197, 94, 0.12)",
+                    "border": "#22c55e",
+                    "title": "🟢 TÍN HIỆU: KHUYẾN NGHỊ MUA / TÍCH CỰC",
+                    "sub": "Hội tụ các tiêu chí: Tăng trưởng cơ bản, định giá hấp dẫn và dòng tiền ủng hộ."
+                }
+            elif "BÁN" in up_text[:600] or "HẠ TỶ TRỌNG" in up_text[:600]:
+                alert_theme = {
+                    "bg": "rgba(239, 68, 68, 0.12)",
+                    "border": "#ef4444",
+                    "title": "🔴 CẢNH BÁO: KHUYẾN NGHỊ BÁN / THẬN TRỌNG RỦI RO",
+                    "sub": "Vi phạm ngưỡng kỹ thuật hoặc áp lực điều chỉnh. Cần ưu tiên bảo toàn vốn."
+                }
+            else:
+                alert_theme = {
+                    "bg": "rgba(234, 179, 8, 0.12)",
+                    "border": "#eab308",
+                    "title": "🟡 TÍN HIỆU: THEO DÕI / NẮM GIỮ QUAN SÁT",
+                    "sub": "Cổ phiếu trong vùng tích lũy giằng co. Chờ dòng tiền bứt phá để gia tăng."
+                }
+
+            st.markdown(f"""
+            <div style="background:{alert_theme['bg']}; border-left:5px solid {alert_theme['border']}; border-radius:8px; padding:12px 18px; margin-bottom:15px;">
+                <div style="font-size:16px; font-weight:800; color:#f8fafc;">
+                    {alert_theme['title']}
+                </div>
+                <div style="font-size:12px; color:#cbd5e1; margin-top:3px;">
+                    {alert_theme['sub']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown(report_text)

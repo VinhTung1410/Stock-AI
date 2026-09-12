@@ -87,19 +87,20 @@ def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str
                     }},
                     legend: {{
                         data: ['VNINDEX (điểm, cột trái)', '{metric_name} (lần, cột phải)', 'Trung bình {metric_name}'],
-                        bottom: 0,
+                        top: 8,
+                        left: 'center',
                         textStyle: {{ color: '#cbd5e1', fontSize: 11 }},
                         icon: 'circle'
                     }},
-                    // ĐẶT LỀ CỐ ĐỊNH 58px TRÁNH BỊ CẮT CHỮ VÀ DÍNH LỀ
-                    grid: {{ left: 58, right: 58, top: 28, bottom: 48, containLabel: false }},
+                    // ĐẶT LỀ THOÁNG ĐÃNG 64px Ở ĐÁY ĐỂ CHỐNG ĐÈ CHỮ VÀ THANH TRƯỢT
+                    grid: {{ left: 56, right: 56, top: 38, bottom: 64, containLabel: false }},
                     dataZoom: [
                         {{ type: 'inside', start: 0, end: 100 }},
                         {{
                             type: 'slider',
                             show: true,
-                            height: 12,
-                            bottom: 24,
+                            height: 14,
+                            bottom: 10,
                             borderColor: '#2d3139',
                             backgroundColor: '#131722',
                             fillerColor: 'rgba(41, 98, 255, 0.25)',
@@ -111,7 +112,13 @@ def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str
                         type: 'category',
                         data: dates,
                         axisLine: {{ lineStyle: {{ color: '#334155' }} }},
-                        axisLabel: {{ color: '#94a3b8', formatter: val => val.substring(5) }},
+                        axisLabel: {{
+                            color: '#94a3b8',
+                            interval: 'auto',
+                            hideOverlap: true,
+                            margin: 10,
+                            formatter: val => val.substring(5)
+                        }},
                         axisTick: {{ show: false }}
                     }},
                     yAxis: [
