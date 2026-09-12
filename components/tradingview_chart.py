@@ -4,14 +4,13 @@ import pandas as pd
 def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
     """
     Tạo mã HTML/JS nhúng TradingView Lightweight Charts tương tác chuẩn TradingView Pro:
-    - Bố cục Multi-Pane riêng biệt xếp chồng:
-      + Pane 1: Nến Candlestick + MA + EMA + BOLL
-      + Pane 2: Khối lượng Volume + SMA 20 của Volume
+    - Bố cục Multi-Pane riêng biệt xếp chồng với chiều cao pixel cố định:
+      + Pane 1: Nến Candlestick + MA (20, 50) + EMA (9, 21) + BOLL (20, 2)
+      + Pane 2: Đồ thị Khối lượng Volume tách riêng ở dưới + SMA 20 của Khối lượng
       + Pane 3 (Sub-panel): MACD (Line, Signal, Histogram)
-      + Pane 4 (Sub-panel): RSI (14) + đường biên 70/30
+      + Pane 4 (Sub-panel): RSI (14) + đường mốc 70/30
     - Mỗi pane có header riêng hiển thị chính xác số liệu realtime khi trỏ chuột vào bất kỳ ngày nào.
-    - Tự động căng đều (fitContent) toàn màn hình khi load trang, triệt tiêu lỗi nến bị co cụm về góc phải.
-    - Đồng bộ hoàn hảo trục thời gian và thanh gióng crosshair giữa tất cả các pane.
+    - Nến tự động căng đều toàn màn hình (barSpacing 9, fixLeft/RightEdge), triệt tiêu lỗi co cụm góc phải.
     - Lọc khung thời gian: 1 ngày, 1 tuần, 1 tháng.
     """
     candle_list = []
@@ -45,16 +44,16 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif;
                 display: flex;
                 flex-direction: column;
-                height: 710px;
-                overflow: hidden;
+                min-height: 100vh;
+                overflow-x: hidden;
             }}
 
-            /* THANH HEADER CHÍNH */
+            /* 1. THANH HEADER CHÍNH */
             .main-header {{
                 display: flex;
                 flex-direction: column;
                 gap: 4px;
-                padding: 6px 14px;
+                padding: 8px 16px;
                 background-color: #1e222d;
                 border-bottom: 1px solid #2a2e39;
                 flex-shrink: 0;
@@ -66,7 +65,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 flex-wrap: wrap;
             }}
             .symbol-title {{
-                font-size: 15px;
+                font-size: 16px;
                 font-weight: 700;
                 color: #f8fafc;
             }}
@@ -81,7 +80,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 color: #f8fafc;
                 border: 1px solid #363a45;
                 border-radius: 4px;
-                padding: 3px 9px;
+                padding: 3px 10px;
                 font-size: 12px;
                 font-weight: 600;
                 cursor: pointer;
@@ -111,7 +110,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 display: block;
             }}
             .tf-item {{
-                padding: 6px 12px;
+                padding: 6px 14px;
                 font-size: 12px;
                 font-weight: 500;
                 color: #d1d4dc;
@@ -127,7 +126,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 font-weight: 600;
             }}
 
-            /* DÒNG THÔNG SỐ OHLCV */
+            /* DÒNG THÔNG SỐ NẾN OHLCV */
             .ohlc-text {{
                 display: flex;
                 align-items: center;
@@ -156,28 +155,28 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 font-weight: 700;
             }}
 
-            /* BỐ CỤC CÁC PANE (MULTI-PANE CONTAINER) */
-            .panes-container {{
+            /* 2. CÁC PANE ĐỒ THỊ RIÊNG BIỆT (MULTI-PANE LAYOUT) */
+            .panes-wrapper {{
                 flex: 1;
                 display: flex;
                 flex-direction: column;
                 width: 100%;
-                overflow: hidden;
-                position: relative;
+                background-color: #131722;
             }}
-            .chart-pane {{
+            .pane-box {{
                 width: 100%;
                 position: relative;
                 display: flex;
                 flex-direction: column;
+                background-color: #131722;
             }}
-            .pane-header {{
-                height: 22px;
-                padding: 2px 12px;
-                background-color: rgba(23, 27, 38, 0.95);
+            .pane-header-bar {{
+                height: 24px;
+                padding: 2px 14px;
+                background-color: #171b26;
                 display: flex;
                 align-items: center;
-                gap: 10px;
+                gap: 12px;
                 font-size: 11px;
                 font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, monospace;
                 border-bottom: 1px solid rgba(42, 46, 57, 0.4);
@@ -185,24 +184,26 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 flex-shrink: 0;
                 z-index: 10;
             }}
-            .pane-canvas {{
-                flex: 1;
+            .pane-header-bar b {{
+                font-weight: 700;
+            }}
+            .pane-chart-container {{
                 width: 100%;
                 position: relative;
             }}
-            .pane-separator {{
+            .pane-divider {{
                 height: 2px;
                 background-color: #2a2e39;
                 flex-shrink: 0;
             }}
 
-            /* TOOLBAR ĐÁY BẬT TẮT CHỈ BÁO */
+            /* 3. TOOLBAR ĐÁY BẬT TẮT CHỈ BÁO */
             .tv-bottom-toolbar {{
                 display: flex;
                 justify-content: center;
                 align-items: center;
                 gap: 8px;
-                padding: 6px 12px;
+                padding: 8px 12px;
                 background-color: #131722;
                 border-top: 1px solid #2a2e39;
                 flex-shrink: 0;
@@ -269,51 +270,51 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             </div>
         </div>
 
-        <!-- 2. KHU VỰC CHỨA CÁC PANE XẾP CHỒNG RIÊNG BIỆT -->
-        <div class="panes-container">
-            <!-- PANE 1: BIỂU ĐỒ NẾN CHÍNH -->
-            <div class="chart-pane" id="pane-main" style="flex: 3.5;">
-                <div class="pane-canvas" id="canvas-main"></div>
+        <!-- 2. MULTI-PANE CHARTS WRAPPER -->
+        <div class="panes-wrapper" id="panes-wrapper">
+            <!-- PANE 1: BIỂU ĐỒ NẾN CHÍNH (Chiếm 330px) -->
+            <div class="pane-box" id="pane-main">
+                <div class="pane-chart-container" id="container-main" style="height: 330px;"></div>
             </div>
 
-            <div class="pane-separator"></div>
+            <div class="pane-divider"></div>
 
-            <!-- PANE 2: KHỐI LƯỢNG (VOLUME + SMA 20) -->
-            <div class="chart-pane" id="pane-vol" style="flex: 1.1;">
-                <div class="pane-header">
+            <!-- PANE 2: ĐỒ THỊ KHỐI LƯỢNG VOLUME TÁCH RIÊNG Ở DƯỚI (Chiếm 115px) -->
+            <div class="pane-box" id="pane-vol">
+                <div class="pane-header-bar">
                     <span>Khối lượng <span style="color:#787b86;">20</span> SMA <span style="color:#787b86;">20</span></span>
-                    <span style="margin-left: 8px; color: #38bdf8;" id="hdr-vol-val">Vol: <b>--</b></span>
-                    <span style="color: #f59e0b;" id="hdr-vol-sma">SMA: <b>--</b></span>
+                    <span style="color: #38bdf8;" id="hdr-vol-val">Vol: <b>--</b></span>
+                    <span style="color: #f59e0b;" id="hdr-vol-sma">SMA 20: <b>--</b></span>
                 </div>
-                <div class="pane-canvas" id="canvas-vol"></div>
+                <div class="pane-chart-container" id="container-vol" style="height: 90px;"></div>
             </div>
 
-            <!-- PANE 3: MACD (SUB-PANEL RIÊNG BIỆT) -->
-            <div class="pane-separator" id="sep-macd" style="display: none;"></div>
-            <div class="chart-pane" id="pane-macd" style="flex: 1.3; display: none;">
-                <div class="pane-header">
+            <!-- PANE 3: ĐỒ THỊ MACD TÁCH RIÊNG (Chiếm 130px - Khi bật MACD) -->
+            <div class="pane-divider" id="sep-macd" style="display: none;"></div>
+            <div class="pane-box" id="pane-macd" style="display: none;">
+                <div class="pane-header-bar">
                     <span style="color:#f8fafc; font-weight:700;">MACD</span>
                     <span style="color:#787b86;">12 26 close 9</span>
                     <span style="color: #38bdf8;" id="hdr-macd-line">MACD: <b>--</b></span>
                     <span style="color: #f97316;" id="hdr-macd-sig">Signal: <b>--</b></span>
                     <span id="hdr-macd-hist">Hist: <b>--</b></span>
                 </div>
-                <div class="pane-canvas" id="canvas-macd"></div>
+                <div class="pane-chart-container" id="container-macd" style="height: 105px;"></div>
             </div>
 
-            <!-- PANE 4: RSI (SUB-PANEL RIÊNG BIỆT) -->
-            <div class="pane-separator" id="sep-rsi"></div>
-            <div class="chart-pane" id="pane-rsi" style="flex: 1.2;">
-                <div class="pane-header">
+            <!-- PANE 4: ĐỒ THỊ RSI TÁCH RIÊNG (Chiếm 120px - Khi bật RSI) -->
+            <div class="pane-divider" id="sep-rsi"></div>
+            <div class="pane-box" id="pane-rsi">
+                <div class="pane-header-bar">
                     <span style="color:#f8fafc; font-weight:700;">RSI</span>
                     <span style="color:#787b86;">14</span>
                     <span style="color: #a855f7;" id="hdr-rsi-val">RSI: <b>--</b></span>
                 </div>
-                <div class="pane-canvas" id="canvas-rsi"></div>
+                <div class="pane-chart-container" id="container-rsi" style="height: 95px;"></div>
             </div>
         </div>
 
-        <!-- 3. TOOLBAR ĐÁY BẬT TẮT -->
+        <!-- 3. TOOLBAR ĐÁY BẬT TẮT CHỈ BÁO -->
         <div class="tv-bottom-toolbar">
             <button class="btn-ind active" id="btn-ma">MA</button>
             <button class="btn-ind" id="btn-ema">EMA</button>
@@ -323,44 +324,43 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
         </div>
 
         <script>
-            // Các container DOM
-            const canvasMain = document.getElementById('canvas-main');
-            const canvasVol = document.getElementById('canvas-vol');
-            const canvasMacd = document.getElementById('canvas-macd');
-            const canvasRsi = document.getElementById('canvas-rsi');
+            const cMain = document.getElementById('container-main');
+            const cVol = document.getElementById('container-vol');
+            const cMacd = document.getElementById('container-macd');
+            const cRsi = document.getElementById('container-rsi');
 
             const paneMacd = document.getElementById('pane-macd');
             const sepMacd = document.getElementById('sep-macd');
             const paneRsi = document.getElementById('pane-rsi');
             const sepRsi = document.getElementById('sep-rsi');
 
-            // CẤU HÌNH TIME SCALE CHUNG (Loại bỏ 00:00:00, fix lề để nến trải đều)
-            const commonTimeScale = {{
+            // CẤU HÌNH TIME SCALE: Chống co cụm nến (fixRightEdge + barSpacing 9) và loại bỏ 00:00:00
+            const makeTimeScale = (showTimeAxis) => ({{
                 borderColor: '#2a2e39',
                 timeVisible: false,
                 secondsVisible: false,
+                visible: showTimeAxis,
                 fixLeftEdge: true,
                 fixRightEdge: true,
                 minBarSpacing: 4,
-            }};
+                barSpacing: 9,
+                rightOffset: 6,
+            }});
 
-            const chartOptions = (hasTimeAxis = false) => ({{
+            const makeOptions = (showTimeAxis) => ({{
                 layout: {{ background: {{ color: '#131722' }}, textColor: '#d1d4dc' }},
                 grid: {{ vertLines: {{ color: 'rgba(42, 46, 57, 0.25)' }}, horzLines: {{ color: 'rgba(42, 46, 57, 0.25)' }} }},
                 crosshair: {{ mode: LightweightCharts.CrosshairMode.Normal }},
                 rightPriceScale: {{
                     borderColor: '#2a2e39',
-                    scaleMargins: {{ top: 0.1, bottom: 0.1 }},
+                    scaleMargins: {{ top: 0.08, bottom: 0.08 }},
                 }},
-                timeScale: {{
-                    ...commonTimeScale,
-                    visible: hasTimeAxis,
-                }},
+                timeScale: makeTimeScale(showTimeAxis),
                 localization: {{ dateFormat: 'yyyy-MM-dd' }},
             }});
 
-            // 1. Chart Main
-            const chartMain = LightweightCharts.createChart(canvasMain, chartOptions(false));
+            // 1. Chart Nến Chính
+            const chartMain = LightweightCharts.createChart(cMain, makeOptions(false));
             const candleSeries = chartMain.addCandlestickSeries({{
                 upColor: '#089981', downColor: '#F23645',
                 borderVisible: false, wickUpColor: '#089981', wickDownColor: '#F23645',
@@ -373,19 +373,19 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             const bollMid = chartMain.addLineSeries({{ color: 'rgba(56, 189, 248, 0.85)', lineWidth: 1, lineStyle: 2, title: 'BOLL Mid', visible: false }});
             const bollLower = chartMain.addLineSeries({{ color: 'rgba(56, 189, 248, 0.7)', lineWidth: 1, title: 'BOLL Low', visible: false }});
 
-            // 2. Chart Volume
-            const chartVol = LightweightCharts.createChart(canvasVol, chartOptions(false));
+            // 2. Chart Khối Lượng Tách Riêng Ở Dưới
+            const chartVol = LightweightCharts.createChart(cVol, makeOptions(false));
             const volumeSeries = chartVol.addHistogramSeries({{ priceFormat: {{ type: 'volume' }} }});
             const volSmaSeries = chartVol.addLineSeries({{ color: '#f59e0b', lineWidth: 1.5, title: 'SMA 20' }});
 
-            // 3. Chart MACD
-            const chartMacd = LightweightCharts.createChart(canvasMacd, chartOptions(false));
+            // 3. Chart MACD Tách Riêng
+            const chartMacd = LightweightCharts.createChart(cMacd, makeOptions(false));
             const macdLine = chartMacd.addLineSeries({{ color: '#38bdf8', lineWidth: 1.5 }});
             const macdSignal = chartMacd.addLineSeries({{ color: '#f97316', lineWidth: 1.5 }});
             const macdHist = chartMacd.addHistogramSeries();
 
-            // 4. Chart RSI (Có trục thời gian ở đáy cùng)
-            const chartRsi = LightweightCharts.createChart(canvasRsi, chartOptions(true));
+            // 4. Chart RSI Tách Riêng (Hiện trục thời gian ở đáy cùng)
+            const chartRsi = LightweightCharts.createChart(cRsi, makeOptions(true));
             const rsiSeries = chartRsi.addLineSeries({{ color: '#a855f7', lineWidth: 1.8 }});
             const rsiUp = chartRsi.addLineSeries({{ color: '#ef4444', lineWidth: 1, lineStyle: 2 }});
             const rsiDown = chartRsi.addLineSeries({{ color: '#22c55e', lineWidth: 1, lineStyle: 2 }});
@@ -393,22 +393,21 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             const allCharts = [chartMain, chartVol, chartMacd, chartRsi];
 
             // ĐỒNG BỘ CUỘN VÀ ZOOM GIỮA TẤT CẢ CÁC PANE
-            let isSyncingRange = false;
-            allCharts.forEach((sourceChart, idx) => {{
-                sourceChart.timeScale().subscribeVisibleLogicalRangeChange(range => {{
-                    if (isSyncingRange || !range) return;
-                    isSyncingRange = true;
-                    allCharts.forEach((targetChart, tIdx) => {{
-                        if (idx !== tIdx) targetChart.timeScale().setVisibleLogicalRange(range);
+            let isSyncing = false;
+            allCharts.forEach((source, sIdx) => {{
+                source.timeScale().subscribeVisibleLogicalRangeChange(range => {{
+                    if (isSyncing || !range) return;
+                    isSyncing = true;
+                    allCharts.forEach((target, tIdx) => {{
+                        if (sIdx !== tIdx) target.timeScale().setVisibleLogicalRange(range);
                     }});
-                    isSyncingRange = false;
+                    isSyncing = false;
                 }});
             }});
 
             const rawCandleData = {candle_json};
             const rawVolumeData = {volume_json};
 
-            // HÀM TÍNH CHỈ BÁO KỸ THUẬT
             function calculateSMA(data, period) {{
                 const res = [];
                 for (let i = 0; i < data.length; i++) {{
@@ -502,18 +501,18 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 return {{ mLine, sLine, hList }};
             }}
 
-            function calculateVolumeSMA(volData, period = 20) {{
+            function calculateVolSMA(vols, period = 20) {{
                 const res = [];
-                for (let i = 0; i < volData.length; i++) {{
+                for (let i = 0; i < vols.length; i++) {{
                     if (i < period - 1) continue;
                     let sum = 0;
-                    for (let j = 0; j < period; j++) sum += volData[i - j].value;
-                    res.push({{ time: volData[i].time, value: parseFloat((sum / period).toFixed(0)) }});
+                    for (let j = 0; j < period; j++) sum += vols[i - j].value;
+                    res.push({{ time: vols[i].time, value: parseFloat((sum / period).toFixed(0)) }});
                 }}
                 return res;
             }}
 
-            // HÀM RESAMPLE NẾN: 1D, 1W, 1M
+            // HÀM RESAMPLE: 1D, 1W, 1M
             function resampleData(tf) {{
                 if (tf === '1D') return {{ candles: rawCandleData, volumes: rawVolumeData }};
                 if (tf === '1W') {{
@@ -564,14 +563,13 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 return {{ candles: rawCandleData, volumes: rawVolumeData }};
             }}
 
-            // DICTIONARY LƯU TRỮ ĐỂ TRA CỨU O(1) TỨC THÌ KHI RÊ CHUỘT
+            // BẢNG MAP O(1) CHO PHÉP NHẢY SỐ TỨC THÌ TỪNG NGÀY KHI RÊ CHUỘT
             let dataMaps = {{
                 candle: {{}}, volume: {{}}, volSma: {{}},
                 ma20: {{}}, ma50: {{}}, ema9: {{}}, ema21: {{}},
                 bollUp: {{}}, bollMid: {{}}, bollLow: {{}},
                 rsi: {{}}, macdLine: {{}}, macdSig: {{}}, macdHist: {{}}
             }};
-
             let latestTime = null;
 
             function formatVolume(val) {{
@@ -582,7 +580,6 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 return val.toString();
             }}
 
-            // CẬP NHẬT TẤT CẢ CÁC BẢNG SỐ LIỆU TẠI NGÀY ĐƯỢC CHỈ ĐỊNH
             function updateAllPanes(t) {{
                 if (!t) return;
                 const c = dataMaps.candle[t];
@@ -627,7 +624,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     document.getElementById('badge-boll').innerHTML = `BOLL(20,2): Up <b>${{bU.toFixed(2)}}</b> Mid <b>${{bM.toFixed(2)}}</b> Low <b>${{bL.toFixed(2)}}</b>`;
                 }}
 
-                // 2. Pane Khối lượng (Volume)
+                // 2. Pane Khối Lượng (Volume)
                 if (v !== undefined) {{
                     document.querySelector('#hdr-vol-val b').innerText = formatVolume(v);
                 }}
@@ -640,8 +637,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     document.querySelector('#hdr-macd-line b').innerText = mL.toFixed(2);
                     document.querySelector('#hdr-macd-sig b').innerText = mS !== undefined ? mS.toFixed(2) : '--';
                     const histVal = mH !== undefined ? mH : 0;
-                    const histEl = document.querySelector('#hdr-macd-hist');
-                    histEl.innerHTML = `Hist: <b style="color:${{histVal >= 0 ? '#22c55e' : '#ef4444'}};">${{histVal >= 0 ? '+' : ''}}${{histVal.toFixed(2)}}</b>`;
+                    document.querySelector('#hdr-macd-hist').innerHTML = `Hist: <b style="color:${{histVal >= 0 ? '#22c55e' : '#ef4444'}};">${{histVal >= 0 ? '+' : ''}}${{histVal.toFixed(2)}}</b>`;
                 }}
 
                 // 4. Pane RSI
@@ -650,26 +646,24 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 }}
             }}
 
-            // HÀM CANH CHỈNH ĐỒ THỊ TRẢI ĐỀU TOÀN MÀN HÌNH (TRÁNH BỊ THU NHỎ MỘT GÓC)
-            function resizeAndFitAll() {{
-                const w = canvasMain.clientWidth;
+            // TỰ ĐỘNG CĂNG TRÀN ĐỒ THỊ 100% CHIỀU NGANG KHI LOAD
+            function fitAll() {{
+                const w = document.getElementById('panes-wrapper').clientWidth || window.innerWidth;
                 if (!w || w === 0) return;
 
-                chartMain.resize(w, canvasMain.clientHeight);
-                chartVol.resize(w, canvasVol.clientHeight);
-                chartMacd.resize(w, canvasMacd.clientHeight);
-                chartRsi.resize(w, canvasRsi.clientHeight);
+                chartMain.resize(w, cMain.clientHeight);
+                chartVol.resize(w, cVol.clientHeight);
+                chartMacd.resize(w, cMacd.clientHeight);
+                chartRsi.resize(w, cRsi.clientHeight);
 
                 setTimeout(() => {{
-                    allCharts.forEach(c => c.timeScale().fitContent());
+                    allCharts.forEach(chart => {{
+                        chart.timeScale().fitContent();
+                    }});
                 }}, 50);
             }}
 
-            function applyDataset(resampled) {{
-                const candles = resampled.candles;
-                const volumes = resampled.volumes;
-
-                // Xóa và tái tạo Maps
+            function loadDataset(candles, volumes) {{
                 dataMaps = {{
                     candle: {{}}, volume: {{}}, volSma: {{}},
                     ma20: {{}}, ma50: {{}}, ema9: {{}}, ema21: {{}},
@@ -712,7 +706,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                         dataMaps.bollLow[d.time] = bollData.lower[i].value;
                     }});
 
-                    const volSmaData = calculateVolumeSMA(volumes, 20);
+                    const volSmaData = calculateVolSMA(volumes, 20);
                     volSmaSeries.setData(volSmaData);
                     volSmaData.forEach(d => dataMaps.volSma[d.time] = d.value);
 
@@ -733,12 +727,12 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     updateAllPanes(latestTime);
                 }}
 
-                resizeAndFitAll();
+                fitAll();
             }}
 
-            // ĐỒNG BỘ RÊ CHUỘT (CROSSHAIR MOVE) XUYÊN SUỐT TẤT CẢ CÁC PANE
-            allCharts.forEach(sourceChart => {{
-                sourceChart.subscribeCrosshairMove(param => {{
+            // ĐỒNG BỘ RÊ CHUỘT CROSSHAIR MOVE
+            allCharts.forEach(chart => {{
+                chart.subscribeCrosshairMove(param => {{
                     if (!param || !param.time || param.point === undefined) {{
                         updateAllPanes(latestTime);
                         return;
@@ -747,15 +741,14 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 }});
             }});
 
-            // Áp dụng dữ liệu ban đầu
-            applyDataset(resampleData('1D'));
+            loadDataset(rawCandleData, rawVolumeData);
 
-            // Đảm bảo đồ thị bung đều 100% sau khi nạp DOM
-            window.addEventListener('load', resizeAndFitAll);
-            setTimeout(resizeAndFitAll, 100);
-            setTimeout(resizeAndFitAll, 300);
+            window.addEventListener('load', fitAll);
+            window.addEventListener('resize', fitAll);
+            setTimeout(fitAll, 100);
+            setTimeout(fitAll, 300);
 
-            // BẬT / TẮT CHỈ BÁO & HIỂN THỊ SUB-PANEL RIÊNG BIỆT
+            // BẬT / TẮT CHỈ BÁO
             let isMA = true, isEMA = false, isBOLL = false, isMACD = false, isRSI = true;
 
             document.getElementById('btn-ma').addEventListener('click', function() {{
@@ -785,39 +778,33 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 this.classList.toggle('active', isBOLL);
             }});
 
-            // NÚT BẬT / TẮT SUB-PANEL MACD
             document.getElementById('btn-macd').addEventListener('click', function() {{
                 isMACD = !isMACD;
                 this.classList.toggle('active', isMACD);
                 paneMacd.style.display = isMACD ? 'flex' : 'none';
                 sepMacd.style.display = isMACD ? 'block' : 'none';
-                resizeAndFitAll();
+                fitAll();
             }});
 
-            // NÚT BẬT / TẮT SUB-PANEL RSI
             document.getElementById('btn-rsi').addEventListener('click', function() {{
                 isRSI = !isRSI;
                 this.classList.toggle('active', isRSI);
                 paneRsi.style.display = isRSI ? 'flex' : 'none';
                 sepRsi.style.display = isRSI ? 'block' : 'none';
-
-                // Nếu tắt RSI mà bật MACD thì chuyển trục thời gian sang MACD
                 chartMacd.applyOptions({{ timeScale: {{ visible: !isRSI && isMACD }} }});
                 chartVol.applyOptions({{ timeScale: {{ visible: !isRSI && !isMACD }} }});
-                resizeAndFitAll();
+                fitAll();
             }});
 
-            // DROPDOWN CHỌN KHUNG THỜI GIAN (1D, 1W, 1M)
+            // DROPDOWN TIMEFRAME
             const tfBtn = document.getElementById('tf-btn');
             const tfMenu = document.getElementById('tf-menu');
             const tfLabel = document.getElementById('tf-label');
-
             tfBtn.addEventListener('click', (e) => {{
                 e.stopPropagation();
                 tfMenu.classList.toggle('show');
             }});
             document.addEventListener('click', () => tfMenu.classList.remove('show'));
-
             document.querySelectorAll('.tf-item').forEach(item => {{
                 item.addEventListener('click', function(e) {{
                     e.stopPropagation();
@@ -826,11 +813,10 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     const tf = this.getAttribute('data-tf');
                     tfLabel.innerText = this.innerText.trim();
                     tfMenu.classList.remove('show');
-                    applyDataset(resampleData(tf));
+                    const resampled = resampleData(tf);
+                    loadDataset(resampled.candles, resampled.volumes);
                 }});
             }});
-
-            window.addEventListener('resize', resizeAndFitAll);
         </script>
     </body>
     </html>
