@@ -44,8 +44,9 @@ Stock - learning/
 │                               # - generate_portfolio_analysis(): Dùng google-genai (Gemini Flash) phân tích đa chiều
 │
 ├── discord_alerts.py           # 🔔 TẦNG CẢNH BÁO (Notification Layer)
-│                               # - send_discord_message(): Gửi Rich Embed vào kênh Discord qua Webhook
-│                               # - send_personal_dm(): Gửi tin nhắn trực tiếp (DM) vào tài khoản Discord cá nhân
+│                               # - send_discord_webhook(): Gửi Rich Embed độc quyền vào kênh Discord qua Webhook
+│                               # - send_discord_dm(): Gửi tin nhắn trực tiếp (DM) vào tài khoản Discord cá nhân
+│                               # - send_discord_message(): Gửi thông báo tự động (ưu tiên Webhook, fallback DM)
 │                               # - format_portfolio_embed(): Định dạng màu sắc và bảng dữ liệu theo chuẩn Discord
 │
 ├── portfolio.json              # 💾 Dữ liệu danh mục cổ phiếu mẫu (symbol, volume, cost_price, note)
