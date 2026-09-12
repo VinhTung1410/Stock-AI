@@ -4,8 +4,6 @@ from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from dotenv import load_dotenv
 
 from data_engine import load_portfolio, save_portfolio, evaluate_portfolio, fetch_macro_news
@@ -49,30 +47,10 @@ def get_stock_chart_data(symbol: str):
     from vnstock.api.quote import Quote
     q = Quote(symbol=symbol, source="VCI")
     end_date = datetime.now().strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=260)).strftime("%Y-%m-%d")
+    start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
     df = q.history(start=start_date, end=end_date)
     if df is not None and not df.empty:
         df = df.sort_values("time").reset_index(drop=True)
-        # Các đường trung bình động
-        df["MA20"] = df["close"].rolling(20).mean()
-        df["MA50"] = df["close"].rolling(50).mean()
-        
-        # Chỉ báo RSI(14)
-        delta = df["close"].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / loss
-        df["RSI"] = 100 - (100 / (1 + rs))
-
-        # Chỉ báo MACD (12, 26, 9)
-        exp12 = df["close"].ewm(span=12, adjust=False).mean()
-        exp26 = df["close"].ewm(span=26, adjust=False).mean()
-        df["MACD"] = exp12 - exp26
-        df["Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
-        df["Hist"] = df["MACD"] - df["Signal"]
-
-        # Màu khối lượng giao dịch
-        df["Vol_Color"] = ["#22c55e" if c >= o else "#ef4444" for c, o in zip(df["close"], df["open"])]
     return df
 
 
@@ -105,7 +83,10 @@ def get_vnindex_valuation_data():
 
 
 def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
-    """Tạo mã HTML/JS nhúng TradingView Lightweight Charts tương tác 60fps."""
+    """
+    Tạo mã HTML/JS nhúng TradingView Lightweight Charts tương tác 60fps Native,
+    tích hợp thanh công cụ đáy bật tắt MA, EMA, MACD, RSI, BOLL tức thì.
+    """
     candle_list = []
     volume_list = []
     for _, row in df.iterrows():
@@ -131,42 +112,120 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
         <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
         <style>
             * {{ box-sizing: border-box; margin: 0; padding: 0; }}
-            body {{ background-color: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif; overflow: hidden; }}
-            .tv-header {{ display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; background-color: #1e222d; border-bottom: 1px solid #2a2e39; }}
-            .tv-title {{ font-size: 15px; font-weight: 700; color: #f8fafc; display: flex; gap: 12px; align-items: center; }}
-            .badge-sma9 {{ color: #2962FF; font-size: 12px; font-weight: 600; }}
-            .badge-sma20 {{ color: #FF6D00; font-size: 12px; font-weight: 600; }}
-            #tv-chart {{ width: 100%; height: 520px; }}
+            body {{
+                background-color: #131722;
+                color: #d1d4dc;
+                font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, sans-serif;
+                display: flex;
+                flex-direction: column;
+                height: 590px;
+                overflow: hidden;
+            }}
+            .tv-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 8px 16px;
+                background-color: #1e222d;
+                border-bottom: 1px solid #2a2e39;
+            }}
+            .tv-title {{
+                font-size: 15px;
+                font-weight: 700;
+                color: #f8fafc;
+                display: flex;
+                gap: 12px;
+                align-items: center;
+            }}
+            .legend-badge {{
+                font-size: 11px;
+                font-weight: 600;
+                padding: 2px 6px;
+                border-radius: 4px;
+                background-color: rgba(42, 46, 57, 0.6);
+            }}
+            #tv-chart {{
+                flex: 1;
+                width: 100%;
+                position: relative;
+            }}
+            .tv-bottom-toolbar {{
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                gap: 8px;
+                padding: 6px 12px;
+                background-color: #131722;
+                border-top: 1px solid #2a2e39;
+            }}
+            .btn-ind {{
+                background-color: #2a2e39;
+                color: #848e9c;
+                border: 1px solid #363a45;
+                border-radius: 6px;
+                padding: 5px 16px;
+                font-size: 12px;
+                font-weight: 700;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                outline: none;
+            }}
+            .btn-ind:hover {{
+                background-color: #363a45;
+                color: #f8fafc;
+            }}
+            .btn-ind.active {{
+                background-color: #2962FF;
+                color: #ffffff;
+                border-color: #2962FF;
+                box-shadow: 0 0 10px rgba(41, 98, 255, 0.4);
+            }}
         </style>
     </head>
     <body>
         <div class="tv-header">
             <div class="tv-title">
                 <span>{symbol} • 1D</span>
-                <span class="badge-sma9">● SMA 9</span>
-                <span class="badge-sma20">● SMA 20</span>
+                <span class="legend-badge" style="color: #f59e0b;" id="leg-ma20">MA 20</span>
+                <span class="legend-badge" style="color: #3b82f6;" id="leg-ma50">MA 50</span>
+                <span class="legend-badge" style="color: #10b981;" id="leg-ema9">EMA 9</span>
+                <span class="legend-badge" style="color: #38bdf8;" id="leg-boll">BOLL (20,2)</span>
             </div>
             <span style="font-size: 11px; color: #787b86;">TradingView Lightweight Charts • 60 FPS</span>
         </div>
+
         <div id="tv-chart"></div>
+
+        <div class="tv-bottom-toolbar">
+            <button class="btn-ind active" id="btn-ma">MA</button>
+            <button class="btn-ind" id="btn-ema">EMA</button>
+            <button class="btn-ind" id="btn-macd">MACD</button>
+            <button class="btn-ind active" id="btn-rsi">RSI</button>
+            <button class="btn-ind" id="btn-boll">BOLL</button>
+        </div>
 
         <script>
             const container = document.getElementById('tv-chart');
             const chart = LightweightCharts.createChart(container, {{
                 width: container.clientWidth,
-                height: 520,
+                height: container.clientHeight,
                 layout: {{ background: {{ color: '#131722' }}, textColor: '#d1d4dc' }},
-                grid: {{ vertLines: {{ color: 'rgba(42, 46, 57, 0.4)' }}, horzLines: {{ color: 'rgba(42, 46, 57, 0.4)' }} }},
+                grid: {{ vertLines: {{ color: 'rgba(42, 46, 57, 0.35)' }}, horzLines: {{ color: 'rgba(42, 46, 57, 0.35)' }} }},
                 crosshair: {{ mode: LightweightCharts.CrosshairMode.Normal }},
-                rightPriceScale: {{ borderColor: '#2a2e39', scaleMargins: {{ top: 0.1, bottom: 0.25 }} }},
+                rightPriceScale: {{
+                    borderColor: '#2a2e39',
+                    scaleMargins: {{ top: 0.08, bottom: 0.28 }},
+                }},
                 timeScale: {{ borderColor: '#2a2e39', timeVisible: true }},
             }});
 
+            // 1. Candlestick Series
             const candleSeries = chart.addCandlestickSeries({{
                 upColor: '#089981', downColor: '#F23645',
                 borderVisible: false, wickUpColor: '#089981', wickDownColor: '#F23645',
             }});
 
+            // 2. Volume Series (chiếm 20% đáy)
             const volumeSeries = chart.addHistogramSeries({{
                 priceFormat: {{ type: 'volume' }},
                 priceScaleId: '',
@@ -175,12 +234,56 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 scaleMargins: {{ top: 0.8, bottom: 0 }},
             }});
 
-            const sma9Series = chart.addLineSeries({{ color: '#2962FF', lineWidth: 2, title: 'SMA 9' }});
-            const sma20Series = chart.addLineSeries({{ color: '#FF6D00', lineWidth: 2, title: 'SMA 20' }});
+            // 3. MA Series
+            const ma20 = chart.addLineSeries({{ color: '#f59e0b', lineWidth: 1.5, title: 'MA 20', visible: true }});
+            const ma50 = chart.addLineSeries({{ color: '#3b82f6', lineWidth: 1.5, title: 'MA 50', visible: true }});
+
+            // 4. EMA Series
+            const ema9 = chart.addLineSeries({{ color: '#10b981', lineWidth: 1.5, title: 'EMA 9', visible: false }});
+            const ema21 = chart.addLineSeries({{ color: '#ec4899', lineWidth: 1.5, title: 'EMA 21', visible: false }});
+
+            // 5. BOLL Series
+            const bollUpper = chart.addLineSeries({{ color: 'rgba(56, 189, 248, 0.7)', lineWidth: 1, title: 'BOLL Up', visible: false }});
+            const bollMid = chart.addLineSeries({{ color: 'rgba(56, 189, 248, 0.85)', lineWidth: 1, lineStyle: 2, title: 'BOLL Mid', visible: false }});
+            const bollLower = chart.addLineSeries({{ color: 'rgba(56, 189, 248, 0.7)', lineWidth: 1, title: 'BOLL Low', visible: false }});
+
+            // 6. RSI Series (Scale riêng ở đáy)
+            const rsiSeries = chart.addLineSeries({{
+                color: '#a855f7', lineWidth: 1.5, title: 'RSI(14)',
+                priceScaleId: 'rsi_scale', visible: true
+            }});
+            chart.priceScale('rsi_scale').applyOptions({{
+                scaleMargins: {{ top: 0.82, bottom: 0.02 }},
+            }});
+            const rsiUp = chart.addLineSeries({{
+                color: '#ef4444', lineWidth: 1, lineStyle: 2, title: '70',
+                priceScaleId: 'rsi_scale', visible: true
+            }});
+            const rsiDown = chart.addLineSeries({{
+                color: '#22c55e', lineWidth: 1, lineStyle: 2, title: '30',
+                priceScaleId: 'rsi_scale', visible: true
+            }});
+
+            // 7. MACD Series
+            const macdLine = chart.addLineSeries({{
+                color: '#38bdf8', lineWidth: 1.5, title: 'MACD',
+                priceScaleId: 'macd_scale', visible: false
+            }});
+            const macdSignal = chart.addLineSeries({{
+                color: '#f97316', lineWidth: 1.5, title: 'Signal',
+                priceScaleId: 'macd_scale', visible: false
+            }});
+            const macdHist = chart.addHistogramSeries({{
+                priceScaleId: 'macd_scale', visible: false
+            }});
+            chart.priceScale('macd_scale').applyOptions({{
+                scaleMargins: {{ top: 0.82, bottom: 0.02 }},
+            }});
 
             const candleData = {candle_json};
             const volumeData = {volume_json};
 
+            // Hàm tính SMA
             function calculateSMA(data, period) {{
                 const res = [];
                 for (let i = 0; i < data.length; i++) {{
@@ -192,13 +295,161 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 return res;
             }}
 
+            // Hàm tính EMA
+            function calculateEMA(data, period) {{
+                const res = [];
+                if (data.length === 0) return res;
+                const k = 2 / (period + 1);
+                let ema = data[0].close;
+                for (let i = 0; i < data.length; i++) {{
+                    ema = data[i].close * k + ema * (1 - k);
+                    if (i >= period - 1) {{
+                        res.push({{ time: data[i].time, value: parseFloat(ema.toFixed(2)) }});
+                    }}
+                }}
+                return res;
+            }}
+
+            // Hàm tính Bollinger Bands
+            function calculateBOLL(data, period = 20, mult = 2) {{
+                const upper = [], mid = [], lower = [];
+                for (let i = 0; i < data.length; i++) {{
+                    if (i < period - 1) continue;
+                    let sum = 0;
+                    for (let j = 0; j < period; j++) sum += data[i - j].close;
+                    const mean = sum / period;
+                    let varSum = 0;
+                    for (let j = 0; j < period; j++) varSum += Math.pow(data[i - j].close - mean, 2);
+                    const std = Math.sqrt(varSum / period);
+                    const t = data[i].time;
+                    mid.push({{ time: t, value: parseFloat(mean.toFixed(2)) }});
+                    upper.push({{ time: t, value: parseFloat((mean + mult * std).toFixed(2)) }});
+                    lower.push({{ time: t, value: parseFloat((mean - mult * std).toFixed(2)) }});
+                }}
+                return {{ upper, mid, lower }};
+            }}
+
+            // Hàm tính RSI
+            function calculateRSI(data, period = 14) {{
+                const res = [];
+                if (data.length <= period) return res;
+                let gains = 0, losses = 0;
+                for (let i = 1; i <= period; i++) {{
+                    const d = data[i].close - data[i - 1].close;
+                    if (d >= 0) gains += d; else losses -= d;
+                }}
+                let avgG = gains / period, avgL = losses / period;
+                let rs = avgL === 0 ? 100 : avgG / avgL;
+                res.push({{ time: data[period].time, value: parseFloat((100 - (100 / (1 + rs))).toFixed(2)) }});
+                for (let i = period + 1; i < data.length; i++) {{
+                    const d = data[i].close - data[i - 1].close;
+                    avgG = (avgG * (period - 1) + (d > 0 ? d : 0)) / period;
+                    avgL = (avgL * (period - 1) + (d < 0 ? -d : 0)) / period;
+                    rs = avgL === 0 ? 100 : avgG / avgL;
+                    res.push({{ time: data[i].time, value: parseFloat((100 - (100 / (1 + rs))).toFixed(2)) }});
+                }}
+                return res;
+            }}
+
+            // Hàm tính MACD
+            function calculateMACD(data) {{
+                const e12 = calculateEMA(data, 12);
+                const e26 = calculateEMA(data, 26);
+                const map12 = {{}};
+                e12.forEach(d => map12[d.time] = d.value);
+                const mLine = [];
+                e26.forEach(d => {{
+                    if (map12[d.time] !== undefined) {{
+                        const val = map12[d.time] - d.value;
+                        mLine.push({{ time: d.time, value: parseFloat(val.toFixed(2)), close: val }});
+                    }}
+                }});
+                const sLine = calculateEMA(mLine, 9);
+                const sMap = {{}};
+                sLine.forEach(d => sMap[d.time] = d.value);
+                const hList = [];
+                mLine.forEach(d => {{
+                    if (sMap[d.time] !== undefined) {{
+                        const diff = d.value - sMap[d.time];
+                        hList.push({{
+                            time: d.time,
+                            value: parseFloat(diff.toFixed(2)),
+                            color: diff >= 0 ? '#22c55e' : '#ef4444'
+                        }});
+                    }}
+                }});
+                return {{ mLine, sLine, hList }};
+            }}
+
+            // Gán dữ liệu vào Series
             candleSeries.setData(candleData);
             volumeSeries.setData(volumeData);
-            sma9Series.setData(calculateSMA(candleData, 9));
-            sma20Series.setData(calculateSMA(candleData, 20));
+            ma20.setData(calculateSMA(candleData, 20));
+            ma50.setData(calculateSMA(candleData, 50));
+            ema9.setData(calculateEMA(candleData, 9));
+            ema21.setData(calculateEMA(candleData, 21));
+
+            const bollData = calculateBOLL(candleData);
+            bollUpper.setData(bollData.upper);
+            bollMid.setData(bollData.mid);
+            bollLower.setData(bollData.lower);
+
+            const rsiData = calculateRSI(candleData);
+            rsiSeries.setData(rsiData);
+            rsiUp.setData(rsiData.map(d => ({{ time: d.time, value: 70 }})));
+            rsiDown.setData(rsiData.map(d => ({{ time: d.time, value: 30 }})));
+
+            const macdData = calculateMACD(candleData);
+            macdLine.setData(macdData.mLine);
+            macdSignal.setData(macdData.sLine);
+            macdHist.setData(macdData.hList);
+
+            // --- LẮNG NGHE SỰ KIỆN CLICK BẬT / TẮT NÚT BẤM CỦA NGƯỜI DÙNG ---
+            let isMA = true;
+            document.getElementById('btn-ma').addEventListener('click', function() {{
+                isMA = !isMA;
+                ma20.applyOptions({{ visible: isMA }});
+                ma50.applyOptions({{ visible: isMA }});
+                this.classList.toggle('active', isMA);
+            }});
+
+            let isEMA = false;
+            document.getElementById('btn-ema').addEventListener('click', function() {{
+                isEMA = !isEMA;
+                ema9.applyOptions({{ visible: isEMA }});
+                ema21.applyOptions({{ visible: isEMA }});
+                this.classList.toggle('active', isEMA);
+            }});
+
+            let isBOLL = false;
+            document.getElementById('btn-boll').addEventListener('click', function() {{
+                isBOLL = !isBOLL;
+                bollUpper.applyOptions({{ visible: isBOLL }});
+                bollMid.applyOptions({{ visible: isBOLL }});
+                bollLower.applyOptions({{ visible: isBOLL }});
+                this.classList.toggle('active', isBOLL);
+            }});
+
+            let isRSI = true;
+            document.getElementById('btn-rsi').addEventListener('click', function() {{
+                isRSI = !isRSI;
+                rsiSeries.applyOptions({{ visible: isRSI }});
+                rsiUp.applyOptions({{ visible: isRSI }});
+                rsiDown.applyOptions({{ visible: isRSI }});
+                this.classList.toggle('active', isRSI);
+            }});
+
+            let isMACD = false;
+            document.getElementById('btn-macd').addEventListener('click', function() {{
+                isMACD = !isMACD;
+                macdLine.applyOptions({{ visible: isMACD }});
+                macdSignal.applyOptions({{ visible: isMACD }});
+                macdHist.applyOptions({{ visible: isMACD }});
+                this.classList.toggle('active', isMACD);
+            }});
 
             window.addEventListener('resize', () => {{
-                chart.resize(container.clientWidth, 520);
+                chart.resize(container.clientWidth, container.clientHeight);
             }});
         </script>
     </body>
@@ -230,15 +481,15 @@ def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str
         <style>
             * {{ box-sizing: border-box; margin: 0; padding: 0; }}
             body {{ background-color: #1a1d24; color: #d1d4dc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }}
-            .header {{ display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #2d3139; }}
-            .title {{ font-size: 15px; font-weight: 700; color: #f8fafc; }}
+            .header {{ display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid #2d3139; }}
+            .title {{ font-size: 14px; font-weight: 700; color: #f8fafc; }}
             .select-tf {{ background-color: #242933; color: #e2e8f0; border: 1px solid #3b4252; padding: 4px 10px; border-radius: 6px; font-size: 12px; outline: none; cursor: pointer; }}
-            #chart-container {{ width: 100%; height: 440px; }}
+            #chart-container {{ width: 100%; height: 420px; }}
         </style>
     </head>
     <body>
         <div class="header">
-            <span class="title">Định giá theo {metric_name} ⓘ</span>
+            <span class="title">Định giá VN-INDEX theo {metric_name} ⓘ</span>
             <select id="tf-select" class="select-tf">
                 <option value="1m">1 tháng</option>
                 <option value="3m">3 tháng</option>
@@ -382,7 +633,7 @@ with st.sidebar:
 tab_overview, tab_market_val, tab_charts, tab_portfolio, tab_ai = st.tabs([
     "📊 Tổng quan Danh mục", 
     "🏛️ Thị Trường & Định Giá (VN-Index, P/E, P/B)",
-    "📈 Biểu đồ Kỹ thuật (TradingView & Plotly)", 
+    "📈 Biểu đồ Kỹ thuật (TradingView 60 FPS)", 
     "⚙️ Quản lý Danh mục", 
     "🧠 Trợ lý Phân tích AI"
 ])
@@ -429,9 +680,6 @@ with tab_overview:
 
 # --- TAB 2: THỊ TRƯỜNG & ĐỊNH GIÁ (VN-INDEX, P/E, P/B) ---
 with tab_market_val:
-    st.subheader("🏛️ Tổng quan Thị trường Toàn cảnh & Bội số Định giá")
-    st.caption("Theo dõi tương quan chu kỳ giữa điểm số VN-Index và mức độ đắt/rẻ của định giá toàn thị trường.")
-
     df_vnindex = get_vnindex_valuation_data()
     if df_vnindex is not None and not df_vnindex.empty:
         latest_idx = df_vnindex["close"].iloc[-1]
@@ -442,95 +690,42 @@ with tab_market_val:
 
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         kpi1.metric("Chỉ số VN-INDEX", f"{latest_idx:,.2f}", f"{idx_change:+.2f}%")
-        kpi2.metric("P/E Thị Trường", f"{latest_pe:.1f} lần", "Vùng định giá hợp lý")
+        kpi2.metric("P/E Thị Trường", f"{latest_pe:.1f} lần", "Vùng hợp lý")
         kpi3.metric("P/B Thị Trường", f"{latest_pb:.2f} lần", "Hấp dẫn trung hạn")
         kpi4.metric("Thanh khoản phiên", f"{int(df_vnindex['volume'].iloc[-1]):,} cp")
 
-        # 2 Biểu đồ Apache ECharts song song
+        # 1. BIỂU ĐỒ NẾN NHẬT VN-INDEX (TRADINGVIEW 60 FPS)
+        st.subheader("📉 Biểu đồ Kỹ thuật Chỉ số VN-INDEX (TradingView 60 FPS)")
+        tv_vnindex_html = generate_tradingview_html(df_vnindex, "VNINDEX")
+        components.html(tv_vnindex_html, height=600)
+
+        st.divider()
+
+        # 2. HAI BIỂU ĐỒ ĐỊNH GIÁ P/E VÀ P/B CỦA VN-INDEX
+        st.subheader("📊 Tương quan Bội số Định giá Thị trường")
         col_pe, col_pb = st.columns(2)
         with col_pe:
             html_pe = generate_echarts_valuation_html(df_vnindex, metric="PE")
-            components.html(html_pe, height=510)
+            components.html(html_pe, height=480)
 
         with col_pb:
             html_pb = generate_echarts_valuation_html(df_vnindex, metric="PB")
-            components.html(html_pb, height=510)
+            components.html(html_pb, height=480)
     else:
         st.error("Chưa tải được dữ liệu định giá VN-Index từ hệ thống.")
 
 
-# --- TAB 3: BIỂU ĐỒ KỸ THUẬT (TRADINGVIEW & PLOTLY) ---
+# --- TAB 3: BIỂU ĐỒ KỸ THUẬT (TRADINGVIEW 60 FPS MẶC ĐỊNH) ---
 with tab_charts:
     symbols = [item["symbol"] for item in raw_portfolio]
     if symbols:
-        header_col1, header_col2 = st.columns([3, 2])
-        with header_col1:
-            selected_symbol = st.selectbox("🎯 Chọn cổ phiếu cần phân tích kỹ thuật:", symbols)
-        with header_col2:
-            chart_engine = st.radio("🛠️ Chọn Engine Biểu đồ:", ["TradingView Lightweight Charts (60 FPS)", "Plotly Subplots (Kèm RSI & MACD)"], horizontal=True)
-
+        selected_symbol = st.selectbox("🎯 Chọn cổ phiếu cần phân tích kỹ thuật:", symbols)
         df_chart = get_stock_chart_data(selected_symbol)
         
         if df_chart is not None and not df_chart.empty:
-            if chart_engine == "TradingView Lightweight Charts (60 FPS)":
-                # Nhúng trực tiếp TradingView 60fps
-                tv_html = generate_tradingview_html(df_chart, selected_symbol)
-                components.html(tv_html, height=580)
-                st.caption("✨ **TradingView Native:** Lăn con lăn chuột để phóng to/thu nhỏ từng ngày, nhấp giữ chuột trái để kéo pan qua các tháng.")
-            else:
-                # Engine Plotly Subplots
-                c1, c2, c3, c4 = st.columns(4)
-                show_ma20 = c1.checkbox("📈 Đường MA20", value=True)
-                show_ma50 = c2.checkbox("📉 Đường MA50", value=True)
-                show_rsi = c3.checkbox("⚡ Chỉ báo RSI(14)", value=True)
-                show_macd = c4.checkbox("🌊 Chỉ báo MACD", value=True)
-
-                rows = 1
-                row_heights = [0.6]
-                if show_rsi and show_macd:
-                    rows, row_heights, chart_h = 3, [0.55, 0.22, 0.23], 720
-                elif show_rsi or show_macd:
-                    rows, row_heights, chart_h = 2, [0.70, 0.30], 600
-                else:
-                    rows, row_heights, chart_h = 1, [1.0], 480
-
-                fig = make_subplots(rows=rows, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=row_heights)
-                
-                # Nến Nhật
-                fig.add_trace(go.Candlestick(
-                    x=df_chart["time"], open=df_chart["open"], high=df_chart["high"],
-                    low=df_chart["low"], close=df_chart["close"], name="Nến",
-                    increasing_line_color="#22c55e", decreasing_line_color="#ef4444"
-                ), row=1, col=1)
-
-                if show_ma20 and "MA20" in df_chart.columns:
-                    fig.add_trace(go.Scatter(x=df_chart["time"], y=df_chart["MA20"], line=dict(color="#f59e0b", width=1.5), name="MA20"), row=1, col=1)
-                if show_ma50 and "MA50" in df_chart.columns:
-                    fig.add_trace(go.Scatter(x=df_chart["time"], y=df_chart["MA50"], line=dict(color="#3b82f6", width=1.5), name="MA50"), row=1, col=1)
-
-                cur_r = 2
-                if show_rsi:
-                    fig.add_trace(go.Scatter(x=df_chart["time"], y=df_chart["RSI"], line=dict(color="#a855f7", width=1.5), name="RSI(14)"), row=cur_r, col=1)
-                    fig.add_hline(y=70, line_dash="dash", line_color="#ef4444", line_width=1, row=cur_r, col=1)
-                    fig.add_hline(y=30, line_dash="dash", line_color="#22c55e", line_width=1, row=cur_r, col=1)
-                    fig.update_yaxes(title_text="RSI", range=[0, 100], tickvals=[30, 50, 70], row=cur_r, col=1)
-                    cur_r += 1
-
-                if show_macd:
-                    fig.add_trace(go.Scatter(x=df_chart["time"], y=df_chart["MACD"], line=dict(color="#38bdf8", width=1.5), name="MACD"), row=cur_r, col=1)
-                    fig.add_trace(go.Scatter(x=df_chart["time"], y=df_chart["Signal"], line=dict(color="#f97316", width=1.5), name="Signal"), row=cur_r, col=1)
-                    h_colors = ["#22c55e" if h >= 0 else "#ef4444" for h in df_chart["Hist"]]
-                    fig.add_trace(go.Bar(x=df_chart["time"], y=df_chart["Hist"], marker_color=h_colors, name="Hist"), row=cur_r, col=1)
-                    fig.update_yaxes(title_text="MACD", row=cur_r, col=1)
-
-                fig.update_layout(
-                    title=f"<b>{selected_symbol}</b> • Plotly Interactive Chart",
-                    xaxis_rangeslider_visible=False, template="plotly_dark",
-                    height=chart_h, hovermode="x unified",
-                    margin=dict(l=20, r=20, t=50, b=20)
-                )
-                fig.update_xaxes(type="category")
-                st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
+            tv_html = generate_tradingview_html(df_chart, selected_symbol)
+            components.html(tv_html, height=600)
+            st.caption("✨ **TradingView Native 60 FPS:** Nhấp các nút **MA, EMA, MACD, RSI, BOLL** bên dưới đáy biểu đồ để bật/tắt chỉ báo tức thì. Lăn chuột để phóng to/thu nhỏ từng phiên.")
         else:
             st.error(f"Không thể tải biểu đồ cho mã {selected_symbol}")
 
