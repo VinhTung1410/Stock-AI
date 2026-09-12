@@ -1,10 +1,11 @@
 @echo off
 chcp 65001 > nul
-title Trading Bot Canh Thị Trường Chứng Khoán 24/7
+title Test Hệ Thống Cảnh Báo Bot Mua/Bán Discord
 echo =====================================================================
-echo 🤖 ĐANG KHỞI ĐỘNG TRADING BOT CANH THỊ TRƯỜNG & BẮN CẢNH BÁO DISCORD...
+echo 🧪 ĐANG MỞ MENU KIỂM THỬ BOT CẢNH BÁO MUA / BÁN DISCORD...
 echo =====================================================================
 set PYTHONUTF8=1
+cd /d "%~dp0\.."
 call "%USERPROFILE%\.venv\Scripts\activate.bat"
-python trading_bot.py
+python scripts\test_bot_alerts.py
 pause

@@ -1,0 +1,17 @@
+[
+  {
+    "symbol": "FPT",
+    "target_buy": 70.0,
+    "note": "Theo dõi từ Google Sheet"
+  },
+  {
+    "symbol": "HPG",
+    "target_buy": 0.0,
+    "note": "Theo dõi từ Google Sheet"
+  },
+  {
+    "symbol": "MWG",
+    "target_buy": 0.0,
+    "note": "Theo dõi từ Google Sheet"
+  }
+]

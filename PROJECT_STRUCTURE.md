@@ -1,6 +1,6 @@
 # 🏛️ CẤU TRÚC DỰ ÁN & HƯỚNG DẪN TÁI HIỆN (PROJECT STRUCTURE)
 
-Tài liệu này tổng hợp toàn bộ kiến trúc mã nguồn, vai trò từng tệp tin và luồng dữ liệu (Data Flow) của hệ thống **AI Stock Copilot**. Sau này nếu bạn muốn làm lại từ đầu hoặc mở rộng dự án, hãy bám sát tài liệu này.
+Tài liệu này tổng hợp toàn bộ kiến trúc mã nguồn, cấu trúc thư mục, vai trò từng tệp tin và luồng dữ liệu (Data Flow) của hệ thống **AI Stock Copilot**. Khi cần mở rộng tính năng, bảo trì hoặc deploy lên môi trường Production (Render, Koyeb, Streamlit Cloud), hãy bám sát tài liệu này.
 
 ---
 
@@ -9,59 +9,87 @@ Tài liệu này tổng hợp toàn bộ kiến trúc mã nguồn, vai trò từ
 ```text
 Stock - learning/
 │
-├── app.py                      # 🚀 TẦNG ĐIỀU PHỐI (Entrypoint - ~85 dòng)
-│                               # Quản lý giao diện tổng thể, CSS Dark Theme, Sidebar và chia Tab.
+├── app.py                      # 🚀 TẦNG ĐIỀU PHỐI CHÍNH (Entrypoint Streamlit)
+│                               # - Thiết lập cấu hình trang, CSS tùy chỉnh giao diện sáng/tối
+│                               # - Sidebar điều hướng và thanh điều phối 5 Tab nghiệp vụ
 │
-├── components/                 # 📊 TẦNG HIỂN THỊ ĐỒ THỊ (Visualization Components)
-│   ├── __init__.py             # Export các hàm vẽ biểu đồ
-│   ├── tradingview_chart.py    # Nhúng TradingView Lightweight Charts 60 FPS Native
-│   │                           # - Dropdown chọn timeframe: 1m, 5m, 15m, 30m, 1h, 1D, 1W, 1M
-│   │                           # - Loại bỏ 00:00:00 (chỉ hiển thị ngày)
-│   │                           # - Thanh công cụ bật/tắt chỉ báo: MA, EMA, MACD, RSI, BOLL
-│   └── echarts_valuation.py    # Nhúng Apache ECharts định giá thị trường
-│                               # - Biểu đồ kép: Điểm số VN-INDEX (cột trái) vs P/E hoặc P/B (cột phải)
-│                               # - Căn lề cố định chống cắt chữ (/NINDEX)
-│                               # - Đường Định giá Trung bình (Mean Valuation Line: TB: ...x)
-│                               # - Thanh trượt DataZoom tương tác cuộn chuột mượt mà
+├── components/                 # 📊 TẦNG THÀNH PHẦN BIỂU ĐỒ (Visualization Components)
+│   ├── __init__.py             # Export các hàm render biểu đồ
+│   ├── tradingview_chart.py    # Nhúng TradingView Lightweight Charts 60 FPS Native:
+│   │                           # - Hỗ trợ đa khung thời gian: 1m, 5m, 15m, 30m, 1h, 1D, 1W, 1M
+│   │                           # - Subpanel tách riêng: Khối lượng (Volume), MACD, RSI
+│   │                           # - Kéo thả thay đổi độ cao các subpanel (.pane-resizer)
+│   │                           # - Đường dóng dọc liền mạch tuyệt đối (#v-crosshair-line)
+│   │                           # - Định dạng ngày tháng tiếng Việt chuẩn (DD Tháng MM 'YY)
+│   │                           # - Khóa đồng bộ chiều rộng trục giá (minimumWidth: 72)
+│   │                           # - Nạp dữ liệu Whitespace đồng bộ hóa 100% trục thời gian
+│   └── echarts_valuation.py    # Nhúng Apache ECharts định giá bội số P/E & P/B:
+│                               # - Biểu đồ kép: VN-INDEX (trục trái) vs P/E hoặc P/B (trục phải)
+│                               # - Đường Định giá Trung bình Lịch sử (Mean Valuation Line)
+│                               # - Thanh trượt tương tác DataZoom mượt mà ở đáy
+│                               # - Bố cục thoáng đãng, chống đè chữ và che nhãn ngày tháng
 │
-├── tabs/                       # 📑 TẦNG GIAO DIỆN CHỨC NĂNG (Feature Tabs)
+├── tabs/                       # 📑 TẦNG GIAO DIỆN NGHIỆP VỤ (Feature Tabs)
 │   ├── __init__.py             # Export các hàm render Tab
-│   ├── tab_overview.py         # Tab 1: 4 Thẻ KPI vốn/lợi nhuận, 2 nút bắn Discord (Kênh + DM), bảng trạng thái CP
-│   ├── tab_market.py           # Tab 2: VN-Index nến 60 FPS, bộ chọn bố cục định giá (Toàn cảnh P/E, P/B, Song song)
-│   ├── tab_charts.py           # Tab 3: Biểu đồ kỹ thuật phân tích chi tiết cho từng mã CP trong danh mục
-│   ├── tab_portfolio.py        # Tab 4: Bảng st.data_editor chỉnh sửa trực tiếp danh mục & lưu file
-│   └── tab_ai.py               # Tab 5: Giao diện gửi câu hỏi và nhận báo cáo từ chuyên gia chiến lược AI Gemini
+│   ├── tab_overview.py         # Tab 1: Tổng quan Thị trường & Danh mục:
+│   │                           # - Thẻ KPI vốn đầu tư, lãi/lỗ danh mục thời gian thực
+│   │                           # - Bản đồ dòng tiền & sóng ngành nóng trong phiên
+│   │                           # - Tin tức vĩ mô 24h dạng card hiện đại với nhãn chủ đề
+│   │                           # - Nút kích hoạt gửi báo cáo thủ công qua Discord (Kênh / DM)
+│   ├── tab_market.py           # Tab 2: Thị trường & Bội số Định giá:
+│   │                           # - Header Responsive Card chống cắt số liệu (chống ellipsis 1,79...)
+│   │                           # - Thống kê thanh khoản (CP, Tỷ) với màu trung tính chuẩn tài chính
+│   │                           # - Độ rộng thị trường: Số mã tăng (trần), giảm (sàn), tham chiếu
+│   │                           # - Biểu đồ nến TradingView VN-INDEX toàn màn hình
+│   │                           # - Bộ chọn bố cục định giá: Toàn cảnh P/E, Toàn cảnh P/B, Song song
+│   ├── tab_charts.py           # Tab 3: Biểu đồ Kỹ thuật Cổ phiếu:
+│   │                           # - Soi kỹ thuật chuyên sâu từng mã trong danh mục nắm giữ
+│   ├── tab_portfolio.py        # Tab 4: Quản lý Danh mục Đầu tư:
+│   │                           # - Bảng st.data_editor chỉnh sửa trực tiếp số lượng, giá vốn
+│   │                           # - Lưu trữ bền vững vào file portfolio.json
+│   └── tab_ai.py               # Tab 5: Trợ lý Phân tích Chiến lược AI:
+│                               # - Phân tích chuyên sâu 8 trụ cột (Báo cáo tóm tắt 🟢🟡🔴, định giá)
+│                               # - Mô phỏng kịch bản rủi ro thị trường (Lạc quan / Trung lập / Bi quan)
 │
-├── data_engine.py              # ⚙️ TẦNG DỮ LIỆU (Data Layer)
-│                               # - load_portfolio() / save_portfolio(): Đọc/ghi portfolio.json
-│                               # - fetch_stock_technical(): Kéo nến từ Vnstock (VCI), tính MA20, MA50, RSI14, Vol/TB20
-│                               # - evaluate_portfolio(): Tính lãi/lỗ và định giá danh mục
-│                               # - get_stock_chart_data(): Lấy lịch sử 1 năm nến vẽ TradingView
-│                               # - get_vnindex_valuation_data(): Lấy dữ liệu VN-Index kèm chuỗi P/E, P/B
-│                               # - fetch_macro_news(): Crawl tin tức vĩ mô qua Google News RSS
+├── data_engine.py              # ⚙️ TẦNG DỮ LIỆU & TÍNH TOÁN (Data Layer)
+│                               # - Kéo dữ liệu nến EOD/Intraday từ Vnstock (nguồn VCI)
+│                               # - Tính toán chỉ báo kỹ thuật: MA20, MA50, RSI14, Vol/SMA20
+│                               # - Thu thập chuỗi định giá lịch sử P/E, P/B toàn thị trường
+│                               # - Crawl tin tức vĩ mô tự động qua Google News RSS
+│                               # - Quản lý đọc/ghi danh mục đầu tư portfolio.json
 │
 ├── ai_analyst.py               # 🧠 TẦNG TRÍ TUỆ NHÂN TẠO (AI Layer)
-│                               # - generate_portfolio_analysis(): Dùng google-genai (Gemini Flash) phân tích đa chiều
+│                               # - Tích hợp mô hình Gemini 2.5 Pro qua thư viện google-genai
+│                               # - Khung phân tích 8 trụ cột doanh nghiệp & cổ phiếu
+│                               # - Dự báo đa kịch bản rủi ro & kế hoạch hành động phân bổ vốn
 │
-├── discord_alerts.py           # 🔔 TẦNG CẢNH BÁO (Notification Layer)
-│                               # - send_discord_webhook(): Gửi Rich Embed độc quyền vào kênh Discord qua Webhook
-│                               # - send_discord_dm(): Gửi tin nhắn trực tiếp (DM) vào tài khoản Discord cá nhân
-│                               # - send_discord_message(): Gửi thông báo tự động (ưu tiên Webhook, fallback DM)
-│                               # - format_portfolio_embed(): Định dạng màu sắc và bảng dữ liệu theo chuẩn Discord
+├── discord_alerts.py           # 🔔 TẦNG CẢNH BÁO TỰ ĐỘNG (Notification Layer)
+│                               # - Gửi Rich Embed chuyên nghiệp qua Discord Webhook
+│                               # - Gửi Direct Message (DM) trực tiếp tới Discord User cá nhân
+│                               # - Định dạng bảng lãi/lỗ và khuyến nghị hành động mua/bán
 │
-├── trading_bot.py              # 🤖 TẦNG TỰ ĐỘNG HÓA 24/7 (Trading Bot Daemon)
-│                               # - Chạy nền 24/7 độc lập theo múi giờ Asia/Ho_Chi_Minh (UTC+7)
-│                               # - Quét rủi ro mỗi 30s: Cảnh báo Stop Loss (-5%/-7%), gãy MA20 (< 0.5s)
-│                               # - Đặt lịch gửi báo cáo chiến lược AI: 08:45 (ATO), 11:30 (Trưa), 14:45 (ATC)
+├── trading_bot.py              # 🤖 TẦNG TỰ ĐỘNG HÓA 24/7 (Background Trading Bot)
+│                               # - Tiến trình độc lập theo múi giờ Việt Nam (UTC+7)
+│                               # - Canh thị trường định kỳ: Kích hoạt cảnh báo Stop Loss (-5%, -7%)
+│                               # - Đặt lịch tự động bắn báo cáo: ATO (08:45), Trưa (11:30), ATC (14:45)
 │
-├── run_cloud.py                # ☁️ Kịch bản chạy song song Streamlit Web + Bot Daemon trên Cloud
-├── Procfile                    # Chỉ thị lệnh khởi chạy cho Render.com / Koyeb
-├── portfolio.json              # 💾 Dữ liệu danh mục cổ phiếu mẫu (symbol, volume, cost_price, note)
-├── requirements.txt            # Danh sách thư viện Python cần cài đặt
-├── run_dashboard.bat           # File kịch bản chạy nhanh dashboard trên Windows với 1 cú click
-├── run_bot.bat                 # File kịch bản chạy nhanh bot ngầm trên Windows với 1 cú click
-├── .env.example                # File mẫu cấu hình biến môi trường (API Key, Webhook URL, Bot Token)
-└── .env                        # [BẢO MẬT - GITIGNORED] Chứa API Key thật của bạn
+├── run_cloud.py                # ☁️ TIẾN TRÌNH KHỞI CHẠY CLOUD (Dual-Process Runner)
+│                               # - Chạy ngầm Trading Bot Daemon (Thread 1)
+│                               # - Chạy Web Dashboard Streamlit trên cổng $PORT (Thread 2)
+│                               # - Chuyên biệt cho Render.com, Koyeb, Linux VPS
+│
+├── scripts/                    # 🛠️ THƯ MỤC CÔNG CỤ & KỊCH BẢN WINDOWS LOCAL
+│   ├── run_dashboard.bat       # Khởi chạy Dashboard Streamlit trên Local
+│   ├── run_bot.bat             # Khởi chạy độc lập Trading Bot giám sát thị trường
+│   └── clean_cache.bat         # 1-click dọn sạch bytecode và thư mục __pycache__
+│
+├── portfolio.json              # 💾 Cơ sở dữ liệu danh mục cổ phiếu mẫu
+├── requirements.txt            # Danh sách thư viện Python phụ thuộc
+├── Procfile                    # File khai báo tiến trình Web cho Render / Heroku
+├── RENDER_DEPLOY_GUIDE.md      # Cẩm nang hướng dẫn chi tiết Deploy 24/7 lên Render.com
+├── run_dashboard.bat           # File khởi chạy nhanh dashboard tại thư mục gốc
+├── .env.example                # Mẫu khai báo biến môi trường an toàn
+└── .env                        # [BẢO MẬT - GITIGNORED] Khóa API thực tế
 ```
 
 ---
@@ -71,17 +99,17 @@ Stock - learning/
 ```mermaid
 flowchart TD
     subgraph Data Sources
-        Vnstock[Vnstock API VCI] -->|Nến EOD, Giá, Khối lượng| DataEngine[data_engine.py]
-        GoogleNews[Google News RSS] -->|Tin tức vĩ mô| DataEngine
+        Vnstock[Vnstock API / VCI] -->|Nến EOD, Intraday, Khối lượng| DataEngine[data_engine.py]
+        GoogleNews[Google News RSS] -->|Tin tức vĩ mô 24h| DataEngine
         PortfolioJSON[(portfolio.json)] <-->|Đọc / Ghi danh mục| DataEngine
     end
 
-    subgraph Processing & Intelligence
-        DataEngine -->|df_eval danh mục| AIAnalyst[ai_analyst.py Gemini Flash]
-        DataEngine -->|Dữ liệu định giá VN-Index| AppCore[app.py]
-        DataEngine -->|Dữ liệu nến 1 năm| AppCore
-        AIAnalyst -->|Nhận định chiến lược| DiscordAlerts[discord_alerts.py]
-        DataEngine -->|Trạng thái lãi/lỗ| DiscordAlerts
+    subgraph Core Processing
+        DataEngine -->|Chuỗi nến & Chỉ số thị trường| AppCore[app.py]
+        DataEngine -->|Bảng định giá P/E, P/B| AppCore
+        DataEngine -->|Dữ liệu danh mục & Thị trường| AIAnalyst[ai_analyst.py Gemini 2.5 Pro]
+        DataEngine -->|Trạng thái biến động giá| DiscordAlerts[discord_alerts.py]
+        AIAnalyst -->|Báo cáo 8 trụ cột & Kịch bản rủi ro| DiscordAlerts
     end
 
     subgraph User Interface Streamlit
@@ -91,64 +119,32 @@ flowchart TD
         AppCore --> Tab4[tabs/tab_portfolio.py]
         AppCore --> Tab5[tabs/tab_ai.py]
         
-        Tab2 --> CompECharts[components/echarts_valuation.py]
         Tab2 --> CompTV[components/tradingview_chart.py]
+        Tab2 --> CompECharts[components/echarts_valuation.py]
         Tab3 --> CompTV
     end
 
-    subgraph Output Channels
-        DiscordAlerts -->|Webhook| DiscordChannel[Discord Channel #stock-alerts]
-        DiscordAlerts -->|Direct Message| DiscordDM[Discord Cá Nhân User]
-        StreamlitUI[Browser http://localhost:8501] <--> User[Nhà Đầu Tư]
+    subgraph Background Automation
+        TradingBot[trading_bot.py 24/7] -->|Quét giá & Stop Loss| DataEngine
+        TradingBot -->|Lịch trình ATO/Trưa/ATC| DiscordAlerts
+        RunCloud[run_cloud.py] -->|Khởi chạy song song| TradingBot
+        RunCloud -->|Khởi chạy song song| AppCore
+    end
+
+    subgraph External Notification
+        DiscordAlerts -->|Rich Embed| DiscordChannel[Discord Channel #stock-alerts]
+        DiscordAlerts -->|Direct Message| DiscordDM[Discord Private DM]
     end
 ```
 
 ---
 
-## 3. 🛠️ Quy Trình Tái Hiện Dự Án Từ Đầu (Rebuild Checklist)
+## 3. 🛡️ Quy Tắc Triển Khai & Phân Loại File (Deployment Hygiene)
 
-Nếu bạn muốn tạo lại dự án này trên một máy tính mới, hãy làm theo các bước chuẩn:
-
-### Bước 1: Khởi tạo môi trường ảo
-```powershell
-python -m venv $HOME\.venv
-& "$HOME\.venv\Scripts\Activate.ps1"
-python -m pip install -U pip
-```
-
-### Bước 2: Cài đặt thư viện cốt lõi (`requirements.txt`)
-```text
-streamlit>=1.40.0
-vnstock>=4.0.7
-google-genai>=1.0.0
-feedparser>=6.0.11
-python-dotenv>=1.0.1
-requests>=2.31.0
-pandas>=2.0.0
-numpy>=1.24.0
-```
-Cài đặt bằng lệnh:
-```powershell
-pip install -r requirements.txt
-```
-
-### Bước 3: Cấu hình file `.env`
-Tạo file `.env` tại thư mục gốc với các thông số:
-```env
-# 1. Google Gemini Flash API Key (Miễn phí tại aistudio.google.com)
-GEMINI_API_KEY="AIzaSy..."
-
-# 2. Discord Webhook URL (Để bắn tin vào kênh chung)
-DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
-
-# 3. Discord Bot Token & User ID (Tùy chọn - Để bot bắn tin nhắn riêng DM)
-DISCORD_BOT_TOKEN="MTM..."
-DISCORD_USER_ID="123456789012345678"
-```
-
-### Bước 4: Chạy Dashboard
-```powershell
-streamlit run app.py
-```
-Hoặc nhấp đúp chuột vào file `run_dashboard.bat`.
-Mở trình duyệt truy cập: `http://localhost:8501`.
+1. **Thư mục gốc (Root Directory)**:
+   * Chỉ giữ các tệp Python cốt lõi phục vụ Production: `app.py`, `run_cloud.py`, `data_engine.py`, `ai_analyst.py`, `trading_bot.py`, `discord_alerts.py`, `Procfile`, `requirements.txt`.
+   * Các tệp cấu hình: `.env.example`, `.gitignore`, `portfolio.json`.
+2. **Thư mục `scripts/`**:
+   * Chứa toàn bộ kịch bản batch (`.bat`) trên hệ điều hành Windows. Render / Koyeb chạy Linux sẽ bỏ qua các file này, giúp quá trình Build Image nhanh và không bị lỗi file lạ.
+3. **Thư mục `components/` & `tabs/`**:
+   * Phân tách mạch lạc giữa tầng render biểu đồ độc lập và tầng giao diện chức năng của Streamlit.

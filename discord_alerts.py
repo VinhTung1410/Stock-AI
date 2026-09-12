@@ -127,7 +127,11 @@ def split_ai_summary_into_fields(ai_summary: str) -> list:
         "I. ĐÁNH GIÁ SỨC KHỎE DANH MỤC",
         "II. TÁC ĐỘNG VĨ MÔ & DÒNG TIỀN",
         "III. KỊCH BẢN & CHIẾN LƯỢC HÀNH ĐỘNG",
-        "IV. CỔ PHIẾU / NGÀNH ĐÓN SÓNG TIỀM NĂNG"
+        "IV. CỔ PHIẾU / NGÀNH ĐÓN SÓNG TIỀM NĂNG",
+        "I. NHẬN ĐỊNH ĐẦU PHIÊN ATO",
+        "II. HÀNH ĐỘNG VỚI DANH MỤC HIỆN TẠI",
+        "III. 🎯 TOP CỔ PHIẾU KHUYẾN NGHỊ HÔM NAY",
+        "III. TOP CỔ PHIẾU KHUYẾN NGHỊ HÔM NAY"
     ]
     
     fields = []
@@ -220,13 +224,50 @@ def format_portfolio_embed(portfolio_df, ai_summary: str, report_type: str = "B�
     return embed
 
 
+def send_trade_signal_alert(symbol: str, action: str, current_price: float, trigger_reason: str, target_price: float = None, stop_loss: float = None) -> bool:
+    """
+    Gửi cảnh báo tín hiệu MUA hoặc BÁN bảo mật trực tiếp vào Tin nhắn riêng (DM) của bạn.
+    Không gửi vào group/kênh chung để bảo mật danh mục và chiến lược giao dịch cá nhân.
+    """
+    is_buy = "MUA" in action.upper()
+    color = 0x2ECC71 if is_buy else 0xE74C3C
+    icon = "🟢" if is_buy else "🔴"
+    action_str = "MUA / TÍCH LŨY" if is_buy else "BÁN / HẠ TỶ TRỌNG"
+
+    fields = [
+        {"name": "💵 Thị giá hiện tại", "value": f"`{current_price:,.2f} k VND`", "inline": True},
+        {"name": "🎯 Lý do kích hoạt", "value": f"`{trigger_reason}`", "inline": False},
+    ]
+    if target_price:
+        fields.append({"name": "🚀 Giá mục tiêu (Target)", "value": f"`{target_price:,.2f} k VND`", "inline": True})
+    if stop_loss:
+        fields.append({"name": "🛡️ Ngưỡng cắt lỗ (Stop Loss)", "value": f"`{stop_loss:,.2f} k VND`", "inline": True})
+
+    embed = {
+        "title": f"{icon} [DM RIÊNG] TÍN HIỆU {action_str}: {symbol.upper()}",
+        "description": f"Hệ thống Trading Bot vừa phát hiện tín hiệu kỹ thuật cho mã **{symbol.upper()}** (Gửi bảo mật vào DM riêng)!",
+        "color": color,
+        "fields": fields,
+        "footer": {
+            "text": "Trading Signal Bot • Tín hiệu riêng tư 24/7",
+        },
+    }
+    
+    # Ưu tiên gửi thẳng vào DM riêng của User
+    if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
+        return send_discord_dm(embeds=[embed])
+    else:
+        logging.warning("Chưa cấu hình DISCORD_BOT_TOKEN hoặc DISCORD_USER_ID để gửi DM! Tạm thời fallback sang Webhook...")
+        return send_discord_webhook(embeds=[embed])
+
+
 def send_risk_alert(symbol: str, current_price: float, cost_price: float, trigger_reason: str):
     """
-    Gửi cảnh báo rủi ro khẩn cấp khi gãy nền hoặc chạm ngưỡng Stop Loss.
+    Gửi cảnh báo rủi ro khẩn cấp vào Tin nhắn riêng (DM).
     """
     pnl_pct = ((current_price - cost_price) / cost_price) * 100
     embed = {
-        "title": f"🚨 CẢNH BÁO RỦI RO DANH MỤC: {symbol}",
+        "title": f"🚨 [DM RIÊNG] CẢNH BÁO RỦI RO: {symbol}",
         "description": (
             f"Mã **{symbol}** vừa kích hoạt tín hiệu quản trị rủi ro!\n\n"
             f"- **Lý do:** `{trigger_reason}`\n"
@@ -236,10 +277,13 @@ def send_risk_alert(symbol: str, current_price: float, cost_price: float, trigge
         ),
         "color": 0xE74C3C,  # Đỏ khẩn cấp
         "footer": {
-            "text": "Risk Management Bot • Cảnh báo tức thời",
+            "text": "Risk Management Bot • Cảnh báo riêng tư",
         },
     }
-    return send_discord_message(embeds=[embed])
+    if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
+        return send_discord_dm(embeds=[embed])
+    else:
+        return send_discord_webhook(embeds=[embed])
 
 
 if __name__ == "__main__":

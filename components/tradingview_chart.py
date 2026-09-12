@@ -234,25 +234,26 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 position: relative;
             }}
 
-            /* 3. ĐƯỜNG GIÓNG CROSSHAIR CẮT XUYÊN SUỐT TẤT CẢ CÁC PANE */
+            /* 3. ĐƯỜNG GIÓNG CROSSHAIR LIỀN MẠCH CẮT XUYÊN SUỐT TẤT CẢ CÁC PANE */
             #v-crosshair-line {{
                 position: absolute;
                 top: 0;
                 bottom: 0;
                 width: 1px;
-                border-left: 1px dashed rgba(209, 212, 220, 0.6);
+                border-left: 1px dashed rgba(148, 163, 184, 0.75);
                 pointer-events: none;
                 display: none;
-                z-index: 90;
+                z-index: 95;
             }}
             #v-crosshair-badge {{
                 position: absolute;
-                bottom: 3px;
-                background-color: #2962FF;
+                bottom: 2px;
+                background-color: #2a2e39;
                 color: #ffffff;
                 font-size: 11px;
                 font-weight: 700;
                 padding: 2px 8px;
+                border: 1px solid #363a45;
                 border-radius: 4px;
                 transform: translateX(-50%);
                 pointer-events: none;
@@ -261,6 +262,23 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 box-shadow: 0 2px 8px rgba(0,0,0,0.75);
                 font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, monospace;
                 white-space: nowrap;
+            }}
+
+            /* RESIZER CHO PHÉP KÉO LÊN KÉO XUỐNG CHỈNH ĐỘ CAO CÁC SUBPANEL */
+            .pane-resizer {{
+                width: 100%;
+                height: 4px;
+                background-color: #1e222d;
+                border-top: 1px solid #2a2e39;
+                border-bottom: 1px solid #131722;
+                cursor: row-resize;
+                z-index: 50;
+                transition: background-color 0.15s ease;
+                flex-shrink: 0;
+            }}
+            .pane-resizer:hover, .pane-resizer.active {{
+                background-color: #2962FF !important;
+                height: 5px;
             }}
         </style>
     </head>
@@ -340,6 +358,9 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 <div class="pane-chart-container" id="container-main"></div>
             </div>
 
+            <!-- THANH KÉO CHỈNH ĐỘ CAO CHO KHỐI LƯỢNG -->
+            <div class="pane-resizer" id="resizer-vol" data-pane="vol" title="Kéo lên / kéo xuống để chỉnh độ cao đồ thị Khối lượng"></div>
+
             <!-- PANE 2: ĐỒ THỊ KHỐI LƯỢNG TÁCH RIÊNG Ở DƯỚI -->
             <div class="pane-box" id="pane-vol">
                 <div class="pane-header-bar">
@@ -350,6 +371,9 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 </div>
                 <div class="pane-chart-container" id="container-vol"></div>
             </div>
+
+            <!-- THANH KÉO CHỈNH ĐỘ CAO CHO MACD -->
+            <div class="pane-resizer" id="resizer-macd" data-pane="macd" style="display: none;" title="Kéo lên / kéo xuống để chỉnh độ cao đồ thị MACD"></div>
 
             <!-- PANE 3: ĐỒ THỊ MACD TÁCH RIÊNG (Ẩn mặc định) -->
             <div class="pane-box" id="pane-macd" style="display: none;">
@@ -362,6 +386,9 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 </div>
                 <div class="pane-chart-container" id="container-macd"></div>
             </div>
+
+            <!-- THANH KÉO CHỈNH ĐỘ CAO CHO RSI -->
+            <div class="pane-resizer" id="resizer-rsi" data-pane="rsi" title="Kéo lên / kéo xuống để chỉnh độ cao đồ thị RSI"></div>
 
             <!-- PANE 4: ĐỒ THỊ RSI TÁCH RIÊNG (Bật mặc định) -->
             <div class="pane-box" id="pane-rsi">
@@ -388,7 +415,22 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             const vLine = document.getElementById('v-crosshair-line');
             const vBadge = document.getElementById('v-crosshair-badge');
 
-            // CẤU HÌNH TIME SCALE: Chống co cụm nến
+            const vnMonthNames = {{
+                1: 'Tháng 1',
+                2: 'Tháng Hai',
+                3: 'Tháng 3',
+                4: 'Tháng 4',
+                5: 'Tháng Năm',
+                6: 'Tháng 6',
+                7: 'Tháng 7',
+                8: 'Tháng Tám',
+                9: 'Tháng 9',
+                10: 'Tháng 10',
+                11: 'Tháng 11',
+                12: 'Tháng Mười hai'
+            }};
+
+            // CẤU HÌNH TIME SCALE: Chống co cụm nến & Định dạng ngày tháng tiếng Việt chuẩn TradingView
             const makeTimeScale = (showTimeAxis) => ({{
                 borderColor: '#2a2e39',
                 timeVisible: false,
@@ -398,15 +440,54 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 fixRightEdge: true,
                 minBarSpacing: 1,
                 rightOffset: 2,
+                tickMarkFormatter: (time, tickMarkType, locale) => {{
+                    let d;
+                    if (typeof time === 'number') {{
+                        d = new Date(time * 1000);
+                    }} else if (typeof time === 'string') {{
+                        const p = time.split('-');
+                        d = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+                    }} else if (time && time.year) {{
+                        d = new Date(time.year, time.month - 1, time.day);
+                    }}
+                    if (!d || isNaN(d.getTime())) return '';
+
+                    const m = d.getMonth() + 1;
+                    const y = d.getFullYear();
+                    const day = d.getDate();
+
+                    if (tickMarkType === 0) return String(y);
+                    if (tickMarkType === 1) return vnMonthNames[m] || ('Tháng ' + m);
+                    if (tickMarkType === 2) return String(day);
+                    if (tickMarkType === 3) {{
+                        const hh = String(d.getHours()).padStart(2, '0');
+                        const mm = String(d.getMinutes()).padStart(2, '0');
+                        return `${{hh}}:${{mm}}`;
+                    }}
+                    return vnMonthNames[m] || ('Tháng ' + m);
+                }},
             }});
 
             const makeOptions = (showTimeAxis) => ({{
                 layout: {{ background: {{ color: '#131722' }}, textColor: '#d1d4dc' }},
                 grid: {{ vertLines: {{ color: 'rgba(42, 46, 57, 0.25)' }}, horzLines: {{ color: 'rgba(42, 46, 57, 0.25)' }} }},
-                crosshair: {{ mode: LightweightCharts.CrosshairMode.Normal }},
+                crosshair: {{
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: {{
+                        visible: false, // Dùng đường dóng #v-crosshair-line liền mạch tuyệt đối xuyên suốt các pane
+                    }},
+                    horzLine: {{
+                        visible: true,
+                        style: LightweightCharts.LineStyle.Dashed,
+                        width: 1,
+                        color: 'rgba(148, 163, 184, 0.75)',
+                        labelVisible: true,
+                    }},
+                }},
                 rightPriceScale: {{
                     borderColor: '#2a2e39',
                     scaleMargins: {{ top: 0.08, bottom: 0.08 }},
+                    minimumWidth: 72,
                 }},
                 timeScale: makeTimeScale(showTimeAxis),
                 localization: {{ dateFormat: 'yyyy-MM-dd' }},
@@ -417,31 +498,33 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             const candleSeries = chartMain.addCandlestickSeries({{
                 upColor: '#089981', downColor: '#F23645',
                 borderVisible: false, wickUpColor: '#089981', wickDownColor: '#F23645',
+                lastValueVisible: true, priceLineVisible: true,
+                crosshairMarkerVisible: false,
             }});
-            const ma20 = chartMain.addLineSeries({{ color: '#f59e0b', lineWidth: 1.5, title: 'MA 20', visible: true }});
-            const ma50 = chartMain.addLineSeries({{ color: '#3b82f6', lineWidth: 1.5, title: 'MA 50', visible: true }});
-            const ema9 = chartMain.addLineSeries({{ color: '#10b981', lineWidth: 1.5, title: 'EMA 9', visible: false }});
-            const ema21 = chartMain.addLineSeries({{ color: '#ec4899', lineWidth: 1.5, title: 'EMA 21', visible: false }});
-            const bollUpper = chartMain.addLineSeries({{ color: 'rgba(56, 189, 248, 0.7)', lineWidth: 1, title: 'BOLL Up', visible: false }});
-            const bollMid = chartMain.addLineSeries({{ color: 'rgba(56, 189, 248, 0.85)', lineWidth: 1, lineStyle: 2, title: 'BOLL Mid', visible: false }});
-            const bollLower = chartMain.addLineSeries({{ color: 'rgba(56, 189, 248, 0.7)', lineWidth: 1, title: 'BOLL Low', visible: false }});
+            const ma20 = chartMain.addLineSeries({{ color: '#f59e0b', lineWidth: 1.5, title: '', visible: true, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const ma50 = chartMain.addLineSeries({{ color: '#3b82f6', lineWidth: 1.5, title: '', visible: true, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const ema9 = chartMain.addLineSeries({{ color: '#10b981', lineWidth: 1.5, title: '', visible: false, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const ema21 = chartMain.addLineSeries({{ color: '#ec4899', lineWidth: 1.5, title: '', visible: false, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const bollUpper = chartMain.addLineSeries({{ color: 'rgba(56, 189, 248, 0.7)', lineWidth: 1, title: '', visible: false, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const bollMid = chartMain.addLineSeries({{ color: 'rgba(56, 189, 248, 0.85)', lineWidth: 1, lineStyle: 2, title: '', visible: false, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const bollLower = chartMain.addLineSeries({{ color: 'rgba(56, 189, 248, 0.7)', lineWidth: 1, title: '', visible: false, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
 
             // 2. Chart Khối Lượng Tách Riêng Ở Dưới
             const chartVol = LightweightCharts.createChart(cVol, makeOptions(false));
-            const volumeSeries = chartVol.addHistogramSeries({{ priceFormat: {{ type: 'volume' }} }});
-            const volSmaSeries = chartVol.addLineSeries({{ color: '#f59e0b', lineWidth: 1.5, title: 'SMA 20' }});
+            const volumeSeries = chartVol.addHistogramSeries({{ priceFormat: {{ type: 'volume' }}, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const volSmaSeries = chartVol.addLineSeries({{ color: '#f59e0b', lineWidth: 1.5, title: '', lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
 
             // 3. Chart MACD Tách Riêng
             const chartMacd = LightweightCharts.createChart(cMacd, makeOptions(false));
-            const macdLine = chartMacd.addLineSeries({{ color: '#38bdf8', lineWidth: 1.5 }});
-            const macdSignal = chartMacd.addLineSeries({{ color: '#f97316', lineWidth: 1.5 }});
-            const macdHist = chartMacd.addHistogramSeries();
+            const macdLine = chartMacd.addLineSeries({{ color: '#38bdf8', lineWidth: 1.5, title: '', lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const macdSignal = chartMacd.addLineSeries({{ color: '#f97316', lineWidth: 1.5, title: '', lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const macdHist = chartMacd.addHistogramSeries({{ lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
 
             // 4. Chart RSI Tách Riêng
             const chartRsi = LightweightCharts.createChart(cRsi, makeOptions(true));
-            const rsiSeries = chartRsi.addLineSeries({{ color: '#a855f7', lineWidth: 1.8 }});
-            const rsiUp = chartRsi.addLineSeries({{ color: '#ef4444', lineWidth: 1, lineStyle: 2 }});
-            const rsiDown = chartRsi.addLineSeries({{ color: '#22c55e', lineWidth: 1, lineStyle: 2 }});
+            const rsiSeries = chartRsi.addLineSeries({{ color: '#a855f7', lineWidth: 1.8, title: '', lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const rsiUp = chartRsi.addLineSeries({{ color: '#ef4444', lineWidth: 1, lineStyle: 2, title: '', lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
+            const rsiDown = chartRsi.addLineSeries({{ color: '#22c55e', lineWidth: 1, lineStyle: 2, title: '', lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }});
 
             const allCharts = [
                 {{ chart: chartMain, series: candleSeries, key: 'main' }},
@@ -475,10 +558,13 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             function calculateSMA(data, period) {{
                 const res = [];
                 for (let i = 0; i < data.length; i++) {{
-                    if (i < period - 1) continue;
-                    let sum = 0;
-                    for (let j = 0; j < period; j++) sum += data[i - j].close;
-                    res.push({{ time: data[i].time, value: parseFloat((sum / period).toFixed(2)) }});
+                    if (i < period - 1) {{
+                        res.push({{ time: data[i].time }});
+                    }} else {{
+                        let sum = 0;
+                        for (let j = 0; j < period; j++) sum += data[i - j].close;
+                        res.push({{ time: data[i].time, value: parseFloat((sum / period).toFixed(2)) }});
+                    }}
                 }}
                 return res;
             }}
@@ -490,7 +576,9 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 let ema = data[0].close;
                 for (let i = 0; i < data.length; i++) {{
                     ema = data[i].close * k + ema * (1 - k);
-                    if (i >= period - 1) {{
+                    if (i < period - 1) {{
+                        res.push({{ time: data[i].time }});
+                    }} else {{
                         res.push({{ time: data[i].time, value: parseFloat(ema.toFixed(2)) }});
                     }}
                 }}
@@ -500,42 +588,55 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             function calculateBOLL(data, period = 20, mult = 2) {{
                 const upper = [], mid = [], lower = [];
                 for (let i = 0; i < data.length; i++) {{
-                    if (i < period - 1) continue;
-                    let sum = 0;
-                    for (let j = 0; j < period; j++) sum += data[i - j].close;
-                    const mean = sum / period;
-                    let varSum = 0;
-                    for (let j = 0; j < period; j++) varSum += Math.pow(data[i - j].close - mean, 2);
-                    const std = Math.sqrt(varSum / period);
                     const t = data[i].time;
-                    mid.push({{ time: t, value: parseFloat(mean.toFixed(2)) }});
-                    upper.push({{ time: t, value: parseFloat((mean + mult * std).toFixed(2)) }});
-                    lower.push({{ time: t, value: parseFloat((mean - mult * std).toFixed(2)) }});
+                    if (i < period - 1) {{
+                        upper.push({{ time: t }});
+                        mid.push({{ time: t }});
+                        lower.push({{ time: t }});
+                    }} else {{
+                        let sum = 0;
+                        for (let j = 0; j < period; j++) sum += data[i - j].close;
+                        const mean = sum / period;
+                        let varSum = 0;
+                        for (let j = 0; j < period; j++) varSum += Math.pow(data[i - j].close - mean, 2);
+                        const std = Math.sqrt(varSum / period);
+                        mid.push({{ time: t, value: parseFloat(mean.toFixed(2)) }});
+                        upper.push({{ time: t, value: parseFloat((mean + mult * std).toFixed(2)) }});
+                        lower.push({{ time: t, value: parseFloat((mean - mult * std).toFixed(2)) }});
+                    }}
                 }}
                 return {{ upper, mid, lower }};
             }}
 
             function calculateRSI(data, period = 14) {{
                 const res = [];
-                if (data.length <= period) return res;
-                let gains = 0, losses = 0;
-                for (let i = 1; i <= period; i++) {{
-                    const diff = data[i].close - data[i - 1].close;
-                    if (diff >= 0) gains += diff; else losses -= diff;
+                if (data.length <= period) {{
+                    return data.map(d => ({{ time: d.time }}));
                 }}
-                let avgGain = gains / period;
-                let avgLoss = losses / period;
-                let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-                res.push({{ time: data[period].time, value: parseFloat((100 - (100 / (1 + rs))).toFixed(2)) }});
-
-                for (let i = period + 1; i < data.length; i++) {{
-                    const diff = data[i].close - data[i - 1].close;
-                    const g = diff >= 0 ? diff : 0;
-                    const l = diff < 0 ? -diff : 0;
-                    avgGain = (avgGain * (period - 1) + g) / period;
-                    avgLoss = (avgLoss * (period - 1) + l) / period;
-                    rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-                    res.push({{ time: data[i].time, value: parseFloat((100 - (100 / (1 + rs))).toFixed(2)) }});
+                let gains = 0, losses = 0;
+                for (let i = 0; i < data.length; i++) {{
+                    if (i < period) {{
+                        if (i > 0) {{
+                            const diff = data[i].close - data[i - 1].close;
+                            if (diff >= 0) gains += diff; else losses -= diff;
+                        }}
+                        res.push({{ time: data[i].time }});
+                    }} else if (i === period) {{
+                        const diff = data[i].close - data[i - 1].close;
+                        if (diff >= 0) gains += diff; else losses -= diff;
+                        let avgGain = gains / period;
+                        let avgLoss = losses / period;
+                        let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+                        res.push({{ time: data[i].time, value: parseFloat((100 - (100 / (1 + rs))).toFixed(2)) }});
+                    }} else {{
+                        const diff = data[i].close - data[i - 1].close;
+                        const g = diff >= 0 ? diff : 0;
+                        const l = diff < 0 ? -diff : 0;
+                        gains = (gains * (period - 1) + g) / period;
+                        losses = (losses * (period - 1) + l) / period;
+                        let rs = losses === 0 ? 100 : gains / losses;
+                        res.push({{ time: data[i].time, value: parseFloat((100 - (100 / (1 + rs))).toFixed(2)) }});
+                    }}
                 }}
                 return res;
             }}
@@ -544,43 +645,61 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 const ema12 = calculateEMA(data, 12);
                 const ema26 = calculateEMA(data, 26);
                 const map26 = {{}};
-                ema26.forEach(d => map26[d.time] = d.value);
+                ema26.forEach(d => {{ if (d.value !== undefined) map26[d.time] = d.value; }});
 
                 const macdRaw = [];
-                ema12.forEach(d => {{
-                    if (map26[d.time] !== undefined) {{
-                        macdRaw.push({{ time: d.time, close: parseFloat((d.value - map26[d.time]).toFixed(2)) }});
+                for (let i = 0; i < data.length; i++) {{
+                    const t = data[i].time;
+                    const e12 = ema12[i] ? ema12[i].value : undefined;
+                    const e26 = map26[t];
+                    if (e12 !== undefined && e26 !== undefined) {{
+                        macdRaw.push({{ time: t, value: parseFloat((e12 - e26).toFixed(2)) }});
+                    }} else {{
+                        macdRaw.push({{ time: t }});
                     }}
-                }});
+                }}
 
-                const signalRaw = calculateEMA(macdRaw, 9);
-                const mapSig = {{}};
-                signalRaw.forEach(d => mapSig[d.time] = d.value);
-
+                const k = 2 / (9 + 1);
+                let emaSig = 0, count = 0;
                 const mLine = [], sLine = [], hList = [];
-                macdRaw.forEach(d => {{
-                    const sVal = mapSig[d.time];
-                    mLine.push({{ time: d.time, value: d.close }});
-                    if (sVal !== undefined) {{
-                        sLine.push({{ time: d.time, value: sVal }});
-                        const diff = parseFloat((d.close - sVal).toFixed(2));
-                        hList.push({{
-                            time: d.time,
-                            value: diff,
-                            color: diff >= 0 ? '#26a69a' : '#ef5350'
-                        }});
+
+                for (let i = 0; i < data.length; i++) {{
+                    const t = data[i].time;
+                    const mVal = macdRaw[i].value;
+                    if (mVal !== undefined) {{
+                        mLine.push({{ time: t, value: mVal }});
+                        count++;
+                        if (count === 1) emaSig = mVal;
+                        else emaSig = mVal * k + emaSig * (1 - k);
+
+                        if (count >= 9) {{
+                            const sVal = parseFloat(emaSig.toFixed(2));
+                            const diff = parseFloat((mVal - sVal).toFixed(2));
+                            sLine.push({{ time: t, value: sVal }});
+                            hList.push({{ time: t, value: diff, color: diff >= 0 ? '#26a69a' : '#ef5350' }});
+                        }} else {{
+                            sLine.push({{ time: t }});
+                            hList.push({{ time: t }});
+                        }}
+                    }} else {{
+                        mLine.push({{ time: t }});
+                        sLine.push({{ time: t }});
+                        hList.push({{ time: t }});
                     }}
-                }});
+                }}
                 return {{ mLine, sLine, hList }};
             }}
 
             function calculateVolSMA(vols, period = 20) {{
                 const res = [];
                 for (let i = 0; i < vols.length; i++) {{
-                    if (i < period - 1) continue;
-                    let sum = 0;
-                    for (let j = 0; j < period; j++) sum += vols[i - j].value;
-                    res.push({{ time: vols[i].time, value: parseFloat((sum / period).toFixed(0)) }});
+                    if (i < period - 1) {{
+                        res.push({{ time: vols[i].time }});
+                    }} else {{
+                        let sum = 0;
+                        for (let j = 0; j < period; j++) sum += vols[i - j].value;
+                        res.push({{ time: vols[i].time, value: parseFloat((sum / period).toFixed(0)) }});
+                    }}
                 }}
                 return res;
             }}
@@ -743,12 +862,18 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     const hh = String(d.getHours()).padStart(2, '0');
                     const mm = String(d.getMinutes()).padStart(2, '0');
                     const dd = String(d.getDate()).padStart(2, '0');
-                    const mo = String(d.getMonth() + 1).padStart(2, '0');
-                    return `${{hh}}:${{mm}} ${{dd}}/${{mo}}`;
+                    const mo = d.getMonth() + 1;
+                    const y = String(d.getFullYear()).slice(2);
+                    const mName = vnMonthNames[mo] || ('Tháng ' + mo);
+                    return `${{hh}}:${{mm}} ${{dd}} ${{mName}} '${{y}}`;
                 }}
                 const parts = String(tStr).split('-');
                 if (parts.length === 3) {{
-                    return `${{parts[2]}} Thg ${{parseInt(parts[1])}} '${{parts[0].slice(2)}}`;
+                    const y = parts[0].slice(2);
+                    const m = parseInt(parts[1]);
+                    const d = parts[2];
+                    const mName = vnMonthNames[m] || ('Tháng ' + m);
+                    return `${{d}} ${{mName}} '${{y}}`;
                 }}
                 return tStr;
             }}
@@ -821,6 +946,38 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 }}
             }}
 
+            // ĐỘ CAO MẶC ĐỊNH & CÓ THỂ KÉO CO GIÃN CỦA CÁC PANE PHỤ
+            let paneHeights = {{ vol: 80, macd: 95, rsi: 80 }};
+
+            function initResizers() {{
+                const resizers = document.querySelectorAll('.pane-resizer');
+                resizers.forEach(resizer => {{
+                    resizer.addEventListener('mousedown', (e) => {{
+                        e.preventDefault();
+                        const paneKey = resizer.getAttribute('data-pane');
+                        const startY = e.clientY;
+                        const startH = paneHeights[paneKey] || 80;
+                        resizer.classList.add('active');
+
+                        const onMouseMove = (moveEvent) => {{
+                            const deltaY = moveEvent.clientY - startY;
+                            const newH = Math.max(35, Math.min(260, startH - deltaY));
+                            paneHeights[paneKey] = newH;
+                            recalcLayout();
+                        }};
+
+                        const onMouseUp = () => {{
+                            resizer.classList.remove('active');
+                            document.removeEventListener('mousemove', onMouseMove);
+                            document.removeEventListener('mouseup', onMouseUp);
+                        }};
+
+                        document.addEventListener('mousemove', onMouseMove);
+                        document.addEventListener('mouseup', onMouseUp);
+                    }});
+                }});
+            }}
+
             // HÀM TỰ TÍNH TOÁN BỐ CỤC KHÔNG ĐỂ KHOẢNG TRỐNG VÀ KHÔNG BỊ TRÀN KHUNG
             function recalcLayout() {{
                 const wrapper = document.getElementById('panes-wrapper');
@@ -829,11 +986,20 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
 
                 if (!totalW || totalW <= 50 || !totalH || totalH <= 100) return;
 
-                const volH = isVol ? 80 : 0;
-                const macdH = isMacd ? 95 : 0;
-                const rsiH = isRsi ? 80 : 0;
+                const rVol = document.getElementById('resizer-vol');
+                const rMacd = document.getElementById('resizer-macd');
+                const rRsi = document.getElementById('resizer-rsi');
 
-                const mainH = Math.max(160, totalH - (volH + macdH + rsiH));
+                if (rVol) rVol.style.display = isVol ? 'block' : 'none';
+                if (rMacd) rMacd.style.display = isMacd ? 'block' : 'none';
+                if (rRsi) rRsi.style.display = isRsi ? 'block' : 'none';
+
+                const volH = isVol ? (paneHeights.vol || 80) : 0;
+                const macdH = isMacd ? (paneHeights.macd || 95) : 0;
+                const rsiH = isRsi ? (paneHeights.rsi || 80) : 0;
+                const resizerH = (isVol ? 4 : 0) + (isMacd ? 4 : 0) + (isRsi ? 4 : 0);
+
+                const mainH = Math.max(120, totalH - (volH + macdH + rsiH + resizerH));
 
                 pMain.style.height = mainH + 'px';
                 cMain.style.height = (mainH - 22) + 'px';
@@ -966,9 +1132,11 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 recalcLayout();
             }}
 
-            // ĐỒNG BỘ RÊ CHUỘT: ĐƯỜNG GIÓNG THẲNG ĐỨNG CẮT XUYÊN SUỐT TOÀN BỘ CÁC PANE
+            // ĐỒNG BỘ RÊ CHUỘT: ĐƯỜNG GIÓNG LIỀN MẠCH CẮT XUYÊN SUỐT TOÀN BỘ CÁC PANE
+            let isSyncingCrosshair = false;
             allCharts.forEach(sourceItem => {{
                 sourceItem.chart.subscribeCrosshairMove(param => {{
+                    if (isSyncingCrosshair) return;
                     if (!param || !param.time || param.point === undefined || param.point.x < 0) {{
                         vLine.style.display = 'none';
                         vBadge.style.display = 'none';
@@ -980,41 +1148,45 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     }}
 
                     const t = param.time;
+                    isSyncingCrosshair = true;
 
-                    // 1. Cập nhật đường gióng nét đứt (----) cắt xuyên suốt tất cả các pane
-                    vLine.style.display = 'block';
-                    vLine.style.left = param.point.x + 'px';
+                    // 1. Tính toán tọa độ X chuẩn xác theo timeScale và hiển thị đường dóng dọc liền mạch tuyệt đối
+                    const snapX = sourceItem.chart.timeScale().timeToCoordinate(t);
+                    if (snapX !== null && snapX !== undefined && snapX >= 0) {{
+                        vLine.style.left = snapX + 'px';
+                        vLine.style.display = 'block';
+                        vBadge.style.left = snapX + 'px';
+                        vBadge.style.display = 'block';
+                        vBadge.innerText = formatDateBadge(t);
+                    }}
 
-                    // 2. Cập nhật nhãn ngày nổi bật ở chân trục thời gian
-                    vBadge.style.display = 'block';
-                    vBadge.style.left = param.point.x + 'px';
-                    vBadge.innerText = formatDateBadge(t);
-
-                    // 3. Gọi setCrosshairPosition đồng bộ sang các chart phụ
+                    // 2. Gọi setCrosshairPosition đồng bộ horizontal crosshair sang các chart phụ
                     const cData = dataMaps.candle[t];
                     const vData = dataMaps.volume[t];
                     const rData = dataMaps.rsi[t];
                     const mData = dataMaps.macdLine[t];
 
-                    if (cData && sourceItem.key !== 'main') {{
-                        try {{ chartMain.setCrosshairPosition(cData.close, t, candleSeries); }} catch(e) {{}}
+                    if (sourceItem.key !== 'main') {{
+                        try {{ chartMain.setCrosshairPosition(cData ? cData.close : 1000, t, candleSeries); }} catch(e) {{}}
                     }}
-                    if (isVol && vData !== undefined && sourceItem.key !== 'vol') {{
-                        try {{ chartVol.setCrosshairPosition(vData, t, volumeSeries); }} catch(e) {{}}
+                    if (isVol && sourceItem.key !== 'vol') {{
+                        try {{ chartVol.setCrosshairPosition(vData !== undefined ? vData : 0, t, volumeSeries); }} catch(e) {{}}
                     }}
-                    if (isMacd && mData !== undefined && sourceItem.key !== 'macd') {{
-                        try {{ chartMacd.setCrosshairPosition(mData, t, macdLine); }} catch(e) {{}}
+                    if (isMacd && sourceItem.key !== 'macd') {{
+                        try {{ chartMacd.setCrosshairPosition(mData !== undefined ? mData : 0, t, macdLine); }} catch(e) {{}}
                     }}
-                    if (isRsi && rData !== undefined && sourceItem.key !== 'rsi') {{
-                        try {{ chartRsi.setCrosshairPosition(rData, t, rsiSeries); }} catch(e) {{}}
+                    if (isRsi && sourceItem.key !== 'rsi') {{
+                        try {{ chartRsi.setCrosshairPosition(rData !== undefined ? rData : 50, t, rsiSeries); }} catch(e) {{}}
                     }}
 
-                    // 4. Nhảy số liệu tức thì trên tất cả các Header
+                    isSyncingCrosshair = false;
+
+                    // 3. Nhảy số liệu tức thì trên tất cả các Header
                     updateAllPanes(t);
                 }});
             }});
 
-            // Ẩn đường gióng khi chuột rời khỏi vùng đồ thị
+            // Ẩn crosshair khi chuột rời khỏi vùng đồ thị
             document.getElementById('panes-wrapper').addEventListener('mouseleave', () => {{
                 vLine.style.display = 'none';
                 vBadge.style.display = 'none';
@@ -1023,6 +1195,9 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 }});
                 updateAllPanes(latestTime);
             }});
+
+            // KHỞI TẠO CÁC THANH KÉO ĐỘ CAO (RESIZER)
+            initResizers();
 
             // NẠP DỮ LIỆU BAN ĐẦU
             loadDataset(rawCandleData, rawVolumeData);

@@ -11,8 +11,12 @@ def render_tab_charts(raw_portfolio: list):
         df_chart = get_stock_chart_data(selected_symbol)
         
         if df_chart is not None and not df_chart.empty:
+            st.markdown("""
+            <div style="background: #1e222d; border: 1px solid #2a2e39; border-radius: 12px; padding: 4px; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); margin-bottom: 12px;">
+            """, unsafe_allow_html=True)
             tv_html = generate_tradingview_html(df_chart, selected_symbol)
             components.html(tv_html, height=530)
+            st.markdown("</div>", unsafe_allow_html=True)
             st.caption("✨ **Biểu đồ Kỹ thuật:** Chọn khung thời gian (Phút, Giờ, Ngày, Tuần, Tháng) ở header. Bật/tắt chỉ báo **MA, EMA, MACD, RSI, BOLL** bên dưới đáy. Rê chuột trên nến để xem chi tiết từng chỉ báo. Lăn chuột để phóng to/thu nhỏ.")
         else:
             st.error(f"Không thể tải biểu đồ cho mã {selected_symbol}")

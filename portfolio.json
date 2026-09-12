@@ -3,18 +3,18 @@
     "symbol": "BSR",
     "volume": 700,
     "cost_price": 27.16,
-    "note": "Dầu khí / Lọc hóa dầu"
+    "note": ""
   },
   {
     "symbol": "MSB",
     "volume": 56,
     "cost_price": 10.65,
-    "note": "Ngân hàng"
+    "note": ""
   },
   {
     "symbol": "SSI",
     "volume": 1000,
     "cost_price": 21.21,
-    "note": "Chứng khoán"
+    "note": ""
   }
 ]
