@@ -10,9 +10,8 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
       + Pane 2: Đồ thị Khối lượng Volume tách riêng + SMA 20.
       + Pane 3: Sub-panel MACD (Line, Signal, Histogram).
       + Pane 4: Sub-panel RSI (14) + 70/30.
-    - Hàm recalcLayout(): Tự động co giãn nến chiếm toàn bộ không gian khi tắt các subpanel,
-      hoàn toàn không để khoảng trống đen vô nghĩa (triệt tiêu lỗi hình 2).
-    - Nút chỉ báo đưa lên Header đỉnh: Luôn hiển thị 100%, không bị mất lựa chọn khi khung nhỏ.
+    - Đường gióng Crosshair thẳng đứng (dấu ----) cắt xuyên suốt 100% từ đỉnh Pane Nến xuống tận đáy cùng của tất cả các Subpanel kèm Nhãn Ngày Tháng nổi bật ở chân trục thời gian.
+    - Hàm recalcLayout(): Tự động co giãn nến chiếm toàn bộ không gian khi tắt các subpanel, không để khoảng trống đen.
     - Đồng bộ Crosshair & Header: Trỏ chuột vào bất kỳ ngày nào, toàn bộ 4 pane đều nhảy đúng số liệu ngày đó.
     """
     candle_list = []
@@ -52,7 +51,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 flex-direction: column;
             }}
 
-            /* 1. THANH HEADER CHÍNH TRÊN ĐỈNH - KHÔNG BAO GIỜ BỊ MẤT LỰA CHỌN */
+            /* 1. THANH HEADER CHÍNH TRÊN ĐỈNH */
             .main-header {{
                 display: flex;
                 align-items: center;
@@ -191,6 +190,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 height: 100%;
                 background-color: #131722;
                 overflow: hidden;
+                position: relative;
             }}
             .pane-box {{
                 width: 100%;
@@ -221,6 +221,35 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 width: 100%;
                 flex: 1;
                 position: relative;
+            }}
+
+            /* 3. ĐƯỜNG GIÓNG CROSSHAIR CẮT XUYÊN SUỐT TẤT CẢ CÁC PANE */
+            #v-crosshair-line {{
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 1px;
+                border-left: 1px dashed rgba(209, 212, 220, 0.6);
+                pointer-events: none;
+                display: none;
+                z-index: 90;
+            }}
+            #v-crosshair-badge {{
+                position: absolute;
+                bottom: 3px;
+                background-color: #2962FF;
+                color: #ffffff;
+                font-size: 11px;
+                font-weight: 700;
+                padding: 2px 8px;
+                border-radius: 4px;
+                transform: translateX(-50%);
+                pointer-events: none;
+                display: none;
+                z-index: 100;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.75);
+                font-family: -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, monospace;
+                white-space: nowrap;
             }}
         </style>
     </head>
@@ -274,9 +303,13 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             </div>
         </div>
 
-        <!-- 2. BỐ CỤC CÁC PANE ĐỒ THỊ (TỰ CO GIÃN 100% CHIỀU CAO) -->
+        <!-- 2. BỐ CỤC CÁC PANE ĐỒ THỊ -->
         <div class="panes-wrapper" id="panes-wrapper">
-            <!-- PANE 1: BIỂU ĐỒ NẾN CHÍNH (Tự co giãn chiếm toàn bộ không gian còn lại) -->
+            <!-- ĐƯỜNG GIÓNG CROSSHAIR CẮT XUYÊN SUỐT TOÀN BỘ CÁC PANE -->
+            <div id="v-crosshair-line"></div>
+            <div id="v-crosshair-badge"></div>
+
+            <!-- PANE 1: BIỂU ĐỒ NẾN CHÍNH -->
             <div class="pane-box" id="pane-main">
                 <div class="pane-header-bar" id="hdr-main">
                     <span id="badge-ma20" style="color: #f59e0b;">MA 20: <b>--</b></span>
@@ -299,7 +332,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 <div class="pane-chart-container" id="container-vol"></div>
             </div>
 
-            <!-- PANE 3: ĐỒ THỊ MACD TÁCH RIÊNG (Ẩn mặc định, bật khi click MACD) -->
+            <!-- PANE 3: ĐỒ THỊ MACD TÁCH RIÊNG (Ẩn mặc định) -->
             <div class="pane-box" id="pane-macd" style="display: none;">
                 <div class="pane-header-bar">
                     <span style="color:#f8fafc; font-weight:700;">MACD</span>
@@ -333,7 +366,10 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             const pMacd = document.getElementById('pane-macd');
             const pRsi = document.getElementById('pane-rsi');
 
-            // CẤU HÌNH TIME SCALE: Chống co cụm nến (minBarSpacing: 1, fitContent linh hoạt)
+            const vLine = document.getElementById('v-crosshair-line');
+            const vBadge = document.getElementById('v-crosshair-badge');
+
+            // CẤU HÌNH TIME SCALE: Chống co cụm nến
             const makeTimeScale = (showTimeAxis) => ({{
                 borderColor: '#2a2e39',
                 timeVisible: false,
@@ -388,21 +424,26 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             const rsiUp = chartRsi.addLineSeries({{ color: '#ef4444', lineWidth: 1, lineStyle: 2 }});
             const rsiDown = chartRsi.addLineSeries({{ color: '#22c55e', lineWidth: 1, lineStyle: 2 }});
 
-            const allCharts = [chartMain, chartVol, chartMacd, chartRsi];
+            const allCharts = [
+                {{ chart: chartMain, series: candleSeries, key: 'main' }},
+                {{ chart: chartVol, series: volumeSeries, key: 'vol' }},
+                {{ chart: chartMacd, series: macdLine, key: 'macd' }},
+                {{ chart: chartRsi, series: rsiSeries, key: 'rsi' }}
+            ];
 
             // TRẠNG THÁI HIỂN THỊ CÁC CHỈ BÁO & SUBPANEL
             let isMA = true, isEMA = false, isBOLL = false;
             let isVol = true, isMacd = false, isRsi = true;
             let isSyncing = false;
 
-            // ĐỒNG BỘ CUỘN VÀ ZOOM GIỮA CÁC PANE (CHỈ ĐỒNG BỘ KHI NGƯỜI DÙNG TƯƠNG TÁC)
-            allCharts.forEach((source, sIdx) => {{
-                source.timeScale().subscribeVisibleLogicalRangeChange(range => {{
+            // ĐỒNG BỘ CUỘN VÀ ZOOM GIỮA CÁC PANE
+            allCharts.forEach((sourceItem, sIdx) => {{
+                sourceItem.chart.timeScale().subscribeVisibleLogicalRangeChange(range => {{
                     if (isSyncing || !range) return;
                     isSyncing = true;
-                    allCharts.forEach((target, tIdx) => {{
+                    allCharts.forEach((targetItem, tIdx) => {{
                         if (sIdx !== tIdx) {{
-                            target.timeScale().setVisibleLogicalRange(range);
+                            targetItem.chart.timeScale().setVisibleLogicalRange(range);
                         }}
                     }});
                     isSyncing = false;
@@ -412,7 +453,6 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
             const rawCandleData = {candle_json};
             const rawVolumeData = {volume_json};
 
-            // HÀM TÍNH TOÁN CÁC CHỈ BÁO KỸ THUẬT
             function calculateSMA(data, period) {{
                 const res = [];
                 for (let i = 0; i < data.length; i++) {{
@@ -577,7 +617,6 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 return {{ candles: rawCandleData, volumes: rawVolumeData }};
             }}
 
-            // BẢNG MAP DỮ LIỆU ĐỂ TRUY XUẤT NHANH KHI RÊ CHUỘT
             let dataMaps = {{
                 candle: {{}}, volume: {{}}, volSma: {{}},
                 ma20: {{}}, ma50: {{}}, ema9: {{}}, ema21: {{}},
@@ -592,6 +631,15 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 if (val >= 1e6) return (val / 1e6).toFixed(3) + 'M';
                 if (val >= 1e3) return (val / 1e3).toFixed(1) + 'K';
                 return val.toString();
+            }}
+
+            function formatDateBadge(tStr) {{
+                if (!tStr) return '';
+                const parts = tStr.split('-');
+                if (parts.length === 3) {{
+                    return `${{parts[2]}} Thg ${{parseInt(parts[1])}} '${{parts[0].slice(2)}}`;
+                }}
+                return tStr;
             }}
 
             function updateAllPanes(t) {{
@@ -662,7 +710,7 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 }}
             }}
 
-            // HÀM QUAN TRỌNG: TỰ TÍNH TOÁN BỐ CỤC KHÔNG ĐỂ KHOẢNG TRỐNG VÀ KHÔNG BỊ TRÀN KHUNG
+            // HÀM TỰ TÍNH TOÁN BỐ CỤC KHÔNG ĐỂ KHOẢNG TRỐNG VÀ KHÔNG BỊ TRÀN KHUNG
             function recalcLayout() {{
                 const wrapper = document.getElementById('panes-wrapper');
                 const totalW = wrapper.clientWidth || window.innerWidth;
@@ -670,19 +718,15 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
 
                 if (!totalW || totalW <= 50 || !totalH || totalH <= 100) return;
 
-                // Đo chiều cao phân bổ cho từng subpanel đang bật
                 const volH = isVol ? 100 : 0;
                 const macdH = isMacd ? 115 : 0;
                 const rsiH = isRsi ? 105 : 0;
 
-                // Nến chính chiếm trọn vẹn 100% không gian còn lại (không để trống như hình 2)
                 const mainH = Math.max(160, totalH - (volH + macdH + rsiH));
 
-                // 1. Áp dụng hiển thị / ẩn và chiều cao cho Pane Nến chính
                 pMain.style.height = mainH + 'px';
                 cMain.style.height = (mainH - 22) + 'px';
 
-                // 2. Áp dụng cho Pane Volume
                 if (isVol) {{
                     pVol.style.display = 'flex';
                     pVol.style.height = volH + 'px';
@@ -691,7 +735,6 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     pVol.style.display = 'none';
                 }}
 
-                // 3. Áp dụng cho Pane MACD
                 if (isMacd) {{
                     pMacd.style.display = 'flex';
                     pMacd.style.height = macdH + 'px';
@@ -700,7 +743,6 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     pMacd.style.display = 'none';
                 }}
 
-                // 4. Áp dụng cho Pane RSI
                 if (isRsi) {{
                     pRsi.style.display = 'flex';
                     pRsi.style.height = rsiH + 'px';
@@ -709,7 +751,6 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     pRsi.style.display = 'none';
                 }}
 
-                // Tìm pane thấp nhất để hiển thị Trục thời gian (TimeScale)
                 const activeList = [
                     {{ chart: chartMain, active: true }},
                     {{ chart: chartVol, active: isVol }},
@@ -722,13 +763,11 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                     item.chart.applyOptions({{ timeScale: {{ visible: isLast }} }});
                 }});
 
-                // Resize các chart theo kích thước thực
                 chartMain.resize(totalW, mainH - 22);
                 if (isVol) chartVol.resize(totalW, volH - 22);
                 if (isMacd) chartMacd.resize(totalW, macdH - 22);
                 if (isRsi) chartRsi.resize(totalW, rsiH - 22);
 
-                // Căng nến trải đều màn hình
                 isSyncing = true;
                 chartMain.timeScale().fitContent();
                 const vRange = chartMain.timeScale().getVisibleLogicalRange();
@@ -807,15 +846,62 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
                 recalcLayout();
             }}
 
-            // ĐỒNG BỘ RÊ CHUỘT CROSSHAIR MOVE
-            allCharts.forEach(chart => {{
-                chart.subscribeCrosshairMove(param => {{
-                    if (!param || !param.time || param.point === undefined) {{
+            // ĐỒNG BỘ RÊ CHUỘT: ĐƯỜNG GIÓNG THẲNG ĐỨNG CẮT XUYÊN SUỐT TOÀN BỘ CÁC PANE
+            allCharts.forEach(sourceItem => {{
+                sourceItem.chart.subscribeCrosshairMove(param => {{
+                    if (!param || !param.time || param.point === undefined || param.point.x < 0) {{
+                        vLine.style.display = 'none';
+                        vBadge.style.display = 'none';
+                        allCharts.forEach(item => {{
+                            try {{ item.chart.clearCrosshairPosition(); }} catch(e) {{}}
+                        }});
                         updateAllPanes(latestTime);
                         return;
                     }}
-                    updateAllPanes(param.time);
+
+                    const t = param.time;
+
+                    // 1. Cập nhật đường gióng nét đứt (----) cắt xuyên suốt tất cả các pane
+                    vLine.style.display = 'block';
+                    vLine.style.left = param.point.x + 'px';
+
+                    // 2. Cập nhật nhãn ngày nổi bật ở chân trục thời gian
+                    vBadge.style.display = 'block';
+                    vBadge.style.left = param.point.x + 'px';
+                    vBadge.innerText = formatDateBadge(t);
+
+                    // 3. Gọi setCrosshairPosition đồng bộ sang các chart phụ
+                    const cData = dataMaps.candle[t];
+                    const vData = dataMaps.volume[t];
+                    const rData = dataMaps.rsi[t];
+                    const mData = dataMaps.macdLine[t];
+
+                    if (cData && sourceItem.key !== 'main') {{
+                        try {{ chartMain.setCrosshairPosition(cData.close, t, candleSeries); }} catch(e) {{}}
+                    }}
+                    if (isVol && vData !== undefined && sourceItem.key !== 'vol') {{
+                        try {{ chartVol.setCrosshairPosition(vData, t, volumeSeries); }} catch(e) {{}}
+                    }}
+                    if (isMacd && mData !== undefined && sourceItem.key !== 'macd') {{
+                        try {{ chartMacd.setCrosshairPosition(mData, t, macdLine); }} catch(e) {{}}
+                    }}
+                    if (isRsi && rData !== undefined && sourceItem.key !== 'rsi') {{
+                        try {{ chartRsi.setCrosshairPosition(rData, t, rsiSeries); }} catch(e) {{}}
+                    }}
+
+                    // 4. Nhảy số liệu tức thì trên tất cả các Header
+                    updateAllPanes(t);
                 }});
+            }});
+
+            // Ẩn đường gióng khi chuột rời khỏi vùng đồ thị
+            document.getElementById('panes-wrapper').addEventListener('mouseleave', () => {{
+                vLine.style.display = 'none';
+                vBadge.style.display = 'none';
+                allCharts.forEach(item => {{
+                    try {{ item.chart.clearCrosshairPosition(); }} catch(e) {{}}
+                }});
+                updateAllPanes(latestTime);
             }});
 
             // NẠP DỮ LIỆU BAN ĐẦU
