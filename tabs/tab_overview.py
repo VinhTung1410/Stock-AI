@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from data_engine import fetch_macro_news
-from discord_alerts import send_discord_message, format_portfolio_embed, send_personal_dm
+from discord_alerts import send_discord_message, format_portfolio_embed, send_discord_dm
 
 def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list):
     """Render Tab 1: Tổng quan danh mục, Bảng trạng thái, Cảnh báo Discord & Tin tức vĩ mô."""

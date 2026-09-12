@@ -19,8 +19,8 @@ def render_tab_market(df_vnindex: pd.DataFrame):
         kpi3.metric("P/B Thị Trường", f"{latest_pb:.2f} lần", "Hấp dẫn trung hạn")
         kpi4.metric("Thanh khoản phiên", f"{int(df_vnindex['volume'].iloc[-1]):,} cp")
 
-        # 1. BIỂU ĐỒ NẾN NHẬT VN-INDEX (TRADINGVIEW 60 FPS)
-        st.subheader("📉 Biểu đồ Kỹ thuật Chỉ số VN-INDEX (TradingView 60 FPS)")
+        # 1. BIỂU ĐỒ NẾN NHẬT VN-INDEX
+        st.subheader("📉 Biểu đồ Kỹ thuật Chỉ số VN-INDEX")
         tv_vnindex_html = generate_tradingview_html(df_vnindex, "VNINDEX")
         components.html(tv_vnindex_html, height=600)
 
