@@ -12,7 +12,7 @@ def render_tab_charts(raw_portfolio: list):
         
         if df_chart is not None and not df_chart.empty:
             tv_html = generate_tradingview_html(df_chart, selected_symbol)
-            components.html(tv_html, height=600)
+            components.html(tv_html, height=725)
             st.caption("✨ **Biểu đồ Kỹ thuật:** Chọn khung thời gian (Phút, Giờ, Ngày, Tuần, Tháng) ở header. Bật/tắt chỉ báo **MA, EMA, MACD, RSI, BOLL** bên dưới đáy. Rê chuột trên nến để xem chi tiết từng chỉ báo. Lăn chuột để phóng to/thu nhỏ.")
         else:
             st.error(f"Không thể tải biểu đồ cho mã {selected_symbol}")
