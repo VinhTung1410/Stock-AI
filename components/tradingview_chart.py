@@ -718,9 +718,9 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
 
                 if (!totalW || totalW <= 50 || !totalH || totalH <= 100) return;
 
-                const volH = isVol ? 100 : 0;
-                const macdH = isMacd ? 115 : 0;
-                const rsiH = isRsi ? 105 : 0;
+                const volH = isVol ? 80 : 0;
+                const macdH = isMacd ? 95 : 0;
+                const rsiH = isRsi ? 80 : 0;
 
                 const mainH = Math.max(160, totalH - (volH + macdH + rsiH));
 

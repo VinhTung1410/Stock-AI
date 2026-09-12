@@ -58,6 +58,7 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list):
                 "Thay đổi (%)": "{:+.2f}%",
                 "Lãi/Lỗ (%)": "{:+.2f}%",
                 "Lãi/Lỗ (VND)": "{:+,.0f}",
+                "RSI(14)": lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
                 "Vol/TB20": "{:.2f}",
             }),
             use_container_width=True,
