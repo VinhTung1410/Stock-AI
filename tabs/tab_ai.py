@@ -1,4 +1,5 @@
 import re
+import textwrap
 import streamlit as st
 import pandas as pd
 from data_engine import (
@@ -106,12 +107,69 @@ def render_tab_ai(df_eval: pd.DataFrame):
         fin_data = get_financial_ratios(target_symbol)
 
         if tech_data:
-            c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("Thị giá", f"{tech_data.get('current_price', 'N/A')} k", f"{tech_data.get('change_pct', 0):+.2f}%")
-            c2.metric("RSI (14)", f"{tech_data.get('rsi14', 'N/A')}")
-            c3.metric("P/E", f"{fin_data.get('pe', 'N/A')}")
-            c4.metric("P/B", f"{fin_data.get('pb', 'N/A')}")
-            c5.metric("ROE (%)", f"{fin_data.get('roe', 'N/A')}%" if fin_data.get('roe') is not None else "N/A")
+            chg = tech_data.get('change_pct', 0)
+            chg_color = "#15803d" if chg >= 0 else "#dc2626"
+            chg_bg = "rgba(22, 163, 74, 0.1)" if chg >= 0 else "rgba(220, 38, 38, 0.1)"
+            chg_sign = "+" if chg > 0 else ""
+
+            rsi_val = tech_data.get('rsi14', 'N/A')
+            try:
+                rsi_num = float(rsi_val)
+                if rsi_num > 70:
+                    rsi_status = '<span style="color:#dc2626; font-size:10.5px; font-weight:700;">(Quá mua)</span>'
+                elif rsi_num < 30:
+                    rsi_status = '<span style="color:#15803d; font-size:10.5px; font-weight:700;">(Quá bán)</span>'
+                else:
+                    rsi_status = '<span style="color:#64748b; font-size:10.5px; font-weight:600;">(Trung tính)</span>'
+            except:
+                rsi_status = ""
+
+            pe_val = fin_data.get('pe', 'N/A')
+            pb_val = fin_data.get('pb', 'N/A')
+            roe_val = f"{fin_data.get('roe', 'N/A')}%" if fin_data.get('roe') is not None else "N/A"
+
+            metrics_grid_html = textwrap.dedent(f"""
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin: 16px 0 20px 0;">
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">THỊ GIÁ</div>
+                    <div style="font-size: 21px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                        {tech_data.get('current_price', 'N/A')} <span style="font-size: 13px; font-weight: 600; color: #64748b;">k</span>
+                    </div>
+                    <div style="display: inline-block; background: {chg_bg}; color: {chg_color}; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; margin-top: 4px;">
+                        {chg_sign}{chg:.2f}%
+                    </div>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">RSI (14)</div>
+                    <div style="font-size: 21px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                        {rsi_val}
+                    </div>
+                    <div style="margin-top: 4px;">{rsi_status}</div>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">P/E</div>
+                    <div style="font-size: 21px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                        {pe_val} <span style="font-size: 13px; font-weight: 600; color: #64748b;">x</span>
+                    </div>
+                    <div style="font-size: 11px; font-weight: 600; color: #94a3b8; margin-top: 4px;">Bội số giá/LN</div>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">P/B</div>
+                    <div style="font-size: 21px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                        {pb_val} <span style="font-size: 13px; font-weight: 600; color: #64748b;">x</span>
+                    </div>
+                    <div style="font-size: 11px; font-weight: 600; color: #94a3b8; margin-top: 4px;">Bội số giá/sách</div>
+                </div>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">ROE</div>
+                    <div style="font-size: 21px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                        {roe_val}
+                    </div>
+                    <div style="font-size: 11px; font-weight: 600; color: #94a3b8; margin-top: 4px;">Hiệu quả vốn</div>
+                </div>
+            </div>
+            """).strip()
+            st.html(metrics_grid_html)
 
         btn_key = f"btn_run_deep_{target_symbol}"
         if st.button(f"⚡ Lập Báo Cáo Chuyên Sâu 8 Trụ Cột Cho [{target_symbol}]", type="primary", use_container_width=True, key=btn_key):

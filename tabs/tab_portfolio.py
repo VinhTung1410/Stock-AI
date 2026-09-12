@@ -25,17 +25,21 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
     # PHẦN 1: QUẢN LÝ CỔ PHIẾU NẮM GIỮ (HOLDINGS)
     # ==========================================
     st.markdown("#### 📋 1. Danh mục Cổ phiếu Đang Nắm Giữ (Holdings - Trang tính 1)")
-    df_raw = pd.DataFrame(raw_portfolio) if raw_portfolio else pd.DataFrame(columns=["symbol", "volume", "cost_price", "note"])
+    valid_p = [p for p in raw_portfolio if p.get("symbol") and str(p["symbol"]).strip()] if raw_portfolio else []
+    df_raw = pd.DataFrame(valid_p) if valid_p else pd.DataFrame(columns=["symbol", "volume", "cost_price", "note"])
+    p_height = min(360, (len(df_raw) + 2) * 36 + 10)
+
     edited_p_df = st.data_editor(
         df_raw,
         num_rows="dynamic",
         use_container_width=True,
+        height=p_height,
         key="editor_portfolio",
         column_config={
-            "symbol": st.column_config.TextColumn("Mã CP", required=True),
-            "volume": st.column_config.NumberColumn("Số lượng", min_value=0, step=10, required=True),
-            "cost_price": st.column_config.NumberColumn("Giá vốn (k)", min_value=0.0, step=0.05, format="%.2f", required=True),
-            "note": st.column_config.TextColumn("Ghi chú / Nhóm ngành"),
+            "symbol": st.column_config.TextColumn("Mã CP", required=True, placeholder="+ Nhập mã (FPT, HPG...)"),
+            "volume": st.column_config.NumberColumn("Số lượng", min_value=0, step=10, required=True, placeholder="100"),
+            "cost_price": st.column_config.NumberColumn("Giá vốn (k)", min_value=0.0, step=0.05, format="%.2f", required=True, placeholder="25.50"),
+            "note": st.column_config.TextColumn("Ghi chú / Nhóm ngành", placeholder="+ Thêm ghi chú..."),
         }
     )
 
@@ -44,7 +48,7 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
         # Chuẩn hóa mã viết hoa
         for p in new_portfolio:
             p["symbol"] = str(p.get("symbol", "")).strip().upper()
-        new_portfolio = [p for p in new_portfolio if p["symbol"]]
+        new_portfolio = [p for p in new_portfolio if p["symbol"] and p["symbol"] != "NAN"]
 
         save_portfolio(new_portfolio)
         synced_sheet = False
@@ -65,16 +69,20 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
     # ==========================================
     st.markdown("#### 🎯 2. Danh mục Cổ phiếu Đang Theo Dõi (Watchlist - Trang tính 2)")
     st.caption("Các mã bạn canh mua. Bot sẽ quét tín hiệu kỹ thuật & tin tức CafeF để gửi DM cảnh báo khi có điểm mua an toàn.")
-    df_wl_raw = pd.DataFrame(raw_watchlist) if raw_watchlist else pd.DataFrame(columns=["symbol", "target_buy", "note"])
+    valid_wl = [w for w in raw_watchlist if w.get("symbol") and str(w["symbol"]).strip()] if raw_watchlist else []
+    df_wl_raw = pd.DataFrame(valid_wl) if valid_wl else pd.DataFrame(columns=["symbol", "target_buy", "note"])
+    wl_height = min(360, (len(df_wl_raw) + 2) * 36 + 10)
+
     edited_wl_df = st.data_editor(
         df_wl_raw,
         num_rows="dynamic",
         use_container_width=True,
+        height=wl_height,
         key="editor_watchlist",
         column_config={
-            "symbol": st.column_config.TextColumn("Mã CP", required=True),
-            "target_buy": st.column_config.NumberColumn("Giá canh mua (k)", min_value=0.0, step=0.05, format="%.2f"),
-            "note": st.column_config.TextColumn("Câu chuyện / Lý do theo dõi"),
+            "symbol": st.column_config.TextColumn("Mã CP", required=True, placeholder="+ Nhập mã canh mua..."),
+            "target_buy": st.column_config.NumberColumn("Giá canh mua (k)", min_value=0.0, step=0.05, format="%.2f", placeholder="28.50"),
+            "note": st.column_config.TextColumn("Câu chuyện / Lý do theo dõi", placeholder="+ Lý do / điểm mua..."),
         }
     )
 
