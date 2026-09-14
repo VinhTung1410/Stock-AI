@@ -103,9 +103,7 @@ Stock - learning/
 ├── portfolio.json              # 💾 Cơ sở dữ liệu danh mục cổ phiếu mẫu
 ├── requirements.txt            # Danh sách thư viện Python phụ thuộc
 ├── Procfile                    # File khai báo tiến trình Web cho Render / Heroku
-├── RENDER_DEPLOY_GUIDE.md      # Cẩm nang hướng dẫn chi tiết Deploy 24/7 lên Render.com
 ├── run_dashboard.bat           # File khởi chạy nhanh dashboard tại thư mục gốc
-├── .env.example                # Mẫu khai báo biến môi trường an toàn
 └── .env                        # [BẢO MẬT - GITIGNORED] Khóa API thực tế
 ```
 
