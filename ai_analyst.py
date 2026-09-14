@@ -37,19 +37,20 @@ SYSTEM_LANGUAGE_RULE = """
 [BẮT BUỘC - QUY TẮC TRÌNH BÀY, ĐỊNH DẠNG & NGÔN NGỮ]:
 1. 100% TIẾNG VIỆT CHUẨN UNICODE: Cấm chữ Hán/tiếng Trung. Với SSI viết rõ 'Công ty Chứng khoán SSI' hoặc 'Mã **SSI**'.
 2. BẮT BUỘC IN ĐẬM TẤT CẢ MÃ CỔ PHIẾU: Mọi mã chứng khoán (như **SSI**, **BSR**, **MSB**, **HPG**, **MWG**, **FPT**, **VHM**...) PHẢI ĐƯỢC IN ĐẬM để đập vào mắt người đọc khi đọc lướt.
-3. GẮN HUY HIỆU HÀNH ĐỘNG RÕ RÀNG (ACTION BADGES): Mỗi khi đưa ra nhận định hoặc khuyến nghị cho một cổ phiếu, BẮT BUỘC gắn nhãn màu sắc nổi bật ngay cạnh tên mã để đọc lướt là thấy ngay:
-   - 🟢 **[MUA MỚI]** hoặc 🟢 **[MUA GOM]**
-   - 🔵 **[NẮM GIỮ]** hoặc 🔵 **[GỒNG LÃI]**
-   - 🟡 **[THEO DÕI]** hoặc 🟡 **[CHỜ MUA]**
-   - 🟠 **[CHỐT LỜI]** hoặc 🟠 **[HẠ TỶ TRỌNG]**
-   - 🔴 **[CẮT LỖ]** hoặc 🔴 **[BÁN DỨT KHOÁT]**
+3. PHÂN TÁCH BẠCH 2 PHONG CÁCH GIAO DỊCH (LƯỚT SÓNG VS GOM HÀNG):
+   - ⚡ **[LƯỚT SÓNG T+ / BREAKOUT]**: Điểm vào lệnh cực hẹp (tối đa ±0.3% - 0.5%, khoảng 2-3 bước giá). Mua dứt khoát 1 lần. Vượt quá dải này: CẤM MUA ĐUỔI. Tỷ lệ R:R tính theo giá vào trần.
+   - 💎 **[GOM HÀNG VỊ THẾ / TRUNG HẠN]**: Áp dụng cho cổ phiếu cơ bản, vốn hóa lớn (FPT, HPG, MWG...). Vùng gom mở rộng (1.5% - 2.5%), nhưng BẮT BUỘC có lộ trình giải ngân chia 3 bước (30% - 40% - 30%) và nêu rõ "Giá vốn bình quân mục tiêu". Tỷ lệ R:R tính theo giá vốn bình quân này.
+4. GẮN HUY HIỆU HÀNH ĐỘNG RÕ RÀNG:
+   - ⚡ **[LƯỚT SÓNG T+]** hoặc 🚀 **[BREAKOUT MUA MỚI]**
+   - 💎 **[GOM HÀNG VỊ THẾ]** hoặc 🟢 **[MUA GOM TÍCH LŨY]**
+   - 🔵 **[NẮM GIỮ GỒNG LÃI]**
+   - 🟡 **[THEO DÕI CHỜ MUA]**
+   - 🟠 **[CHỐT LỜI TỪNG PHẦN]** hoặc 🟠 **[HẠ TỶ TRỌNG]**
+   - 🔴 **[CẮT LỖ / BÁN DỨT KHOÁT]**
    - ⛔ **[ĐỨNG NGOÀI / TRÁNH BẪY]**
-4. TUYỆT ĐỐI KHÔNG ĐÁNH SỐ THỨ TỰ LIÊN TỤC (1., 2., 3., 4., 5., 6., 7., 8...) CHO TỪNG DÒNG CHI TIẾT CỦA CỔ PHIẾU.
-   - Tên mã là gạch đầu dòng cấp 1: `• Cổ phiếu **MÃ** (Ngành) — 🟢 **[HÀNH ĐỘNG]**`
-   - Các thuộc tính là gạch đầu dòng cấp 2 thụt lề:
-     `  - **Xúc tác:** ...`
-     `  - **Vùng mua:** ... | **Mục tiêu:** ... | **Cắt lỗ:** ... | **R:R:** ...`
-     `  - **Kỹ thuật:** ...`
+5. TUYỆT ĐỐI KHÔNG ĐÁNH SỐ THỨ TỰ LIÊN TỤC (1., 2., 3., 4., 5., 6., 7., 8...) CHO TỪNG DÒNG CHI TIẾT.
+   - Tên mã là gạch đầu dòng cấp 1: `• Cổ phiếu **MÃ** (Ngành) — [HUY HIỆU]`
+   - Các thuộc tính là gạch đầu dòng cấp 2 thụt lề `- **Thuộc tính:**`.
 """
 
 
@@ -155,9 +156,11 @@ Nhiệm vụ của bạn:
      • Đối với mã **[MÃ]** — [HUY HIỆU HÀNH ĐỘNG]:
        > **Ngắn hạn (T+):** Điểm chốt lời / Điểm quản trị rủi ro...
        > **Trung hạn (3-6 tháng):** Chiến lược tích lũy / hạ bớt...
-4. **Cổ phiếu / Ngành đón sóng tiềm năng:**
-   - Nhận định về các mã trong Watchlist (**FPT**, **HPG**, **MWG**...) với huy hiệu rõ ràng:
-     • Cổ phiếu **[MÃ]** ([Ngành]) — 🟢 **[VÙNG GOM ĐÓN SÓNG]** hoặc 🟡 **[THEO DÕI TÍCH LŨY]**: [Luận điểm...]
+4. **Cổ phiếu / Ngành đón sóng tiềm năng (Phân tách rõ 2 phong cách):**
+   - Nhận định về các mã trong Watchlist (**FPT**, **HPG**, **MWG**...) hoặc cơ hội mới:
+     + Nếu là Lướt sóng T+: Gắn huy hiệu ⚡ **[LƯỚT SÓNG T+]**, cho điểm vào lệnh hẹp (±0.3k - 0.5k), cấm mua đuổi, tính R:R theo điểm vào cao nhất.
+     + Nếu là Gom hàng vị thế (FPT, HPG, MWG...): Gắn huy hiệu 💎 **[GOM HÀNG VỊ THẾ]**, dải gom 1.5% - 2.5%, BẮT BUỘC nêu kế hoạch giải ngân chia 3 bước (30% - 40% - 30%), xác định Giá vốn BQ dự kiến và tính R:R theo giá vốn này.
+     + Nếu chưa đạt chuẩn kỹ thuật: Gắn huy hiệu 🟡 **[THEO DÕI CHỜ MUA]** hoặc ⛔ **[ĐỨNG NGOÀI / TRÁNH BẪY]**.
 
 Yêu cầu định dạng đặc biệt cho Discord & Web:
 - TUYỆT ĐỐI KHÔNG DÙNG BẢNG MARKDOWN (| Cột | Cột |).
@@ -215,9 +218,9 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
     for o in opportunities:
         if o.get("status") == "RECOMMEND_BUY":
             buy_lines.append(
-                f"• Mã: {o['symbol']} ({o.get('sector', 'Niêm yết')}) | Thị giá: {o['current_price']}k | Setup: {o.get('setup_type')} | "
-                f"Vùng mua: {o.get('entry_zone', 'Quanh giá hiện tại')}k | Target: {o.get('target_price')}k | Cutloss: {o.get('stop_loss')}k | R:R: {o.get('risk_reward')} | "
-                f"Xúc tác/Câu chuyện: [{o.get('story_tag')}] {o.get('story')} | Chi tiết: {o.get('rationale')}"
+                f"• Mã: {o['symbol']} ({o.get('sector', 'Niêm yết')}) | Phong cách: {o.get('style_type')} | Setup: {o.get('setup_type')} | "
+                f"Thị giá: {o['current_price']}k | Vùng vào lệnh: {o.get('entry_zone')}k | Giá vốn BQ dự kiến: {o.get('avg_cost')}k | Target: {o.get('target_price')}k | Cutloss: {o.get('stop_loss')}k | R:R: {o.get('risk_reward')} | "
+                f"Kế hoạch giải ngân: {o.get('execution_plan')} | Xúc tác: [{o.get('story_tag')}] {o.get('story')}"
             )
         elif o.get("status") == "CAUTION_TRAP":
             caution_lines.append(
@@ -258,17 +261,27 @@ Yêu cầu xuất bản & Trình bày:
 1. **Định hướng thị trường phiên hôm nay:** Nhận định nhanh tâm lý mở phiên ATO, dựa sát vào điểm số VN-Index ({idx_price:.2f}) và các mốc hỗ trợ MA20 ({idx_ma20:.2f})/kháng cự thực tế.
 2. **Kế hoạch cho danh mục hiện tại:** 
    - Với mỗi mã, BẮT BUỘC in đậm mã và gắn huy hiệu hành động nổi bật ngay đầu dòng (ví dụ: `• Cổ phiếu **BSR** (Lọc hóa dầu) — 🔵 **[NẮM GIỮ GỒNG LÃI]**: ...`, `• Cổ phiếu **MSB** (Ngân hàng) — 🟠 **[CHỐT LỜI TỪNG PHẦN]**: ...`, `• Cổ phiếu **SSI** (Chứng khoán) — 🟡 **[THEO DÕI QUẢN TRỊ RỦI RO]**: ...`).
-3. **🎯 TOP CỔ PHIẾU KHUYẾN NGHỊ MUA (CÂU CHUYỆN + KỸ THUẬT ĐẠT CHUẨN):**
+3. **🎯 TOP CỔ PHIẾU KHUYẾN NGHỊ MUA (PHÂN TÁCH RÕ 2 PHONG CÁCH):**
    - TUYỆT ĐỐI KHÔNG ĐÁNH SỐ THỨ TỰ (1., 2., 3., 4., 5., 6...) CHO CÁC DÒNG THUỘC TÍNH.
-   - BẮT BUỘC TRÌNH BÀY THEO CẤU TRÚC PHÂN CẤP SAU ĐÂY:
-     • Cổ phiếu **[MÃ]** - [Ngành] — 🟢 **[MUA GOM]**
-       - **Xúc tác / Luận điểm:** [...]
-       - **Vùng mua gom:** [...] k (Hiện tại: [...] k)
-       - **Giá mục tiêu:** [...] k | **Dừng lỗ:** [...] k | **R:R:** [...]
+   - Nhận diện đúng phong cách từ dữ liệu mục 3 để trình bày:
+     
+     *Nếu là LƯỚT SÓNG T+ (Breakout / Sóng ngắn):*
+     • Cổ phiếu **[MÃ]** ([Ngành]) — ⚡ **[LƯỚT SÓNG T+]**
+       - **Xúc tác:** [...]
+       - **Điểm vào lệnh (Sniper):** [...] k (Vùng [...] k - Mua dứt khoát quanh giá này, vượt giá trần dải KHÔNG mua đuổi)
+       - **Giá mục tiêu:** [...] k | **Dừng lỗ:** [...] k | **R:R:** [...] (tính theo giá vào trần)
+       - **Kỹ thuật & Dòng tiền:** [...]
+     
+     *Nếu là GOM HÀNG VỊ THẾ (Tích lũy nền / Cổ phiếu cơ bản lớn như FPT, HPG, MWG):*
+     • Cổ phiếu **[MÃ]** ([Ngành]) — 💎 **[GOM HÀNG VỊ THẾ]**
+       - **Xúc tác & Luận điểm:** [...]
+       - **Dải gom giá:** [...] k | **Giá vốn BQ dự kiến:** [...] k
+       - **Kế hoạch giải ngân 3 bước:** [...] (30% thăm dò, 40% rung lắc, 30% hỗ trợ)
+       - **Giá mục tiêu:** [...] k | **Dừng lỗ:** [...] k | **R:R chuẩn:** [...] (tính theo giá vốn BQ)
        - **Kỹ thuật & Dòng tiền:** [...]
 4. **⚠️ CẢNH BÁO BẪY TIN TỨC & QUẢN TRỊ RỦI RO:**
    - Trình bày dạng:
-     • Cổ phiếu **[MÃ]** ([Ngành]) — ⛔ **[ĐỨNG NGOÀI QUAN SÁT]**: [Lý do kỹ thuật chưa đạt...]
+     • Cổ phiếu **[MÃ]** ([Ngành]) — ⛔ **[ĐỨNG NGOÀI / TRÁNH BẪY]**: [Lý do kỹ thuật chưa đạt...]
 
 Định dạng Discord/Web:
 - KHÔNG dùng bảng markdown (|---|).
