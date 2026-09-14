@@ -118,68 +118,66 @@ def send_discord_message(content: str = None, embeds: list = None) -> bool:
 def split_ai_summary_into_fields(ai_summary: str) -> list:
     """
     Tách bài phân tích của AI thành các Field của Discord Embed (mỗi field < 1024 ký tự),
-    loại bỏ các dấu ### và tự động dọn sạch định dạng để hiển thị hoàn hảo trên Discord.
+    tự động nhận diện các mục La Mã và đánh số phần chuyên nghiệp (Phần 2, Phần 3),
+    triệt tiêu 100% lỗi lặp '(tiếp theo) (tiếp theo)...'.
     """
+    try:
+        from ai_analyst import sanitize_ai_text
+        ai_summary = sanitize_ai_text(ai_summary)
+    except Exception:
+        pass
+    import re
     clean_text = ai_summary.replace("### ", "").replace("## ", "").strip()
-    
-    # Định nghĩa các mốc tiêu đề phổ biến
-    sections = [
-        "I. ĐÁNH GIÁ SỨC KHỎE DANH MỤC",
-        "II. TÁC ĐỘNG VĨ MÔ & DÒNG TIỀN",
-        "III. KỊCH BẢN & CHIẾN LƯỢC HÀNH ĐỘNG",
-        "IV. CỔ PHIẾU / NGÀNH ĐÓN SÓNG TIỀM NĂNG",
-        "I. NHẬN ĐỊNH ĐẦU PHIÊN ATO",
-        "II. HÀNH ĐỘNG VỚI DANH MỤC HIỆN TẠI",
-        "III. 🎯 TOP CỔ PHIẾU KHUYẾN NGHỊ HÔM NAY",
-        "III. TOP CỔ PHIẾU KHUYẾN NGHỊ HÔM NAY"
-    ]
-    
+    paragraphs = [p.strip() for p in clean_text.split("\n\n") if p.strip()]
+
     fields = []
-    paragraphs = clean_text.split("\n\n")
-    current_title = "🧠 Nhận định & Khuyến nghị Chiến lược"
+    base_title = "🧠 Nhận định & Khuyến nghị Chiến lược"
+    part_count = 1
     current_chunk = ""
 
-    for p in paragraphs:
-        # Kiểm tra xem đoạn p có chứa tiêu đề mục lớn không
-        matched_section = None
-        for s in sections:
-            if s in p:
-                matched_section = s
-                break
-        
-        if matched_section:
-            if current_chunk.strip():
-                fields.append({
-                    "name": current_title,
-                    "value": current_chunk.strip()[:1024],
-                    "inline": False
-                })
-                current_chunk = ""
-            
-            # Tách tiêu đề và nội dung
-            parts = p.split(matched_section, 1)
-            current_title = f"📌 {matched_section}"
-            remainder = parts[1].lstrip("*\n :")
-            if remainder:
-                current_chunk = remainder + "\n\n"
-        else:
-            if len(current_chunk) + len(p) + 2 > 1000:
-                fields.append({
-                    "name": current_title,
-                    "value": current_chunk.strip()[:1024],
-                    "inline": False
-                })
-                current_title = f"{current_title} (tiếp theo)"
-                current_chunk = p.strip() + "\n\n"
-            else:
-                current_chunk += p.strip() + "\n\n"
+    # Regex nhận diện tiêu đề mục lớn (hỗ trợ số La Mã kèm emoji đầu hoặc sau, in đậm markdown)
+    header_pattern = re.compile(r'^(?:[#*>\s]*)(?:[^\w\s]{1,3}\s*)?([I|V|X]+\.\s+[^:\n*]+)', re.IGNORECASE)
 
-    if current_chunk.strip():
+    def flush_field(title, content, part_idx):
+        if not content.strip():
+            return
+        # Nếu phần > 1, gắn hậu tố (Phần X) thay vì nối (tiếp theo)
+        display_title = title if part_idx == 1 else f"{title} (Phần {part_idx})"
         fields.append({
-            "name": current_title,
-            "value": current_chunk.strip()[:1024],
+            "name": display_title[:256],
+            "value": content.strip()[:1024],
             "inline": False
         })
+
+    for p in paragraphs:
+        match = header_pattern.match(p)
+        if match:
+            # Ghi nhận chunk trước đó nếu có
+            if current_chunk.strip():
+                flush_field(base_title, current_chunk, part_count)
+                current_chunk = ""
+
+            matched_title = match.group(1).strip().strip("*#_")
+            base_title = f"📌 {matched_title}"
+            part_count = 1
+
+            # Lấy phần nội dung còn lại sau tiêu đề nếu tiêu đề nằm cùng đoạn với nội dung
+            lines = p.split("\n")
+            if len(lines) > 1:
+                content_after = "\n".join(lines[1:]).strip()
+                if content_after:
+                    current_chunk = content_after + "\n\n"
+        else:
+            # Nếu thêm p vào chunk mà vượt quá 1000 ký tự thì đẩy ra field và sang phần tiếp theo
+            if len(current_chunk) + len(p) + 2 > 1000:
+                flush_field(base_title, current_chunk, part_count)
+                part_count += 1
+                current_chunk = p + "\n\n"
+            else:
+                current_chunk += p + "\n\n"
+
+    if current_chunk.strip():
+        flush_field(base_title, current_chunk, part_count)
 
     return fields if fields else [{"name": "🧠 Phân tích AI", "value": clean_text[:1024], "inline": False}]
 
