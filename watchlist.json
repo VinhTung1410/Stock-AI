@@ -13,5 +13,10 @@
     "symbol": "MWG",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
+  },
+  {
+    "symbol": "VIC",
+    "target_buy": 0.0,
+    "note": "Theo dõi từ Google Sheet"
   }
 ]

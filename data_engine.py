@@ -676,21 +676,40 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                 stop_loss = round(max(ma20 * 0.95, curr_price * 0.95), 2)
                 rr = round((target_price - curr_price) / max(0.1, curr_price - stop_loss), 1)
 
-                setup_type = "🚀 MUA THEO SÓNG & DÒNG TIỀN"
+                # Phân tách 2 phong cách giao dịch: Lướt sóng T+ vs Gom hàng vị thế
                 if vol_ratio >= 1.25 and change_pct >= 0.5:
+                    style_type = "⚡ [LƯỚT SÓNG T+ / BREAKOUT]"
                     setup_type = "⚡ BREAKOUT NỔ VOL VƯỢT NỀN"
-                elif 45 <= rsi <= 56 and curr_price >= ma20:
-                    setup_type = "💎 TÍCH LŨY CHẶT TRÊN MA20"
+                    # Biên độ điểm vào cực hẹp (tối đa 2-3 bước giá, ~0.4%)
+                    p_min = round(curr_price * 0.996, 1)
+                    p_max = round(curr_price * 1.004, 1)
+                    entry_zone = f"{p_min} - {p_max}"
+                    execution_plan = f"Mua dứt khoát 1 lần quanh {curr_price}k (vùng {entry_zone}k). Vượt {p_max}k KHÔNG mua đuổi."
+                    avg_cost = curr_price
+                else:
+                    style_type = "💎 [GOM HÀNG VỊ THẾ / TRUNG HẠN]"
+                    setup_type = "💎 TÍCH LŨY NỀN GIÁ TRÊN MA20"
+                    # Dải gom mở rộng 1.5% - 2.0% nhưng có lộ trình chia 3 bước giải ngân
+                    p_low = round(min(ma20, curr_price * 0.985), 1)
+                    p_high = round(curr_price * 1.005, 1)
+                    entry_zone = f"{p_low} - {p_high}"
+                    avg_cost = round((p_low * 0.3 + curr_price * 0.4 + p_high * 0.3), 1)
+                    execution_plan = f"Chia 3 phần: 30% tại {p_high}k, 40% tại {curr_price}k, 30% đón tại {p_low}k (Giá vốn BQ dự kiến: {avg_cost}k)."
+
+                rr = round((target_price - avg_cost) / max(0.1, avg_cost - stop_loss), 1)
 
                 return {
                     "symbol": sym,
                     "sector": sector,
                     "status": "RECOMMEND_BUY",
+                    "style_type": style_type,
                     "setup_type": setup_type,
                     "story_tag": story_tag,
                     "story": story_title,
                     "current_price": curr_price,
-                    "entry_zone": f"{round(curr_price * 0.99, 1)} - {round(curr_price * 1.01, 1)}",
+                    "entry_zone": entry_zone,
+                    "avg_cost": avg_cost,
+                    "execution_plan": execution_plan,
                     "target_price": target_price,
                     "stop_loss": stop_loss,
                     "risk_reward": rr,

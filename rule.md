@@ -173,7 +173,27 @@ Mỗi khi đưa ra nhận định hoặc khuyến nghị với một mã cổ ph
     `  - **Mục tiêu:** 22.33k | **Dừng lỗ:** 19.55k | **R:R:** 2.7`
     `  - **Kỹ thuật:** Vận động tích lũy trên MA20, RSI đạt 60.2.`
 
-### 5.4. Khắc phục giới hạn Discord Embed & Giao diện Web
+### 5.4. Phân Tách Bạch 2 Phong Cách Giao Dịch (Lướt Sóng T+ vs Gom Hàng Vị Thế)
+Để triệt tiêu hoàn toàn sự mập mờ trong khuyến nghị và sự sai lệch toán học của tỷ lệ Risk/Reward ($R:R$), hệ thống bắt buộc phân loại rõ ràng 2 phong cách:
+
+1. ⚡ **Phong cách 1: LƯỚT SÓNG T+ / BREAKOUT SNIPER**
+   - **Đặc điểm**: Đánh theo dòng tiền đầu cơ, nổ Vol bứt phá nền ngắn hạn.
+   - **Huy hiệu**: ⚡ **`[LƯỚT SÓNG T+]`** hoặc 🚀 **`[BREAKOUT MUA MỚI]`**.
+   - **Quy tắc Điểm vào (Entry Price)**: Biên độ cực hẹp $\le 3$ bước giá (tối đa $\pm 0.3\% - 0.5\%$). Mua dứt khoát 1 lần (Single Entry). Nếu giá vượt quá dải trên $\to$ **CẤM MUA ĐUỔI**.
+   - **Quy tắc tính R:R**: Bắt buộc tính theo mức giá trần của điểm vào để phản ánh mức rủi ro khắt khe nhất.
+
+2. 💎 **Phong cách 2: GOM HÀNG VỊ THẾ / TÍCH LŨY TRUNG HẠN**
+   - **Đặc điểm**: Áp dụng cho cổ phiếu cơ bản nền tảng, vốn hóa lớn (**FPT**, **HPG**, **MWG**, **VHM**...).
+   - **Huy hiệu**: 💎 **`[GOM HÀNG VỊ THẾ]`** hoặc 🟢 **`[MUA GOM TÍCH LŨY]`**.
+   - **Dải gom giá (Accumulation Zone)**: Được phép mở rộng từ $1.5\% - 2.5\%$.
+   - **Bắt buộc Lộ trình giải ngân 3 bước (Roadmap)**:
+     - Bước 1 (Thăm dò 30%): Mua tại cạnh trên của dải gom.
+     - Bước 2 (Gia tăng 40%): Mua khi giá nhúng rung lắc kiểm định MA20.
+     - Bước 3 (Hoàn tất 30%): Mua tại hỗ trợ cứng đáy dải gom.
+   - **Giá vốn bình quân mục tiêu (Expected Avg Cost)**: Bắt buộc tính toán rõ ràng mốc này.
+   - **Quy tắc tính R:R**: Tỷ lệ $R:R$ bắt buộc tính dựa trên **Giá vốn bình quân mục tiêu**, triệt tiêu việc lấy bừa mốc đáy dải gom để làm đẹp số liệu.
+
+### 5.5. Khắc phục giới hạn Discord Embed & Giao diện Web
 1. **Khắc phục giới hạn Discord:**
    - TUYỆT ĐỐI KHÔNG dùng bảng Markdown (`|---|`) trong nội dung do AI sinh ra vì Discord không hỗ trợ hiển thị bảng và bị tràn ngang trên màn hình điện thoại.
    - Tách báo cáo thành từng Field có độ dài dưới 1024 ký tự (`split_ai_summary_into_fields()`).
