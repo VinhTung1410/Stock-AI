@@ -76,8 +76,7 @@ Stock - learning/
 │   └── simulate_afternoon_report.py # Bắn thử nghiệm báo cáo tổng kết chiều (ATC)
 ├── portfolio.json              # 💾 Cơ sở dữ liệu danh mục đầu tư mẫu
 ├── requirements.txt            # Danh mục thư viện Python phụ thuộc
-├── Procfile                    # Chỉ thị tiến trình triển khai Web trên Cloud
-└── RENDER_DEPLOY_GUIDE.md      # Cẩm nang hướng dẫn chi tiết Deploy 24/7
+└── Procfile                    # Chỉ thị tiến trình triển khai Web trên Cloud
 ```
 
 ---
@@ -115,8 +114,6 @@ VNSTOCK_API_KEY="your_vnstock_key_if_sponsor"
 ---
 
 ## ☁️ Hướng Dẫn Triển Khai Production 24/7 (Render.com)
-
-> 📘 **Xem hướng dẫn chi tiết từng bước tại:** [RENDER_DEPLOY_GUIDE.md](RENDER_DEPLOY_GUIDE.md)
 
 1. Đẩy mã nguồn lên kho lưu trữ GitHub của bạn:
    ```bash
