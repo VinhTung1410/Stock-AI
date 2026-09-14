@@ -11,7 +11,8 @@ from data_engine import (
 from ai_analyst import (
     generate_portfolio_analysis,
     generate_market_risk_scenarios,
-    generate_institutional_stock_report
+    generate_institutional_stock_report,
+    generate_quantamental_2pass_report
 )
 
 def render_tab_ai(df_eval: pd.DataFrame):
@@ -171,12 +172,22 @@ def render_tab_ai(df_eval: pd.DataFrame):
             """).strip()
             st.html(metrics_grid_html)
 
+        col_b1, col_b2 = st.columns(2)
         btn_key = f"btn_run_deep_{target_symbol}"
-        if st.button(f"⚡ Lập Báo Cáo Chuyên Sâu 8 Trụ Cột Cho [{target_symbol}]", type="primary", use_container_width=True, key=btn_key):
-            with st.spinner(f"Chuyên gia AI đang phân tích toàn diện 8 trụ cột cho mã {target_symbol}..."):
-                news = fetch_macro_news(keywords=[target_symbol, "chứng khoán", "kết quả kinh doanh"])
-                report = generate_institutional_stock_report(target_symbol, fin_data, tech_data, news)
-                st.session_state[f"cached_stock_report_{target_symbol}"] = report
+        btn_quant_key = f"btn_run_quant_{target_symbol}"
+
+        with col_b1:
+            if st.button(f"⚡ Báo Cáo Định Chế 8 Trụ Cột", type="primary", use_container_width=True, key=btn_key):
+                with st.spinner(f"Chuyên gia AI đang phân tích toàn diện 8 trụ cột cho mã {target_symbol}..."):
+                    news = fetch_macro_news(limit=6, tracked_symbols=[target_symbol])
+                    report = generate_institutional_stock_report(target_symbol, fin_data, tech_data, news)
+                    st.session_state[f"cached_stock_report_{target_symbol}"] = report
+
+        with col_b2:
+            if st.button(f"🔬 Lượng Hóa 2 Lượt (Quant Pro)", type="secondary", use_container_width=True, key=btn_quant_key):
+                with st.spinner(f"Hệ thống Quant đang kiểm tra Data Gate & tính toán hàng rào 2 lượt cho {target_symbol}..."):
+                    res = generate_quantamental_2pass_report(target_symbol)
+                    st.session_state[f"cached_stock_report_{target_symbol}"] = res.get("report_text", "")
 
         cache_key = f"cached_stock_report_{target_symbol}"
         if cache_key in st.session_state:

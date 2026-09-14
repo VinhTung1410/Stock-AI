@@ -178,14 +178,43 @@ def check_realtime_risk():
                     buy_reason = f"RSI({rsi:.1f}) rơi vào vùng QUÁ BÁN sâu (< 32), cơ hội gom vị thế giá rẻ!"
 
                 if buy_triggered:
-                    logging.info(f"🟢 BẮN TÍN HIỆU MUA WATCHLIST: {sym}")
+                    # HÀNG RÀO KIỂM DUYỆT ĐỊNH LƯỢNG (QUANTAMENTAL SAFETY FILTER)
+                    dynamic_sl = round(curr_p * 0.94, 2)
+                    f_score_txt = ""
+                    try:
+                        from data_engine import get_financial_ratios, fetch_stock_historical
+                        from quant_engine import check_data_gate, calculate_piotroski_f_score, calculate_atr
+                        fin = get_financial_ratios(sym)
+                        gate = check_data_gate(sym, tech, fin)
+                        f_score = calculate_piotroski_f_score(fin)
+                        
+                        if not gate["passed"]:
+                            logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Không đạt Data Gate ({', '.join(gate['reasons'])})")
+                            continue
+                        if f_score["score"] <= 3:
+                            logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Sức khỏe tài chính yếu (F-Score: {f_score['score']}/9)")
+                            continue
+
+                        f_score_txt = f" | F-Score: {f_score['score']}/9"
+                        
+                        # Tính ATR(14) Stop-Loss động thích ứng với biến động thực tế
+                        df_hist = fetch_stock_historical(sym, time_frame="1D", limit=30)
+                        if df_hist is not None and not df_hist.empty:
+                            atr_val = calculate_atr(df_hist, 14)
+                            if atr_val > 0:
+                                # Stop Loss động: Giữ khoảng cách 1.5x ATR nhưng không lùi quá sàn HOSE (-7%)
+                                dynamic_sl = round(max(curr_p * 0.93, curr_p - 1.5 * atr_val), 2)
+                    except Exception as q_err:
+                        logging.debug(f"Bỏ qua kiểm tra quant: {q_err}")
+
+                    logging.info(f"🟢 BẮN TÍN HIỆU MUA WATCHLIST: {sym} (SL: {dynamic_sl}k{f_score_txt})")
                     send_trade_signal_alert(
                         symbol=sym,
                         action="MUA",
                         current_price=curr_p,
-                        trigger_reason=f"[WATCHLIST THEO DÕI] {buy_reason}",
+                        trigger_reason=f"[WATCHLIST THEO DÕI] {buy_reason}{f_score_txt}",
                         target_price=round(curr_p * 1.12, 2),
-                        stop_loss=round(curr_p * 0.94, 2)
+                        stop_loss=dynamic_sl
                     )
                     sent_alerts.add(alert_key_wl_buy)
             except Exception as e:

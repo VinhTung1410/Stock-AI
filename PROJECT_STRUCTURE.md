@@ -48,30 +48,45 @@ Stock - learning/
 │   │                           # - Bảng st.data_editor chỉnh sửa trực tiếp số lượng, giá vốn
 │   │                           # - Lưu trữ bền vững vào file portfolio.json
 │   └── tab_ai.py               # Tab 5: Trợ lý Phân tích Chiến lược AI:
-│                               # - Phân tích chuyên sâu 8 trụ cột (Báo cáo tóm tắt 🟢🟡🔴, định giá)
-│                               # - Mô phỏng kịch bản rủi ro thị trường (Lạc quan / Trung lập / Bi quan)
+│                               # - Chế độ 1: Báo cáo Định chế 8 Trụ cột chuẩn CFA (Cảnh báo 🟢🟡🔴)
+│                               # - Chế độ 2: Lượng hóa 2 Lượt (Quantamental Pro): Data Gate + EV + MoS + Kelly
+│                               # - Mô phỏng 4 kịch bản rủi ro thị trường & chu kỳ sóng Elliott / Wyckoff
+│
+├── quant_engine.py             # 📐 TẦNG TÍNH TOÁN ĐỊNH LƯỢNG TẤT ĐỊNH (Deterministic Quant Engine)
+│                               # - Data Gate: Kiểm tra tính mới BCTC và thanh khoản tối thiểu ADV20
+│                               # - Piotroski F-Score (0-9): Chấm điểm chất lượng tài chính và khả năng sinh lời
+│                               # - Altman Z-Score: Đo lường nguy cơ kiệt quệ tài chính (Vùng xanh/xám/đỏ)
+│                               # - ATR(14) Volatility Stop-Loss: Tính toán cắt lỗ động theo biến động giá thực tế
+│                               # - Tam giác định giá & Hàng rào quyết định: Expected Value, MoS %, Kelly f*
 │
 ├── data_engine.py              # ⚙️ TẦNG DỮ LIỆU & TÍNH TOÁN (Data Layer)
 │                               # - Kéo dữ liệu nến EOD/Intraday từ Vnstock (nguồn VCI)
 │                               # - Tính toán chỉ báo kỹ thuật: MA20, MA50, RSI14, Vol/SMA20
 │                               # - Thu thập chuỗi định giá lịch sử P/E, P/B toàn thị trường
-│                               # - Crawl tin tức vĩ mô tự động qua Google News RSS
+│                               # - Crawl tin tức vĩ mô tự động qua Google News & CafeF RSS
 │                               # - Quản lý đọc/ghi danh mục đầu tư portfolio.json
 │
 ├── ai_analyst.py               # 🧠 TẦNG TRÍ TUỆ NHÂN TẠO (AI Layer)
-│                               # - Tích hợp mô hình Gemini 2.5 Pro qua thư viện google-genai
-│                               # - Khung phân tích 8 trụ cột doanh nghiệp & cổ phiếu
-│                               # - Dự báo đa kịch bản rủi ro & kế hoạch hành động phân bổ vốn
+│                               # - Tích hợp mô hình Gemini Flash qua thư viện google-genai
+│                               # - Khung phân tích thẻ XML chuẩn hóa (<ROLE>, <DATA_DICTIONARY>, <GUARDRAILS>)
+│                               # - Quy trình Lượng hóa 2 Lượt: Pass 1 gán xác suất JSON -> Python tính toán -> Pass 2 viết báo cáo
+│                               # - Bộ lọc tất định sanitize_ai_text() triệt tiêu 100% chữ Hán / tiếng Trung
 │
 ├── discord_alerts.py           # 🔔 TẦNG CẢNH BÁO TỰ ĐỘNG (Notification Layer)
 │                               # - Gửi Rich Embed chuyên nghiệp qua Discord Webhook
 │                               # - Gửi Direct Message (DM) trực tiếp tới Discord User cá nhân
-│                               # - Định dạng bảng lãi/lỗ và khuyến nghị hành động mua/bán
+│                               # - Bộ tách đoạn thông minh bằng Regex: Tự động đánh số phần (Phần 2, Phần 3), xóa bỏ lỗi lặp
 │
 ├── trading_bot.py              # 🤖 TẦNG TỰ ĐỘNG HÓA 24/7 (Background Trading Bot)
 │                               # - Tiến trình độc lập theo múi giờ Việt Nam (UTC+7)
-│                               # - Canh thị trường định kỳ: Kích hoạt cảnh báo Stop Loss (-5%, -7%)
+│                               # - Canh thị trường định kỳ: Stop Loss linh hoạt, cảnh báo nổ Vol / gãy MA20
+│                               # - Hàng rào an toàn định lượng: Kiểm tra Data Gate & F-Score trước khi bắn tín hiệu Mua
 │                               # - Đặt lịch tự động bắn báo cáo: ATO (08:45), Trưa (11:30), ATC (14:45)
+│
+├── rule.md                     # 📜 ĐẶC TẢ QUY TẮC DỰ ÁN & CHUẨN HÓA HỆ THỐNG
+│                               # - Zero Chinese Token Policy & Chuẩn hóa tên mã SSI
+│                               # - Kiến trúc phòng thủ 2 lớp (Two-tier Defense Architecture)
+│                               # - Quy chuẩn Kiến trúc Lượng hóa 2 Lượt (Quantamental 2-Pass Pipeline)
 │
 ├── run_cloud.py                # ☁️ TIẾN TRÌNH KHỞI CHẠY CLOUD (Dual-Process Runner)
 │                               # - Chạy ngầm Trading Bot Daemon (Thread 1)
@@ -81,7 +96,9 @@ Stock - learning/
 ├── scripts/                    # 🛠️ THƯ MỤC CÔNG CỤ & KỊCH BẢN WINDOWS LOCAL
 │   ├── run_dashboard.bat       # Khởi chạy Dashboard Streamlit trên Local
 │   ├── run_bot.bat             # Khởi chạy độc lập Trading Bot giám sát thị trường
-│   └── clean_cache.bat         # 1-click dọn sạch bytecode và thư mục __pycache__
+│   ├── clean_cache.bat         # 1-click dọn sạch bytecode và thư mục __pycache__
+│   ├── simulate_morning_report.py   # Giả lập và bắn báo cáo ATO 08:45 AM
+│   └── simulate_afternoon_report.py # Giả lập và bắn báo cáo kết phiên 15:00 PM
 │
 ├── portfolio.json              # 💾 Cơ sở dữ liệu danh mục cổ phiếu mẫu
 ├── requirements.txt            # Danh sách thư viện Python phụ thuộc
@@ -104,12 +121,19 @@ flowchart TD
         PortfolioJSON[(portfolio.json)] <-->|Đọc / Ghi danh mục| DataEngine
     end
 
+    subgraph Quantitative Core
+        DataEngine -->|Nến OHLC & BCTC| QuantEngine[quant_engine.py]
+        QuantEngine -->|Data Gate, F-Score, Z-Score, ATR| AIAnalyst[ai_analyst.py Gemini Flash]
+        QuantEngine -->|Hard Gates: MoS, Kelly, R| AIAnalyst
+        QuantEngine -->|F-Score & Data Gate Safety| TradingBot[trading_bot.py 24/7]
+    end
+
     subgraph Core Processing
         DataEngine -->|Chuỗi nến & Chỉ số thị trường| AppCore[app.py]
         DataEngine -->|Bảng định giá P/E, P/B| AppCore
-        DataEngine -->|Dữ liệu danh mục & Thị trường| AIAnalyst[ai_analyst.py Gemini 2.5 Pro]
+        DataEngine -->|Dữ liệu danh mục & Thị trường| AIAnalyst
         DataEngine -->|Trạng thái biến động giá| DiscordAlerts[discord_alerts.py]
-        AIAnalyst -->|Báo cáo 8 trụ cột & Kịch bản rủi ro| DiscordAlerts
+        AIAnalyst -->|Báo cáo định chế & 2-Pass Quant| DiscordAlerts
     end
 
     subgraph User Interface Streamlit
@@ -122,17 +146,18 @@ flowchart TD
         Tab2 --> CompTV[components/tradingview_chart.py]
         Tab2 --> CompECharts[components/echarts_valuation.py]
         Tab3 --> CompTV
+        Tab5 -->|Quant Pro & CFA Report| AIAnalyst
     end
 
     subgraph Background Automation
-        TradingBot[trading_bot.py 24/7] -->|Quét giá & Stop Loss| DataEngine
+        TradingBot -->|Quét giá & Stop Loss| DataEngine
         TradingBot -->|Lịch trình ATO/Trưa/ATC| DiscordAlerts
         RunCloud[run_cloud.py] -->|Khởi chạy song song| TradingBot
         RunCloud -->|Khởi chạy song song| AppCore
     end
 
     subgraph External Notification
-        DiscordAlerts -->|Rich Embed| DiscordChannel[Discord Channel #stock-alerts]
+        DiscordAlerts -->|Rich Embed Smart Fields| DiscordChannel[Discord Channel #stock-alerts]
         DiscordAlerts -->|Direct Message| DiscordDM[Discord Private DM]
     end
 ```
