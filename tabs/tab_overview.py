@@ -101,21 +101,29 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
         st.divider()
 
         # 1. BẢNG TRẠNG THÁI CỔ PHIẾU ĐANG NẮM GIỮ (HOLDINGS)
-        st.subheader("📋 Danh mục Cổ phiếu Đang Nắm Giữ (Holdings)")
-        st.caption("Quản trị lãi/lỗ và vị thế kỹ thuật của từng cổ phiếu trong tài khoản.")
+        st.subheader("📋 Danh mục Cổ phiếu Đang Nắm Giữ (Holdings) - V2")
+        st.caption("Quản trị lãi/lỗ, Biên an toàn (MoS %), Mốc Trailing Stop bảo vệ lợi nhuận và vị thế kỹ thuật.")
         df_eval_clean = df_eval[df_eval["Mã CP"].astype(str).str.strip().str.len() >= 3].copy()
         eval_height = min(360, (len(df_eval_clean) + 1) * 36 + 6)
+        
+        eval_format = {
+            "Giá vốn (k)": "{:.2f}",
+            "Thị giá (k)": "{:.2f}",
+            "Thay đổi (%)": "{:+.2f}%",
+            "Lãi/Lỗ (%)": "{:+.2f}%",
+            "Lãi/Lỗ (VND)": "{:+,.0f}",
+            "Fair Value (k)": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
+            "MoS (%)": lambda x: f"{x:+.1f}%" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
+            "Chặn lãi/Cắt lỗ (k)": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
+            "Khối ngoại (Tỷ)": "{:+.1f}",
+            "RSI(14)": lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
+            "Vol/TB20": "{:.2f}",
+        }
+        # Chỉ giữ format cho các cột tồn tại trong DataFrame
+        active_eval_format = {k: v for k, v in eval_format.items() if k in df_eval_clean.columns}
+
         st.dataframe(
-            df_eval_clean.style.format({
-                "Giá vốn (k)": "{:.2f}",
-                "Thị giá (k)": "{:.2f}",
-                "Thay đổi (%)": "{:+.2f}%",
-                "Lãi/Lỗ (%)": "{:+.2f}%",
-                "Lãi/Lỗ (VND)": "{:+,.0f}",
-                "Khối ngoại (Tỷ)": "{:+.1f}",
-                "RSI(14)": lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
-                "Vol/TB20": "{:.2f}",
-            }),
+            df_eval_clean.style.format(active_eval_format),
             use_container_width=True,
             hide_index=True,
             height=eval_height
@@ -124,22 +132,26 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
         st.divider()
 
         # 2. BẢNG CỔ PHIẾU ĐANG THEO DÕI (WATCHLIST)
-        st.subheader("🎯 Danh mục Cổ phiếu Đang Theo Dõi (Watchlist)")
-        st.caption("Các mã cổ phiếu bạn đang canh mua. Trading Bot sẽ tự động bắn tin nhắn riêng (DM) khi xuất hiện điểm mua hoặc giá về vùng an toàn.")
+        st.subheader("🎯 Danh mục Cổ phiếu Đang Theo Dõi (Watchlist) - V2")
+        st.caption("Các mã cổ phiếu bạn đang canh mua, tích hợp Định giá Fair Value & Biên an toàn (MoS %).")
         if df_wl is not None and not df_wl.empty:
             df_wl_clean = df_wl[df_wl["Mã CP"].astype(str).str.strip().str.len() >= 3].copy()
             if not df_wl_clean.empty:
                 wl_height = min(360, (len(df_wl_clean) + 1) * 36 + 6)
+                wl_format = {
+                    "Thị giá (k)": "{:.2f}",
+                    "Thay đổi (%)": "{:+.2f}%",
+                    "Fair Value (k)": lambda x: f"{x:.2f}" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
+                    "MoS (%)": lambda x: f"{x:+.1f}%" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
+                    "Giá chờ mua (k)": "{:.2f}",
+                    "Khoảng cách (%)": "{:+.2f}%",
+                    "Khối ngoại (Tỷ)": "{:+.1f}",
+                    "RSI(14)": lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
+                    "Vol/TB20": "{:.2f}",
+                }
+                active_wl_format = {k: v for k, v in wl_format.items() if k in df_wl_clean.columns}
                 st.dataframe(
-                    df_wl_clean.style.format({
-                        "Thị giá (k)": "{:.2f}",
-                        "Thay đổi (%)": "{:+.2f}%",
-                        "Giá chờ mua (k)": "{:.2f}",
-                        "Khoảng cách (%)": "{:+.2f}%",
-                        "Khối ngoại (Tỷ)": "{:+.1f}",
-                        "RSI(14)": lambda x: f"{x:.1f}" if isinstance(x, (int, float)) and pd.notnull(x) else str(x),
-                        "Vol/TB20": "{:.2f}",
-                    }),
+                    df_wl_clean.style.format(active_wl_format),
                     use_container_width=True,
                     hide_index=True,
                     height=wl_height

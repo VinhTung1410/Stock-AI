@@ -5,6 +5,8 @@ import logging
 from dotenv import load_dotenv
 from google import genai
 from data_engine import load_portfolio, evaluate_portfolio, fetch_macro_news
+from quant_engine import evaluate_holding_position, evaluate_market_regime
+from quant_valuation import calculate_fair_value_and_mos, INSTITUTIONAL_CONSENSUS_TARGETS
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -110,11 +112,44 @@ def get_ai_client():
 
 def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, custom_question: str = None) -> str:
     """
-    Tạo báo cáo phân tích toàn diện kết hợp Danh mục, Chỉ báo Kỹ thuật và Tin tức Vĩ mô chuyên sâu CafeF.
+    🎯 BÁO CÁO TỔNG KẾT PHIÊN ATC (15:00) - AI STOCK COPILOT V2:
+    - Triết lý: Value-First + Technical Timing.
+    - Bắt buộc trả lời 5 câu hỏi cốt tử.
+    - Định lượng 100% bằng Python: Cổ phiếu LÃI kích hoạt TRAILING STOP cụ thể, TUYỆT ĐỐI KHÔNG DÙNG TỪ CẮT LỖ.
     """
     client = get_ai_client()
 
-    portfolio_str = portfolio_df.to_string(index=False) if portfolio_df is not None and not portfolio_df.empty else "Chưa có mã nào trong danh mục."
+    # Chạy tính toán định lượng cho từng mã trong danh mục
+    quant_eval_lines = []
+    if portfolio_df is not None and not portfolio_df.empty:
+        for _, row in portfolio_df.iterrows():
+            sym = str(row.get("symbol", "")).upper()
+            entry_p = float(row.get("avg_price", 0.0))
+            curr_p = float(row.get("market_price", entry_p))
+            pl_p = ((curr_p - entry_p) / entry_p * 100) if entry_p > 0 else 0.0
+            
+            mock_tech = {
+                "current_price": curr_p,
+                "atr": float(row.get("atr", 0.0)) if "atr" in row else (curr_p * 0.025),
+                "ma20": float(row.get("ma20", curr_p)) if "ma20" in row else curr_p
+            }
+            eval_res = evaluate_holding_position(row.to_dict(), mock_tech)
+            
+            if eval_res["is_profit"]:
+                quant_eval_lines.append(
+                    f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá: {curr_p:.2f}k | Lãi: +{pl_p:.1f}% | "
+                    f"Hành động: {eval_res['action']} | 🛡️ MỐC TRAILING STOP BẢO VỆ LÃI: **{eval_res['trailing_stop']:.2f}k** | "
+                    f"Chi tiết: {eval_res['detail']}"
+                )
+            else:
+                quant_eval_lines.append(
+                    f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá: {curr_p:.2f}k | Lỗ: {pl_p:.1f}% | "
+                    f"Hành động: {eval_res['action']} | 🛡️ MỐC STOP-LOSS KỸ THUẬT: **{eval_res['stop_loss']:.2f}k** | "
+                    f"Thesis Breaker: {eval_res['thesis_breaker']} | Chi tiết: {eval_res['detail']}"
+                )
+    quant_eval_str = "\n".join(quant_eval_lines) if quant_eval_lines else "Chưa có mã nào trong danh mục."
+
+    portfolio_str = portfolio_df.to_string(index=False) if portfolio_df is not None and not portfolio_df.empty else "Chưa có dữ liệu."
     watchlist_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else ""
 
     news_lines = []
@@ -128,50 +163,59 @@ def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, cus
         news_lines.append(line)
     news_str = "\n".join(news_lines) if news_lines else "Không có tin tức mới."
 
-    prompt = f"""Bạn là Chuyên gia Trưởng Ban Chiến lược Đầu tư Chứng khoán với hơn 15 năm kinh nghiệm thực chiến tại thị trường Việt Nam (HSX, HNX).
-Dưới đây là dữ liệu giao dịch và trạng thái danh mục thực tế của Nhà đầu tư:
+    prompt = f"""Bạn là Giám đốc Quản trị Rủi ro & Chiến lược Danh mục Đầu tư (Senior Portfolio Manager) theo trường phái Value-First + Technical Timing.
+Bây giờ là 15:00 CHIỀU - phiên giao dịch chứng khoán vừa khép lại tại ATC.
 
-=== BẢNG TRẠNG THÁI DANH MỤC HIỆN TẠI (HOLDINGS) ===
+=== 1. TÍNH TOÁN ĐỊNH LƯỢNG TẤT ĐỊNH CỦA HỆ THỐNG PYTHON CHO DANH MỤC ===
+{quant_eval_str}
+
+=== 2. BẢNG TRẠNG THÁI GIAO DỊCH THỰC TẾ ===
 {portfolio_str}
 """
     if watchlist_str:
         prompt += f"""
-=== DANH SÁCH CỔ PHIẾU ĐANG THEO DÕI (WATCHLIST) ===
+=== 3. DANH SÁCH THEO DÕI (WATCHLIST) ===
 {watchlist_str}
 """
 
     prompt += f"""
-=== TIN TỨC TÀI CHÍNH & DOANH NGHIỆP MỚI NHẤT (NGUỒN CAFEF CHUYÊN SÂU) ===
+=== 4. TIN TỨC VĨ MÔ & DOANH NGHIỆP TRONG PHIÊN (CAFEF) ===
 {news_str}
 
-Nhiệm vụ của bạn:
-1. **Đánh giá sức khỏe danh mục:** 
-   - Với mỗi mã đang nắm giữ, BẮT BUỘC in đậm mã và gắn huy hiệu hành động nổi bật ngay đầu dòng:
-     • Cổ phiếu **BSR** (Dầu khí) — 🔵 **[NẮM GIỮ GỒNG LÃI]**: ...
-     • Cổ phiếu **MSB** (Ngân hàng) — 🟠 **[CHỐT LỜI TỪNG PHẦN]**: ...
-     • Cổ phiếu **SSI** (Chứng khoán) — 🟡 **[THEO DÕI QUẢN TRỊ RỦI RO]**: ...
-2. **Tác động Tin vĩ mô & Doanh nghiệp:** Tin tức CafeF vừa cập nhật (cổ tức, KQKD, giao dịch nội bộ, chính sách) đang tạo động lực hay áp lực lên danh mục? In đậm tất cả mã cổ phiếu được nhắc đến (**FPT**, **HPG**, **SSI**...).
-3. **Kịch bản hành động cụ thể (Rõ ràng từng mốc):**
-   - Trình bày theo từng mã với huy hiệu hành động:
-     • Đối với mã **[MÃ]** — [HUY HIỆU HÀNH ĐỘNG]:
-       > **Ngắn hạn (T+):** Điểm chốt lời / Điểm quản trị rủi ro...
-       > **Trung hạn (3-6 tháng):** Chiến lược tích lũy / hạ bớt...
-4. **Cổ phiếu / Ngành đón sóng tiềm năng (Phân tách rõ 2 phong cách):**
-   - Nhận định về các mã trong Watchlist (**FPT**, **HPG**, **MWG**...) hoặc cơ hội mới:
-     + Nếu là Lướt sóng T+: Gắn huy hiệu ⚡ **[LƯỚT SÓNG T+]**, cho điểm vào lệnh hẹp (±0.3k - 0.5k), cấm mua đuổi, tính R:R theo điểm vào cao nhất.
-     + Nếu là Gom hàng vị thế (FPT, HPG, MWG...): Gắn huy hiệu 💎 **[GOM HÀNG VỊ THẾ]**, dải gom 1.5% - 2.5%, BẮT BUỘC nêu kế hoạch giải ngân chia 3 bước (30% - 40% - 30%), xác định Giá vốn BQ dự kiến và tính R:R theo giá vốn này.
-     + Nếu chưa đạt chuẩn kỹ thuật: Gắn huy hiệu 🟡 **[THEO DÕI CHỜ MUA]** hoặc ⛔ **[ĐỨNG NGOÀI / TRÁNH BẪY]**.
+QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM:
+1. ĐỐI VỚI VỊ THẾ ĐANG CÓ LÃI (P/L > 0): TUYỆT ĐỐI KHÔNG DÙNG TỪ "CẮT LỖ". Bắt buộc gọi là "CHỐT LỜI TỪNG PHẦN / BẢO VỆ THÀNH QUẢ" và ghi rõ con số Mốc Trailing Stop do Python đã tính toán.
+2. ĐỐI VỚI VỊ THẾ ĐẦU TƯ GIÁ TRỊ ĐANG LỖ: Đánh giá bằng "Thesis Breaker" (luận điểm doanh nghiệp có bị vỡ không), không đưa ra quyết định cắt lỗ hoảng loạn theo biến động kỹ thuật ngắn hạn.
+3. BẮT BUỘC TRẢ LỜI ĐỦ 5 CÂU HỎI CỐT TỬ CỦA NHÀ ĐẦU TƯ TRONG PHẦN TỔNG KẾT:
+   - Câu hỏi 1: Danh mục hôm nay tăng/giảm do đâu? (Bóc tách dòng tiền, nhóm ngành, tin tức).
+   - Câu hỏi 2: Cổ phiếu nào còn rẻ, cổ phiếu nào chạm định giá? (Tham chiếu Fair Value và Margin of Safety).
+   - Câu hỏi 3: Vị thế nào cần chốt lời từng phần và nâng Trailing Stop? (Nêu rõ mốc giá cụ thể).
+   - Câu hỏi 4: Vị thế nào bị suy giảm luận điểm (Thesis Breaker) cần dứt khoát cơ cấu?
+   - Câu hỏi 5: Tỷ trọng tiền mặt hiện tại đã an toàn chưa? Đề xuất tỷ lệ Tiền/Cổ phiếu tối ưu.
 
-Yêu cầu định dạng đặc biệt cho Discord & Web:
-- TUYỆT ĐỐI KHÔNG DÙNG BẢNG MARKDOWN (| Cột | Cột |).
-- TUYỆT ĐỐI KHÔNG DÙNG DẤU `###`.
+Yêu cầu trình bày báo cáo tổng kết phiên:
+**I. TỔNG KẾT PHIÊN ATC & ĐÁNH GIÁ 5 CÂU HỎI CỐT TỬ**
+(Trả lời lần lượt, ngắn gọn, đi thẳng vào bản chất 5 câu hỏi trên)
+
+**II. CHI TIẾT DANH MỤC & HÀNH ĐỘNG QUẢN TRỊ RỦI RO**
+- Trình bày từng mã đang nắm giữ:
+  • Cổ phiếu **[MÃ]** ([Ngành]) — [HUY HIỆU: 🟢 BẢO VỆ THÀNH QUẢ / NÂNG TRAILING STOP hoặc 🔴 THOÁT VỊ THẾ / THESIS BREAKER]:
+    - **Giá vốn:** ...k | **Thị giá ATC:** ...k | **P/L:** ...%
+    - **Hành động cụ thể:** [Chốt lời 30-50% hay tiếp tục nắm giữ]
+    - **Mốc Trailing Stop bảo vệ lãi (hoặc Stop-loss):** [Ghi con số giá cụ thể do Python đã tính]
+    - **Đánh giá Luận điểm cơ bản (Thesis):** [Tình trạng doanh nghiệp]
+
+**III. TÁC ĐỘNG VĨ MÔ & DÒNG TIỀN TỰ DOANH / NGOẠI**
+- Đánh giá động thái mua/bán ròng và tin tức CafeF hôm nay.
+
+**IV. KẾ HOẠCH HÀNH ĐỘNG CHO PHIÊN KẾ TIẾP**
+- Tỷ trọng phân bổ đề xuất: % Tiền mặt / % Cổ phiếu.
+- Điều kiện thị trường để kích hoạt giải ngân mới.
+
+Định dạng Discord/Web:
+- KHÔNG dùng bảng markdown (|---|).
+- KHÔNG dùng dấu `###`.
 - BẮT BUỘC IN ĐẬM TẤT CẢ MÃ CỔ PHIẾU (**SSI**, **BSR**, **MSB**, **HPG**, **MWG**, **FPT**...).
-- TUYỆT ĐỐI KHÔNG ĐÁNH SỐ THỨ TỰ LIÊN TỤC (1., 2., 3., 4., 5...). Dùng bullet point dạng `• ` hoặc `> ` kèm emoji.
-- Chia rõ ràng 4 mục lớn:
-  **I. ĐÁNH GIÁ SỨC KHỎE DANH MỤC**
-  **II. TÁC ĐỘNG VĨ MÔ & DÒNG TIỀN**
-  **III. KỊCH BẢN & CHIẾN LƯỢC HÀNH ĐỘNG**
-  **IV. CỔ PHIẾU / NGÀNH ĐÓN SÓNG TIỀM NĂNG**
+- Dùng gạch đầu dòng phân cấp.
 """
 
     if custom_question:
@@ -182,8 +226,11 @@ Yêu cầu định dạng đặc biệt cho Discord & Web:
 
 def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: list, news_items: list, vnindex_tech: dict = None) -> str:
     """
-    🎯 BÁO CÁO CHIẾN LƯỢC ĐẦU NGÀY 08:45 (PHONG CÁCH CTCK CHUYÊN NGHIỆP SSI / TCBS):
-    Tập hợp số liệu VN-Index thực tế + Điểm tin CafeF đêm qua + Chiến lược danh mục + Top cơ hội tiềm năng.
+    🎯 BÁO CÁO CHIẾN LƯỢC ĐẦU NGÀY 08:45 (VALUE-FIRST + TECHNICAL TIMING) - CHUẨN V2:
+    - Nhận diện Market Regime: BULLISH / NEUTRAL / CORRECTION / RISK-OFF.
+    - 4 Trạng thái chuẩn: 🟢 MUA, 🟢 TÍCH LŨY, 🟡 THEO DÕI, 🔴 GIẢM / THOÁT.
+    - Fair Value & Margin of Safety % tích hợp từ các CTCK lớn.
+    - Cấm FOMO, không mua đuổi khi giá rơi tự do (Falling Knife).
     """
     client = get_ai_client()
 
@@ -202,92 +249,108 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
     idx_rsi = vnindex_tech.get("rsi14", 0.0)
     idx_status = vnindex_tech.get("status_ma20", "")
 
+    # Đánh giá Market Regime
+    regime_data = evaluate_market_regime(vnindex_tech)
+
     p_str = portfolio_df.to_string(index=False) if portfolio_df is not None and not portfolio_df.empty else "Chưa có mã nắm giữ."
     w_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else "Chưa có mã trong Watchlist."
 
-    idx_context = f"""=== 0. DỮ LIỆU THỰC TẾ CHỈ SỐ VN-INDEX (CẬP NHẬT TỨC THỜI) ===
+    idx_context = f"""=== 0. DỮ LIỆU THỊ TRƯỜNG & MARKET REGIME (CẬP NHẬT TỨC THỜI) ===
 - Điểm số đóng cửa phiên gần nhất: {idx_price:.2f} điểm (Thay đổi: {idx_chg:+.2f}%)
 - Đường MA20 ngày: {idx_ma20:.2f} điểm (Trạng thái: {idx_status})
-- Đường MA50 ngày: {idx_ma50:.2f} điểm
-- Chỉ số sức mạnh tương đối RSI(14): {idx_rsi}
-(QUAN TRỌNG: Bạn PHẢI dùng các mốc số liệu thực tế này ({idx_price:.2f}, MA20={idx_ma20:.2f}, MA50={idx_ma50:.2f}) để phân tích vùng hỗ trợ / kháng cự phiên hôm nay. TUYỆT ĐỐI KHÔNG BỊA RA HOẶC DÙNG MỐC 1.250 - 1.280 CỦA CÁC NĂM CŨ!)
+- Đường MA50 ngày: {idx_ma50:.2f} điểm | RSI(14): {idx_rsi}
+- TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME): {regime_data['tag']}
+- TỶ TRỌNG PHÂN BỔ KHUYẾN NGHỊ: Cổ phiếu {regime_data['stock_pct']} | Tiền mặt {regime_data['cash_pct']}
+- ĐỊNH HƯỚNG QUẢN TRỊ RỦI RO: {regime_data['bias']} (Ưu tiên phòng thủ: {regime_data['defense_priority']})
 """
 
     buy_lines = []
     caution_lines = []
     for o in opportunities:
-        if o.get("status") == "RECOMMEND_BUY":
+        sym = o.get("symbol", "")
+        # Lấy định giá Fair Value và MOS
+        val_res = calculate_fair_value_and_mos(symbol=sym, current_price=o.get("current_price", 0.0), sector=o.get("sector", ""))
+        fv = val_res.get("fair_value", o.get("target_price", 0.0))
+        mos = val_res.get("mos_pct", 0.0)
+        
+        status = o.get("status", "")
+        if status == "RECOMMEND_BUY":
+            act = "🟢 MUA" if mos >= 15.0 and o.get("current_price", 0) >= o.get("ma20", 0) else "🟢 TÍCH LŨY"
             buy_lines.append(
-                f"• Mã: {o['symbol']} ({o.get('sector', 'Niêm yết')}) | Phong cách: {o.get('style_type')} | Setup: {o.get('setup_type')} | "
-                f"Thị giá: {o['current_price']}k | Vùng vào lệnh: {o.get('entry_zone')}k | Giá vốn BQ dự kiến: {o.get('avg_cost')}k | Target: {o.get('target_price')}k | Cutloss: {o.get('stop_loss')}k | R:R: {o.get('risk_reward')} | "
-                f"Kế hoạch giải ngân: {o.get('execution_plan')} | Xúc tác: [{o.get('story_tag')}] {o.get('story')}"
+                f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) | Trạng thái: {act} | "
+                f"Thị giá: {o['current_price']}k | Giá trị hợp lý (Fair Value): {fv:.1f}k | Biên an toàn (MoS): {mos:+.1f}% | "
+                f"Vùng gom: {o.get('entry_zone', o.get('current_price'))}k | Target: {o.get('target_price')}k | Cutloss: {o.get('stop_loss')}k | R:R: {o.get('risk_reward')} | "
+                f"Kế hoạch giải ngân: {o.get('execution_plan', 'Chia 2-3 phần')} | Luận điểm: [{o.get('story_tag')}] {o.get('story')}"
             )
-        elif o.get("status") == "CAUTION_TRAP":
+        elif status == "CAUTION_TRAP":
             caution_lines.append(
-                f"• Mã: {o['symbol']} ({o.get('sector', 'Niêm yết')}) | Thị giá: {o['current_price']}k | "
-                f"Xúc tác: [{o.get('story_tag')}] {o.get('story')} | Cảnh báo: {o.get('rationale')}"
+                f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) | Trạng thái: 🟡 THEO DÕI (Cảnh báo bẫy giá) | "
+                f"Thị giá: {o['current_price']}k | Cảnh báo: {o.get('rationale')}"
+            )
+        else:
+            caution_lines.append(
+                f"• Mã: **{sym}** | Trạng thái: 🟡 THEO DÕI | Thị giá: {o.get('current_price')}k | MoS: {mos:+.1f}% (Chờ cân bằng)"
             )
 
-    buy_str = "\n".join(buy_lines) if buy_lines else "Chưa có mã nào thỏa mãn đồng thời cả 2 điều kiện Xúc tác + Kỹ thuật."
-    caution_str = "\n".join(caution_lines) if caution_lines else "Không có cổ phiếu nào rơi vào diện cảnh báo bẫy tin."
+    buy_str = "\n".join(buy_lines) if buy_lines else "Thị trường chưa có mã nào đạt đồng thời Biên an toàn (MoS >= 15%) và tín hiệu kỹ thuật ổn định."
+    caution_str = "\n".join(caution_lines) if caution_lines else "Không có mã nào trong diện cảnh báo bẫy tin."
 
     news_lines = []
     for n in news_items[:6]:
         news_lines.append(f"- [{n.get('tag', 'TIN').upper()}] {n['title']}")
     news_str = "\n".join(news_lines)
 
-    prompt = f"""Bạn là Giám đốc Chiến lược Đầu tư tại Công ty Chứng khoán hàng đầu (chuẩn mực như SSI Research, TCBS).
+    prompt = f"""Bạn là Giám đốc Chiến lược Đầu tư Định chế (Institutional Investment Strategist).
 Bây giờ là 08:45 SÁNG - chuẩn bị bước vào phiên giao dịch ATO của thị trường chứng khoán Việt Nam.
-Hãy xuất bản bản tin "CHIẾN LƯỢC PHIÊN HÔM NAY & KHUYẾN NGHỊ ĐẦU NGÀY":
+Hãy xuất bản bản tin "CHIẾN LƯỢC PHIÊN HÔM NAY & KHUYẾN NGHỊ ĐẦU NGÀY (VALUE-FIRST + TECHNICAL TIMING)":
 
 {idx_context}
 
-=== 1. DANH MỤC HIỆN TẠI CỦA KHÁCH HÀNG ===
+=== 1. DANH MỤC HIỆN TẠI CỦA NHÀ ĐẦU TƯ ===
 {p_str}
 
 === 2. DANH SÁCH THEO DÕI (WATCHLIST) ===
 {w_str}
 
-=== 3. CỔ PHIẾU ĐỦ ĐIỀU KIỆN 'CÂU CHUYỆN XÚC TÁC + KỸ THUẬT CHO PHÉP' ===
+=== 3. CƠ HỘI ĐẠT CHUẨN ĐỊNH LƯỢNG (BIÊN AN TOÀN + KỸ THUẬT CHO PHÉP) ===
 {buy_str}
 
-=== 4. CẢNH BÁO BẪY TIN TỨC (CÓ TIN/THEO DÕI NHƯNG KỸ THUẬT CHƯA CHO PHÉP) ===
+=== 4. CẢNH BÁO BẪY TIN TỨC & CỔ PHIẾU CẦN THEO DÕI CHỜ NỀN ===
 {caution_str}
 
-=== 5. ĐIỂM TIN NÓNG CAFEF SÁNG NAY ===
+=== 5. ĐIỂM TIN VĨ MÔ SÁNG NAY (CAFEF) ===
 {news_str}
 
-Yêu cầu xuất bản & Trình bày:
-1. **Định hướng thị trường phiên hôm nay:** Nhận định nhanh tâm lý mở phiên ATO, dựa sát vào điểm số VN-Index ({idx_price:.2f}) và các mốc hỗ trợ MA20 ({idx_ma20:.2f})/kháng cự thực tế.
-2. **Kế hoạch cho danh mục hiện tại:** 
-   - Với mỗi mã, BẮT BUỘC in đậm mã và gắn huy hiệu hành động nổi bật ngay đầu dòng (ví dụ: `• Cổ phiếu **BSR** (Lọc hóa dầu) — 🔵 **[NẮM GIỮ GỒNG LÃI]**: ...`, `• Cổ phiếu **MSB** (Ngân hàng) — 🟠 **[CHỐT LỜI TỪNG PHẦN]**: ...`, `• Cổ phiếu **SSI** (Chứng khoán) — 🟡 **[THEO DÕI QUẢN TRỊ RỦI RO]**: ...`).
-3. **🎯 TOP CỔ PHIẾU KHUYẾN NGHỊ MUA (PHÂN TÁCH RÕ 2 PHONG CÁCH):**
-   - TUYỆT ĐỐI KHÔNG ĐÁNH SỐ THỨ TỰ (1., 2., 3., 4., 5., 6...) CHO CÁC DÒNG THUỘC TÍNH.
-   - Nhận diện đúng phong cách từ dữ liệu mục 3 để trình bày:
-     
-     *Nếu là LƯỚT SÓNG T+ (Breakout / Sóng ngắn):*
-     • Cổ phiếu **[MÃ]** ([Ngành]) — ⚡ **[LƯỚT SÓNG T+]**
-       - **Xúc tác:** [...]
-       - **Điểm vào lệnh (Sniper):** [...] k (Vùng [...] k - Mua dứt khoát quanh giá này, vượt giá trần dải KHÔNG mua đuổi)
-       - **Giá mục tiêu:** [...] k | **Dừng lỗ:** [...] k | **R:R:** [...] (tính theo giá vào trần)
-       - **Kỹ thuật & Dòng tiền:** [...]
-     
-     *Nếu là GOM HÀNG VỊ THẾ (Tích lũy nền / Cổ phiếu cơ bản lớn như FPT, HPG, MWG):*
-     • Cổ phiếu **[MÃ]** ([Ngành]) — 💎 **[GOM HÀNG VỊ THẾ]**
-       - **Xúc tác & Luận điểm:** [...]
-       - **Dải gom giá:** [...] k | **Giá vốn BQ dự kiến:** [...] k
-       - **Kế hoạch giải ngân 3 bước:** [...] (30% thăm dò, 40% rung lắc, 30% hỗ trợ)
-       - **Giá mục tiêu:** [...] k | **Dừng lỗ:** [...] k | **R:R chuẩn:** [...] (tính theo giá vốn BQ)
-       - **Kỹ thuật & Dòng tiền:** [...]
-4. **⚠️ CẢNH BÁO BẪY TIN TỨC & QUẢN TRỊ RỦI RO:**
-   - Trình bày dạng:
-     • Cổ phiếu **[MÃ]** ([Ngành]) — ⛔ **[ĐỨNG NGOÀI / TRÁNH BẪY]**: [Lý do kỹ thuật chưa đạt...]
+Yêu cầu xuất bản & Cấu trúc 4 phần chuẩn mực:
+**I. BỐI CẢNH VĨ MÔ & TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME)**
+- Nêu rõ Trạng thái: {regime_data['tag']}.
+- Phân bổ đề xuất: {regime_data['stock_pct']} Cổ phiếu / {regime_data['cash_pct']} Tiền mặt.
+- Phân tích điểm số VN-Index ({idx_price:.2f}), mốc hỗ trợ MA20 ({idx_ma20:.2f})/MA50 ({idx_ma50:.2f}).
+
+**II. DANH MỤC THEO DÕI & CƠ HỘI GIẢI NGÂN (4 TRẠNG THÁI CHUẨN)**
+- Chỉ dùng 4 trạng thái: `🟢 MUA`, `🟢 TÍCH LŨY`, `🟡 THEO DÕI`, `🔴 GIẢM / THOÁT`.
+- Với mỗi mã được khuyến nghị, BẮT BUỘC nêu:
+  • Cổ phiếu **[MÃ]** ([Ngành]) — [HUY HIỆU TRẠNG THÁI]
+    - **Giá trị hợp lý (Fair Value):** ...k | **Biên an toàn (MoS):** ...%
+    - **Vùng gom tối ưu:** ...k (Không mua đuổi khi vượt dải)
+    - **Kế hoạch giải ngân:** [Chia 2-3 bước gom]
+    - **Mục tiêu & Quản trị rủi ro:** Target: ...k | Ngưỡng vi phạm: ...k | R:R: ...x
+    - **Luận điểm cốt lõi & Xúc tác:** [...]
+
+**III. KỊCH BẢN HÀNH ĐỘNG TRONG PHIÊN (BULL / BASE / BEAR)**
+- Kịch bản Bull (Hưng phấn ATO): Hành động gì? (Cấm FOMO mua đuổi).
+- Kịch bản Base (Giằng co tích lũy): Giải ngân từng phần ra sao?
+- Kịch bản Bear (Áp lực bán tháo/Rung lắc mạnh): Kỷ luật quản trị rủi ro.
+
+**IV. KỶ LUẬT QUẢN TRỊ RỦI RO & BẢO TOÀN VỐN**
+- Cảnh báo bẫy giá rơi (Falling Knife): Rẻ vẫn phải đợi nền cân bằng.
+- Không dùng margin trong vùng thị trường nhạy cảm.
 
 Định dạng Discord/Web:
 - KHÔNG dùng bảng markdown (|---|).
 - KHÔNG dùng dấu `###`.
-- BẮT BUỘC IN ĐẬM TẤT CẢ MÃ CỔ PHIẾU (**SSI**, **BSR**, **MSB**, **HPG**, **MWG**...).
-- Tiêu đề in đậm: `**I. NHẬN ĐỊNH ĐẦU PHIÊN ATO**`, `**II. HÀNH ĐỘNG VỚI DANH MỤC HIỆN TẠI**`, `**III. 🎯 TOP CỔ PHIẾU KHUYẾN NGHỊ MUA**`, `**IV. ⚠️ CẢNH BÁO TRÁNH BẪY TIN TỨC**`.
+- BẮT BUỘC IN ĐẬM TẤT CẢ MÃ CỔ PHIẾU (**SSI**, **BSR**, **MSB**, **HPG**, **MWG**, **FPT**...).
+- Dùng gạch đầu dòng phân cấp.
 """
     return call_gemini(client, prompt)
 

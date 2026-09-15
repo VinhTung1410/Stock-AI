@@ -556,15 +556,28 @@ def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> d
     }
 
 
+_TECH_CACHE = {}
+
 def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool = True) -> dict:
     """
     Kéo lịch sử giá và tính toán các chỉ số kỹ thuật:
     MA20, MA50, RSI14, Vol/Vol_SMA20, ATR(14), Giá trị GD 20 phiên (ADV20 Tỷ),
     Hình thái nến (Upper Wick) và Dòng tiền Khối ngoại.
+    Tích hợp cache 120 giây chống nghẽn / Rate Limit vnstock.
     """
+    global _TECH_CACHE
+    import time
+    now = time.time()
+    sym_clean = symbol.upper().strip()
+    cache_key = f"{sym_clean}_{fetch_foreign}"
+    if cache_key in _TECH_CACHE:
+        c_time, c_data = _TECH_CACHE[cache_key]
+        if now - c_time < 120:
+            return c_data
+
     try:
         from vnstock.api.quote import Quote
-        q = Quote(symbol=symbol, source="VCI")
+        q = Quote(symbol=sym_clean, source="VCI")
         
         # Lấy ngày hiện tại và 120 ngày trước để đủ tính MA50 & RSI14 & ATR
         end_date = datetime.now().strftime("%Y-%m-%d")
@@ -628,7 +641,7 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             "upper_wick_ratio": upper_wick_ratio
         })
         
-        return {
+        res = {
             "symbol": symbol,
             "date": str(latest["time"]),
             "current_price": current_price,
@@ -648,6 +661,8 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             "foreign_flow": foreign_data,
             "trap_info": trap_info
         }
+        _TECH_CACHE[cache_key] = (now, res)
+        return res
     except Exception as e:
         logging.error(f"Lỗi khi lấy kỹ thuật mã {symbol}: {e}")
         return {}
@@ -655,8 +670,14 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
 
 def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
     """
-    Tính toán lãi/lỗ và tổng hợp tình trạng danh mục.
+    Tính toán lãi/lỗ và tổng hợp tình trạng danh mục theo chuẩn AI Stock Copilot V2:
+    - Bổ sung Fair Value & Margin of Safety (MoS %).
+    - Bổ sung Trailing Stop cho vị thế lãi, Stop-loss cho vị thế lỗ.
+    - Gắn thẻ Hành động V2 (Chốt lời từng phần / Nâng chặn lãi vs Theo dõi).
     """
+    from quant_valuation import calculate_fair_value_and_mos
+    from quant_engine import evaluate_holding_position
+
     records = []
     for item in portfolio:
         symbol = item["symbol"]
@@ -677,6 +698,18 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
         tr = tech.get("trap_info", {})
         trap_label = f"⚠️ {tr.get('trap_type', 'BẪY')}" if tr.get("is_trap") else "✅ An toàn"
 
+        # Đánh giá Fair Value & MoS
+        val_res = calculate_fair_value_and_mos(symbol=symbol, current_price=curr_price, sector=note)
+        fair_val = val_res.get("fair_value", curr_price)
+        mos_pct = val_res.get("mos_pct", 0.0)
+
+        # Đánh giá vị thế nắm giữ V2
+        row_dict = {"symbol": symbol, "avg_price": cost_price, "volume": volume, "market_price": curr_price}
+        pos_eval = evaluate_holding_position(row_dict, tech)
+        
+        action_v2 = pos_eval.get("action", "🟢 NẮM GIỮ")
+        defense_target = pos_eval.get("trailing_stop") if pos_eval.get("is_profit") else pos_eval.get("stop_loss")
+
         records.append({
             "Mã CP": symbol,
             "Khối lượng": volume,
@@ -685,6 +718,10 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
             "Thay đổi (%)": tech.get("change_pct", 0.0),
             "Lãi/Lỗ (%)": round(pnl_pct, 2),
             "Lãi/Lỗ (VND)": int(pnl_vnd),
+            "Fair Value (k)": round(fair_val, 2),
+            "MoS (%)": round(mos_pct, 1),
+            "Chặn lãi/Cắt lỗ (k)": defense_target,
+            "Hành động V2": action_v2,
             "Vị thế MA20": tech.get("status_ma20", "N/A"),
             "Khối ngoại (Tỷ)": ff_net,
             "Tín hiệu Bẫy": trap_label,
@@ -697,9 +734,12 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
 
 def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
     """
-    Tính toán tín hiệu kỹ thuật cho Danh mục Cổ phiếu Đang Theo Dõi (Watchlist).
-    Giúp phát hiện sớm các cổ phiếu đang tiệm cận vùng giá mua an toàn hoặc bùng nổ điểm mua.
+    Tính toán tín hiệu kỹ thuật & định giá cho Danh mục Theo Dõi (Watchlist) V2:
+    - Hiển thị Fair Value & Margin of Safety (MoS %).
+    - Giúp phát hiện sớm các cổ phiếu đạt tiêu chuẩn an toàn vốn.
     """
+    from quant_valuation import calculate_fair_value_and_mos
+
     records = []
     for item in watchlist:
         symbol = item["symbol"]
@@ -715,10 +755,16 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
         tr = tech.get("trap_info", {})
         trap_label = f"⚠️ {tr.get('trap_type', 'BẪY')}" if tr.get("is_trap") else "✅ An toàn"
 
+        val_res = calculate_fair_value_and_mos(symbol=symbol, current_price=curr_price, sector=note)
+        fair_val = val_res.get("fair_value", curr_price)
+        mos_pct = val_res.get("mos_pct", 0.0)
+
         records.append({
             "Mã CP": symbol,
             "Thị giá (k)": curr_price,
             "Thay đổi (%)": tech.get("change_pct", 0.0),
+            "Fair Value (k)": round(fair_val, 2),
+            "MoS (%)": round(mos_pct, 1),
             "Giá chờ mua (k)": target_buy if target_buy > 0 else curr_price,
             "Khoảng cách (%)": round(diff_pct, 2),
             "Vị thế MA20": tech.get("status_ma20", "N/A"),
@@ -885,8 +931,24 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                 "summary": ""
             }
 
-    # 3. Tạo danh sách ứng viên (Ưu tiên mã có tin tức + Watchlist + Top trụ cột)
-    pool = list(set(list(catalyst_map.keys()) + list(TOP_MARKET_SYMBOLS) + [s.upper() for s in (extra_symbols or []) if s]))
+    # 3. Tạo danh sách ứng viên (Ưu tiên mã người dùng theo dõi trong extra_symbols + watchlist)
+    candidate_symbols = []
+    for s in (extra_symbols or []):
+        if s and s.upper() not in candidate_symbols:
+            candidate_symbols.append(s.upper())
+    for w in watchlist_items:
+        ws = w.get("symbol", "").upper()
+        if ws and ws not in candidate_symbols:
+            candidate_symbols.append(ws)
+    for c in list(catalyst_map.keys()):
+        if c not in candidate_symbols:
+            candidate_symbols.append(c)
+    for t in TOP_MARKET_SYMBOLS:
+        if t not in candidate_symbols:
+            candidate_symbols.append(t)
+
+    # Khống chế danh sách quét tối đa 8 mã để đảm bảo an toàn hạn mức 20 req/phút của vnstock
+    pool = candidate_symbols[:8]
 
     def analyze_symbol(sym):
         try:
@@ -1007,10 +1069,15 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             return None
 
     all_results = []
-    with ThreadPoolExecutor(max_workers=6) as executor:
-        for res in executor.map(analyze_symbol, pool):
+    for sym in pool:
+        try:
+            res = analyze_symbol(sym)
             if res:
                 all_results.append(res)
+            import time
+            time.sleep(0.2)
+        except Exception as e:
+            logging.debug(f"Lỗi khi xử lý {sym}: {e}")
 
     # Tách thành 2 nhóm: Khuyến nghị Mua và Cảnh báo
     buy_picks = [r for r in all_results if r["status"] == "RECOMMEND_BUY"]

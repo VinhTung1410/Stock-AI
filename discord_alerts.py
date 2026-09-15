@@ -197,11 +197,25 @@ def format_portfolio_embed(portfolio_df, ai_summary: str, report_type: str = "B�
     # Tóm tắt danh mục thành chuỗi ngắn gọn
     portfolio_lines = []
     for _, row in portfolio_df.iterrows():
-        pnl_icon = "🟢" if row["Lãi/Lỗ (%)"] >= 0 else "🔴"
+        pnl_pct = row["Lãi/Lỗ (%)"]
+        pnl_icon = "🟢" if pnl_pct >= 0 else "🔴"
+        
+        # Trailing Stop hoặc Stop-loss
+        def_val = row.get("Chặn lãi/Cắt lỗ (k)")
+        if def_val:
+            def_label = f" | 🛡️ Trailing Stop: `{def_val}k`" if pnl_pct > 0 else f" | 🛡️ Stop-loss: `{def_val}k`"
+        else:
+            def_label = ""
+
+        # Fair value & MoS
+        fv = row.get("Fair Value (k)")
+        mos = row.get("MoS (%)")
+        val_str = f" [FV: `{fv}k`, MoS: `{mos:+}%`]" if fv and mos is not None else ""
+
         line = (
-            f"{pnl_icon} **{row['Mã CP']}** ({row['Khối lượng']:,} cp) | "
+            f"{pnl_icon} **{row['Mã CP']}** ({row['Khối lượng']:,} cp){val_str} | "
             f"Vốn: `{row['Giá vốn (k)']}` ➔ Giá: `{row['Thị giá (k)']}` | "
-            f"**{row['Lãi/Lỗ (%)']:+.2f}%** (`{int(row['Lãi/Lỗ (VND)']):+,}đ`)"
+            f"**{pnl_pct:+.2f}%** (`{int(row['Lãi/Lỗ (VND)']):+,}đ`){def_label}"
         )
         portfolio_lines.append(line)
 
