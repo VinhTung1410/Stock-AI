@@ -52,11 +52,42 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
     )
 
     if st.button("💾 Lưu Danh mục Nắm Giữ (Sheet 1)", type="primary"):
-        new_portfolio = edited_p_df.to_dict(orient="records")
-        # Chuẩn hóa mã viết hoa
-        for p in new_portfolio:
-            p["symbol"] = str(p.get("symbol", "")).strip().upper()
-        new_portfolio = [p for p in new_portfolio if p["symbol"] and p["symbol"] != "NAN"]
+        new_portfolio = []
+        for r in edited_p_df.to_dict(orient="records"):
+            sym = str(r.get("symbol", "")).strip().upper()
+            if not sym or sym in ["NAN", "NONE", "NULL"]:
+                continue
+
+            # Xử lý an toàn khối lượng (tránh NaN)
+            raw_vol = r.get("volume")
+            try:
+                if raw_vol is not None and not pd.isna(raw_vol) and str(raw_vol).strip().lower() != "nan":
+                    volume = max(0, int(float(raw_vol)))
+                else:
+                    volume = 0
+            except:
+                volume = 0
+
+            # Xử lý an toàn giá vốn (tránh float nan)
+            raw_cost = r.get("cost_price")
+            try:
+                if raw_cost is not None and not pd.isna(raw_cost) and str(raw_cost).strip().lower() != "nan":
+                    cost_price = round(float(raw_cost), 2)
+                else:
+                    cost_price = 0.0
+            except:
+                cost_price = 0.0
+
+            # Xử lý an toàn ghi chú
+            raw_note = r.get("note")
+            note = "" if (raw_note is None or pd.isna(raw_note) or str(raw_note).strip().lower() == "nan") else str(raw_note).strip()
+
+            new_portfolio.append({
+                "symbol": sym,
+                "volume": volume,
+                "cost_price": cost_price,
+                "note": note
+            })
 
         save_portfolio(new_portfolio)
         
@@ -106,10 +137,31 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
     )
 
     if st.button("💾 Lưu Danh mục Theo Dõi (Sheet 2)", type="primary"):
-        new_watchlist = edited_wl_df.to_dict(orient="records")
-        for w in new_watchlist:
-            w["symbol"] = str(w.get("symbol", "")).strip().upper()
-        new_watchlist = [w for w in new_watchlist if w["symbol"] and w["symbol"] != "NAN"]
+        new_watchlist = []
+        for r in edited_wl_df.to_dict(orient="records"):
+            sym = str(r.get("symbol", "")).strip().upper()
+            if not sym or sym in ["NAN", "NONE", "NULL"]:
+                continue
+
+            # Xử lý an toàn giá canh mua (tránh float nan)
+            raw_target = r.get("target_buy")
+            try:
+                if raw_target is not None and not pd.isna(raw_target) and str(raw_target).strip().lower() != "nan":
+                    target_buy = round(float(raw_target), 2)
+                else:
+                    target_buy = 0.0
+            except:
+                target_buy = 0.0
+
+            # Xử lý an toàn ghi chú
+            raw_note = r.get("note")
+            note = "" if (raw_note is None or pd.isna(raw_note) or str(raw_note).strip().lower() == "nan") else str(raw_note).strip()
+
+            new_watchlist.append({
+                "symbol": sym,
+                "target_buy": target_buy,
+                "note": note
+            })
 
         save_watchlist(new_watchlist)
 

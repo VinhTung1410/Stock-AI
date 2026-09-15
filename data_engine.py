@@ -237,6 +237,28 @@ def fetch_google_sheet_data(sheet_url: str = None) -> tuple:
         return None, None
 
 
+def clean_json_records(records: list) -> list:
+    """Loại bỏ triệt để các giá trị NaN/Inf không hợp lệ trong chuẩn JSON."""
+    import math
+    cleaned = []
+    for item in records:
+        if not isinstance(item, dict):
+            continue
+        c = {}
+        for k, v in item.items():
+            if pd.isna(v):
+                if k in ["note", "name", "symbol", "type", "channel", "tag"]:
+                    c[k] = ""
+                else:
+                    c[k] = 0.0
+            elif isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                c[k] = 0.0
+            else:
+                c[k] = v
+        cleaned.append(c)
+    return cleaned
+
+
 def update_google_sheet_portfolio(portfolio_data: list) -> tuple:
     """
     Ghi ngược danh mục nắm giữ từ Web Dashboard lên Sheet 1 của Google Sheet.
@@ -248,12 +270,13 @@ def update_google_sheet_portfolio(portfolio_data: list) -> tuple:
     if not update_url:
         return False, "Thiếu biến môi trường GOOGLE_SHEET_UPDATE_URL trên server."
     try:
-        payload = {"type": "portfolio", "data": portfolio_data}
+        clean_data = clean_json_records(portfolio_data)
+        payload = {"type": "portfolio", "data": clean_data}
         res = requests.post(update_url, json=payload, timeout=30)
         if res.status_code == 200:
             import time
             _GSHEET_CACHE["timestamp"] = time.time()
-            _GSHEET_CACHE["portfolio"] = portfolio_data
+            _GSHEET_CACHE["portfolio"] = clean_data
             logging.info("✅ Đã ghi ngược danh mục lên Google Sheet thành công!")
             return True, "OK"
         else:
@@ -278,12 +301,13 @@ def update_google_sheet_watchlist(watchlist_data: list) -> tuple:
     if not update_url:
         return False, "Thiếu biến môi trường GOOGLE_SHEET_UPDATE_URL trên server."
     try:
-        payload = {"type": "watchlist", "data": watchlist_data}
+        clean_data = clean_json_records(watchlist_data)
+        payload = {"type": "watchlist", "data": clean_data}
         res = requests.post(update_url, json=payload, timeout=30)
         if res.status_code == 200:
             import time
             _GSHEET_CACHE["timestamp"] = time.time()
-            _GSHEET_CACHE["watchlist"] = watchlist_data
+            _GSHEET_CACHE["watchlist"] = clean_data
             logging.info("✅ Đã ghi ngược Watchlist lên Google Sheet thành công!")
             return True, "OK"
         else:
