@@ -237,51 +237,65 @@ def fetch_google_sheet_data(sheet_url: str = None) -> tuple:
         return None, None
 
 
-def update_google_sheet_portfolio(portfolio_data: list) -> bool:
+def update_google_sheet_portfolio(portfolio_data: list) -> tuple:
     """
     Ghi ngược danh mục nắm giữ từ Web Dashboard lên Sheet 1 của Google Sheet.
     Hỗ trợ qua webhook Google Apps Script (GOOGLE_SHEET_UPDATE_URL).
+    Trả về (thành_công: bool, thông_điệp: str).
     """
+    global _GSHEET_CACHE
     update_url = os.environ.get("GOOGLE_SHEET_UPDATE_URL", "").strip()
     if not update_url:
-        return False
+        return False, "Thiếu biến môi trường GOOGLE_SHEET_UPDATE_URL trên server."
     try:
         payload = {"type": "portfolio", "data": portfolio_data}
-        res = requests.post(update_url, json=payload, timeout=10)
+        res = requests.post(update_url, json=payload, timeout=30)
         if res.status_code == 200:
-            _GSHEET_CACHE["timestamp"] = 0
-            _GSHEET_CACHE["portfolio"] = None
+            import time
+            _GSHEET_CACHE["timestamp"] = time.time()
+            _GSHEET_CACHE["portfolio"] = portfolio_data
             logging.info("✅ Đã ghi ngược danh mục lên Google Sheet thành công!")
-            return True
+            return True, "OK"
         else:
-            logging.error(f"Lỗi khi gửi dữ liệu lên Google Sheet Webhook: {res.status_code} - {res.text}")
-            return False
+            err_msg = f"HTTP {res.status_code}: {res.text[:120]}"
+            logging.error(f"Lỗi khi gửi dữ liệu lên Google Sheet Webhook: {err_msg}")
+            return False, err_msg
+    except requests.exceptions.Timeout:
+        logging.error("Lỗi: Quá thời gian chờ phản hồi từ Google Apps Script (>30s).")
+        return False, "Hết thời gian chờ (Timeout > 30s). Google Apps Script xử lý quá lâu."
     except Exception as e:
         logging.error(f"Lỗi kết nối Webhook Google Sheet: {e}")
-        return False
+        return False, str(e)
 
 
-def update_google_sheet_watchlist(watchlist_data: list) -> bool:
+def update_google_sheet_watchlist(watchlist_data: list) -> tuple:
     """
     Ghi ngược danh sách theo dõi (Watchlist) từ Web Dashboard lên Sheet 2 của Google Sheet.
+    Trả về (thành_công: bool, thông_điệp: str).
     """
+    global _GSHEET_CACHE
     update_url = os.environ.get("GOOGLE_SHEET_UPDATE_URL", "").strip()
     if not update_url:
-        return False
+        return False, "Thiếu biến môi trường GOOGLE_SHEET_UPDATE_URL trên server."
     try:
         payload = {"type": "watchlist", "data": watchlist_data}
-        res = requests.post(update_url, json=payload, timeout=10)
+        res = requests.post(update_url, json=payload, timeout=30)
         if res.status_code == 200:
-            _GSHEET_CACHE["timestamp"] = 0
-            _GSHEET_CACHE["watchlist"] = None
+            import time
+            _GSHEET_CACHE["timestamp"] = time.time()
+            _GSHEET_CACHE["watchlist"] = watchlist_data
             logging.info("✅ Đã ghi ngược Watchlist lên Google Sheet thành công!")
-            return True
+            return True, "OK"
         else:
-            logging.error(f"Lỗi gửi Watchlist lên Google Sheet: {res.status_code} - {res.text}")
-            return False
+            err_msg = f"HTTP {res.status_code}: {res.text[:120]}"
+            logging.error(f"Lỗi gửi Watchlist lên Google Sheet: {err_msg}")
+            return False, err_msg
+    except requests.exceptions.Timeout:
+        logging.error("Lỗi: Quá thời gian chờ phản hồi Watchlist từ Google Apps Script (>30s).")
+        return False, "Hết thời gian chờ (Timeout > 30s). Google Apps Script xử lý quá lâu."
     except Exception as e:
         logging.error(f"Lỗi kết nối Webhook Google Sheet Watchlist: {e}")
-        return False
+        return False, str(e)
 
 
 def load_portfolio(filepath: str = "portfolio.json") -> list:
@@ -910,4 +924,4 @@ if __name__ == "__main__":
     print("\n--- TIN TỨC VĨ MÔ & NGÀNH NỔI BẬT ---")
     news = fetch_macro_news()
     for n in news[:5]:
-        print(f"[{n['keyword']}] {n['title']}")
+        print(f"[{n.get('tag', n.get('keyword', 'TIN'))}] {n.get('title', '')}")

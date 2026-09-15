@@ -15,6 +15,28 @@ from ai_analyst import (
     generate_quantamental_2pass_report
 )
 
+def sanitize_markdown_report(text: str) -> str:
+    """
+    Chuẩn hóa báo cáo Markdown trước khi đưa vào st.markdown:
+    1. Thay thế hàng ký tự dấu bằng (===...) bằng đường kẻ ngang chuẩn (---).
+    2. Chuyển Unicode bullet '• ' thành Markdown list marker '- ' để parser sinh thẻ <ul><li>.
+    3. Đảm bảo khoảng cách dòng trước các tiêu đề để tránh bẫy Setext Heading.
+    """
+    if not text:
+        return ""
+
+    # 1. Thay thế hàng dấu bằng thành thẻ phân cách ---
+    cleaned = re.sub(r'^[ \t]*={3,}[ \t]*$', '---', text, flags=re.MULTILINE)
+
+    # 2. Chuyển bullet Unicode (•) thành Markdown list marker (- )
+    cleaned = re.sub(r'^[ \t]*•[ \t]*', '- ', cleaned, flags=re.MULTILINE)
+
+    # 3. Đảm bảo tiêu đề (#, ##, ###) có dòng trống phía trước
+    cleaned = re.sub(r'(?<!\n)\n(#{1,4}\s+)', r'\n\n\1', cleaned)
+
+    return cleaned
+
+
 def render_tab_ai(df_eval: pd.DataFrame):
     """
     Render Tab Trợ lý Chiến lược AI:
@@ -51,7 +73,7 @@ def render_tab_ai(df_eval: pd.DataFrame):
                 st.session_state["cached_portfolio_ai"] = analysis_result
 
         if "cached_portfolio_ai" in st.session_state:
-            st.markdown(st.session_state["cached_portfolio_ai"])
+            st.markdown(sanitize_markdown_report(st.session_state["cached_portfolio_ai"]))
 
     # -------------------------------------------------------------
     # SUB-TAB 2: KỊCH BẢN RỦI RO THỊ TRƯỜNG & DỰ BÁO SÓNG
@@ -74,7 +96,7 @@ def render_tab_ai(df_eval: pd.DataFrame):
                 st.session_state["cached_market_scenarios"] = market_report
 
         if "cached_market_scenarios" in st.session_state:
-            st.markdown(st.session_state["cached_market_scenarios"])
+            st.markdown(sanitize_markdown_report(st.session_state["cached_market_scenarios"]))
 
     # -------------------------------------------------------------
     # SUB-TAB 3: NGHIÊN CỨU CỔ PHIẾU CHUYÊN SÂU (8 TRỤ CỘT & 100 ĐIỂM)
@@ -230,4 +252,4 @@ def render_tab_ai(df_eval: pd.DataFrame):
             </div>
             """, unsafe_allow_html=True)
 
-            st.markdown(report_text)
+            st.markdown(sanitize_markdown_report(report_text))
