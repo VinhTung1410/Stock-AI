@@ -153,7 +153,7 @@ def calculate_altman_z_score(fin_dict: dict) -> dict:
         return {"z_score": 2.2, "zone": "VÙNG XÁM", "icon": "🟡"}
 
 
-def check_data_gate(symbol: str, tech_dict: dict, fin_dict: dict, min_adv20_billion: float = 3.0) -> dict:
+def check_data_gate(symbol: str, tech_dict: dict, fin_dict: dict, min_adv20_billion: float = 2.0) -> dict:
     """
     CỔNG KIỂM TRA DỮ LIỆU CỨNG (DATA GATE):
     Ngăn chặn tuyệt đối việc đưa ra khuyến nghị mua bừa bãi đối với cổ phiếu cạn thanh khoản hoặc thiếu BCTC.
@@ -164,15 +164,19 @@ def check_data_gate(symbol: str, tech_dict: dict, fin_dict: dict, min_adv20_bill
     curr_price = tech_dict.get("current_price", 0.0)
     vol = tech_dict.get("volume", 0)
     period = fin_dict.get("period", "")
+    adv20_bil = tech_dict.get("adv20_billion")
 
     # 1. Kiểm tra giá giao dịch
     if not curr_price or curr_price <= 0:
         passed = False
         reasons.append("Thiếu dữ liệu thị giá giao dịch thực tế.")
 
-    # 2. Kiểm tra thanh khoản (ADV20 ước tính tối thiểu)
-    # Giá trị giao dịch phiên = vol * curr_price * 1000 VND
-    daily_value_billion = (vol * curr_price * 1000) / 1_000_000_000
+    # 2. Kiểm tra thanh khoản (ADV20 thực tế hoặc giá trị phiên)
+    if adv20_bil is not None and adv20_bil > 0:
+        daily_value_billion = adv20_bil
+    else:
+        daily_value_billion = (vol * curr_price * 1000) / 1_000_000_000
+
     if daily_value_billion < min_adv20_billion:
         passed = False
         reasons.append(f"Thanh khoản quá thấp ({daily_value_billion:.2f} tỷ < ngưỡng tối thiểu {min_adv20_billion} tỷ/phiên). Rủi ro kẹp vốn!")
@@ -226,7 +230,10 @@ def evaluate_decision_hard_gates(
     price_bull: float,
     price_base: float,
     price_bear: float,
-    atr: float = 0.0
+    atr: float = 0.0,
+    trap_info: dict = None,
+    foreign_flow: dict = None,
+    adv20_billion: float = 0.0
 ) -> dict:
     """
     TÍNH TOÁN HÀNG RÀO QUYẾT ĐỊNH ĐỊNH LƯỢNG (HARD GATES):
@@ -235,6 +242,7 @@ def evaluate_decision_hard_gates(
     3. Stop-Loss theo ATR(14): max(Giá hiện tại - 2*ATR, Giá hiện tại * 0.93 - sàn HOSE).
     4. Tỷ lệ Lãi/Lỗ R (Risk/Reward): Upside / Downside.
     5. Kelly Criterion (f*): Tỷ lệ phân bổ vốn tối ưu.
+    6. Veto Gates: Khối ngoại xả ròng & Bẫy tin tức (News Trap Gate).
     """
     if not current_price or current_price <= 0:
         return {}
@@ -254,7 +262,7 @@ def evaluate_decision_hard_gates(
     else:
         stop_loss = round(current_price * 0.93, 2)
 
-    downside_val = current_price - stop_loss
+    downside_val = max(current_price - stop_loss, 0.01)
     upside_val = max(ev - current_price, 0.01)
     
     # 4. Tỷ lệ Risk / Reward R
@@ -266,36 +274,61 @@ def evaluate_decision_hard_gates(
     kelly_f = round(p_win - (p_loss / rr), 2) if rr > 0 else -1.0
 
     # --- HÀNG RÀO CỨNG (HARD GATES) ---
-    # Tiêu chuẩn xét Mua: MoS >= 10% VÀ R >= 1.5 VÀ Kelly > 0
     gate_mos_passed = mos_pct >= 8.0
     gate_rr_passed = rr >= 1.5
     gate_kelly_passed = kelly_f > 0
+    gate_trap_passed = not (trap_info and trap_info.get("is_trap"))
 
-    can_buy = gate_mos_passed and gate_rr_passed and gate_kelly_passed
-
-    if can_buy and mos_pct >= 15.0 and rr >= 2.0:
-        decision_tag = "🟢 MUA MẠNH"
-        position_size_nav = "15% - 20% NAV"
-    elif can_buy:
-        decision_tag = "🟢 TÍCH LŨY / MUA THĂM DÒ"
-        position_size_nav = "8% - 12% NAV"
-    elif mos_pct < 0:
-        decision_tag = "🔴 BÁN / HẠ TỶ TRỌNG (Biên an toàn âm)"
-        position_size_nav = "0% NAV (Thoát vị thế)"
+    # Kiểm tra bẫy tin tức (VETO CỨNG)
+    if not gate_trap_passed:
+        can_buy = False
+        trap_msg = trap_info.get("warning_msg", "Phát hiện tín hiệu bẫy giá / tin tức nguy hiểm")
+        decision_tag = f"⛔ CẢNH BÁO BẪY: {trap_msg}"
+        position_size_nav = "0% NAV (Cấm mua - Đang trong vùng bẫy rủi ro)"
+    elif adv20_billion > 0 and adv20_billion < 2.0:
+        can_buy = False
+        decision_tag = "⛔ TỪ CHỐI: THANH KHOẢN KÉM (< 2 tỷ/phiên)"
+        position_size_nav = "0% NAV (Rủi ro thanh khoản kẹp vốn)"
     else:
-        decision_tag = "🟡 THEO DÕI / CHỜ NỀN (Hàng rào định lượng chưa đạt)"
-        position_size_nav = "0% NAV (Chờ điểm mua đạt chuẩn)"
+        can_buy = gate_mos_passed and gate_rr_passed and gate_kelly_passed
+
+        # Kiểm tra dòng tiền Khối ngoại
+        is_heavy_foreign_sell = False
+        if foreign_flow and foreign_flow.get("status") in ["SELLING", "HEAVY_SELLING"]:
+            net_val = foreign_flow.get("net_val_bil", 0.0)
+            if net_val < -20.0:
+                is_heavy_foreign_sell = True
+
+        if can_buy:
+            if is_heavy_foreign_sell:
+                decision_tag = f"🟡 MUA THĂM DÒ HẠN CHẾ (Khối ngoại đang xả ròng {foreign_flow.get('net_val_bil'):.1f} tỷ)"
+                position_size_nav = "5% NAV (Thận trọng với đà bán ròng của khối ngoại)"
+            elif mos_pct >= 15.0 and rr >= 2.0:
+                decision_tag = "🟢 MUA MẠNH"
+                position_size_nav = "15% - 20% NAV"
+            else:
+                decision_tag = "🟢 TÍCH LŨY / MUA THĂM DÒ"
+                position_size_nav = "8% - 12% NAV"
+        elif mos_pct < 0:
+            decision_tag = "🔴 BÁN / HẠ TỶ TRỌNG (Biên an toàn âm)"
+            position_size_nav = "0% NAV (Thoát vị thế)"
+        else:
+            decision_tag = "🟡 THEO DÕI / CHỜ NỀN (Hàng rào định lượng chưa đạt)"
+            position_size_nav = "0% NAV (Chờ điểm mua đạt chuẩn)"
 
     return {
         "ev": ev,
         "mos_pct": mos_pct,
         "stop_loss": stop_loss,
-        "downside_pct": round(((current_price - stop_loss) / current_price) * 100, 1),
+        "downside_pct": round(((current_price - stop_loss) / current_price) * 100, 1) if current_price > 0 else 0.0,
         "risk_reward": rr,
         "kelly_f": kelly_f,
         "gate_mos_passed": gate_mos_passed,
         "gate_rr_passed": gate_rr_passed,
         "gate_kelly_passed": gate_kelly_passed,
+        "gate_trap_passed": gate_trap_passed,
+        "trap_info": trap_info or {},
+        "foreign_flow": foreign_flow or {},
         "can_buy": can_buy,
         "decision_tag": decision_tag,
         "position_size_nav": position_size_nav

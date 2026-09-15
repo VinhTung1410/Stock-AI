@@ -151,48 +151,71 @@ def render_tab_ai(df_eval: pd.DataFrame):
             pb_val = fin_data.get('pb', 'N/A')
             roe_val = f"{fin_data.get('roe', 'N/A')}%" if fin_data.get('roe') is not None else "N/A"
 
+            ff = tech_data.get("foreign_flow", {})
+            ff_net = ff.get("net_val_bil", 0.0) if ff else 0.0
+            ff_color = "#15803d" if ff_net >= 0 else "#dc2626"
+            ff_bg = "rgba(22, 163, 74, 0.1)" if ff_net >= 0 else "rgba(220, 38, 38, 0.1)"
+            ff_sign = "+" if ff_net > 0 else ""
+            ff_status_vi = ff.get("status_vi", "N/A") if ff else "N/A"
+
+            trap_info = tech_data.get("trap_info", {})
+            is_trap = trap_info.get("is_trap", False)
+
             metrics_grid_html = textwrap.dedent(f"""
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; margin: 16px 0 20px 0;">
-                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">THỊ GIÁ</div>
-                    <div style="font-size: 21px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
-                        {tech_data.get('current_price', 'N/A')} <span style="font-size: 13px; font-weight: 600; color: #64748b;">k</span>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; margin: 16px 0 16px 0;">
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">THỊ GIÁ</div>
+                    <div style="font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                        {tech_data.get('current_price', 'N/A')} <span style="font-size: 12px; font-weight: 600; color: #64748b;">k</span>
                     </div>
-                    <div style="display: inline-block; background: {chg_bg}; color: {chg_color}; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 5px; margin-top: 4px;">
+                    <div style="display: inline-block; background: {chg_bg}; color: {chg_color}; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-top: 3px;">
                         {chg_sign}{chg:.2f}%
                     </div>
                 </div>
-                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">RSI (14)</div>
-                    <div style="font-size: 21px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">RSI (14)</div>
+                    <div style="font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
                         {rsi_val}
                     </div>
-                    <div style="margin-top: 4px;">{rsi_status}</div>
+                    <div style="margin-top: 3px;">{rsi_status}</div>
                 </div>
-                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">P/E</div>
-                    <div style="font-size: 21px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
-                        {pe_val} <span style="font-size: 13px; font-weight: 600; color: #64748b;">x</span>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">P/E</div>
+                    <div style="font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                        {pe_val} <span style="font-size: 12px; font-weight: 600; color: #64748b;">x</span>
                     </div>
-                    <div style="font-size: 11px; font-weight: 600; color: #94a3b8; margin-top: 4px;">Bội số giá/LN</div>
+                    <div style="font-size: 10.5px; font-weight: 600; color: #94a3b8; margin-top: 3px;">Bội số giá/LN</div>
                 </div>
-                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">P/B</div>
-                    <div style="font-size: 21px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
-                        {pb_val} <span style="font-size: 13px; font-weight: 600; color: #64748b;">x</span>
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">KHỐI NGOẠI</div>
+                    <div style="font-size: 18px; font-weight: 800; color: {ff_color}; letter-spacing: -0.3px;">
+                        {ff_sign}{ff_net:.1f} <span style="font-size: 11px; font-weight: 600; color: #64748b;">Tỷ</span>
                     </div>
-                    <div style="font-size: 11px; font-weight: 600; color: #94a3b8; margin-top: 4px;">Bội số giá/sách</div>
+                    <div style="font-size: 10.5px; font-weight: 700; color: {ff_color}; margin-top: 3px;">{ff_status_vi}</div>
                 </div>
-                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 12px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">ROE</div>
-                    <div style="font-size: 21px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                    <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">ROE / VỐN</div>
+                    <div style="font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
                         {roe_val}
                     </div>
-                    <div style="font-size: 11px; font-weight: 600; color: #94a3b8; margin-top: 4px;">Hiệu quả vốn</div>
+                    <div style="font-size: 10.5px; font-weight: 600; color: #94a3b8; margin-top: 3px;">Hiệu quả vốn</div>
                 </div>
             </div>
             """).strip()
             st.html(metrics_grid_html)
+
+            if is_trap:
+                trap_callout = textwrap.dedent(f"""
+                <div style="background: rgba(239, 68, 68, 0.1); border-left: 4px solid #ef4444; border-radius: 6px; padding: 10px 14px; margin: 8px 0 14px 0;">
+                    <div style="font-size: 13px; font-weight: 800; color: #dc2626;">
+                        ⚠️ CẢNH BÁO BẪY TIN TỨC / KÉO XẢ
+                    </div>
+                    <div style="font-size: 12px; color: #b91c1c; margin-top: 2px;">
+                        {trap_info.get('warning_msg')}
+                    </div>
+                </div>
+                """).strip()
+                st.html(trap_callout)
 
         col_b1, col_b2 = st.columns(2)
         btn_key = f"btn_run_deep_{target_symbol}"
@@ -217,9 +240,16 @@ def render_tab_ai(df_eval: pd.DataFrame):
 
             st.divider()
 
-            # Nhận diện tín hiệu để hiển thị Banner Cảnh Báo Màu Sắc (Xanh / Vàng / Đỏ)
+            # Nhận diện tín hiệu để hiển thị Banner Cảnh Báo Màu Sắc (Xanh / Vàng / Đỏ / Tím Veto)
             up_text = report_text.upper()
-            if "MUA MẠNH" in up_text or "MUA" in up_text[:600]:
+            if "CẢNH BÁO BẪY" in up_text[:800] or "TỪ CHỐI KHUYẾN NGHỊ" in up_text[:800]:
+                alert_theme = {
+                    "bg": "rgba(239, 68, 68, 0.15)",
+                    "border": "#dc2626",
+                    "title": "⛔ CẢNH BÁO: HÀNG RÀO QUANT TỪ CHỐI / PHÁT HIỆN BẪY GIÁ",
+                    "sub": "Vi phạm tiêu chuẩn an toàn quỹ hoặc phát hiện bẫy tin tức kéo xả. Cấm mua tuyệt đối!"
+                }
+            elif "MUA MẠNH" in up_text or "MUA" in up_text[:600]:
                 alert_theme = {
                     "bg": "rgba(34, 197, 94, 0.12)",
                     "border": "#22c55e",
