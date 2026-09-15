@@ -398,16 +398,175 @@ def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return rsi
 
 
-def fetch_stock_technical(symbol: str, count_back: int = 60) -> dict:
+_FOREIGN_FLOW_CACHE = {}
+
+
+def fetch_foreign_trading_flow(symbol: str) -> dict:
+    """
+    Kéo dữ liệu giao dịch khớp lệnh Khối ngoại từ bảng giá vnstock:
+    - Giá trị mua, bán, mua ròng (Tỷ VNĐ)
+    - Trạng thái: 🟢 Mua ròng mạnh / ⚪ Trung tính / 🔴 Bán ròng xả hàng
+    Cache 60s để tối ưu hiệu năng.
+    """
+    global _FOREIGN_FLOW_CACHE
+    import time
+    now = time.time()
+    sym_clean = symbol.upper().strip()
+    if sym_clean in _FOREIGN_FLOW_CACHE:
+        cached_time, data = _FOREIGN_FLOW_CACHE[sym_clean]
+        if now - cached_time < 60:
+            return data
+
+    default_res = {
+        "symbol": sym_clean,
+        "foreign_buy_val_bil": 0.0,
+        "foreign_sell_val_bil": 0.0,
+        "foreign_net_val_bil": 0.0,
+        "buy_val_bil": 0.0,
+        "sell_val_bil": 0.0,
+        "net_val_bil": 0.0,
+        "foreign_net_vol": 0,
+        "status": "NEUTRAL",
+        "status_vi": "Cân bằng",
+        "badge": "Khối ngoại: Cân bằng",
+        "icon": "⚪"
+    }
+
+    try:
+        from vnstock import Trading
+        t = Trading(symbol=sym_clean, source="VCI")
+        pb = t.price_board([sym_clean])
+        if pb is not None and not pb.empty:
+            row = pb.iloc[0]
+            f_buy_val = float(row.get(("match", "foreign_buy_value"), 0) or 0)
+            f_sell_val = float(row.get(("match", "foreign_sell_value"), 0) or 0)
+            f_buy_vol = int(float(row.get(("match", "foreign_buy_volume"), 0) or 0))
+            f_sell_vol = int(float(row.get(("match", "foreign_sell_volume"), 0) or 0))
+
+            net_val = f_buy_val - f_sell_val
+            net_vol = f_buy_vol - f_sell_vol
+
+            buy_bil = round(f_buy_val / 1e9, 2)
+            sell_bil = round(f_sell_val / 1e9, 2)
+            net_bil = round(net_val / 1e9, 2)
+
+            if net_bil >= 5.0:
+                status = "BUYING"
+                status_vi = "Mua ròng"
+                badge = f"Tây mua ròng: +{net_bil:.1f} tỷ"
+                icon = "🟢"
+            elif net_bil <= -8.0:
+                status = "SELLING"
+                status_vi = "Bán ròng"
+                badge = f"Tây bán ròng: {net_bil:.1f} tỷ"
+                icon = "🔴"
+            else:
+                status = "NEUTRAL"
+                status_vi = "Cân bằng"
+                badge = f"Tây cân bằng ({net_bil:+.1f} tỷ)"
+                icon = "⚪"
+
+            res = {
+                "symbol": sym_clean,
+                "foreign_buy_val_bil": buy_bil,
+                "foreign_sell_val_bil": sell_bil,
+                "foreign_net_val_bil": net_bil,
+                "buy_val_bil": buy_bil,
+                "sell_val_bil": sell_bil,
+                "net_val_bil": net_bil,
+                "foreign_net_vol": net_vol,
+                "status": status,
+                "status_vi": status_vi,
+                "badge": badge,
+                "icon": icon
+            }
+            _FOREIGN_FLOW_CACHE[sym_clean] = (now, res)
+            return res
+    except Exception as e:
+        logging.warning(f"Không lấy được dữ liệu khối ngoại cho {sym_clean}: {e}")
+
+    _FOREIGN_FLOW_CACHE[sym_clean] = (now, default_res)
+    return default_res
+
+
+def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> dict:
+    """
+    Thuật toán nhận diện 3 bẫy tin tức kinh điển trên TTCK Việt Nam:
+    - Bẫy 1: Quá mua nổ tin (Sell on news / Overbought trap): RSI >= 68 kèm tin tốt.
+    - Bẫy 2: Kéo xả nến cụt đầu (Upper wick / Shooting star trap): Vol lớn nhưng râu nến trên dài >= 45%.
+    - Bẫy 3: Bắt dao rơi (Falling knife trap): Giá nằm dưới cả MA20 và MA50.
+    """
+    if not tech_data:
+        return {"is_trap": False, "trap_type": "NONE", "warning_msg": "", "severity": "NONE", "icon": "🟢"}
+
+    curr_price = tech_data.get("current_price", 0.0)
+    ma20 = tech_data.get("ma20", 0.0)
+    ma50 = tech_data.get("ma50", 0.0)
+    rsi14 = tech_data.get("rsi14", 50.0)
+    vol_ratio = tech_data.get("vol_ratio", 1.0)
+    upper_wick_ratio = tech_data.get("upper_wick_ratio", 0.0)
+
+    has_news = False
+    news_matched_title = ""
+    if news_items:
+        for n in news_items:
+            title = n.get("title", "")
+            tag = n.get("tag", "").upper()
+            if symbol.upper() in title.upper() or tag in ["KQKD", "CỔ TỨC", "NỘI BỘ", "VĨ MÔ"]:
+                has_news = True
+                news_matched_title = title
+                break
+
+    # Bẫy 1: Quá mua nổ tin (RSI >= 68 và có tin tức giật gân)
+    if has_news and rsi14 and rsi14 >= 68.0:
+        return {
+            "is_trap": True,
+            "trap_type": "OVERBOUGHT_NEWS_TRAP",
+            "warning_msg": f"BẪY MUA ĐUỔI TIN TỨC: Cổ phiếu có tin ('{news_matched_title[:45]}...') nhưng RSI(14) đã chạm {rsi14:.1f} (Quá mua). Nguy cơ bị xả chốt lời cực cao (Sell on news).",
+            "severity": "HIGH",
+            "icon": "⚠️"
+        }
+
+    # Bẫy 2: Nến cụt đầu nổ Vol (Kéo xả ngấm ngầm)
+    if vol_ratio >= 1.30 and upper_wick_ratio >= 0.40:
+        return {
+            "is_trap": True,
+            "trap_type": "UPPER_WICK_DISTRIBUTION_TRAP",
+            "warning_msg": f"CẢNH BÁO NẾN CỤT ĐẦU: Thanh khoản nổ gấp {vol_ratio:.1f}x SMA20 nhưng râu nến trên chiếm {upper_wick_ratio*100:.0f}% biên độ! Lực cung bán chốt lời đè giá áp đảo.",
+            "severity": "HIGH",
+            "icon": "⚠️"
+        }
+
+    # Bẫy 3: Bắt dao rơi (Giá gãy cả MA20 và MA50)
+    if ma20 and ma50 and curr_price < ma20 and curr_price < ma50:
+        return {
+            "is_trap": True,
+            "trap_type": "FALLING_KNIFE_TRAP",
+            "warning_msg": f"CẢNH BÁO BẮT DAO RƠI: Thị giá ({curr_price:.2f}k) nằm dưới cả MA20 ({ma20:.2f}k) và MA50 ({ma50:.2f}k). Cổ phiếu đang trong pha Downtrend / Rơi tự do.",
+            "severity": "MEDIUM",
+            "icon": "⛔"
+        }
+
+    return {
+        "is_trap": False,
+        "trap_type": "NONE",
+        "warning_msg": "Kỹ thuật đạt chuẩn, không có dấu hiệu bẫy phân phối hay rủi ro bán tháo.",
+        "severity": "NONE",
+        "icon": "🟢"
+    }
+
+
+def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool = True) -> dict:
     """
     Kéo lịch sử giá và tính toán các chỉ số kỹ thuật:
-    MA20, MA50, RSI14, Vol/Vol_SMA20
+    MA20, MA50, RSI14, Vol/Vol_SMA20, ATR(14), Giá trị GD 20 phiên (ADV20 Tỷ),
+    Hình thái nến (Upper Wick) và Dòng tiền Khối ngoại.
     """
     try:
         from vnstock.api.quote import Quote
         q = Quote(symbol=symbol, source="VCI")
         
-        # Lấy ngày hiện tại và 90 ngày trước để đủ tính MA50 & RSI14
+        # Lấy ngày hiện tại và 120 ngày trước để đủ tính MA50 & RSI14 & ATR
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d")
         
@@ -431,6 +590,14 @@ def fetch_stock_technical(symbol: str, count_back: int = 60) -> dict:
         prev_close = float(prev["close"])
         change_pct = ((current_price - prev_close) / prev_close) * 100 if prev_close else 0.0
 
+        high = float(latest.get("high", current_price))
+        low = float(latest.get("low", current_price))
+        open_price = float(latest.get("open", current_price))
+
+        candle_range = high - low
+        upper_wick = high - max(open_price, current_price)
+        upper_wick_ratio = round(upper_wick / candle_range, 2) if candle_range > 0 else 0.0
+
         ma20 = float(latest["MA20"]) if pd.notnull(latest["MA20"]) else None
         ma50 = float(latest["MA50"]) if pd.notnull(latest["MA50"]) else None
         rsi14 = float(latest["RSI14"]) if pd.notnull(latest["RSI14"]) else None
@@ -438,20 +605,48 @@ def fetch_stock_technical(symbol: str, count_back: int = 60) -> dict:
         vol_ma20 = float(latest["VOL_MA20"]) if pd.notnull(latest["VOL_MA20"]) else vol
         vol_ratio = (vol / vol_ma20) if vol_ma20 > 0 else 1.0
 
+        # Thanh khoản bình quân 20 phiên (Tỷ VND)
+        adv20_billion = round((vol_ma20 * current_price * 1000) / 1e9, 2)
+
+        # Tính ATR(14)
+        from quant_engine import calculate_atr
+        atr14 = calculate_atr(df, period=14)
+
         # Xác định trạng thái kỹ thuật
         status_ma20 = "Nằm TRÊN MA20 (Khả quan)" if ma20 and current_price >= ma20 else "Nằm DƯỚI MA20 (Thận trọng)"
+
+        # Kéo dòng tiền khối ngoại nếu được yêu cầu
+        foreign_data = fetch_foreign_trading_flow(symbol) if fetch_foreign else {}
+
+        # Phát hiện bẫy kỹ thuật / nến
+        trap_info = detect_news_trap(symbol, {
+            "current_price": current_price,
+            "ma20": ma20,
+            "ma50": ma50,
+            "rsi14": rsi14,
+            "vol_ratio": vol_ratio,
+            "upper_wick_ratio": upper_wick_ratio
+        })
         
         return {
             "symbol": symbol,
             "date": str(latest["time"]),
             "current_price": current_price,
             "change_pct": round(change_pct, 2),
+            "open": open_price,
+            "high": high,
+            "low": low,
             "ma20": round(ma20, 2) if ma20 else None,
             "ma50": round(ma50, 2) if ma50 else None,
             "status_ma20": status_ma20,
             "rsi14": round(rsi14, 1) if rsi14 else None,
             "volume": int(vol),
             "vol_ratio": round(vol_ratio, 2),
+            "adv20_billion": adv20_billion,
+            "atr14": atr14,
+            "upper_wick_ratio": upper_wick_ratio,
+            "foreign_flow": foreign_data,
+            "trap_info": trap_info
         }
     except Exception as e:
         logging.error(f"Lỗi khi lấy kỹ thuật mã {symbol}: {e}")
@@ -477,6 +672,11 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
         pnl_vnd = market_value - cost_value
         pnl_pct = ((curr_price - cost_price) / cost_price) * 100 if cost_price else 0.0
 
+        ff = tech.get("foreign_flow", {})
+        ff_net = round(float(ff.get("net_val_bil", 0.0)), 1) if ff else 0.0
+        tr = tech.get("trap_info", {})
+        trap_label = f"⚠️ {tr.get('trap_type', 'BẪY')}" if tr.get("is_trap") else "✅ An toàn"
+
         records.append({
             "Mã CP": symbol,
             "Khối lượng": volume,
@@ -486,6 +686,8 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
             "Lãi/Lỗ (%)": round(pnl_pct, 2),
             "Lãi/Lỗ (VND)": int(pnl_vnd),
             "Vị thế MA20": tech.get("status_ma20", "N/A"),
+            "Khối ngoại (Tỷ)": ff_net,
+            "Tín hiệu Bẫy": trap_label,
             "RSI(14)": tech.get("rsi14", "N/A"),
             "Vol/TB20": tech.get("vol_ratio", 1.0),
             "Nhóm ngành": note,
@@ -508,6 +710,11 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
         curr_price = tech.get("current_price", target_buy)
         diff_pct = ((curr_price - target_buy) / target_buy * 100) if target_buy > 0 else 0.0
 
+        ff = tech.get("foreign_flow", {})
+        ff_net = round(float(ff.get("net_val_bil", 0.0)), 1) if ff else 0.0
+        tr = tech.get("trap_info", {})
+        trap_label = f"⚠️ {tr.get('trap_type', 'BẪY')}" if tr.get("is_trap") else "✅ An toàn"
+
         records.append({
             "Mã CP": symbol,
             "Thị giá (k)": curr_price,
@@ -515,6 +722,8 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
             "Giá chờ mua (k)": target_buy if target_buy > 0 else curr_price,
             "Khoảng cách (%)": round(diff_pct, 2),
             "Vị thế MA20": tech.get("status_ma20", "N/A"),
+            "Khối ngoại (Tỷ)": ff_net,
+            "Tín hiệu Bẫy": trap_label,
             "RSI(14)": tech.get("rsi14", "N/A"),
             "Vol/TB20": tech.get("vol_ratio", 1.0),
             "Luận điểm / Ghi chú": note,
@@ -700,25 +909,31 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             story_title = cat_info["title"] if cat_info else f"Cổ phiếu đầu ngành {sector} dẫn dắt dòng tiền"
             story_tag = cat_info["tag"] if cat_info else "DÒNG TIỀN"
 
+            # Kiểm tra bẫy tin tức và rủi ro phân phối
+            trap_info = tech.get("trap_info", {})
+            foreign_flow = tech.get("foreign_flow", {})
+            is_trap = trap_info.get("is_trap", False)
+
             # --- KIỂM TRA ĐIỀU KIỆN KỸ THUẬT THỰC CHIẾN ---
             # Điều kiện 1: Giá không bị downtrend (trên MA20 hoặc cách MA20 tối đa 1.5% để test hỗ trợ)
             tech_allowed = curr_price >= (ma20 * 0.985)
-            # Điều kiện 2: RSI không bị quá mua (> 70) và không cắm đầu hoảng loạn (< 42)
+            # Điều kiện 2: RSI không bị quá mua (> 68) và không cắm đầu hoảng loạn (< 42)
             rsi_allowed = (44 <= rsi <= 68)
             # Điều kiện 3: Thanh khoản không bị mất hút
             vol_allowed = (vol_ratio >= 0.90)
+            # Điều kiện 4: Không dính bẫy tin tức hay nến phân phối
+            no_trap = not is_trap
 
-            # A. ĐẠT CẢ HAI: CÓ CÂU CHUYỆN + KỸ THUẬT CHO PHÉP -> KHUYẾN NGHỊ MUA
-            if tech_allowed and rsi_allowed and vol_allowed:
+            # A. ĐẠT TOÀN DIỆN: CÓ XÚC TÁC + KỸ THUẬT CHO PHÉP + KHÔNG DÍNH BẪY -> KHUYẾN NGHỊ MUA
+            if tech_allowed and rsi_allowed and vol_allowed and no_trap:
                 target_price = round(curr_price * 1.10, 2)
-                stop_loss = round(max(ma20 * 0.95, curr_price * 0.95), 2)
+                stop_loss = round(max(ma20 * 0.95, curr_price * 0.93), 2)
                 rr = round((target_price - curr_price) / max(0.1, curr_price - stop_loss), 1)
 
                 # Phân tách 2 phong cách giao dịch: Lướt sóng T+ vs Gom hàng vị thế
                 if vol_ratio >= 1.25 and change_pct >= 0.5:
                     style_type = "⚡ [LƯỚT SÓNG T+ / BREAKOUT]"
                     setup_type = "⚡ BREAKOUT NỔ VOL VƯỢT NỀN"
-                    # Biên độ điểm vào cực hẹp (tối đa 2-3 bước giá, ~0.4%)
                     p_min = round(curr_price * 0.996, 1)
                     p_max = round(curr_price * 1.004, 1)
                     entry_zone = f"{p_min} - {p_max}"
@@ -727,7 +942,6 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                 else:
                     style_type = "💎 [GOM HÀNG VỊ THẾ / TRUNG HẠN]"
                     setup_type = "💎 TÍCH LŨY NỀN GIÁ TRÊN MA20"
-                    # Dải gom mở rộng 1.5% - 2.0% nhưng có lộ trình chia 3 bước giải ngân
                     p_low = round(min(ma20, curr_price * 0.985), 1)
                     p_high = round(curr_price * 1.005, 1)
                     entry_zone = f"{p_low} - {p_high}"
@@ -736,6 +950,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
 
                 rr = round((target_price - avg_cost) / max(0.1, avg_cost - stop_loss), 1)
 
+                f_badge = foreign_flow.get("badge", "")
                 return {
                     "symbol": sym,
                     "sector": sector,
@@ -753,30 +968,37 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "risk_reward": rr,
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
-                    "rationale": f"Xúc tác: {story_title}. Kỹ thuật: Vận động trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol TB x{vol_ratio:.1f}."
+                    "foreign_flow": foreign_flow,
+                    "rationale": f"Xúc tác: {story_title}. Kỹ thuật: Vận động trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}."
                 }
 
-            # B. CÓ TIN TỨC HOT NHƯNG KỸ THUẬT CHƯA CHO PHÉP -> CẢNH BÁO BẪY TIN TỨC
-            elif cat_info and (not tech_allowed or rsi < 42 or rsi > 70):
+            # B. CÓ TIN TỨC HOẶC THEO DÕI NHƯNG DÍNH BẪY HOẶC KỸ THUẬT CHƯA CHO PHÉP -> CẢNH BÁO BẪY TIN
+            elif cat_info or is_trap:
                 caution_reason = []
+                if is_trap:
+                    caution_reason.append(trap_info.get("warning_msg", "Phát hiện bẫy kỹ thuật"))
                 if curr_price < ma20:
                     caution_reason.append(f"Giá đang dưới MA20 ({ma20:.1f})")
-                if rsi > 70:
-                    caution_reason.append(f"RSI {rsi:.1f} quá mua (nguy cơ rung lắc ngắn hạn)")
+                if rsi > 68:
+                    caution_reason.append(f"RSI {rsi:.1f} quá mua (nguy cơ chốt lời mạnh)")
                 elif rsi < 42:
-                    caution_reason.append(f"RSI {rsi:.1f} yếu, lực bán đang chiếm ưu thế")
+                    caution_reason.append(f"RSI {rsi:.1f} yếu, lực bán áp đảo")
+
+                if foreign_flow.get("status") == "SELLING":
+                    caution_reason.append(f"Tây bán ròng {foreign_flow.get('foreign_net_val_bil')} tỷ")
 
                 return {
                     "symbol": sym,
                     "sector": sector,
                     "status": "CAUTION_TRAP",
-                    "setup_type": "⚠️ CHƯA ĐẠT ĐIỀU KIỆN MUA",
+                    "setup_type": "⚠️ CẢNH BÁO BẪY / CHƯA ĐẠT CHUẨN MUA",
                     "story_tag": story_tag,
                     "story": story_title,
                     "current_price": curr_price,
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
-                    "rationale": f"Có tin xúc tác [{story_tag}] nhưng " + ", ".join(caution_reason) + ". Khuyến nghị: ĐỨNG NGOÀI QUAN SÁT, chưa vội gom hàng."
+                    "foreign_flow": foreign_flow,
+                    "rationale": f"Cảnh báo cho mã {sym}: " + "; ".join(caution_reason) + ". Quyết định: TUYỆT ĐỐI ĐỨNG NGOÀI, không giải ngân bừa bãi."
                 }
 
             return None

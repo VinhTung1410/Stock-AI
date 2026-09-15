@@ -408,6 +408,22 @@ def generate_institutional_stock_report(symbol: str, financial_info: dict, tech_
 
     downside_pct = round(((current_price - stop_loss_ref) / current_price) * 100, 1) if current_price > 0 else 7.0
 
+    # Trích xuất dữ liệu Khối ngoại, Bẫy tin tức và Thanh khoản ADV20
+    foreign_flow = tech_dict.get("foreign_flow", {})
+    if foreign_flow:
+        foreign_summary = f"- Giao dịch Khối ngoại: Mua {foreign_flow.get('buy_val_bil', 0):.1f} tỷ | Bán {foreign_flow.get('sell_val_bil', 0):.1f} tỷ | Ròng {foreign_flow.get('net_val_bil', 0):+.1f} tỷ ({foreign_flow.get('status_vi', 'N/A')})"
+    else:
+        foreign_summary = "- Giao dịch Khối ngoại: Chưa có dữ liệu phiên hôm nay."
+
+    trap_info = tech_dict.get("trap_info", {})
+    if trap_info.get("is_trap"):
+        trap_summary = f"- Cảnh báo bẫy giá / tin tức: ⚠️ {trap_info.get('warning_msg')}"
+    else:
+        trap_summary = "- Cảnh báo bẫy giá / tin tức: ✅ Không phát hiện tín hiệu bẫy nguy hiểm."
+
+    adv20_bil = tech_dict.get("adv20_billion", 0.0)
+    adv_summary = f"- Giá trị GD trung bình 20 phiên (ADV20): {adv20_bil:.2f} tỷ VND/phiên" if adv20_bil > 0 else ""
+
     tech_summary = (
         f"Mã CP: {symbol}\n"
         f"- Thị giá: {current_price} k VND (Phiên gần nhất: {change_pct:+.2f}%)\n"
@@ -415,6 +431,9 @@ def generate_institutional_stock_report(symbol: str, financial_info: dict, tech_
         f"- MA50 ngày: {ma50} k VND\n"
         f"- RSI (14): {rsi14}\n"
         f"- Khối lượng giao dịch: {vol:,} CP | Vol / SMA20: {vol_ratio}x\n"
+        f"{adv_summary}\n"
+        f"{foreign_summary}\n"
+        f"{trap_summary}\n"
         f"- Ngưỡng cắt lỗ tham chiếu kỹ thuật: {stop_loss_ref} k VND (Mức rủi ro downside: -{downside_pct}%)\n"
     )
 
@@ -436,12 +455,15 @@ def generate_institutional_stock_report(symbol: str, financial_info: dict, tech_
 
     prompt = f"""<ROLE>
 Bạn là Giám đốc Phân tích Đầu tư cấp cao (Senior Equity Research Director / CFA Charterholder) kiêm Portfolio Manager tại một quỹ đầu tư hàng đầu tại Việt Nam. Khẩu vị của bạn là khách quan, sắc bén, dựa trên dữ liệu thật (data-driven), tuyệt đối không cảm tính.
+Bạn sẽ điều phối một màn Tranh biện Đối kháng (Adversarial Debate) quyết liệt giữa Phe Bò (Bull Thesis) và Phe Gấu (Bear CRO Audit) trước khi đưa ra phán quyết kỷ luật.
 </ROLE>
 
 <DATA_DICTIONARY>
 - Thị giá (k VND): 1k = 1.000 VND.
 - Vol / SMA20: > 1.3x là dòng tiền nổ Vol; < 0.8x là thanh khoản cạn kiệt.
 - Vị thế MA20: Nằm trên là Uptrend ngắn hạn; Nằm dưới là điều chỉnh/cần thận trọng.
+- Khối ngoại: Mua/Bán ròng phản ánh sự ủng hộ hoặc xả hàng của dòng tiền tổ chức quốc tế.
+- Bẫy tin tức: Tình huống ra tin tốt nhưng giá quá mua (RSI > 70) hoặc nến cụt đầu phân phối kéo xả.
 - P/E & P/B: Chỉ số định giá bội số. CẢNH BÁO BẪY CHU KỲ: Với cổ phiếu chu kỳ (Thép, Hóa chất, Dầu khí...), P/E thấp nhất thường xuất hiện ở ĐỈNH chu kỳ lợi nhuận chứ không phải cổ phiếu rẻ.
 - F-Score (Piotroski): Thang 9 điểm. 7-9 là Doanh nghiệp siêu khỏe; 0-3 là Rủi ro gian lận/suy kiệt tài chính.
 - Z-Score (Altman): Đo lường nguy cơ phá sản. > 2.99 là Vùng an toàn; < 1.81 là Vùng báo động đỏ.
@@ -450,7 +472,7 @@ Bạn là Giám đốc Phân tích Đầu tư cấp cao (Senior Equity Research 
 <CONTEXT>
 Cổ phiếu mục tiêu: **{symbol}**
 
---- 1. TÍN HIỆU KỸ THUẬT & DÒNG TIỀN (THỰC TẾ) ---
+--- 1. TÍN HIỆU KỸ THUẬT, THANH KHOẢN & DÒNG TIỀN (THỰC TẾ) ---
 {tech_summary}
 
 --- 2. NỀN TẢNG TÀI CHÍNH & ĐỊNH GIÁ (BCTC) ---
@@ -468,7 +490,8 @@ Cổ phiếu mục tiêu: **{symbol}**
 </CONSTRAINTS>
 
 <DECISION_GUARDRAILS>
-- KHÔNG BẮT BUỘC PHẢI MUA: Nếu tỷ lệ Risk/Reward < 1.5 hoặc thị trường đang rủi ro, BẮT BUỘC chọn khuyến nghị ⛔ [KHÔNG HÀNH ĐỘNG] hoặc 🟡 [NẮM GIỮ / THEO DÕI].
+- KHÔNG BẮT BUỘC PHẢI MUA: Nếu tỷ lệ Risk/Reward < 1.5 hoặc thị trường đang rủi ro, BẮT BUỘC chọn khuyến nghị ⛔ [KHÔNG HÀNH ĐỘNG / TRÁNH BẪY] hoặc 🟡 [NẮM GIỮ / THEO DÕI].
+- Nếu phát hiện bẫy tin tức hoặc khối ngoại xả ròng mạnh, TUYỆT ĐỐI KHÔNG khuyến nghị Mua mạnh.
 - Phân biệt rõ 'Doanh nghiệp tốt' khác với 'Cổ phiếu tốt để mua'. Doanh nghiệp tốt nhưng giá quá đắt hoặc ở đỉnh chu kỳ thì không được khuyến nghị Mua mạnh.
 </DECISION_GUARDRAILS>
 
@@ -477,7 +500,7 @@ Hãy lập Báo cáo Phân tích Toàn diện cho cổ phiếu **{symbol}** theo
 
 ---
 ### 🎯 I. TÓM TẮT ĐIỀU HÀNH (EXECUTIVE DECISION - ĐẶT NGAY TRÊN ĐẦU)
-- **Khuyến nghị hành động:** 🟢 [MUA MẠNH] / 🟢 [MUA] / 🟢 [TÍCH LŨY] / 🟡 [NẮM GIỮ / THEO DÕI] / 🔴 [BÁN / CẮT LỖ] / ⛔ [KHÔNG HÀNH ĐỘNG]
+- **Khuyến nghị hành động:** 🟢 [MUA MẠNH] / 🟢 [MUA] / 🟢 [TÍCH LŨY] / 🟡 [NẮM GIỮ / THEO DÕI] / 🔴 [BÁN / CẮT LỖ] / ⛔ [KHÔNG HÀNH ĐỘNG / TRÁNH BẪY]
 - **Vùng giá mua gom tối ưu:** [...] k VND
 - **Giá mục tiêu (Target Price):** [...] k VND (Kỳ vọng sinh lời Upside: +...%)
 - **Ngưỡng cắt lỗ (Stop-Loss):** [...] k VND (Mức rủi ro Downside tối đa: -...%)
@@ -494,21 +517,27 @@ Hãy lập Báo cáo Phân tích Toàn diện cho cổ phiếu **{symbol}** theo
 - **Trụ cột 2 (Cơ bản & Sinh lời):** 🟢 [MUA - TĂNG TRƯỞNG TỐT] / 🟡 [TRUNG BÌNH] / 🔴 [SUY GIẢM]
 - **Trụ cột 3 (Định giá & Biên an toàn):** 🟢 [HẤP DẪN] / 🟡 [HỢP LÝ] / 🔴 [QUÁ ĐẮT / BẪY CHU KỲ]
 - **Trụ cột 4 (Kỹ thuật & Xu hướng):** 🟢 [UPTREND] / 🟡 [CHỜ NỀN TÍCH LŨY] / 🔴 [DOWNTREND - GÃY MA]
-- **Trụ cột 5 (Hành vi Dòng tiền):** 🟢 [TỔ CHỨC GOM MUA] / 🟡 [THANH KHOẢN YẾU] / 🔴 [PHÂN PHỐI XẢ HÀNG]
-- **Trụ cột 6 (Mức độ Rủi ro):** 🟢 [RỦI RO THẤP] / 🟡 [RỦI RO VỪA] / 🔴 [RỦI RO CAO]
+- **Trụ cột 5 (Hành vi Dòng tiền & Khối ngoại):** [🟢 TỔ CHỨC GOM MUA / 🟡 THANH KHOẢN YẾU / 🔴 PHÂN PHỐI XẢ HÀNG]
+- **Trụ cột 6 (Mức độ Rủi ro & Bẫy tin):** [🟢 RỦI RO THẤP / 🟡 CẢNH BÁO BẪY / 🔴 RỦI RO CAO]
 - **Trụ cột 7 (Triển vọng 6-12 tháng):** 🟢 [KHẢ QUAN] / 🟡 [GIẰNG CO] / 🔴 [KÉM KHẢ QUAN]
 - **Trụ cột 8 (Phân bổ Danh mục đề xuất):** [ĐỀ XUẤT TỶ TRỌNG ...% TÀI SẢN]
 
 ---
-### 🧠 III. LUẬN ĐIỂM ĐẦU TƯ (INVESTMENT THESIS) & THESIS BREAKER
-**3 lý do chính để sở hữu cổ phiếu:**
-1. [...]
-2. [...]
-3. [...]
+### 🐂 III. TRANH BIỆN ĐỐI KHÁNG: PHE BÒ (BULL THESIS) VS PHE GẤU (BEAR AUDIT)
+#### 🟢 1. Phe Bò (Bull Thesis - Tăng Trưởng & Động Lực Mua):
+- **Luận điểm 1 (Chất xúc tác & Doanh nghiệp):** [...]
+- **Luận điểm 2 (Kỹ thuật & Dòng tiền):** [...]
+- **Luận điểm 3 (Định giá & Biên an toàn):** [...]
 
-**Thesis Breaker (Khi nào bán / Luận điểm bị phá vỡ):**
-1. [Điều kiện vi phạm cơ bản, ví dụ: biên lợi nhuận giảm mạnh 2 quý liên tiếp]
-2. [Điều kiện vi phạm kỹ thuật, ví dụ: thủng ngưỡng Stop-Loss kèm nổ Vol phân phối]
+#### 🔴 2. Phe Gấu (Bear CRO Audit - Vạch Lá Tìm Sâu & Bẫy Rủi Ro):
+- **Phản biện 1 (Bẫy giá & Dòng tiền khối ngoại):** [Chỉ rõ áp lực bán ngoại, bẫy tin tức quá mua, nến cụt đầu nếu có...]
+- **Phản biện 2 (Sức khỏe BCTC & Chu kỳ):** [Bóc tách điểm yếu nợ vay, biên lợi nhuận hoặc nguy cơ đỉnh chu kỳ...]
+- **Phản biện 3 (Kỹ thuật & Rủi ro thủng nền):** [...]
+
+#### 🛡️ 3. Bộ 3 Thesis Breakers (Ngưỡng Vi Phạm Bắt Buộc Thoát Vị Thế):
+- **Thesis Breaker 1 (Kỹ thuật/Cắt lỗ):** Thủng mốc Stop-Loss [...] k VND kèm thanh khoản lớn -> Thoát 100% vị thế.
+- **Thesis Breaker 2 (Dòng tiền / Khối ngoại):** [...]
+- **Thesis Breaker 3 (Cơ bản / Hoạt động kinh doanh):** [...]
 
 ---
 ### 💰 IV. ĐỊNH GIÁ & BIÊN AN TOÀN (FAIR VALUE & MARGIN OF SAFETY)
@@ -521,8 +550,8 @@ Hãy lập Báo cáo Phân tích Toàn diện cho cổ phiếu **{symbol}** theo
 ---
 ### 📈 V. PHÂN TÍCH KỸ THUẬT & HÀNH VI DÒNG TIỀN (SMART MONEY)
 - Vị thế xu hướng (MA20, MA50, MA200) và động lượng RSI(14).
+- Giao dịch Khối ngoại và tín hiệu dòng tiền lớn.
 - Vùng Hỗ trợ cứng: ... k VND | Vùng Kháng cự then chốt: ... k VND.
-- Tín hiệu Dòng tiền lớn: Đang gom hàng tích lũy hay có áp lực bán phân phối?
 
 ---
 ### 🎯 VI. 3 KỊCH BẢN ĐẦU TƯ (6 - 12 THÁNG TỚI)
@@ -542,6 +571,8 @@ Hãy lập Báo cáo Phân tích Toàn diện cho cổ phiếu **{symbol}** theo
   - Quản trị Rủi ro (Điểm càng cao rủi ro càng thấp): .../15 điểm
   ➔ **TỔNG ĐIỂM XẾP HẠNG: .../100 ĐIỂM**
 </OUTPUT_FORMAT>"""
+
+    return call_gemini(client, prompt)
 
 def generate_quantamental_2pass_report(symbol: str) -> dict:
     """
@@ -600,6 +631,13 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     z_score_res = calculate_altman_z_score(fin_data)
     val_triangle = calculate_valuation_triangle(curr_price, pe=pe, pb=pb)
 
+    ff = tech_data.get("foreign_flow", {})
+    ff_str = f"Mua {ff.get('buy_val_bil', 0):.1f} tỷ, Bán {ff.get('sell_val_bil', 0):.1f} tỷ, Ròng {ff.get('net_val_bil', 0):+.1f} tỷ ({ff.get('status_vi', 'N/A')})" if ff else "Chưa có số liệu giao dịch."
+    
+    tr = tech_data.get("trap_info", {})
+    tr_str = f"⚠️ CẢNH BÁO BẪY: {tr.get('warning_msg')}" if tr.get("is_trap") else "✅ Không phát hiện bẫy nguy hiểm."
+    adv_str = f"{tech_data.get('adv20_billion', 0):.2f} tỷ/phiên" if tech_data.get('adv20_billion') else "N/A"
+
     news_brief = "\n".join([f"- [{n.get('tag', n.get('keyword', 'TIN')).upper()}] {n.get('title', '')}" for n in (news_items or [])[:5]]) if news_items else "Không có tin tức đột biến."
 
     # -------------------------------------------------------------
@@ -608,16 +646,18 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     pass1_prompt = f"""Bạn là Quản lý Quỹ Lượng hóa (Quantamental Portfolio Manager).
 Hãy đọc các dữ liệu thị trường và tin tức sau của mã **{symbol}**:
 - Thị giá: {curr_price}k | Vị thế MA20: {tech_data.get('status_ma20')} | RSI(14): {tech_data.get('rsi14')} | Vol/SMA20: {tech_data.get('vol_ratio')}x
+- Thanh khoản ADV20: {adv_str} | Dòng tiền Khối ngoại: {ff_str}
+- Tín hiệu Bẫy tin tức: {tr_str}
 - P/E: {pe} | P/B: {pb} | ROE: {fin_data.get('roe')}% | Nợ/Vốn chủ: {fin_data.get('debt_equity')}
 - Điểm kiểm toán F-Score: {f_score_res['score']}/9 ({f_score_res['rating']}) | Z-Score: {z_score_res['z_score']} ({z_score_res['zone']})
 - Tin tức vĩ mô / doanh nghiệp:
 {news_brief}
 
 Mục tiêu của bạn trong Lượt 1:
-Dựa trên bối cảnh ngành và chất xúc tác, hãy gán xác suất cho 3 kịch bản trong 6-12 tháng tới:
+Dựa trên bối cảnh ngành, áp lực mua/bán ròng của Khối ngoại và tín hiệu Bẫy tin tức (nếu có), hãy gán xác suất cho 3 kịch bản trong 6-12 tháng tới:
 - P_bull: Xác suất kịch bản Lạc quan
 - P_base: Xác suất kịch bản Cơ sở
-- P_bear: Xác suất kịch bản Tiêu cực
+- P_bear: Xác suất kịch bản Tiêu cực (Nếu có cảnh báo bẫy hoặc khối ngoại xả ròng mạnh, P_bear phải tăng lên tương xứng)
 (Yêu cầu: P_bull + P_base + P_bear = 1.0)
 
 BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍCH THÊM NGOÀI JSON) theo cấu trúc:
@@ -670,21 +710,29 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
         p_bear=p_bear,
         price_bull=val_triangle["price_bull"],
         price_base=val_triangle["price_base"],
-        price_bear=val_triangle["price_bear"]
+        price_bear=val_triangle["price_bear"],
+        atr=tech_data.get("atr14", 0.0),
+        trap_info=tech_data.get("trap_info"),
+        foreign_flow=tech_data.get("foreign_flow"),
+        adv20_billion=tech_data.get("adv20_billion", 0.0)
     )
 
     # -------------------------------------------------------------
-    # BƯỚC 5: LƯỢT 2 (LLM VIẾT BÁO CÁO ĐỊNH CHẾ HOÀN CHỈNH)
+    # BƯỚC 5: LƯỢT 2 (LLM VIẾT BÁO CÁO TRANH BIỆN ĐỊNH CHẾ HOÀN CHỈNH)
     # -------------------------------------------------------------
     pass2_prompt = f"""<ROLE>
 Bạn là Giám đốc Phân tích Đầu tư Lượng hóa (Senior Quantamental Research Director / CFA).
-Toàn bộ số liệu định lượng dưới đây ĐÃ ĐƯỢC HỆ THỐNG PYTHON TÍNH TOÁN XÁC THỰC. Bạn TUYỆT ĐỐI KHÔNG ĐƯỢC THAY ĐỔI BẤT KỲ CON SỐ NÀO, nhiệm vụ của bạn là diễn giải và lập Báo cáo Phân tích Định chế Toàn diện cho cổ phiếu **{symbol}**.
+Toàn bộ số liệu định lượng dưới đây ĐÃ ĐƯỢC HỆ THỐNG PYTHON TÍNH TOÁN XÁC THỰC. Bạn TUYỆT ĐỐI KHÔNG ĐƯỢC THAY ĐỔI BẤT KỲ CON SỐ NÀO.
+Bạn sẽ tổ chức một màn TRANH BIỆN ĐỐI KHÁNG (Adversarial Debate) quyết liệt giữa Phe Bò (Bull Thesis - Trưởng nhóm Phân tích) và Phe Gấu (Bear CRO Audit - Giám đốc Quản trị Rủi ro), sau đó áp đặt Phán quyết Định lượng Cuối cùng do Python quyết định.
 </ROLE>
 
 <CONTEXT>
 [CÁC KẾT QUẢ ĐỊNH LƯỢNG DO PYTHON TÍNH TOÁN]:
 - Cổ phiếu: {symbol} | Thị giá hiện tại: {curr_price} k VND (Biến động phiên: {tech_data.get('change_pct')}%)
 - Vị thế kỹ thuật: {tech_data.get('status_ma20')} (MA20: {tech_data.get('ma20')}k, MA50: {tech_data.get('ma50')}k, RSI: {tech_data.get('rsi14')}, Vol/SMA20: {tech_data.get('vol_ratio')}x)
+- Thanh khoản ADV20: {adv_str}
+- Giao dịch Khối ngoại: {ff_str}
+- Cảnh báo bẫy tin tức: {tr_str}
 - Điểm kiểm toán Piotroski F-Score: {f_score_res['score']}/9 (Xếp loại: {f_score_res['rating']})
 - Điểm kiệt quệ tài chính Altman Z-Score: {z_score_res['z_score']} ({z_score_res['zone']})
 - Giá mục tiêu 3 kịch bản: Bull = {val_triangle['price_bull']}k | Base = {val_triangle['price_base']}k | Bear = {val_triangle['price_bear']}k
@@ -707,7 +755,7 @@ Toàn bộ số liệu định lượng dưới đây ĐÃ ĐƯỢC HỆ THỐNG
 <CONSTRAINTS>
 1. TUYỆT ĐỐI DÙNG 100% TIẾNG VIỆT CHUẨN UNICODE. Cấm chữ tiếng Trung. Với SSI viết rõ 'Công ty Chứng khoán SSI' hoặc 'Mã SSI'.
 2. TUYỆT ĐỐI KHÔNG DÙNG BẢNG MARKDOWN (|). Hãy dùng bullet point và in đậm.
-3. Giữ nguyên 100% các con số định lượng do Python đã tính toán.
+3. Giữ nguyên 100% các con số định lượng do Python đã tính toán. Nếu Python đưa ra '⛔ CẢNH BÁO BẪY' hoặc '0% NAV', cấm AI tự ý khuyên Mua!
 </CONSTRAINTS>
 
 <OUTPUT_FORMAT>
@@ -733,16 +781,27 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
 - **Trụ cột 2 (Cơ bản & Sinh lời):** [🟢 Tốt / 🟡 Trung bình / 🔴 Suy giảm] (ROE {fin_data.get('roe')}%, Nợ/Vốn {fin_data.get('debt_equity')})
 - **Trụ cột 3 (Định giá & Biên an toàn):** [🟢 Hấp dẫn / 🟡 Hợp lý / 🔴 Bẫy chu kỳ/Đắt] (MoS {hard_gates.get('mos_pct'):+.2f}%)
 - **Trụ cột 4 (Kỹ thuật & Xu hướng):** [🟢 Uptrend / 🟡 Chờ tích lũy / 🔴 Gãy MA20] ({tech_data.get('status_ma20')})
-- **Trụ cột 5 (Hành vi Dòng tiền):** [🟢 Gom hàng / 🟡 Cạn kiệt / 🔴 Phân phối] (Vol x{tech_data.get('vol_ratio')} lần SMA20)
-- **Trụ cột 6 (Mức độ Rủi ro):** [🟢 Thấp / 🟡 Vừa phải / 🔴 Cao]
+- **Trụ cột 5 (Hành vi Dòng tiền & Khối ngoại):** [🟢 Gom hàng / 🟡 Cạn kiệt / 🔴 Phân phối / Xả ròng] ({ff_str})
+- **Trụ cột 6 (Mức độ Rủi ro & Bẫy tin):** [🟢 Thấp / 🟡 Cảnh báo bẫy / 🔴 Cao] ({tr_str})
 - **Trụ cột 7 (Triển vọng Kịch bản):** [🟢 Khả quan / 🟡 Giằng co / 🔴 Tiêu cực]
 - **Trụ cột 8 (Phân bổ Danh mục):** {hard_gates.get('position_size_nav')}
 
 ---
-### 🔬 III. PHÂN TÍCH CHI TIẾT & CẢNH BÁO BẪY CHU KỲ
-1. **Chất lượng BCTC & Cảnh báo Thao túng:** Đánh giá điểm F-Score ({f_score_res['score']}/9) và chỉ số đòn bẩy nợ.
-2. **Định giá & Bẫy đỉnh chu kỳ:** Phân tích P/E ({pe}x) và P/B ({pb}x). Nêu rõ cảnh báo nếu là cổ phiếu chu kỳ ở đỉnh lợi nhuận.
-3. **Kỹ thuật & Dòng tiền:** Trạng thái giá so với MA20, RSI và thanh khoản Vol/SMA20.
+### 🐂 III. TRANH BIỆN ĐỐI KHÁNG: PHE BÒ (BULL THESIS) VS PHE GẤU (BEAR CRO AUDIT)
+#### 🟢 1. Phe Bò (Bull Thesis - Luận Điểm Tăng Trưởng & Upside):
+- **Động lực tăng trưởng:** {prob_dict.get('rationale_bull')}
+- **Kỹ thuật & Dòng tiền:** [Nêu ưu điểm kỹ thuật và bệ đỡ giá]
+- **Mục tiêu Kịch bản Lạc quan:** {val_triangle['price_bull']} k VND
+
+#### 🔴 2. Phe Gấu (Bear CRO Audit - Vạch Lá Tìm Sâu & Bẫy Rủi Ro):
+- **Cảnh báo Bẫy & Dòng tiền ngoại:** [Đánh giá tín hiệu '{tr_str}' và dòng tiền '{ff_str}']
+- **Bóc tách rủi ro BCTC & Chu kỳ:** Điểm F-Score ({f_score_res['score']}/9), Z-Score ({z_score_res['z_score']}), rủi ro {prob_dict.get('rationale_bear')}
+- **Rủi ro Kịch bản Xấu nhất:** Giảm về vùng Bear {val_triangle['price_bear']} k VND.
+
+#### 🛡️ 3. Bộ 3 Thesis Breakers (Ngưỡng Vi Phạm Bắt Buộc Thoát Vị Thế):
+- **Thesis Breaker 1 (Ngưỡng Cắt Lỗ Cứng):** Giá đóng cửa gãy mốc Stop-loss {hard_gates.get('stop_loss')} k VND (Rủi ro -{hard_gates.get('downside_pct')}%) -> Kích hoạt lệnh bán dứt khoát 100%.
+- **Thesis Breaker 2 (Dòng tiền / Veto Bẫy):** [Điều kiện vi phạm dòng tiền hoặc bẫy tin tức kéo xả]
+- **Thesis Breaker 3 (Cơ bản / BCTC):** [Điều kiện vi phạm hoạt động kinh doanh cốt lõi]
 
 ---
 ### 🎯 IV. 3 KỊCH BẢN 6-12 THÁNG (ĐỊNH LƯỢNG)
@@ -752,9 +811,10 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
 ➔ **Giá trị kỳ vọng toán học (EV):** {hard_gates.get('ev')} k VND | **Biên an toàn (MoS):** {hard_gates.get('mos_pct'):+.2f}%
 
 ---
-### 🔍 V. KIỂM TRA CHÉO (CROSS-CHECK & THESIS BREAKER)
-- **2 Rủi ro lớn nhất có thể khiến phân tích sai lệch:** [...]
-- **1 Tín hiệu theo dõi trọng yếu để hạ khuyến nghị ngay lập tức:** [...]
+### 🔍 V. KIỂM TRA CHÉO & PHÁN QUYẾT HỘI ĐỒNG LƯỢNG HÓA
+- **Quyết định định lượng tối hậu:** {hard_gates.get('decision_tag')}
+- **Hành động phân bổ vốn:** {hard_gates.get('position_size_nav')}
+- **Tín hiệu theo dõi trọng yếu:** [...]
 </OUTPUT_FORMAT>"""
 
     final_report = call_gemini(client, pass2_prompt)
