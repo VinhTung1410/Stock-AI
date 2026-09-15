@@ -31,8 +31,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 
 def run_afternoon_simulation():
+    from datetime import datetime
+    today_str = datetime.now().strftime("%d/%m")
     print("=" * 70, flush=True)
-    print("📊 [GIẢ LẬP 2] BÁO CÁO TỔNG KẾT PHIÊN GIAO DỊCH (15:00 - 11/09)", flush=True)
+    print(f"📊 BÁO CÁO TỔNG KẾT ATC KẾT PHIÊN GIAO DỊCH (15:00 - {today_str})", flush=True)
     print("=" * 70, flush=True)
 
     portfolio = load_portfolio()
@@ -53,7 +55,7 @@ def run_afternoon_simulation():
     afternoon_embed = format_portfolio_embed(
         df_eval,
         afternoon_ai_text,
-        report_type="📊 BÁO CÁO TỔNG KẾT PHIÊN (15:00 - 11/09)"
+        report_type=f"📊 BÁO CÁO TỔNG KẾT ATC KẾT PHIÊN (15:00 - {today_str})"
     )
 
     print("📤 3. Bắn báo cáo 15:00 vào Discord (Kênh chung & DM cá nhân)...", flush=True)
@@ -63,7 +65,7 @@ def run_afternoon_simulation():
     print(f"  ➜ Hộp thư riêng (DM Bot): {'✅ Thành công' if dm_res else '❌ Thất bại'}", flush=True)
 
     with open("report_afternoon_1500.md", "w", encoding="utf-8") as f:
-        f.write("# BÁO CÁO TỔNG KẾT KẾT PHIÊN GIAO DỊCH (15:00 - 11/09)\n\n")
+        f.write(f"# BÁO CÁO TỔNG KẾT ATC KẾT PHIÊN (15:00 - {today_str})\n\n")
         f.write(afternoon_ai_text)
 
     print("\n" + "#" * 70, flush=True)
