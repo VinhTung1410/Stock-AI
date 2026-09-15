@@ -316,7 +316,13 @@ def generate_market_risk_scenarios(vnindex_df, news_items) -> str:
             f"Thời điểm: {latest.get('time', '')}"
         )
 
-    news_str = "\n".join([f"- [{n['keyword'].upper()}] {n['title']}" for n in news_items[:8]])
+    if news_items:
+        news_str = "\n".join([
+            f"- [{n.get('tag', n.get('keyword', 'TIN TỨC')).upper()}] {n.get('title', '')}" 
+            for n in news_items[:8]
+        ])
+    else:
+        news_str = "Không có tin tức vĩ mô mới trong 24h qua."
 
     prompt = f"""Hãy đóng vai trò là Giám đốc Quản trị Rủi ro & Chiến lược Vĩ mô cấp cao (Chief Risk Officer & Macro Strategist) tại một định chế tài chính lớn tại Việt Nam.
 
@@ -425,7 +431,7 @@ def generate_institutional_stock_report(symbol: str, financial_info: dict, tech_
         v = financial_info.get(k)
         fin_summary += f"- {label}: {v if v is not None else 'N/A'}\n"
 
-    news_lines = [f"- [{n.get('keyword', n.get('tag', 'TIN')).upper()}] {n['title']}" for n in news_items[:6]]
+    news_lines = [f"- [{n.get('tag', n.get('keyword', 'TIN')).upper()}] {n.get('title', '')}" for n in (news_items or [])[:6]]
     news_str = "\n".join(news_lines) if news_lines else "Không có tin tức đột biến trong 7-14 ngày qua."
 
     prompt = f"""<ROLE>
@@ -437,36 +443,28 @@ Bạn là Giám đốc Phân tích Đầu tư cấp cao (Senior Equity Research 
 - Vol / SMA20: > 1.3x là dòng tiền nổ Vol; < 0.8x là thanh khoản cạn kiệt.
 - Vị thế MA20: Nằm trên là Uptrend ngắn hạn; Nằm dưới là điều chỉnh/cần thận trọng.
 - P/E & P/B: Chỉ số định giá bội số. CẢNH BÁO BẪY CHU KỲ: Với cổ phiếu chu kỳ (Thép, Hóa chất, Dầu khí...), P/E thấp nhất thường xuất hiện ở ĐỈNH chu kỳ lợi nhuận chứ không phải cổ phiếu rẻ.
+- F-Score (Piotroski): Thang 9 điểm. 7-9 là Doanh nghiệp siêu khỏe; 0-3 là Rủi ro gian lận/suy kiệt tài chính.
+- Z-Score (Altman): Đo lường nguy cơ phá sản. > 2.99 là Vùng an toàn; < 1.81 là Vùng báo động đỏ.
 </DATA_DICTIONARY>
 
 <CONTEXT>
-Dữ liệu giao dịch, tài chính và tin tức đã được thu thập thực tế cho cổ phiếu **{symbol}**:
+Cổ phiếu mục tiêu: **{symbol}**
 
-[DỮ LIỆU KỸ THUẬT & GIAO DỊCH]
+--- 1. TÍN HIỆU KỸ THUẬT & DÒNG TIỀN (THỰC TẾ) ---
 {tech_summary}
 
-[BÁO CÁO TÀI CHÍNH & ĐỊNH GIÁ]
+--- 2. NỀN TẢNG TÀI CHÍNH & ĐỊNH GIÁ (BCTC) ---
 {fin_summary}
 
-[TIN TỨC VĨ MÔ & DOANH NGHIỆP MỚI NHẤT]
+--- 3. TIN TỨC VĨ MÔ & DOANH NGHIỆP LIÊN QUAN ---
 {news_str}
 </CONTEXT>
 
-<TASK_WORKFLOW>
-1. Kiểm tra tính toàn vẹn của dữ liệu đầu vào.
-2. Đánh giá sức khỏe cơ bản, chất lượng lợi nhuận và bẫy chu kỳ (nếu có).
-3. Xác định Giá trị hợp lý (Fair Value) và Biên an toàn (Margin of Safety).
-4. Phân tích hành vi dòng tiền tổ chức (Smart Money) và xu hướng kỹ thuật.
-5. Xác định Chất xúc tác (Catalyst) và Rủi ro trọng yếu.
-6. Xây dựng 3 Kịch bản đầu tư (Bull / Base / Bear kèm xác suất).
-7. Xác định Thesis Breaker (khi nào bán cắt lỗ) và Chấm điểm hệ thống thang 100.
-</TASK_WORKFLOW>
-
 <CONSTRAINTS>
-1. TUYỆT ĐỐI CHỈ DÙNG 100% TIẾNG VIỆT CHUẨN UNICODE. Nghiêm cấm dùng bất kỳ ký tự tiếng Trung / Hán tự nào (như 证券公司, 股票, 银行, 风险...). Với mã SSI ghi rõ 'Công ty Chứng khoán SSI' hoặc 'Mã SSI'.
-2. TUYỆT ĐỐI KHÔNG DÙNG BẢNG MARKDOWN (ký tự `|`) để tránh vỡ giao diện Discord và Streamlit Mobile. Hãy dùng gạch đầu dòng (`-`, `•`) và in đậm để trình bày số liệu.
-3. CẤM BỊA SỐ LIỆU. Nếu chỉ số tài chính bị 'N/A' hoặc thiếu, hãy ghi rõ 'Chưa đủ dữ liệu đánh giá', không được tự bịa số.
-4. Trình bày gãy gọn, văn phong báo cáo định chế (Institutional Equity Research).
+1. TUYỆT ĐỐI DÙNG 100% TIẾNG VIỆT CHUẨN UNICODE. Cấm chữ tiếng Trung. Với SSI viết rõ 'Công ty Chứng khoán SSI' hoặc 'Mã SSI'.
+2. TUYỆT ĐỐI KHÔNG DÙNG BẢNG MARKDOWN (|). Hãy dùng danh sách gạch đầu dòng Markdown chuẩn (- ) và in đậm rõ ràng.
+3. Không bịa đặt chỉ số tài chính. Dữ liệu nào ghi N/A hoặc thiếu thì đánh giá khách quan là 'Dữ liệu chưa công bố'.
+4. Trình bày tách bạch từng mục, dùng tiêu đề H3 (###) chuẩn.
 </CONSTRAINTS>
 
 <DECISION_GUARDRAILS>
@@ -477,35 +475,32 @@ Dữ liệu giao dịch, tài chính và tin tức đã được thu thập th�
 <OUTPUT_FORMAT>
 Hãy lập Báo cáo Phân tích Toàn diện cho cổ phiếu **{symbol}** theo chính xác cấu trúc sau:
 
-======================================================
-🎯 **I. TÓM TẮT ĐIỀU HÀNH (EXECUTIVE DECISION - ĐẶT NGAY TRÊN ĐẦU)**
-======================================================
-• **Khuyến nghị hành động:** 🟢 [MUA MẠNH] / 🟢 [MUA] / 🟢 [TÍCH LŨY] / 🟡 [NẮM GIỮ / THEO DÕI] / 🔴 [BÁN / CẮT LỖ] / ⛔ [KHÔNG HÀNH ĐỘNG]
-• **Vùng giá mua gom tối ưu:** [...] k VND
-• **Giá mục tiêu (Target Price):** [...] k VND (Kỳ vọng sinh lời Upside: +...%)
-• **Ngưỡng cắt lỗ (Stop-Loss):** [...] k VND (Mức rủi ro Downside tối đa: -...%)
-• **Tỷ lệ Risk / Reward (R:R):** [...] x (Yêu cầu: ≥ 1.5 mới xét Mua)
-• **Tổng điểm xếp hạng:** .../100 Điểm (Xếp loại: [🟢 Xuất sắc / 🟢 Tích cực / 🟡 Trung bình / 🔴 Rủi ro])
-• **Thesis Breaker quan trọng nhất:** [Nêu 1 lý do then chốt nếu xảy ra sẽ lập tức hủy bỏ vị thế và bán cắt lỗ]
-• **Lý do hành động trong 1 câu:** [...]
+---
+### 🎯 I. TÓM TẮT ĐIỀU HÀNH (EXECUTIVE DECISION - ĐẶT NGAY TRÊN ĐẦU)
+- **Khuyến nghị hành động:** 🟢 [MUA MẠNH] / 🟢 [MUA] / 🟢 [TÍCH LŨY] / 🟡 [NẮM GIỮ / THEO DÕI] / 🔴 [BÁN / CẮT LỖ] / ⛔ [KHÔNG HÀNH ĐỘNG]
+- **Vùng giá mua gom tối ưu:** [...] k VND
+- **Giá mục tiêu (Target Price):** [...] k VND (Kỳ vọng sinh lời Upside: +...%)
+- **Ngưỡng cắt lỗ (Stop-Loss):** [...] k VND (Mức rủi ro Downside tối đa: -...%)
+- **Tỷ lệ Risk / Reward (R:R):** [...] x (Yêu cầu: ≥ 1.5 mới xét Mua)
+- **Tổng điểm xếp hạng:** .../100 Điểm (Xếp loại: [🟢 Xuất sắc / 🟢 Tích cực / 🟡 Trung bình / 🔴 Rủi ro])
+- **Thesis Breaker quan trọng nhất:** [Nêu 1 lý do then chốt nếu xảy ra sẽ lập tức hủy bỏ vị thế và bán cắt lỗ]
+- **Lý do hành động trong 1 câu:** [...]
 
-======================================================
-📊 **II. BẢNG TỔNG KẾT TÍN HIỆU 8 TRỤ CỘT**
-======================================================
+---
+### 📊 II. BẢNG TỔNG KẾT TÍN HIỆU 8 TRỤ CỘT
 (Quy tắc màu: 🟢 Tốt/Mua | 🟡 Trung bình/Theo dõi | 🔴 Xấu/Rủi ro cao)
 
-• **Trụ cột 1 (Độ tin cậy dữ liệu):** 🟢 [ĐẦY ĐỦ / ĐỘ TIN CẬY CAO] (hoặc 🟡 [THIẾU DỮ LIỆU])
-• **Trụ cột 2 (Cơ bản & Sinh lời):** 🟢 [MUA - TĂNG TRƯỞNG TỐT] / 🟡 [TRUNG BÌNH] / 🔴 [SUY GIẢM]
-• **Trụ cột 3 (Định giá & Biên an toàn):** 🟢 [HẤP DẪN] / 🟡 [HỢP LÝ] / 🔴 [QUÁ ĐẮT / BẪY CHU KỲ]
-• **Trụ cột 4 (Kỹ thuật & Xu hướng):** 🟢 [UPTREND] / 🟡 [CHỜ NỀN TÍCH LŨY] / 🔴 [DOWNTREND - GÃY MA]
-• **Trụ cột 5 (Hành vi Dòng tiền):** 🟢 [TỔ CHỨC GOM MUA] / 🟡 [THANH KHOẢN YẾU] / 🔴 [PHÂN PHỐI XẢ HÀNG]
-• **Trụ cột 6 (Mức độ Rủi ro):** 🟢 [RỦI RO THẤP] / 🟡 [RỦI RO VỪA] / 🔴 [RỦI RO CAO]
-• **Trụ cột 7 (Triển vọng 6-12 tháng):** 🟢 [KHẢ QUAN] / 🟡 [GIẰNG CO] / 🔴 [KÉM KHẢ QUAN]
-• **Trụ cột 8 (Phân bổ Danh mục đề xuất):** [ĐỀ XUẤT TỶ TRỌNG ...% TÀI SẢN]
+- **Trụ cột 1 (Độ tin cậy dữ liệu):** 🟢 [ĐẦY ĐỦ / ĐỘ TIN CẬY CAO] (hoặc 🟡 [THIẾU DỮ LIỆU])
+- **Trụ cột 2 (Cơ bản & Sinh lời):** 🟢 [MUA - TĂNG TRƯỞNG TỐT] / 🟡 [TRUNG BÌNH] / 🔴 [SUY GIẢM]
+- **Trụ cột 3 (Định giá & Biên an toàn):** 🟢 [HẤP DẪN] / 🟡 [HỢP LÝ] / 🔴 [QUÁ ĐẮT / BẪY CHU KỲ]
+- **Trụ cột 4 (Kỹ thuật & Xu hướng):** 🟢 [UPTREND] / 🟡 [CHỜ NỀN TÍCH LŨY] / 🔴 [DOWNTREND - GÃY MA]
+- **Trụ cột 5 (Hành vi Dòng tiền):** 🟢 [TỔ CHỨC GOM MUA] / 🟡 [THANH KHOẢN YẾU] / 🔴 [PHÂN PHỐI XẢ HÀNG]
+- **Trụ cột 6 (Mức độ Rủi ro):** 🟢 [RỦI RO THẤP] / 🟡 [RỦI RO VỪA] / 🔴 [RỦI RO CAO]
+- **Trụ cột 7 (Triển vọng 6-12 tháng):** 🟢 [KHẢ QUAN] / 🟡 [GIẰNG CO] / 🔴 [KÉM KHẢ QUAN]
+- **Trụ cột 8 (Phân bổ Danh mục đề xuất):** [ĐỀ XUẤT TỶ TRỌNG ...% TÀI SẢN]
 
-======================================================
-🧠 **III. LUẬN ĐIỂM ĐẦU TƯ (INVESTMENT THESIS) & THESIS BREAKER**
-======================================================
+---
+### 🧠 III. LUẬN ĐIỂM ĐẦU TƯ (INVESTMENT THESIS) & THESIS BREAKER
 **3 lý do chính để sở hữu cổ phiếu:**
 1. [...]
 2. [...]
@@ -515,35 +510,31 @@ Hãy lập Báo cáo Phân tích Toàn diện cho cổ phiếu **{symbol}** theo
 1. [Điều kiện vi phạm cơ bản, ví dụ: biên lợi nhuận giảm mạnh 2 quý liên tiếp]
 2. [Điều kiện vi phạm kỹ thuật, ví dụ: thủng ngưỡng Stop-Loss kèm nổ Vol phân phối]
 
-======================================================
-💰 **IV. ĐỊNH GIÁ & BIÊN AN TOÀN (FAIR VALUE & MARGIN OF SAFETY)**
-======================================================
-• **Định giá P/E mục tiêu:** Giá ... k VND (P/E ...x) ➔ Tiềm năng: +...%
-• **Định giá P/B mục tiêu:** Giá ... k VND (P/B ...x) ➔ Tiềm năng: +...%
-• 🎯 **GIÁ TRỊ HỢP LÝ (FAIR VALUE BÌNH QUÂN):** ... k VND
-• 🛡️ **BIÊN AN TOÀN (MARGIN OF SAFETY):** ...% so với thị giá hiện tại.
+---
+### 💰 IV. ĐỊNH GIÁ & BIÊN AN TOÀN (FAIR VALUE & MARGIN OF SAFETY)
+- **Định giá P/E mục tiêu:** Giá ... k VND (P/E ...x) ➔ Tiềm năng: +...%
+- **Định giá P/B mục tiêu:** Giá ... k VND (P/B ...x) ➔ Tiềm năng: +...%
+- 🎯 **GIÁ TRỊ HỢP LÝ (FAIR VALUE BÌNH QUÂN):** ... k VND
+- 🛡️ **BIÊN AN TOÀN (MARGIN OF SAFETY):** ...% so với thị giá hiện tại.
 *(Lưu ý: Nếu cổ phiếu thuộc nhóm chu kỳ, hãy nêu rõ cảnh báo bẫy định giá đỉnh chu kỳ nếu có)*
 
-======================================================
-📈 **V. PHÂN TÍCH KỸ THUẬT & HÀNH VI DÒNG TIỀN (SMART MONEY)**
-======================================================
-• Vị thế xu hướng (MA20, MA50, MA200) và động lượng RSI(14).
-• Vùng Hỗ trợ cứng: ... k VND | Vùng Kháng cự then chốt: ... k VND.
-• Tín hiệu Dòng tiền lớn: Đang gom hàng tích lũy hay có áp lực bán phân phối?
+---
+### 📈 V. PHÂN TÍCH KỸ THUẬT & HÀNH VI DÒNG TIỀN (SMART MONEY)
+- Vị thế xu hướng (MA20, MA50, MA200) và động lượng RSI(14).
+- Vùng Hỗ trợ cứng: ... k VND | Vùng Kháng cự then chốt: ... k VND.
+- Tín hiệu Dòng tiền lớn: Đang gom hàng tích lũy hay có áp lực bán phân phối?
 
-======================================================
-🎯 **VI. 3 KỊCH BẢN ĐẦU TƯ (6 - 12 THÁNG TỚI)**
-======================================================
-• **Kịch bản Tích cực (Bull case):** Xác suất: ...% | Điều kiện kích hoạt: [...] | Giá mục tiêu: ... k VND (+...%)
-• **Kịch bản Cơ sở (Base case):** Xác suất: ...% | Điều kiện kích hoạt: [...] | Giá mục tiêu: ... k VND (+...%)
-• **Kịch bản Tiêu cực (Bear case):** Xác suất: ...% | Điều kiện kích hoạt: [...] | Giá giảm về: ... k VND (-...%)
+---
+### 🎯 VI. 3 KỊCH BẢN ĐẦU TƯ (6 - 12 THÁNG TỚI)
+- **Kịch bản Tích cực (Bull case):** Xác suất: ...% | Điều kiện kích hoạt: [...] | Giá mục tiêu: ... k VND (+...%)
+- **Kịch bản Cơ sở (Base case):** Xác suất: ...% | Điều kiện kích hoạt: [...] | Giá mục tiêu: ... k VND (+...%)
+- **Kịch bản Tiêu cực (Bear case):** Xác suất: ...% | Điều kiện kích hoạt: [...] | Giá giảm về: ... k VND (-...%)
 *(Lưu ý: Tổng xác suất của 3 kịch bản phải đúng 100%)*
 
-======================================================
-🏁 **VII. KẾT LUẬN & BẢNG CHẤM ĐIỂM (THANG ĐIỂM 100)**
-======================================================
-• Khung thời gian nắm giữ tối ưu: (Lướt sóng T+, Trung hạn 3-6 tháng, hay Đầu tư giá trị > 1 năm).
-• **BẢNG ĐIỂM CHI TIẾT:**
+---
+### 🏁 VII. KẾT LUẬN & BẢNG CHẤM ĐIỂM (THANG ĐIỂM 100)
+- Khung thời gian nắm giữ tối ưu: (Lướt sóng T+, Trung hạn 3-6 tháng, hay Đầu tư giá trị > 1 năm).
+- **BẢNG ĐIỂM CHI TIẾT:**
   - Chất lượng cơ bản & Tăng trưởng: .../25 điểm
   - Động lực & Chất xúc tác (Catalyst): .../20 điểm
   - Biên an toàn Định giá: .../20 điểm
@@ -609,7 +600,7 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     z_score_res = calculate_altman_z_score(fin_data)
     val_triangle = calculate_valuation_triangle(curr_price, pe=pe, pb=pb)
 
-    news_brief = "\n".join([f"- [{n.get('keyword', 'TIN').upper()}] {n['title']}" for n in news_items[:5]])
+    news_brief = "\n".join([f"- [{n.get('tag', n.get('keyword', 'TIN')).upper()}] {n.get('title', '')}" for n in (news_items or [])[:5]]) if news_items else "Không có tin tức đột biến."
 
     # -------------------------------------------------------------
     # BƯỚC 3: LƯỢT 1 (LLM GÁN XÁC SUẤT KỊCH BẢN DẠNG JSON)
@@ -722,53 +713,48 @@ Toàn bộ số liệu định lượng dưới đây ĐÃ ĐƯỢC HỆ THỐNG
 <OUTPUT_FORMAT>
 Hãy trình bày báo cáo chính xác theo cấu trúc sau:
 
-======================================================
-🎯 **I. TÓM TẮT ĐIỀU HÀNH (EXECUTIVE DECISION - THEO HÀNG RÀO PYTHON)**
-======================================================
-• **Khuyến nghị chính thức:** {hard_gates.get('decision_tag')}
-• **Giá trị kỳ vọng (Expected Value - EV):** {hard_gates.get('ev')} k VND
-• **Biên an toàn định lượng (Margin of Safety):** {hard_gates.get('mos_pct'):+.2f}%
-• **Vùng giá mua gom tối ưu:** [Đề xuất vùng giá hợp lý dựa trên mốc Base và MA20] k VND
-• **Ngưỡng cắt lỗ dứt khoát (Stop-Loss):** {hard_gates.get('stop_loss')} k VND (Mức rủi ro Downside: -{hard_gates.get('downside_pct')}%)
-• **Tỷ lệ Risk / Reward (R:R):** {hard_gates.get('risk_reward')}x
-• **Tỷ trọng đề xuất trong danh mục:** {hard_gates.get('position_size_nav')}
-• **Kelly Criterion f*:** {hard_gates.get('kelly_f')} (Ý nghĩa: {'Cấm mở vị thế mua do Kelly không dương' if hard_gates.get('kelly_f', 0) <= 0 else 'Đạt chuẩn giải ngân vốn'})
-• **Thesis Breaker quan trọng nhất:** [Nêu 1 lý do then chốt nếu vi phạm sẽ thoát vị thế ngay]
+---
+### 🎯 I. TÓM TẮT ĐIỀU HÀNH (EXECUTIVE DECISION - THEO HÀNG RÀO PYTHON)
+- **Khuyến nghị chính thức:** {hard_gates.get('decision_tag')}
+- **Giá trị kỳ vọng (Expected Value - EV):** {hard_gates.get('ev')} k VND
+- **Biên an toàn định lượng (Margin of Safety):** {hard_gates.get('mos_pct'):+.2f}%
+- **Vùng giá mua gom tối ưu:** [Đề xuất vùng giá hợp lý dựa trên mốc Base và MA20] k VND
+- **Ngưỡng cắt lỗ dứt khoát (Stop-Loss):** {hard_gates.get('stop_loss')} k VND (Mức rủi ro Downside: -{hard_gates.get('downside_pct')}%)
+- **Tỷ lệ Risk / Reward (R:R):** {hard_gates.get('risk_reward')}x
+- **Tỷ trọng đề xuất trong danh mục:** {hard_gates.get('position_size_nav')}
+- **Kelly Criterion f*:** {hard_gates.get('kelly_f')} (Ý nghĩa: {'Cấm mở vị thế mua do Kelly không dương' if hard_gates.get('kelly_f', 0) <= 0 else 'Đạt chuẩn giải ngân vốn'})
+- **Thesis Breaker quan trọng nhất:** [Nêu 1 lý do then chốt nếu vi phạm sẽ thoát vị thế ngay]
 
-======================================================
-📊 **II. BẢNG TỔNG KẾT 8 TRỤ CỘT & ĐIỂM SỨC KHỎE TÀI CHÍNH**
-======================================================
-• **Piotroski F-Score:** {f_score_res['score']}/9 Điểm (Xếp loại: {f_score_res['rating']})
-• **Altman Z-Score:** {z_score_res['z_score']} ({z_score_res['icon']} {z_score_res['zone']})
-• **Trụ cột 1 (Dữ liệu):** 🟢 ĐẦY ĐỦ / ĐẠT CHUẨN DATA GATE (Thanh khoản {gate.get('daily_value_billion')} tỷ/phiên)
-• **Trụ cột 2 (Cơ bản & Sinh lời):** [🟢 Tốt / 🟡 Trung bình / 🔴 Suy giảm] (ROE {fin_data.get('roe')}%, Nợ/Vốn {fin_data.get('debt_equity')})
-• **Trụ cột 3 (Định giá & Biên an toàn):** [🟢 Hấp dẫn / 🟡 Hợp lý / 🔴 Bẫy chu kỳ/Đắt] (MoS {hard_gates.get('mos_pct'):+.2f}%)
-• **Trụ cột 4 (Kỹ thuật & Xu hướng):** [🟢 Uptrend / 🟡 Chờ tích lũy / 🔴 Gãy MA20] ({tech_data.get('status_ma20')})
-• **Trụ cột 5 (Hành vi Dòng tiền):** [🟢 Gom hàng / 🟡 Cạn kiệt / 🔴 Phân phối] (Vol x{tech_data.get('vol_ratio')} lần SMA20)
-• **Trụ cột 6 (Mức độ Rủi ro):** [🟢 Thấp / 🟡 Vừa phải / 🔴 Cao]
-• **Trụ cột 7 (Triển vọng Kịch bản):** [🟢 Khả quan / 🟡 Giằng co / 🔴 Tiêu cực]
-• **Trụ cột 8 (Phân bổ Danh mục):** {hard_gates.get('position_size_nav')}
+---
+### 📊 II. BẢNG TỔNG KẾT 8 TRỤ CỘT & ĐIỂM SỨC KHỎE TÀI CHÍNH
+- **Piotroski F-Score:** {f_score_res['score']}/9 Điểm (Xếp loại: {f_score_res['rating']})
+- **Altman Z-Score:** {z_score_res['z_score']} ({z_score_res['icon']} {z_score_res['zone']})
+- **Trụ cột 1 (Dữ liệu):** 🟢 ĐẦY ĐỦ / ĐẠT CHUẨN DATA GATE (Thanh khoản {gate.get('daily_value_billion')} tỷ/phiên)
+- **Trụ cột 2 (Cơ bản & Sinh lời):** [🟢 Tốt / 🟡 Trung bình / 🔴 Suy giảm] (ROE {fin_data.get('roe')}%, Nợ/Vốn {fin_data.get('debt_equity')})
+- **Trụ cột 3 (Định giá & Biên an toàn):** [🟢 Hấp dẫn / 🟡 Hợp lý / 🔴 Bẫy chu kỳ/Đắt] (MoS {hard_gates.get('mos_pct'):+.2f}%)
+- **Trụ cột 4 (Kỹ thuật & Xu hướng):** [🟢 Uptrend / 🟡 Chờ tích lũy / 🔴 Gãy MA20] ({tech_data.get('status_ma20')})
+- **Trụ cột 5 (Hành vi Dòng tiền):** [🟢 Gom hàng / 🟡 Cạn kiệt / 🔴 Phân phối] (Vol x{tech_data.get('vol_ratio')} lần SMA20)
+- **Trụ cột 6 (Mức độ Rủi ro):** [🟢 Thấp / 🟡 Vừa phải / 🔴 Cao]
+- **Trụ cột 7 (Triển vọng Kịch bản):** [🟢 Khả quan / 🟡 Giằng co / 🔴 Tiêu cực]
+- **Trụ cột 8 (Phân bổ Danh mục):** {hard_gates.get('position_size_nav')}
 
-======================================================
-🔬 **III. PHÂN TÍCH CHI TIẾT & CẢNH BÁO BẪY CHU KỲ**
-======================================================
+---
+### 🔬 III. PHÂN TÍCH CHI TIẾT & CẢNH BÁO BẪY CHU KỲ
 1. **Chất lượng BCTC & Cảnh báo Thao túng:** Đánh giá điểm F-Score ({f_score_res['score']}/9) và chỉ số đòn bẩy nợ.
 2. **Định giá & Bẫy đỉnh chu kỳ:** Phân tích P/E ({pe}x) và P/B ({pb}x). Nêu rõ cảnh báo nếu là cổ phiếu chu kỳ ở đỉnh lợi nhuận.
 3. **Kỹ thuật & Dòng tiền:** Trạng thái giá so với MA20, RSI và thanh khoản Vol/SMA20.
 
-======================================================
-🎯 **IV. 3 KỊCH BẢN 6-12 THÁNG (ĐỊNH LƯỢNG)**
-======================================================
-• **🟢 Kịch bản Lạc quan (Bull Case):** Giá {val_triangle['price_bull']}k | Xác suất: {p_bull*100:.1f}% | Điều kiện: {prob_dict.get('rationale_bull')}
-• **🟡 Kịch bản Cơ sở (Base Case):** Giá {val_triangle['price_base']}k | Xác suất: {p_base*100:.1f}% | Điều kiện: {prob_dict.get('rationale_base')}
-• **🔴 Kịch bản Tiêu cực (Bear Case):** Giá {val_triangle['price_bear']}k | Xác suất: {p_bear*100:.1f}% | Điều kiện: {prob_dict.get('rationale_bear')}
+---
+### 🎯 IV. 3 KỊCH BẢN 6-12 THÁNG (ĐỊNH LƯỢNG)
+- **🟢 Kịch bản Lạc quan (Bull Case):** Giá {val_triangle['price_bull']}k | Xác suất: {p_bull*100:.1f}% | Điều kiện: {prob_dict.get('rationale_bull')}
+- **🟡 Kịch bản Cơ sở (Base Case):** Giá {val_triangle['price_base']}k | Xác suất: {p_base*100:.1f}% | Điều kiện: {prob_dict.get('rationale_base')}
+- **🔴 Kịch bản Tiêu cực (Bear Case):** Giá {val_triangle['price_bear']}k | Xác suất: {p_bear*100:.1f}% | Điều kiện: {prob_dict.get('rationale_bear')}
 ➔ **Giá trị kỳ vọng toán học (EV):** {hard_gates.get('ev')} k VND | **Biên an toàn (MoS):** {hard_gates.get('mos_pct'):+.2f}%
 
-======================================================
-🔍 **V. KIỂM TRA CHÉO (CROSS-CHECK & THESIS BREAKER)**
-======================================================
-• **2 Rủi ro lớn nhất có thể khiến phân tích sai lệch:** [...]
-• **1 Tín hiệu theo dõi trọng yếu để hạ khuyến nghị ngay lập tức:** [...]
+---
+### 🔍 V. KIỂM TRA CHÉO (CROSS-CHECK & THESIS BREAKER)
+- **2 Rủi ro lớn nhất có thể khiến phân tích sai lệch:** [...]
+- **1 Tín hiệu theo dõi trọng yếu để hạ khuyến nghị ngay lập tức:** [...]
 </OUTPUT_FORMAT>"""
 
     final_report = call_gemini(client, pass2_prompt)

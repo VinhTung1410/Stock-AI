@@ -8,6 +8,14 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
     st.subheader("✏️ Quản lý & Chỉnh sửa Danh mục Đầu tư & Theo dõi")
     st.caption("Bạn có thể thêm/xóa dòng, sửa mã, giá vốn hoặc giá canh mua trực tiếp trên giao diện rồi nhấn Lưu.")
 
+    # Hiển thị thông báo kết quả sau rerun
+    if "portfolio_toast" in st.session_state:
+        st.toast(st.session_state.pop("portfolio_toast"), icon="✅")
+    if "portfolio_alert_success" in st.session_state:
+        st.success(st.session_state.pop("portfolio_alert_success"))
+    if "portfolio_alert_error" in st.session_state:
+        st.error(st.session_state.pop("portfolio_alert_error"))
+
     sheet_url = os.environ.get("GOOGLE_SHEET_URL", "").strip()
     update_url = os.environ.get("GOOGLE_SHEET_UPDATE_URL", "").strip()
 
@@ -17,7 +25,7 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
             if update_url:
                 st.success("🟢 **Đồng bộ 2 chiều đã kích hoạt:** Mọi thay đổi khi bấm Lưu sẽ tự động cập nhật trực tiếp lên Google Sheet (cả Sheet 1 và Sheet 2)!")
             else:
-                st.info("📊 **Google Sheet đã kết nối (Chế độ đọc tự động).** Cả Sheet 1 (Danh mục) và Sheet 2 (Watchlist) đang được đồng bộ thời gian thực.")
+                st.warning("⚠️ **Google Sheet đang ở chế độ Chỉ Đọc:** Chưa cấu hình GOOGLE_SHEET_UPDATE_URL nên nút Lưu chưa thể ghi đè lên Google Sheet.")
         with col_s2:
             st.link_button("🔗 Mở Google Sheet", sheet_url, use_container_width=True)
 
@@ -51,15 +59,26 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
         new_portfolio = [p for p in new_portfolio if p["symbol"] and p["symbol"] != "NAN"]
 
         save_portfolio(new_portfolio)
-        synced_sheet = False
-        if update_url:
-            synced_sheet = update_google_sheet_portfolio(new_portfolio)
+        
+        # Xóa cache widget data editor để nạp lại dữ liệu sạch
+        if "editor_portfolio" in st.session_state:
+            del st.session_state["editor_portfolio"]
 
         st.cache_data.clear()
-        if synced_sheet:
-            st.success("✅ Đã lưu và đồng bộ Danh mục thành công lên Sheet 1 của Google Sheet!")
+
+        if update_url:
+            with st.spinner("Đang đồng bộ dữ liệu lên Google Sheet (Sheet 1)..."):
+                ok, msg = update_google_sheet_portfolio(new_portfolio)
+            if ok:
+                st.session_state["portfolio_toast"] = "Đã đồng bộ Danh mục lên Google Sheet!"
+                st.session_state["portfolio_alert_success"] = "✅ Đã lưu và đồng bộ Danh mục thành công lên Sheet 1 của Google Sheet!"
+            else:
+                st.session_state["portfolio_alert_error"] = f"❌ Không thể đồng bộ lên Google Sheet: {msg}. Hãy thử lại hoặc kiểm tra Apps Script."
+        elif sheet_url:
+            st.session_state["portfolio_alert_error"] = "⚠️ Chưa cấu hình GOOGLE_SHEET_UPDATE_URL! Dữ liệu chưa thể ghi lên Google Sheet."
         else:
-            st.success("✅ Đã cập nhật Danh mục nắm giữ thành công!")
+            st.session_state["portfolio_alert_success"] = "✅ Đã cập nhật Danh mục nắm giữ thành công!"
+
         st.rerun()
 
     st.divider()
@@ -90,18 +109,29 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
         new_watchlist = edited_wl_df.to_dict(orient="records")
         for w in new_watchlist:
             w["symbol"] = str(w.get("symbol", "")).strip().upper()
-        new_watchlist = [w for w in new_watchlist if w["symbol"]]
+        new_watchlist = [w for w in new_watchlist if w["symbol"] and w["symbol"] != "NAN"]
 
         save_watchlist(new_watchlist)
-        synced_sheet = False
-        if update_url:
-            synced_sheet = update_google_sheet_watchlist(new_watchlist)
+
+        # Xóa cache widget data editor để nạp lại dữ liệu sạch
+        if "editor_watchlist" in st.session_state:
+            del st.session_state["editor_watchlist"]
 
         st.cache_data.clear()
-        if synced_sheet:
-            st.success("✅ Đã lưu và đồng bộ Watchlist thành công lên Sheet 2 của Google Sheet!")
+
+        if update_url:
+            with st.spinner("Đang đồng bộ Watchlist lên Google Sheet (Sheet 2)..."):
+                ok, msg = update_google_sheet_watchlist(new_watchlist)
+            if ok:
+                st.session_state["portfolio_toast"] = "Đã đồng bộ Watchlist lên Google Sheet!"
+                st.session_state["portfolio_alert_success"] = "✅ Đã lưu và đồng bộ Watchlist thành công lên Sheet 2 của Google Sheet!"
+            else:
+                st.session_state["portfolio_alert_error"] = f"❌ Không thể đồng bộ Watchlist lên Google Sheet: {msg}."
+        elif sheet_url:
+            st.session_state["portfolio_alert_error"] = "⚠️ Chưa cấu hình GOOGLE_SHEET_UPDATE_URL! Watchlist chưa thể ghi lên Google Sheet."
         else:
-            st.success("✅ Đã cập nhật Watchlist thành công!")
+            st.session_state["portfolio_alert_success"] = "✅ Đã cập nhật Watchlist thành công!"
+
         st.rerun()
 
     # Hướng dẫn kích hoạt ghi ngược 2 chiều
