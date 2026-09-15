@@ -224,13 +224,21 @@ def calculate_valuation_triangle(current_price: float, pe: float = None, pb: flo
     }
 
 
-def evaluate_market_regime(vnindex_tech: dict = None) -> dict:
+def evaluate_market_regime(
+    vnindex_tech: dict = None,
+    market_breadth_pct: float = None,
+    portfolio_drawdown_pct: float = 0.0,
+    margin_exposure_pct: float = 0.0
+) -> dict:
     """
-    Xác định Trạng thái thị trường (Market Regime):
-    - BULLISH: Xu hướng tăng mạnh, VN-Index trên MA20 và MA50. Tỷ trọng: 70-80% Cổ, 20-30% Tiền.
-    - NEUTRAL: Thị trường đi ngang, tích lũy quanh MA20. Tỷ trọng: 50-60% Cổ, 40-50% Tiền.
-    - CORRECTION: Nhịp điều chỉnh, thủng MA20 nhưng còn hỗ trợ. Tỷ trọng: 30-40% Cổ, 60-70% Tiền.
-    - RISK-OFF: Thị trường suy yếu mạnh, mở biên rơi. Tỷ trọng: 10-20% Cổ, 80-90% Tiền (Ưu tiên bảo toàn vốn).
+    Xác định Trạng thái thị trường (Market Regime) & Ngân sách Rủi ro Đa biến (Risk Budgeting):
+    - Không tự động gán cứng Bullish = 70-80% cổ phiếu.
+    - Kết hợp:
+      1. Market Trend (Điểm số VN-Index so với MA20 & MA50)
+      2. Market Breadth (Tỷ lệ cổ phiếu nằm trên MA20 trên thị trường)
+      3. Liquidity (Thanh khoản so với TB20 phiên)
+      4. Portfolio Drawdown (Mức sụt giảm NAV hiện tại)
+      5. Margin Exposure (Tỷ lệ đòn bẩy)
     """
     if not vnindex_tech:
         return {
@@ -238,7 +246,8 @@ def evaluate_market_regime(vnindex_tech: dict = None) -> dict:
             "tag": "🟡 ĐI NGANG / TÍCH LŨY",
             "stock_pct": "50%",
             "cash_pct": "50%",
-            "bias": "Thận trọng, giải ngân theo từng phần cổ phiếu đạt định giá rẻ.",
+            "max_stock_nav": 50,
+            "bias": "Thận trọng, giải ngân từng phần vào các mã có Margin of Safety cao.",
             "defense_priority": "Trung bình"
         }
 
@@ -246,51 +255,152 @@ def evaluate_market_regime(vnindex_tech: dict = None) -> dict:
     ma20 = vnindex_tech.get("ma20", curr)
     ma50 = vnindex_tech.get("ma50", curr)
     rsi = vnindex_tech.get("rsi", 50.0)
+    vol_ratio = vnindex_tech.get("vol_ratio", 1.0)
 
-    if curr > ma20 and curr > ma50 and rsi >= 50.0:
+    # 1. Điểm Xu hướng Trend (Max 35)
+    trend_score = 0
+    if curr >= ma20:
+        trend_score += 18
+    if curr >= ma50:
+        trend_score += 12
+    if 50.0 <= rsi <= 68.0:
+        trend_score += 5
+    elif rsi > 70.0:
+        trend_score += 1  # Cảnh báo quá mua
+
+    # 2. Điểm Độ rộng Thị trường Breadth (Max 25)
+    breadth = market_breadth_pct if market_breadth_pct is not None else (60.0 if curr >= ma20 else 40.0)
+    breadth_score = min(round((breadth / 100.0) * 25, 1), 25.0)
+
+    # 3. Điểm Thanh khoản Liquidity (Max 20)
+    if vol_ratio >= 1.1:
+        liq_score = 20.0
+    elif vol_ratio >= 0.85:
+        liq_score = 15.0
+    else:
+        liq_score = 8.0  # Cạn thanh khoản
+
+    # 4. Điểm Quản trị Rủi ro Portfolio Drawdown & Margin (Max 20)
+    risk_score = 20.0
+    if portfolio_drawdown_pct < -5.0:
+        risk_score -= 8.0
+    if margin_exposure_pct > 30.0:
+        risk_score -= 7.0
+
+    total_risk_budget = trend_score + breadth_score + liq_score + risk_score
+
+    # Phân loại Regime và cấp hạn mức Cổ phiếu theo Risk Budget
+    if total_risk_budget >= 78.0 and curr >= ma20 and curr >= ma50:
         regime = "BULLISH"
         tag = "🟢 XU HƯỚNG TĂNG TRƯỞNG (BULLISH)"
-        stock_pct = "70% - 80%"
-        cash_pct = "20% - 30%"
-        bias = "Thị trường thuận lợi. Tận dụng nhịp rung lắc kỹ thuật để gia tăng cổ phiếu có Margin of Safety cao."
+        stock_pct = "65% - 75%"
+        cash_pct = "25% - 35%"
+        max_nav = 75
+        bias = "Xu hướng tích cực được hỗ trợ bởi độ rộng và thanh khoản. Duy trì vị thế cổ phiếu chủ lực."
         defense_priority = "Thấp"
-    elif curr < ma20 and curr < ma50 and (rsi < 42.0 or curr < ma20 * 0.98):
-        regime = "RISK-OFF"
-        tag = "🔴 PHÒNG THỦ CAO ĐỘ (RISK-OFF)"
-        stock_pct = "10% - 20%"
-        cash_pct = "80% - 90%"
-        bias = "Thị trường chịu áp lực bán lớn. Tuyệt đối không bắt dao rơi, hạ đòn bẩy margin về 0, giữ tiền mặt bảo toàn vốn."
-        defense_priority = "Tối đa"
-    elif curr < ma20 and curr >= ma50:
+    elif total_risk_budget >= 55.0 or (curr >= ma50 and curr < ma20):
+        regime = "NEUTRAL"
+        tag = "🟡 ĐI NGANG / PHÂN HÓA (NEUTRAL)"
+        stock_pct = "45% - 55%"
+        cash_pct = "45% - 55%"
+        max_nav = 55
+        bias = "Dòng tiền phân hóa. Chỉ gom cổ phiếu đạt chuẩn giá trị (MoS >= 15%) tại vùng hỗ trợ."
+        defense_priority = "Trung bình"
+    elif curr < ma20 and curr >= ma50 * 0.98:
         regime = "CORRECTION"
         tag = "🟠 ĐIỀU CHỈNH KỸ THUẬT (CORRECTION)"
         stock_pct = "30% - 40%"
         cash_pct = "60% - 70%"
-        bias = "Thị trường kiểm định hỗ trợ trung hạn. Chỉ quan sát hoặc tích lũy tỷ trọng nhỏ mã có định giá rất rẻ."
+        max_nav = 40
+        bias = "Thị trường kiểm định hỗ trợ trung hạn. Ưu tiên giữ tiền mặt, cấm mua đuổi ATO."
         defense_priority = "Cao"
     else:
-        regime = "NEUTRAL"
-        tag = "🟡 ĐI NGANG / PHÂN HÓA (NEUTRAL)"
-        stock_pct = "50% - 60%"
-        cash_pct = "40% - 50%"
-        bias = "Dòng tiền phân hóa mạnh. Ưu tiên cổ phiếu có câu chuyện kinh doanh riêng biệt và định giá hấp dẫn."
-        defense_priority = "Trung bình"
+        regime = "RISK-OFF"
+        tag = "🔴 PHÒNG THỦ CAO ĐỘ (RISK-OFF)"
+        stock_pct = "10% - 20%"
+        cash_pct = "80% - 90%"
+        max_nav = 20
+        bias = "Áp lực bán lớn, rủi ro gãy xu hướng. Hạ margin về 0, bảo toàn vốn tối đa."
+        defense_priority = "Tối đa"
 
     return {
         "regime": regime,
         "tag": tag,
         "stock_pct": stock_pct,
         "cash_pct": cash_pct,
+        "max_stock_nav": max_nav,
+        "risk_budget_score": total_risk_budget,
         "bias": bias,
         "defense_priority": defense_priority
     }
 
 
+def calculate_weighted_entry_and_rr(
+    entry_prices: list,
+    weights: list = None,
+    target_price: float = 0.0,
+    stop_loss: float = 0.0
+) -> dict:
+    """
+    TÍNH TOÁN ĐIỂM VÀO BÌNH QUÂN TRỌNG SỐ (WEIGHTED AVERAGE ENTRY) VÀ TỶ LỆ R:R CHUẨN XÁC:
+    - Reward = Target - Weighted Entry
+    - Risk = Weighted Entry - Stop Loss
+    - R:R = Reward / Risk
+    - Bắt buộc tính từ cùng một Weighted Entry, TUYỆT ĐỐI không tính R:R từ Current Price nếu Entry Price khác!
+    """
+    if not entry_prices:
+        return {
+            "weighted_entry": 0.0,
+            "reward": 0.0,
+            "risk": 0.0,
+            "risk_reward": 1.0,
+            "is_valid": False,
+            "error": "Thiếu danh sách giá vào lệnh (entry_prices)"
+        }
+
+    # Mặc định trọng số giải ngân 3 bước (30% - 40% - 30%)
+    if not weights or len(weights) != len(entry_prices):
+        if len(entry_prices) == 3:
+            weights = [0.3, 0.4, 0.3]
+        elif len(entry_prices) == 2:
+            weights = [0.4, 0.6]
+        else:
+            weights = [1.0 / len(entry_prices)] * len(entry_prices)
+
+    total_w = sum(weights)
+    norm_w = [w / total_w for w in weights]
+
+    weighted_entry = round(sum(p * w for p, w in zip(entry_prices, norm_w)), 2)
+
+    reward = round(max(target_price - weighted_entry, 0.0), 2) if target_price > 0 else 0.0
+    risk = round(max(weighted_entry - stop_loss, 0.01), 2) if stop_loss > 0 else 0.01
+
+    rr = round(reward / risk, 2) if risk > 0 else 1.0
+
+    # Validation: Đối với vị thế Long, bắt buộc Target > Weighted Entry > Stop Loss
+    is_valid = (target_price > weighted_entry) and (weighted_entry > stop_loss)
+
+    return {
+        "weighted_entry": weighted_entry,
+        "entry_prices": entry_prices,
+        "weights": weights,
+        "target_price": target_price,
+        "stop_loss": stop_loss,
+        "reward": reward,
+        "risk": risk,
+        "risk_reward": rr,
+        "rr_ratio": rr,
+        "is_valid": is_valid
+    }
+
+
 def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict = None) -> dict:
     """
-    ĐÁNH GIÁ VỊ THẾ ĐANG NẮM GIỮ (PORTFOLIO POSITION EVALUATOR) - CHUẨN V2:
-    - QUY TẮC CỐT TỬ: Khi cổ phiếu đang LÃI (P/L > 0), TUYỆT ĐỐI KHÔNG DÙNG TỪ "CẮT LỖ".
+    ĐÁNH GIÁ VỊ THẾ ĐANG NẮM GIỮ (PORTFOLIO POSITION EVALUATOR) - CHUẨN V2.1:
+    - QUY TẮC CỐT TỬ 1: Khi cổ phiếu đang LÃI (P/L > 0), TUYỆT ĐỐI KHÔNG DÙNG TỪ "CẮT LỖ".
       Phải chuyển sang "CHỐT LỜI TỪNG PHẦN / BẢO VỆ THÀNH QUẢ" và tính mốc TRAILING STOP cụ thể bằng số.
+    - QUY TẮC CỐT TỬ 2 (VALIDATION CLAMP): Đối với vị thế LONG, TRAILING STOP LUÔN NHỎ HƠN THỊ GIÁ HIỆN TẠI.
+      Tuyệt đối cấm xảy ra lỗi Current Price = 12.80 mà Trailing Stop = 12.84!
     - Khi cổ phiếu LỖ (P/L <= 0):
       + Vị thế Đầu tư giá trị dài hạn: Quản trị bằng THESIS BREAKER (chỉ bán khi luận điểm vỡ).
       + Vị thế Lướt sóng Trading: Quản trị bằng STOP-LOSS KỸ THUẬT dứt khoát.
@@ -299,29 +409,40 @@ def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict = None)
     entry_price = float(row.get("avg_price", 0.0))
     curr_price = float(tech_data.get("current_price") or row.get("market_price", entry_price))
     volume = int(row.get("volume", 0))
-    
+
     pl_val = (curr_price - entry_price) * volume * 1000
     pl_pct = ((curr_price - entry_price) / entry_price * 100) if entry_price > 0 else 0.0
-    
-    atr = tech_data.get("atr") or 0.0
-    ma20 = tech_data.get("ma20") or curr_price
-    
+
+    atr = float(tech_data.get("atr") or tech_data.get("atr14") or 0.0)
+    ma20 = float(tech_data.get("ma20") or curr_price)
+
     # 1. KỊCH BẢN VỊ THẾ CÓ LÃI (P/L > 0)
     if pl_pct > 0:
-        # Tính mốc Trailing Stop cụ thể bằng số
-        if atr and atr > 0:
-            trailing_candidate = curr_price - (1.5 * atr)
-        else:
-            trailing_candidate = curr_price * 0.95
-        
-        # Trailing Stop ít nhất phải giữ được lãi nhẹ (>= entry_price * 1.02) nếu lãi đã trên 5%
-        if pl_pct >= 5.0:
-            trailing_stop = max(entry_price * 1.02, trailing_candidate, ma20 * 0.98)
-        else:
-            trailing_stop = entry_price  # Hòa vốn
+        # Ngưỡng trần tối đa cho Trailing Stop (Bắt buộc nhỏ hơn Current Price ít nhất 3.5% - 4.5%)
+        max_allowed_stop = round(curr_price * 0.96, 2)
 
+        # Tính toán mốc Trailing Stop lý tưởng
+        if pl_pct >= 15.0:
+            # Lãi lớn (>= 15%): Nâng trailing stop khóa lợi nhuận (tối thiểu entry * 1.05 hoặc bám MA20)
+            candidate_stop = max(
+                entry_price * 1.06,
+                (curr_price - (1.2 * atr)) if atr > 0 else (curr_price * 0.95),
+                ma20 * 0.98
+            )
+        elif pl_pct >= 5.0:
+            # Lãi vừa (5% - 15%): Khóa lãi hòa vốn + chi phí (entry * 1.02)
+            candidate_stop = max(
+                entry_price * 1.02,
+                (curr_price - (1.5 * atr)) if atr > 0 else (curr_price * 0.94)
+            )
+        else:
+            # Lãi nhẹ (< 5%): Hòa vốn
+            candidate_stop = entry_price
+
+        # VALIDATION CLAMP BẮT BUỘC: Trailing Stop PHẢI < curr_price
+        trailing_stop = min(candidate_stop, max_allowed_stop)
         trailing_stop = round(float(trailing_stop), 2)
-        
+
         if pl_pct >= 20.0:
             action = "🟢 BẢO VỆ THÀNH QUẢ / HIỆN THỰC HÓA LỢI NHUẬN"
             detail = (
@@ -339,7 +460,7 @@ def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict = None)
             action = "🟢 NẮM GIỮ / THEO DÕI ĐÀ TĂNG"
             detail = (
                 f"Vị thế có lãi nhẹ (+{pl_pct:.1f}%). Tiếp tục nắm giữ, "
-                f"đặt mốc chặn lãi hòa vốn (Break-even Stop) tại {entry_price:.2f}k."
+                f"đặt mốc chặn lãi hòa vốn tại {trailing_stop:.2f}k."
             )
 
         return {
@@ -365,12 +486,14 @@ def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict = None)
             stop_loss = max(tech_stop, entry_price * 0.93)
         else:
             stop_loss = entry_price * 0.93
-        stop_loss = round(float(stop_loss), 2)
+            
+        # Đảm bảo Stop-loss < curr_price
+        stop_loss = min(round(float(stop_loss), 2), round(curr_price * 0.97, 2))
 
         # Kiểm tra Thesis Breaker (Luận điểm đầu tư cơ bản)
         thesis_intact = True
         thesis_msg = "Luận điểm tăng trưởng doanh nghiệp cốt lõi vẫn được bảo toàn."
-        
+
         if fin_dict:
             f_score = calculate_piotroski_f_score(fin_dict).get("score", 6)
             z_data = calculate_altman_z_score(fin_dict)
@@ -549,12 +672,14 @@ def evaluate_decision_hard_gates(
     tech_data: dict = None
 ) -> dict:
     """
-    TÍNH TOÁN HÀNG RÀO QUYẾT ĐỊNH ĐỊNH LƯỢNG (HARD GATES) - CHUẨN V2:
-    4 TRẠNG THÁI DUY NHẤT:
-    1. 🟢 MUA (MOS >= 15%, kỹ thuật xác nhận tạo đáy / bứt phá, dòng tiền ủng hộ).
-    2. 🟢 TÍCH LŨY (MOS >= 15%, đang tích lũy nền chặt, gom từng phần).
-    3. 🟡 THEO DÕI (Đang rơi tự do 'Falling Knife', hoặc MOS chưa đủ an toàn < 10%).
-    4. 🔴 GIẢM / THOÁT (MOS âm, định giá quá đắt, hoặc gãy hỗ trợ quan trọng).
+    TÍNH TOÁN HÀNG RÀO QUYẾT ĐỊNH ĐỊNH LƯỢNG (HARD GATES) - CHUẨN V2.1:
+    TÁCH BIỆT RẠCH RÒI TÍN HIỆU GIÁ TRỊ (VALUE) VÀ TÍN HIỆU KỸ THUẬT (TECHNICAL):
+    - Tuyệt đối không dùng 'Kỹ thuật yếu = AVOID / TRÁNH BẪY' nếu Cơ bản & Định giá vẫn tốt.
+    - 4 TRẠNG THÁI QUYẾT ĐỊNH CHUẨN:
+      1. 🟢 VALUE BUY: Cơ bản tốt + MoS >= 15% + Kỹ thuật bứt phá/trên MA20
+      2. 🟢 ACCUMULATE: Cơ bản tốt + MoS >= 15% + Kỹ thuật tích lũy nền chặt
+      3. 🟡 WATCH / WAIT FOR CONFIRMATION: Cơ bản tốt + MoS >= 8% nhưng Kỹ thuật yếu/rơi (như MWG), hoặc MoS chưa đủ dày
+      4. 🔴 REDUCE / EXIT: Định giá quá đắt (MoS âm) hoặc gãy nền sâu / Thesis Breaker kích hoạt
     """
     if not current_price or current_price <= 0:
         return {}
@@ -569,6 +694,9 @@ def evaluate_decision_hard_gates(
     
     fair_value = val_model.get("fair_value", price_base)
     mos_pct = val_model.get("mos_pct", round(((price_base - current_price) / price_base) * 100, 2))
+    val_method = val_model.get("valuation_method", "N/A")
+    val_confidence = val_model.get("confidence", "MEDIUM")
+    price_target = val_model.get("price_target") or round(fair_value * 1.08, 2)
     
     # 1. Expected Value
     ev = (p_bull * price_bull) + (p_base * price_base) + (p_bear * price_bear)
@@ -581,10 +709,13 @@ def evaluate_decision_hard_gates(
     else:
         stop_loss = round(current_price * 0.93, 2)
 
+    # Đảm bảo Stop-loss < current_price
+    stop_loss = min(round(float(stop_loss), 2), round(current_price * 0.97, 2))
+
     downside_val = max(current_price - stop_loss, 0.01)
-    upside_val = max(fair_value - current_price, 0.01)
+    upside_val = max(price_target - current_price, 0.01)
     
-    # 3. Tỷ lệ Risk / Reward R
+    # 3. Tỷ lệ Risk / Reward R (theo Current nếu chưa có weighted entry)
     rr = round(upside_val / downside_val, 2) if downside_val > 0 else 1.0
 
     # 4. Kelly Criterion f*
@@ -592,14 +723,22 @@ def evaluate_decision_hard_gates(
     p_loss = 1.0 - p_win
     kelly_f = round(p_win - (p_loss / rr), 2) if rr > 0 else -1.0
 
-    # 5. Kiểm tra bẫy giá rơi (Falling Knife Check)
+    # 5. Phân loại Tín hiệu Kỹ thuật (Technical Signal)
+    tech_signal = "NEUTRAL"
+    ma20 = tech_data.get("ma20", current_price) if tech_data else current_price
+    ma50 = tech_data.get("ma50", current_price) if tech_data else current_price
+    rsi = tech_data.get("rsi", 50.0) if tech_data else 50.0
+    
     is_falling_knife = False
-    if tech_data:
-        ma20 = tech_data.get("ma20", current_price)
-        rsi = tech_data.get("rsi", 50.0)
-        # Rơi tự do: Giá dưới MA20 trên 4% và RSI cắm đầu sâu không tạo đáy
-        if current_price < ma20 * 0.96 and rsi < 36.0:
-            is_falling_knife = True
+    if current_price < ma20 * 0.95 and rsi < 36.0:
+        is_falling_knife = True
+        tech_signal = "FALLING_KNIFE"
+    elif current_price < ma20 * 0.97 or current_price < ma50 * 0.98:
+        tech_signal = "WEAK_BELOW_MA20"
+    elif current_price >= ma20 and rsi >= 48.0:
+        tech_signal = "BULLISH_CONFIRMED"
+    else:
+        tech_signal = "CONSOLIDATION_BASE"
 
     # --- HÀNG RÀO CỨNG (HARD GATES) ---
     gate_mos_passed = mos_pct >= 12.0
@@ -607,66 +746,83 @@ def evaluate_decision_hard_gates(
     gate_kelly_passed = kelly_f > 0
     gate_trap_passed = not (trap_info and trap_info.get("is_trap"))
 
-    # Kiểm tra bẫy tin tức (VETO CỨNG)
-    if not gate_trap_passed:
-        can_buy = False
-        trap_msg = trap_info.get("warning_msg", "Phát hiện bẫy giá / tin tức nguy hiểm")
-        decision_tag = f"🔴 GIẢM / THOÁT (Bẫy giá: {trap_msg})"
-        action_state = "🔴 GIẢM / THOÁT"
-        position_size_nav = "0% NAV (Cấm mua - Đang trong vùng bẫy rủi ro)"
-    elif adv20_billion > 0 and adv20_billion < 2.0:
-        can_buy = False
-        decision_tag = "🟡 THEO DÕI (Thanh khoản quá thấp < 2 tỷ/phiên)"
-        action_state = "🟡 THEO DÕI"
-        position_size_nav = "0% NAV (Rủi ro kẹp vốn thanh khoản)"
-    elif is_falling_knife:
-        can_buy = False
-        decision_tag = "🟡 THEO DÕI (Giá rơi tự do 'Falling Knife' - Cấm bắt đáy khi chưa cân bằng)"
-        action_state = "🟡 THEO DÕI"
-        position_size_nav = "0% NAV (Chờ nến xác nhận ngừng rơi)"
-    else:
-        # Kiểm tra dòng tiền Khối ngoại
-        is_heavy_foreign_sell = False
-        if foreign_flow and foreign_flow.get("status") in ["SELLING", "HEAVY_SELLING"]:
-            net_val = foreign_flow.get("net_val_bil", 0.0)
-            if net_val < -20.0:
-                is_heavy_foreign_sell = True
+    # Kiểm tra dòng tiền Khối ngoại
+    is_heavy_foreign_sell = False
+    if foreign_flow and foreign_flow.get("status") in ["SELLING", "HEAVY_SELLING"]:
+        net_val = foreign_flow.get("net_val_bil", 0.0)
+        if net_val < -20.0:
+            is_heavy_foreign_sell = True
 
-        if mos_pct >= 15.0 and gate_rr_passed and gate_kelly_passed:
-            can_buy = True
-            if is_heavy_foreign_sell:
-                decision_tag = f"🟢 TÍCH LŨY THĂM DÒ (Khối ngoại còn xả ròng {foreign_flow.get('net_val_bil'):.1f} tỷ)"
-                action_state = "🟢 TÍCH LŨY"
-                position_size_nav = "5% - 8% NAV"
-            elif tech_data and tech_data.get("current_price", 0) >= tech_data.get("ma20", 0):
-                decision_tag = "🟢 MUA (Biên an toàn cao & Kỹ thuật xác nhận xu hướng)"
-                action_state = "🟢 MUA"
-                position_size_nav = "15% - 20% NAV"
-            else:
-                decision_tag = "🟢 TÍCH LŨY (Định giá rẻ, gom nhặt trong vùng nền)"
-                action_state = "🟢 TÍCH LŨY"
-                position_size_nav = "10% - 12% NAV"
-        elif mos_pct >= 8.0:
-            can_buy = False
-            decision_tag = "🟡 THEO DÕI (Biên an toàn còn mỏng < 15%, chờ giá chiết khấu thêm)"
-            action_state = "🟡 THEO DÕI"
-            position_size_nav = "0% NAV"
-        elif mos_pct < 0:
-            can_buy = False
-            decision_tag = "🔴 GIẢM / THOÁT (Thị giá vượt giá trị hợp lý, định giá quá đắt)"
-            action_state = "🔴 GIẢM / THOÁT"
-            position_size_nav = "0% NAV"
+    # =========================================================================
+    # MA TRẬN PHÂN LOẠI QUYẾT ĐỊNH (VALUE + TECHNICAL COUPLING)
+    # =========================================================================
+    if adv20_billion > 0 and adv20_billion < 2.0:
+        can_buy = False
+        action_state = "🟡 THEO DÕI"
+        decision_tag = "🟡 THEO DÕI (Thanh khoản quá thấp < 2 tỷ/phiên - Rủi ro kẹp vốn)"
+        position_size_nav = "0% NAV"
+
+    elif mos_pct < 0:
+        # Vùng định giá đắt
+        can_buy = False
+        action_state = "🔴 GIẢM / THOÁT"
+        decision_tag = "🔴 GIẢM / THOÁT (Thị giá vượt giá trị hợp lý, định giá quá đắt)"
+        position_size_nav = "0% NAV"
+
+    elif is_falling_knife or tech_signal == "WEAK_BELOW_MA20":
+        # Cơ bản & Định giá có thể tốt (như MWG MoS 9.1%) nhưng kỹ thuật đang yếu
+        # TUYỆT ĐỐI KHÔNG GÁN AVOID / TRÁNH BẪY mà chuyển thành WATCH / WAIT FOR CONFIRMATION
+        can_buy = False
+        action_state = "🟡 THEO DÕI"
+        if mos_pct >= 15.0:
+            decision_tag = "🟡 THEO DÕI / CHỜ XÁC NHẬN (Định giá rất rẻ nhưng Kỹ thuật đang rơi - Chờ nến cân bằng, cấm bắt dao rơi)"
         else:
-            can_buy = False
-            decision_tag = "🟡 THEO DÕI (Hàng rào định lượng chưa đủ điều kiện kích hoạt Mua)"
-            action_state = "🟡 THEO DÕI"
-            position_size_nav = "0% NAV"
+            decision_tag = "🟡 THEO DÕI (Kỹ thuật nằm dưới MA20/MA50 - Chờ tích lũy ổn định)"
+        position_size_nav = "0% NAV (Chờ tín hiệu xác nhận ngừng rơi)"
+
+    elif not gate_trap_passed:
+        # Bẫy phân phối khối lượng lớn / tin tức bơm thổi
+        can_buy = False
+        trap_msg = trap_info.get("warning_msg", "Phát hiện bẫy giá nguy hiểm")
+        action_state = "🔴 GIẢM / THOÁT"
+        decision_tag = f"🔴 GIẢM / THOÁT (Cảnh báo bẫy: {trap_msg})"
+        position_size_nav = "0% NAV"
+
+    elif mos_pct >= 15.0 and gate_rr_passed and gate_kelly_passed:
+        can_buy = True
+        if is_heavy_foreign_sell:
+            action_state = "🟢 TÍCH LŨY"
+            decision_tag = f"🟢 TÍCH LŨY THĂM DÒ (Khối ngoại xả ròng {foreign_flow.get('net_val_bil'):.1f} tỷ)"
+            position_size_nav = "5% - 8% NAV"
+        elif tech_signal == "BULLISH_CONFIRMED":
+            action_state = "🟢 MUA"
+            decision_tag = "🟢 VALUE BUY (Biên an toàn cao & Kỹ thuật xác nhận xu hướng bứt phá)"
+            position_size_nav = "15% - 20% NAV"
+        else:
+            action_state = "🟢 TÍCH LŨY"
+            decision_tag = "🟢 ACCUMULATE (Định giá rẻ, gom nhặt trong vùng nền chờ xác nhận)"
+            position_size_nav = "10% - 12% NAV"
+
+    elif mos_pct >= 8.0:
+        can_buy = False
+        action_state = "🟡 THEO DÕI"
+        decision_tag = "🟡 THEO DÕI (Biên an toàn còn mỏng 8-15%, chờ giá chiết khấu thêm)"
+        position_size_nav = "0% NAV"
+
+    else:
+        can_buy = False
+        action_state = "🟡 THEO DÕI"
+        decision_tag = "🟡 THEO DÕI (Hàng rào định lượng chưa đủ điều kiện kích hoạt Mua)"
+        position_size_nav = "0% NAV"
 
     return {
         "ev": ev,
         "fair_value": fair_value,
+        "price_target": price_target,
         "mos_pct": mos_pct,
         "valuation_model": val_model,
+        "valuation_method": val_method,
+        "confidence": val_confidence,
         "stop_loss": stop_loss,
         "downside_pct": round(((current_price - stop_loss) / current_price) * 100, 1) if current_price > 0 else 0.0,
         "risk_reward": rr,
@@ -678,6 +834,7 @@ def evaluate_decision_hard_gates(
         "trap_info": trap_info or {},
         "foreign_flow": foreign_flow or {},
         "can_buy": can_buy,
+        "tech_signal": tech_signal,
         "action_state": action_state,
         "decision_tag": decision_tag,
         "position_size_nav": position_size_nav

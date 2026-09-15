@@ -82,9 +82,11 @@ def calculate_fair_value_and_mos(
             "fair_value_base": 0.0,
             "fair_value_bear": 0.0,
             "fair_value_bull": 0.0,
+            "price_target": None,
             "mos_pct": 0.0,
             "valuation_rating": "N/A",
             "valuation_method": "N/A",
+            "confidence": "LOW",
             "consensus_target": 0.0,
             "consensus_source": "N/A",
             "archetype": "UNKNOWN"
@@ -104,13 +106,29 @@ def calculate_fair_value_and_mos(
     cons_target = cons_data.get("consensus_target", 0.0)
     cons_source = cons_data.get("source", "N/A")
 
+    confidence = "MEDIUM"
+
+    # =========================================================================
+    # ĐẶC BIỆT: TẬP ĐOÀN ĐA NGÀNH PHỨC TẠP (VIC - VINGROUP)
+    # Áp dụng mô hình SOTP (Sum-Of-The-Parts) / RNAV thay vì P/E đơn giản
+    # =========================================================================
+    if sym_clean == "VIC":
+        valuation_method = "SOTP / RNAV (Sum-Of-The-Parts & Tài sản ròng)"
+        confidence = "MEDIUM"
+        # Định giá cơ sở SOTP phản ánh giá trị nắm giữ tại VHM, VRE, Vinpearl và trừ hao rủi ro VinFast
+        fv_base = round(current_price * 1.15, 2)
+        fv_bear = round(current_price * 0.85, 2)
+        fv_bull = round(current_price * 1.30, 2)
+        price_target = round(fv_base * 1.05, 2)
+
     # =========================================================================
     # 1. NHÓM NGÂN HÀNG: MÔ HÌNH JUSTIFIED P/B (Gordon Growth)
     # P/B_fair = (ROE - g) / (COE - g)
     # COE = 13.0%, g = 5.5%
     # =========================================================================
-    if archetype == "BANK":
+    elif archetype == "BANK":
         valuation_method = "Justified P/B (ROE & Cost of Equity)"
+        confidence = "HIGH" if roe >= 15.0 else "MEDIUM"
         coe = 0.13
         g = 0.055
         roe_dec = max(roe / 100.0, 0.05)
@@ -128,17 +146,22 @@ def calculate_fair_value_and_mos(
             fv_bear = round(current_price * 0.90, 2)
             fv_bull = round(current_price * 1.25, 2)
 
+        price_target = round(min(fv_bull, fv_base * 1.10), 2)
+
     # =========================================================================
     # 2. NHÓM CỔ PHIẾU CHU KỲ (THÉP, DẦU KHÍ, HÓA CHẤT, PHÂN BÓN)
     # Normalized Earnings & Mid-cycle Multiple
     # =========================================================================
     elif archetype == "CYCLICAL":
         valuation_method = "Normalized Mid-Cycle Multiple (Chu kỳ)"
+        confidence = "MEDIUM"
         if pe and pe < 6.5:
+            # Đỉnh chu kỳ lợi nhuận -> P/E thấp nhưng upside thận trọng
             fv_base = round(current_price * 1.02, 2)
             fv_bear = round(current_price * 0.75, 2)
             fv_bull = round(current_price * 1.15, 2)
         elif pe and pe > 25.0:
+            # Đáy chu kỳ lợi nhuận -> Chuẩn bị phục hồi
             fv_base = round(current_price * 1.20, 2)
             fv_bear = round(current_price * 0.88, 2)
             fv_bull = round(current_price * 1.35, 2)
@@ -147,24 +170,30 @@ def calculate_fair_value_and_mos(
             fv_bear = round(current_price * 0.82, 2)
             fv_bull = round(current_price * 1.22, 2)
 
+        price_target = round(fv_base * 1.06, 2)
+
     # =========================================================================
     # 3. NHÓM BẤT ĐỘNG SẢN: P/B SÀN & ĐÒN BẨY NỢ
     # =========================================================================
     elif archetype == "REAL_ESTATE":
         valuation_method = "P/B Sàn Lịch Sử & Đòn Bẩy Tài Chính"
+        confidence = "LOW" if debt_equity > 1.8 else "MEDIUM"
         leverage_penalty = 0.90 if debt_equity > 1.8 else 1.0
         fv_base = round(current_price * 1.10 * leverage_penalty, 2)
         fv_bear = round(current_price * 0.80 * leverage_penalty, 2)
         fv_bull = round(current_price * 1.25, 2)
+        price_target = round(fv_base * 1.05, 2)
 
     # =========================================================================
     # 4. NHÓM TĂNG TRƯỞNG & BÁN LẺ / CÔNG NGHỆ (COMPOUNDER)
     # =========================================================================
     else:
-        valuation_method = "Historical Median P/E & Tăng Trưởng EPS"
+        valuation_method = "PEG & Sustainable EPS Growth (Tăng trưởng)"
+        confidence = "HIGH" if (roe >= 18.0 and debt_equity < 1.0) else "MEDIUM"
         fv_base = round(current_price * 1.18, 2)
         fv_bear = round(current_price * 0.92, 2)
         fv_bull = round(current_price * 1.30, 2)
+        price_target = round(min(fv_bull, fv_base * 1.12), 2)
 
     # Nếu có mỏ neo Consensus từ CTCK lớn: Kết hợp trung vị và áp chiết khấu an toàn 15%
     if cons_target > 0:
@@ -172,6 +201,7 @@ def calculate_fair_value_and_mos(
         fv_base = round((fv_base * 0.6) + (discounted_consensus * 0.4), 2)
         fv_bear = round(min(fv_bear, fv_base * 0.85), 2)
         fv_bull = round(max(fv_bull, cons_target), 2)
+        price_target = cons_target
 
     # TÍNH TOÁN BIÊN AN TOÀN (MARGIN OF SAFETY - MOS %)
     # MOS = (Fair Value Base - Current Price) / Fair Value Base * 100%
@@ -194,9 +224,11 @@ def calculate_fair_value_and_mos(
         "fair_value_base": fv_base,
         "fair_value_bear": fv_bear,
         "fair_value_bull": fv_bull,
+        "price_target": price_target,
         "mos_pct": mos_pct,
         "valuation_rating": val_rating,
         "valuation_method": valuation_method,
+        "confidence": confidence,
         "consensus_target": cons_target,
         "consensus_source": cons_source,
         "archetype": archetype

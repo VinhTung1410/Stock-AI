@@ -110,22 +110,31 @@ def get_ai_client():
     return genai.Client(api_key=GEMINI_API_KEY)
 
 
+from quant_sanity_check import (
+    validate_holding_position,
+    validate_trade_setup,
+    validate_valuation_mos,
+    validate_value_vs_technical
+)
+
+
 def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, custom_question: str = None) -> str:
     """
-    🎯 BÁO CÁO TỔNG KẾT PHIÊN ATC (15:00) - AI STOCK COPILOT V2:
+    🎯 BÁO CÁO TỔNG KẾT PHIÊN ATC (15:00) - AI STOCK COPILOT V2.1:
     - Triết lý: Value-First + Technical Timing.
     - Bắt buộc trả lời 5 câu hỏi cốt tử.
     - Định lượng 100% bằng Python: Cổ phiếu LÃI kích hoạt TRAILING STOP cụ thể, TUYỆT ĐỐI KHÔNG DÙNG TỪ CẮT LỖ.
+    - Chạy Sanity Check Engine kiểm toán tính nhất quán toán học trước khi render.
     """
     client = get_ai_client()
 
-    # Chạy tính toán định lượng cho từng mã trong danh mục
+    # Chạy tính toán định lượng & Sanity Check cho từng mã trong danh mục
     quant_eval_lines = []
     if portfolio_df is not None and not portfolio_df.empty:
         for _, row in portfolio_df.iterrows():
-            sym = str(row.get("symbol", "")).upper()
-            entry_p = float(row.get("avg_price", 0.0))
-            curr_p = float(row.get("market_price", entry_p))
+            sym = str(row.get("symbol", row.get("Mã CP", ""))).upper()
+            entry_p = float(row.get("avg_price", row.get("Giá vốn (k)", 0.0)))
+            curr_p = float(row.get("market_price", row.get("Thị giá (k)", entry_p)))
             pl_p = ((curr_p - entry_p) / entry_p * 100) if entry_p > 0 else 0.0
             
             mock_tech = {
@@ -135,15 +144,18 @@ def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, cus
             }
             eval_res = evaluate_holding_position(row.to_dict(), mock_tech)
             
+            # SANITY CHECK CỨNG
+            _, _, eval_res = validate_holding_position(eval_res)
+            
             if eval_res["is_profit"]:
                 quant_eval_lines.append(
-                    f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá: {curr_p:.2f}k | Lãi: +{pl_p:.1f}% | "
+                    f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá ATC: {curr_p:.2f}k | Lãi: +{pl_p:.1f}% | "
                     f"Hành động: {eval_res['action']} | 🛡️ MỐC TRAILING STOP BẢO VỆ LÃI: **{eval_res['trailing_stop']:.2f}k** | "
                     f"Chi tiết: {eval_res['detail']}"
                 )
             else:
                 quant_eval_lines.append(
-                    f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá: {curr_p:.2f}k | Lỗ: {pl_p:.1f}% | "
+                    f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá ATC: {curr_p:.2f}k | Lỗ: {pl_p:.1f}% | "
                     f"Hành động: {eval_res['action']} | 🛡️ MỐC STOP-LOSS KỸ THUẬT: **{eval_res['stop_loss']:.2f}k** | "
                     f"Thesis Breaker: {eval_res['thesis_breaker']} | Chi tiết: {eval_res['detail']}"
                 )
@@ -182,15 +194,16 @@ Bây giờ là 15:00 CHIỀU - phiên giao dịch chứng khoán vừa khép l�
 === 4. TIN TỨC VĨ MÔ & DOANH NGHIỆP TRONG PHIÊN (CAFEF) ===
 {news_str}
 
-QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM:
+QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM (MATHEMATICAL SANITY RULES):
 1. ĐỐI VỚI VỊ THẾ ĐANG CÓ LÃI (P/L > 0): TUYỆT ĐỐI KHÔNG DÙNG TỪ "CẮT LỖ". Bắt buộc gọi là "CHỐT LỜI TỪNG PHẦN / BẢO VỆ THÀNH QUẢ" và ghi rõ con số Mốc Trailing Stop do Python đã tính toán.
-2. ĐỐI VỚI VỊ THẾ ĐẦU TƯ GIÁ TRỊ ĐANG LỖ: Đánh giá bằng "Thesis Breaker" (luận điểm doanh nghiệp có bị vỡ không), không đưa ra quyết định cắt lỗ hoảng loạn theo biến động kỹ thuật ngắn hạn.
-3. BẮT BUỘC TRẢ LỜI ĐỦ 5 CÂU HỎI CỐT TỬ CỦA NHÀ ĐẦU TƯ TRONG PHẦN TỔNG KẾT:
+2. TRAILING STOP BẮT BUỘC PHẢI NHỎ HƠN THỊ GIÁ ATC (Stop < Current Price). Không bao giờ có chuyện giá 12.80 mà chặn lãi 12.84!
+3. ĐỐI VỚI VỊ THẾ ĐẦU TƯ GIÁ TRỊ ĐANG LỖ: Đánh giá bằng "Thesis Breaker" (luận điểm doanh nghiệp có bị vỡ không), không đưa ra quyết định cắt lỗ hoảng loạn theo biến động kỹ thuật ngắn hạn.
+4. BẮT BUỘC TRẢ LỜI ĐỦ 5 CÂU HỎI CỐT TỬ CỦA NHÀ ĐẦU TƯ TRONG PHẦN TỔNG KẾT:
    - Câu hỏi 1: Danh mục hôm nay tăng/giảm do đâu? (Bóc tách dòng tiền, nhóm ngành, tin tức).
    - Câu hỏi 2: Cổ phiếu nào còn rẻ, cổ phiếu nào chạm định giá? (Tham chiếu Fair Value và Margin of Safety).
-   - Câu hỏi 3: Vị thế nào cần chốt lời từng phần và nâng Trailing Stop? (Nêu rõ mốc giá cụ thể).
+   - Câu hỏi 3: Vị thế nào cần chốt lời từng phần và nâng Trailing Stop? (Nêu rõ mốc giá cụ thể do Python đã tính).
    - Câu hỏi 4: Vị thế nào bị suy giảm luận điểm (Thesis Breaker) cần dứt khoát cơ cấu?
-   - Câu hỏi 5: Tỷ trọng tiền mặt hiện tại đã an toàn chưa? Đề xuất tỷ lệ Tiền/Cổ phiếu tối ưu.
+   - Câu hỏi 5: Tỷ trọng tiền mặt hiện tại đã an toàn chưa? Đề xuất tỷ lệ Tiền/Cổ phiếu tối ưu dựa trên Risk Budgeting.
 
 Yêu cầu trình bày báo cáo tổng kết phiên:
 **I. TỔNG KẾT PHIÊN ATC & ĐÁNH GIÁ 5 CÂU HỎI CỐT TỬ**
@@ -226,11 +239,13 @@ Yêu cầu trình bày báo cáo tổng kết phiên:
 
 def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: list, news_items: list, vnindex_tech: dict = None) -> str:
     """
-    🎯 BÁO CÁO CHIẾN LƯỢC ĐẦU NGÀY 08:45 (VALUE-FIRST + TECHNICAL TIMING) - CHUẨN V2:
-    - Nhận diện Market Regime: BULLISH / NEUTRAL / CORRECTION / RISK-OFF.
+    🎯 BÁO CÁO CHIẾN LƯỢC ĐẦU NGÀY 08:45 (VALUE-FIRST + TECHNICAL TIMING) - CHUẨN V2.1:
+    - Nhận diện Market Regime & Risk Budgeting đa biến (Trend + Breadth + Liquidity + Drawdown + Margin).
     - 4 Trạng thái chuẩn: 🟢 MUA, 🟢 TÍCH LŨY, 🟡 THEO DÕI, 🔴 GIẢM / THOÁT.
-    - Fair Value & Margin of Safety % tích hợp từ các CTCK lớn.
-    - Cấm FOMO, không mua đuổi khi giá rơi tự do (Falling Knife).
+    - Phân tách rõ ràng Fair Value (Nội tại) vs Price Target (Kỳ vọng thời gian).
+    - Đi kèm Mô hình định giá (Methodology) & Độ tin cậy (Confidence).
+    - R:R tính chuẩn xác từ cùng một Weighted Average Entry.
+    - Cổ phiếu có MoS >= 8% nhưng Kỹ thuật yếu (như MWG) chuyển thành WATCH / WAIT FOR CONFIRMATION, tuyệt đối cấm gán TRÁNH BẪY!
     """
     client = get_ai_client()
 
@@ -249,51 +264,77 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
     idx_rsi = vnindex_tech.get("rsi14", 0.0)
     idx_status = vnindex_tech.get("status_ma20", "")
 
-    # Đánh giá Market Regime
+    # Đánh giá Market Regime & Ngân sách Rủi ro Đa biến (Risk Budgeting)
     regime_data = evaluate_market_regime(vnindex_tech)
 
     p_str = portfolio_df.to_string(index=False) if portfolio_df is not None and not portfolio_df.empty else "Chưa có mã nắm giữ."
     w_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else "Chưa có mã trong Watchlist."
 
-    idx_context = f"""=== 0. DỮ LIỆU THỊ TRƯỜNG & MARKET REGIME (CẬP NHẬT TỨC THỜI) ===
+    idx_context = f"""=== 0. DỮ LIỆU THỊ TRƯỜNG & RISK BUDGETING (CẬP NHẬT TỨC THỜI) ===
 - Điểm số đóng cửa phiên gần nhất: {idx_price:.2f} điểm (Thay đổi: {idx_chg:+.2f}%)
 - Đường MA20 ngày: {idx_ma20:.2f} điểm (Trạng thái: {idx_status})
 - Đường MA50 ngày: {idx_ma50:.2f} điểm | RSI(14): {idx_rsi}
 - TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME): {regime_data['tag']}
-- TỶ TRỌNG PHÂN BỔ KHUYẾN NGHỊ: Cổ phiếu {regime_data['stock_pct']} | Tiền mặt {regime_data['cash_pct']}
+- TỶ TRỌNG PHÂN BỔ ĐỀ XUẤT (THEO RISK BUDGET): Cổ phiếu {regime_data['stock_pct']} | Tiền mặt {regime_data['cash_pct']} (Hạn mức tối đa: {regime_data['max_stock_nav']}% NAV)
 - ĐỊNH HƯỚNG QUẢN TRỊ RỦI RO: {regime_data['bias']} (Ưu tiên phòng thủ: {regime_data['defense_priority']})
 """
 
     buy_lines = []
+    watch_lines = []
     caution_lines = []
+
     for o in opportunities:
         sym = o.get("symbol", "")
-        # Lấy định giá Fair Value và MOS
+        # Lấy định giá Fair Value, Methodology, Confidence và Price Target
         val_res = calculate_fair_value_and_mos(symbol=sym, current_price=o.get("current_price", 0.0), sector=o.get("sector", ""))
-        fv = val_res.get("fair_value", o.get("target_price", 0.0))
-        mos = val_res.get("mos_pct", 0.0)
+        fv = val_res.get("fair_value", o.get("fair_value", 0.0))
+        mos = val_res.get("mos_pct", o.get("mos_pct", 0.0))
+        val_method = val_res.get("valuation_method", o.get("valuation_method", "N/A"))
+        val_conf = val_res.get("confidence", o.get("confidence", "MEDIUM"))
+        p_target = val_res.get("price_target") or o.get("target_price") or round(fv * 1.05, 2)
         
         status = o.get("status", "")
+        avg_entry = o.get("avg_cost", o.get("current_price", 0.0))
+        stop = o.get("stop_loss", round(avg_entry * 0.93, 2))
+        
+        # SANITY CHECK CHO R:R THEO WEIGHTED ENTRY
+        setup_dict = {
+            "weighted_entry": avg_entry,
+            "target_price": p_target,
+            "stop_loss": stop,
+            "risk_reward": o.get("risk_reward", 1.5)
+        }
+        _, _, clean_setup = validate_trade_setup(setup_dict)
+        rr = clean_setup["risk_reward"]
+
         if status == "RECOMMEND_BUY":
-            act = "🟢 MUA" if mos >= 15.0 and o.get("current_price", 0) >= o.get("ma20", 0) else "🟢 TÍCH LŨY"
+            act = "🟢 VALUE BUY" if mos >= 15.0 and o.get("current_price", 0) >= o.get("ma20", 0) else "🟢 ACCUMULATE"
             buy_lines.append(
-                f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) | Trạng thái: {act} | "
-                f"Thị giá: {o['current_price']}k | Giá trị hợp lý (Fair Value): {fv:.1f}k | Biên an toàn (MoS): {mos:+.1f}% | "
-                f"Vùng gom: {o.get('entry_zone', o.get('current_price'))}k | Target: {o.get('target_price')}k | Cutloss: {o.get('stop_loss')}k | R:R: {o.get('risk_reward')} | "
-                f"Kế hoạch giải ngân: {o.get('execution_plan', 'Chia 2-3 phần')} | Luận điểm: [{o.get('story_tag')}] {o.get('story')}"
+                f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) — {act}\n"
+                f"  - **Giá trị hợp lý (Fair Value):** {fv:.2f}k | **Mô hình định giá:** {val_method} (Độ tin cậy: {val_conf})\n"
+                f"  - **Biên an toàn (MoS):** {mos:+.1f}% | **Mục tiêu giá (Target 6-12T):** {p_target:.2f}k\n"
+                f"  - **Vùng gom:** {o.get('entry_zone', o.get('current_price'))}k | **Giá vốn BQ dự kiến (Weighted Entry):** {avg_entry:.2f}k\n"
+                f"  - **Ngưỡng dừng lỗ:** {stop:.2f}k | **Tỷ lệ R:R chuẩn:** {rr:.1f}x (tính trên Giá vốn BQ {avg_entry:.2f}k)\n"
+                f"  - **Kế hoạch giải ngân:** {o.get('execution_plan', 'Chia 2-3 phần')}\n"
+                f"  - **Luận điểm & Xúc tác:** [{o.get('story_tag')}] {o.get('story')}"
+            )
+        elif status == "WATCH_CONFIRMATION" or (mos >= 8.0 and status != "RECOMMEND_BUY"):
+            # MWG và các mã cơ bản tốt nhưng kỹ thuật yếu -> WATCH / WAIT FOR CONFIRMATION
+            watch_lines.append(
+                f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) — 🟡 **[THEO DÕI / CHỜ NỀN CÂN BẰNG]**\n"
+                f"  - **Giá trị hợp lý (Fair Value):** {fv:.2f}k | **Mô hình:** {val_method} ({val_conf})\n"
+                f"  - **Biên an toàn (MoS):** {mos:+.1f}% | **Mục tiêu giá:** {p_target:.2f}k | **Thị giá hiện tại:** {o.get('current_price')}k\n"
+                f"  - **Lý do theo dõi:** Cơ bản và định giá đạt tiêu chuẩn an toàn vốn, nhưng giá đang kiểm định dưới MA20 hoặc RSI yếu. Tuyệt đối không mua bắt dao rơi, kiên nhẫn chờ nến xác nhận tạo nền cân bằng thanh khoản."
             )
         elif status == "CAUTION_TRAP":
             caution_lines.append(
-                f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) | Trạng thái: 🟡 THEO DÕI (Cảnh báo bẫy giá) | "
-                f"Thị giá: {o['current_price']}k | Cảnh báo: {o.get('rationale')}"
-            )
-        else:
-            caution_lines.append(
-                f"• Mã: **{sym}** | Trạng thái: 🟡 THEO DÕI | Thị giá: {o.get('current_price')}k | MoS: {mos:+.1f}% (Chờ cân bằng)"
+                f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) — ⛔ **[ĐỨNG NGOÀI / TRÁNH BẪY]**\n"
+                f"  - **Thị giá:** {o['current_price']}k | **Cảnh báo rủi ro:** {o.get('rationale')}"
             )
 
     buy_str = "\n".join(buy_lines) if buy_lines else "Thị trường chưa có mã nào đạt đồng thời Biên an toàn (MoS >= 15%) và tín hiệu kỹ thuật ổn định."
-    caution_str = "\n".join(caution_lines) if caution_lines else "Không có mã nào trong diện cảnh báo bẫy tin."
+    watch_str = "\n".join(watch_lines) if watch_lines else "Không có mã nào trong diện chờ xác nhận nền."
+    caution_str = "\n".join(caution_lines) if caution_lines else "Không có mã nào rơi vào diện cảnh báo bẫy tin."
 
     news_lines = []
     for n in news_items[:6]:
@@ -315,31 +356,39 @@ Hãy xuất bản bản tin "CHIẾN LƯỢC PHIÊN HÔM NAY & KHUYẾN NGHỊ �
 === 3. CƠ HỘI ĐẠT CHUẨN ĐỊNH LƯỢNG (BIÊN AN TOÀN + KỸ THUẬT CHO PHÉP) ===
 {buy_str}
 
-=== 4. CẢNH BÁO BẪY TIN TỨC & CỔ PHIẾU CẦN THEO DÕI CHỜ NỀN ===
+=== 4. CỔ PHIẾU CƠ BẢN TỐT CẦN THEO DÕI CHỜ NỀN (WATCH / WAIT FOR CONFIRMATION) ===
+{watch_str}
+
+=== 5. CẢNH BÁO BẪY PHÂN PHỐI & RỦI RO CAO ===
 {caution_str}
 
-=== 5. ĐIỂM TIN VĨ MÔ SÁNG NAY (CAFEF) ===
+=== 6. ĐIỂM TIN VĨ MÔ SÁNG NAY (CAFEF) ===
 {news_str}
 
+QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM (MATHEMATICAL CONSISTENCY):
+1. R:R PHẢI DÙNG ĐÚNG GIÁ VỐN BQ DỰ KIẾN (WEIGHTED AVERAGE ENTRY) ĐÃ CÔNG BỐ. Tuyệt đối không tính R:R từ Current Price nếu kế hoạch vào lệnh chia 3 bước!
+2. FAIR VALUE VÀ PRICE TARGET PHẢI TÁCH BIỆT NHAU: Fair Value là giá trị hợp lý nội tại (kèm Mô hình định giá và Độ tin cậy), Target là mục tiêu giá theo khung thời gian đầu tư 6-12T.
+3. KHÔNG ĐƯỢC DÙNG 'KỸ THUẬT YẾU = TRÁNH BẪY' NẾU CƠ BẢN VÀ MOS VẪN TỐT. Với các mã như **MWG** (MoS 9.1%), phải xếp vào mục 'THEO DÕI CHỜ NỀN CÂN BẰNG', cấm chụp mũ là bẫy tin!
+4. TỶ TRỌNG CỔ PHIẾU PHẢI DỰA TRÊN RISK BUDGETING ĐA BIẾN (không tự động ép 70-80% khi Bullish).
+
 Yêu cầu xuất bản & Cấu trúc 4 phần chuẩn mực:
-**I. BỐI CẢNH VĨ MÔ & TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME)**
+**I. BỐI CẢNH VĨ MÔ & TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME & RISK BUDGET)**
 - Nêu rõ Trạng thái: {regime_data['tag']}.
-- Phân bổ đề xuất: {regime_data['stock_pct']} Cổ phiếu / {regime_data['cash_pct']} Tiền mặt.
+- Phân bổ đề xuất: {regime_data['stock_pct']} Cổ phiếu / {regime_data['cash_pct']} Tiền mặt (Hạn mức tối đa {regime_data['max_stock_nav']}% NAV).
 - Phân tích điểm số VN-Index ({idx_price:.2f}), mốc hỗ trợ MA20 ({idx_ma20:.2f})/MA50 ({idx_ma50:.2f}).
 
 **II. DANH MỤC THEO DÕI & CƠ HỘI GIẢI NGÂN (4 TRẠNG THÁI CHUẨN)**
-- Chỉ dùng 4 trạng thái: `🟢 MUA`, `🟢 TÍCH LŨY`, `🟡 THEO DÕI`, `🔴 GIẢM / THOÁT`.
-- Với mỗi mã được khuyến nghị, BẮT BUỘC nêu:
-  • Cổ phiếu **[MÃ]** ([Ngành]) — [HUY HIỆU TRẠNG THÁI]
-    - **Giá trị hợp lý (Fair Value):** ...k | **Biên an toàn (MoS):** ...%
-    - **Vùng gom tối ưu:** ...k (Không mua đuổi khi vượt dải)
-    - **Kế hoạch giải ngân:** [Chia 2-3 bước gom]
-    - **Mục tiêu & Quản trị rủi ro:** Target: ...k | Ngưỡng vi phạm: ...k | R:R: ...x
+- Trình bày theo đúng dữ liệu mục 3, 4, 5 do Python đã tính:
+  • Cổ phiếu **[MÃ]** ([Ngành]) — [HUY HIỆU: 🟢 VALUE BUY, 🟢 ACCUMULATE, hoặc 🟡 THEO DÕI / CHỜ NỀN CÂN BẰNG]
+    - **Giá trị hợp lý (Fair Value):** ...k (Mô hình: ... | Độ tin cậy: ...) | **Mục tiêu giá:** ...k
+    - **Biên an toàn (MoS):** ...% | **Vùng gom:** ...k
+    - **Giá vốn BQ dự kiến (Weighted Entry):** ...k | **Kế hoạch giải ngân:** ...
+    - **Dừng lỗ:** ...k | **Tỷ lệ R:R:** ...x (tính trên Giá vốn BQ)
     - **Luận điểm cốt lõi & Xúc tác:** [...]
 
 **III. KỊCH BẢN HÀNH ĐỘNG TRONG PHIÊN (BULL / BASE / BEAR)**
 - Kịch bản Bull (Hưng phấn ATO): Hành động gì? (Cấm FOMO mua đuổi).
-- Kịch bản Base (Giằng co tích lũy): Giải ngân từng phần ra sao?
+- Kịch bản Base (Giằng co tích lũy): Giải ngân từng phần theo đúng lộ trình.
 - Kịch bản Bear (Áp lực bán tháo/Rung lắc mạnh): Kỷ luật quản trị rủi ro.
 
 **IV. KỶ LUẬT QUẢN TRỊ RỦI RO & BẢO TOÀN VỐN**
@@ -349,9 +398,10 @@ Yêu cầu xuất bản & Cấu trúc 4 phần chuẩn mực:
 Định dạng Discord/Web:
 - KHÔNG dùng bảng markdown (|---|).
 - KHÔNG dùng dấu `###`.
-- BẮT BUỘC IN ĐẬM TẤT CẢ MÃ CỔ PHIẾU (**SSI**, **BSR**, **MSB**, **HPG**, **MWG**, **FPT**...).
+- BẮT BUỘC IN ĐẬM TẤT CẢ MÃ CỔ PHIẾU (**SSI**, **BSR**, **MSB**, **HPG**, **MWG**, **FPT**, **VIC**...).
 - Dùng gạch đầu dòng phân cấp.
 """
+    return call_gemini(client, prompt)
     return call_gemini(client, prompt)
 
 
