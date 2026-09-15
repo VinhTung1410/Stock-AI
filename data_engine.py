@@ -727,9 +727,15 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
             "Tín hiệu Bẫy": trap_label,
             "RSI(14)": tech.get("rsi14", "N/A"),
             "Vol/TB20": tech.get("vol_ratio", 1.0),
-            "Nhóm ngành": note,
         })
-    return pd.DataFrame(records)
+    df = pd.DataFrame(records)
+    try:
+        from quant_sanity_check import run_full_portfolio_sanity_check
+        _, _, clean_df = run_full_portfolio_sanity_check(df)
+        return clean_df
+    except Exception as e:
+        logging.warning(f"Sanity check warning in evaluate_portfolio: {e}")
+        return df
 
 
 def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
@@ -976,41 +982,55 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             foreign_flow = tech.get("foreign_flow", {})
             is_trap = trap_info.get("is_trap", False)
 
+            # Tích hợp định giá Fair Value & Biên an toàn MoS
+            from quant_valuation import calculate_fair_value_and_mos
+            from quant_engine import calculate_weighted_entry_and_rr
+            
+            val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=sector)
+            fv = val_res.get("fair_value", curr_price * 1.10)
+            mos_pct = val_res.get("mos_pct", 0.0)
+            val_method = val_res.get("valuation_method", "N/A")
+            val_conf = val_res.get("confidence", "MEDIUM")
+            p_target = val_res.get("price_target") or round(fv * 1.05, 2)
+
             # --- KIỂM TRA ĐIỀU KIỆN KỸ THUẬT THỰC CHIẾN ---
-            # Điều kiện 1: Giá không bị downtrend (trên MA20 hoặc cách MA20 tối đa 1.5% để test hỗ trợ)
             tech_allowed = curr_price >= (ma20 * 0.985)
-            # Điều kiện 2: RSI không bị quá mua (> 68) và không cắm đầu hoảng loạn (< 42)
             rsi_allowed = (44 <= rsi <= 68)
-            # Điều kiện 3: Thanh khoản không bị mất hút
             vol_allowed = (vol_ratio >= 0.90)
-            # Điều kiện 4: Không dính bẫy tin tức hay nến phân phối
             no_trap = not is_trap
 
-            # A. ĐẠT TOÀN DIỆN: CÓ XÚC TÁC + KỸ THUẬT CHO PHÉP + KHÔNG DÍNH BẪY -> KHUYẾN NGHỊ MUA
-            if tech_allowed and rsi_allowed and vol_allowed and no_trap:
-                target_price = round(curr_price * 1.10, 2)
+            # A. ĐẠT TOÀN DIỆN: ĐỊNH GIÁ RẺ (MOS >= 15%) HOẶC CÓ XÚC TÁC + KỸ THUẬT CHO PHÉP
+            if (mos_pct >= 15.0 or cat_info) and tech_allowed and rsi_allowed and vol_allowed and no_trap:
+                target_price = p_target
                 stop_loss = round(max(ma20 * 0.95, curr_price * 0.93), 2)
-                rr = round((target_price - curr_price) / max(0.1, curr_price - stop_loss), 1)
+                # Đảm bảo Stop < current
+                stop_loss = min(stop_loss, round(curr_price * 0.96, 2))
 
                 # Phân tách 2 phong cách giao dịch: Lướt sóng T+ vs Gom hàng vị thế
                 if vol_ratio >= 1.25 and change_pct >= 0.5:
                     style_type = "⚡ [LƯỚT SÓNG T+ / BREAKOUT]"
                     setup_type = "⚡ BREAKOUT NỔ VOL VƯỢT NỀN"
-                    p_min = round(curr_price * 0.996, 1)
-                    p_max = round(curr_price * 1.004, 1)
+                    p_min = round(curr_price * 0.995, 2)
+                    p_max = round(curr_price * 1.005, 2)
                     entry_zone = f"{p_min} - {p_max}"
+                    entry_prices = [p_min, curr_price, p_max]
+                    weights = [0.3, 0.4, 0.3]
+                    rr_calc = calculate_weighted_entry_and_rr(entry_prices, weights, target_price, stop_loss)
+                    avg_cost = rr_calc["weighted_entry"]
+                    rr = rr_calc["risk_reward"]
                     execution_plan = f"Mua dứt khoát 1 lần quanh {curr_price}k (vùng {entry_zone}k). Vượt {p_max}k KHÔNG mua đuổi."
-                    avg_cost = curr_price
                 else:
                     style_type = "💎 [GOM HÀNG VỊ THẾ / TRUNG HẠN]"
                     setup_type = "💎 TÍCH LŨY NỀN GIÁ TRÊN MA20"
-                    p_low = round(min(ma20, curr_price * 0.985), 1)
-                    p_high = round(curr_price * 1.005, 1)
+                    p_low = round(min(ma20, curr_price * 0.985), 2)
+                    p_high = round(curr_price * 1.005, 2)
                     entry_zone = f"{p_low} - {p_high}"
-                    avg_cost = round((p_low * 0.3 + curr_price * 0.4 + p_high * 0.3), 1)
+                    entry_prices = [p_high, curr_price, p_low]
+                    weights = [0.3, 0.4, 0.3]
+                    rr_calc = calculate_weighted_entry_and_rr(entry_prices, weights, target_price, stop_loss)
+                    avg_cost = rr_calc["weighted_entry"]
+                    rr = rr_calc["risk_reward"]
                     execution_plan = f"Chia 3 phần: 30% tại {p_high}k, 40% tại {curr_price}k, 30% đón tại {p_low}k (Giá vốn BQ dự kiến: {avg_cost}k)."
-
-                rr = round((target_price - avg_cost) / max(0.1, avg_cost - stop_loss), 1)
 
                 f_badge = foreign_flow.get("badge", "")
                 return {
@@ -1026,15 +1046,40 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "avg_cost": avg_cost,
                     "execution_plan": execution_plan,
                     "target_price": target_price,
+                    "fair_value": fv,
+                    "mos_pct": mos_pct,
+                    "valuation_method": val_method,
+                    "confidence": val_conf,
                     "stop_loss": stop_loss,
                     "risk_reward": rr,
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
-                    "rationale": f"Xúc tác: {story_title}. Kỹ thuật: Vận động trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}."
+                    "rationale": f"Định giá MoS: {mos_pct:+.1f}% ({val_method}). Kỹ thuật: Trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}."
                 }
 
-            # B. CÓ TIN TỨC HOẶC THEO DÕI NHƯNG DÍNH BẪY HOẶC KỸ THUẬT CHƯA CHO PHÉP -> CẢNH BÁO BẪY TIN
+            # B. CƠ BẢN & ĐỊNH GIÁ HẤP DẪN (MOS >= 8%) NHƯNG KỸ THUẬT CHƯA CHO PHÉP (VÍ DỤ MWG)
+            # TUYỆT ĐỐI KHÔNG CHỤP MŨ LÀ BẪY TIN -> CHUYỂN SANG WATCH / WAIT FOR CONFIRMATION
+            elif mos_pct >= 8.0:
+                return {
+                    "symbol": sym,
+                    "sector": sector,
+                    "status": "WATCH_CONFIRMATION",
+                    "setup_type": "🟡 THEO DÕI / CHỜ NỀN CÂN BẰNG",
+                    "story_tag": story_tag,
+                    "story": story_title,
+                    "current_price": curr_price,
+                    "fair_value": fv,
+                    "mos_pct": mos_pct,
+                    "valuation_method": val_method,
+                    "confidence": val_conf,
+                    "rsi": rsi,
+                    "vol_ratio": vol_ratio,
+                    "foreign_flow": foreign_flow,
+                    "rationale": f"Cơ bản tốt, Biên an toàn hấp dẫn (MoS {mos_pct:+.1f}%), nhưng giá đang nằm dưới MA20 ({ma20:.1f}) hoặc RSI yếu ({rsi:.1f}). Ưu tiên theo dõi chờ nến xác nhận ngừng rơi, không mua đuổi."
+                }
+
+            # C. CÓ TIN HOẶC DÍNH BẪY PHÂN PHỐI / ĐỊNH GIÁ ĐẮT -> CẢNH BÁO BẪY
             elif cat_info or is_trap:
                 caution_reason = []
                 if is_trap:
@@ -1042,10 +1087,9 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                 if curr_price < ma20:
                     caution_reason.append(f"Giá đang dưới MA20 ({ma20:.1f})")
                 if rsi > 68:
-                    caution_reason.append(f"RSI {rsi:.1f} quá mua (nguy cơ chốt lời mạnh)")
+                    caution_reason.append(f"RSI {rsi:.1f} quá mua")
                 elif rsi < 42:
-                    caution_reason.append(f"RSI {rsi:.1f} yếu, lực bán áp đảo")
-
+                    caution_reason.append(f"RSI {rsi:.1f} yếu")
                 if foreign_flow.get("status") == "SELLING":
                     caution_reason.append(f"Tây bán ròng {foreign_flow.get('foreign_net_val_bil')} tỷ")
 
@@ -1057,10 +1101,14 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "story_tag": story_tag,
                     "story": story_title,
                     "current_price": curr_price,
+                    "fair_value": fv,
+                    "mos_pct": mos_pct,
+                    "valuation_method": val_method,
+                    "confidence": val_conf,
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
-                    "rationale": f"Cảnh báo cho mã {sym}: " + "; ".join(caution_reason) + ". Quyết định: TUYỆT ĐỐI ĐỨNG NGOÀI, không giải ngân bừa bãi."
+                    "rationale": " | ".join(caution_reason) if caution_reason else "Kỹ thuật chưa đạt chuẩn an toàn."
                 }
 
             return None
