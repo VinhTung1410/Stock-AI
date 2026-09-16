@@ -129,6 +129,7 @@ def test_3_supabase_signal_lifecycle():
     assert len(trackings) > 0, "LỖI: Chưa tự động tạo bản ghi signal_tracking!"
     assert trackings[0]["status"] == "OPEN", "LỖI: Trạng thái ban đầu phải là OPEN!"
     print("✅ PASS: Test 3 Supabase Signal Lifecycle & Immutable Snapshot hoàn thành chuẩn xác!")
+    return sig_id
 
 
 def test_4_metrics_and_audit_calculation():
@@ -150,10 +151,19 @@ if __name__ == "__main__":
     print("=" * 65)
     print("🧪 BẮT ĐẦU KIỂM THỬ TOÀN DIỆN ALPHA TRACKER & SIGNAL LIFECYCLE")
     print("=" * 65)
-    test_1_gdkhq_shield()
-    test_2_anti_chasing_filter()
-    test_3_supabase_signal_lifecycle()
-    test_4_metrics_and_audit_calculation()
-    print("\n" + "=" * 65)
-    print("🎉 TẤT CẢ 4/4 TEST SUITES ĐÃ PASS 100%! HỆ THỐNG HOẠT ĐỘNG HOÀN HẢO!")
-    print("=" * 65)
+    created_sig_id = None
+    try:
+        test_1_gdkhq_shield()
+        test_2_anti_chasing_filter()
+        created_sig_id = test_3_supabase_signal_lifecycle()
+        test_4_metrics_and_audit_calculation()
+        print("\n" + "=" * 65)
+        print("🎉 TẤT CẢ 4/4 TEST SUITES ĐÃ PASS 100%! HỆ THỐNG HOẠT ĐỘNG HOÀN HẢO!")
+        print("=" * 65)
+    finally:
+        if created_sig_id:
+            client = get_supabase_client()
+            if client:
+                client.table("signal_tracking").delete().eq("signal_id", created_sig_id).execute()
+                client.table("signals").delete().eq("id", created_sig_id).execute()
+                print(f"🧹 [TEARDOWN] Đã dọn sạch tín hiệu test ID={created_sig_id} khỏi Supabase (Zero Residual Data)!")
