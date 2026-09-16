@@ -27,7 +27,7 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
             else:
                 st.warning("⚠️ **Google Sheet đang ở chế độ Chỉ Đọc:** Chưa cấu hình GOOGLE_SHEET_UPDATE_URL nên nút Lưu chưa thể ghi đè lên Google Sheet.")
         with col_s2:
-            st.link_button("🔗 Mở Google Sheet", sheet_url, use_container_width=True)
+            st.link_button("🔗 Mở Google Sheet", sheet_url, width="stretch")
 
     # ==========================================
     # PHẦN 1: QUẢN LÝ CỔ PHIẾU NẮM GIỮ (HOLDINGS)
@@ -40,7 +40,7 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
     edited_p_df = st.data_editor(
         df_raw,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         height=p_height,
         key="editor_portfolio",
         column_config={
@@ -126,7 +126,7 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
     edited_wl_df = st.data_editor(
         df_wl_raw,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         height=wl_height,
         key="editor_watchlist",
         column_config={
