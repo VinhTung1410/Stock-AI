@@ -5,6 +5,24 @@ import pandas as pd
 from db_manager import get_signal_audit_metrics, update_daily_tracking, get_supabase_client
 
 
+def _safe_pct(val, default="Đang chạy (N/A)"):
+    if val is not None and pd.notnull(val):
+        try:
+            return f"{float(val):+.2f}%"
+        except (ValueError, TypeError):
+            pass
+    return default
+
+
+def _safe_num(val, precision=1, prefix="", suffix="", default="N/A"):
+    if val is not None and pd.notnull(val):
+        try:
+            return f"{prefix}{float(val):.{precision}f}{suffix}"
+        except (ValueError, TypeError):
+            return f"{prefix}{val}{suffix}"
+    return default
+
+
 def render_tab_alpha_tracker():
     """
     🎯 TAB 6: HỆ THỐNG KIỂM TOÁN HIỆU QUẢ TÍN HIỆU (ALPHA TRACKER)
@@ -40,11 +58,11 @@ def render_tab_alpha_tracker():
     total_signals = metrics.get("total_signals", 0)
     resolved_count = metrics.get("resolved_signals", 0)
     open_count = metrics.get("open_signals", 0)
-    win_rate = metrics.get("win_rate", 0.0)
-    profit_factor = metrics.get("profit_factor", 0.0)
-    alpha_vni = metrics.get("alpha_vs_vnindex", 0.0)
-    avg_win = metrics.get("avg_win", 0.0)
-    avg_loss = metrics.get("avg_loss", 0.0)
+    win_rate = float(metrics.get("win_rate") or 0.0)
+    profit_factor = float(metrics.get("profit_factor") or 0.0)
+    alpha_vni = float(metrics.get("alpha_vs_vnindex") or 0.0)
+    avg_win = float(metrics.get("avg_win") or 0.0)
+    avg_loss = float(metrics.get("avg_loss") or 0.0)
     df_signals = metrics.get("signals_df", pd.DataFrame())
 
     # 3. KHỐI KPI THỐNG KÊ TOÀN DIỆN (HERO CARDS)
@@ -102,7 +120,7 @@ def render_tab_alpha_tracker():
     with col_f1:
         filter_status = st.selectbox("Lọc theo trạng thái:", ["Tất cả", "Đang mở (OPEN)", "Chốt lời (TARGET_HIT)", "Cắt lỗ (STOP_LOSS)", "Hết hạn (EXPIRED)"])
     with col_f2:
-        all_syms = ["Tất cả"] + sorted(df_signals["Mã"].dropna().unique().tolist())
+        all_syms = ["Tất cả"] + sorted(df_signals["Mã"].dropna().astype(str).unique().tolist())
         filter_sym = st.selectbox("Lọc theo mã CP:", all_syms)
     with col_f3:
         st.write("")
@@ -126,61 +144,105 @@ def render_tab_alpha_tracker():
         "Trạng thái", "PnL Thực tế (%)", "Alpha vs VNI (%)", "Đỉnh MFE", "Đáy MAE", 
         "MoS (%)", "F-Score", "Nguyên nhân nếu lỗ"
     ]
+    avail_cols = [c for c in display_cols if c in filtered_df.columns]
     st.dataframe(
-        filtered_df[display_cols],
+        filtered_df[avail_cols],
         use_container_width=True,
         hide_index=True
     )
 
+    if filtered_df.empty:
+        st.info("ℹ️ Không tìm thấy khuyến nghị nào phù hợp với bộ lọc hiện tại.")
+        return
+
     # 5. BÓC TÁCH CHI TIẾT SNAPSHOT (INSPECTOR: BOT NHÌN THẤY GÌ LÚC ĐÓ?)
     st.divider()
     st.markdown("### 🔍 Hộp Đen Kiểm Toán: 'Tại thời điểm phát tín hiệu, Bot thực sự nhìn thấy gì?'")
+    
+    def _format_signal_label(x):
+        matches = filtered_df[filtered_df["ID"] == x]
+        if matches.empty:
+            return f"Signal #{x}"
+        row = matches.iloc[0]
+        sym = row.get("Mã", "")
+        dt = row.get("Ngày phát", "")
+        stt = row.get("Trạng thái", "OPEN")
+        return f"Signal #{x} - {sym} ({dt} | Trạng thái: {stt})"
+
     selected_id = st.selectbox(
         "Chọn một tín hiệu để mở hộp đen dữ liệu gốc:",
         options=filtered_df["ID"].tolist(),
-        format_func=lambda x: f"Signal #{x} - {filtered_df.loc[filtered_df['ID'] == x, 'Mã'].values[0]} ({filtered_df.loc[filtered_df['ID'] == x, 'Ngày phát'].values[0]} | Trạng thái: {filtered_df.loc[filtered_df['ID'] == x, 'Trạng thái'].values[0]})"
+        format_func=_format_signal_label
     )
 
     if selected_id:
-        target_row = df_signals[df_signals["ID"] == selected_id].iloc[0]
+        target_rows = df_signals[df_signals["ID"] == selected_id]
+        if not target_rows.empty:
+            target_row = target_rows.iloc[0]
 
-        col_d1, col_d2, col_d3 = st.columns(3)
-        with col_d1:
-            st.markdown(f"""
-            **1. Thông tin Vị thế & Giá:**
-            - Mã: **{target_row['Mã']}** ({target_row['Hành động']})
-            - Ngày phát: `{target_row['Ngày phát']}`
-            - Giá vào (Entry): `{target_row['Giá vào']}k`
-            - Mục tiêu (Target): `{target_row['Giá Target']}k`
-            - Ngưỡng cắt lỗ: `{target_row['Stop-Loss']}k`
-            """)
+            # Format an toàn các trường số
+            entry_txt = _safe_num(target_row.get('Giá vào'), 1, suffix="k")
+            target_txt = _safe_num(target_row.get('Giá Target'), 1, suffix="k")
+            sl_txt = _safe_num(target_row.get('Stop-Loss'), 1, suffix="k")
 
-        with col_d2:
-            st.markdown(f"""
-            **2. Chỉ số Định lượng (Quant Core):**
-            - Biên an toàn (MoS): **{target_row['MoS (%)']:+.1f}%**
-            - Điểm Piotroski F-Score: **{target_row['F-Score']}/9**
-            - Điểm Altman Z-Score: **{target_row['Z-Score']}**
-            - Phân bổ Kelly f*: `{target_row['Kelly f*']}`
-            """)
+            mos_val = target_row.get('MoS (%)')
+            mos_prefix = "+" if (mos_val is not None and pd.notnull(mos_val) and float(mos_val or 0) > 0) else ""
+            mos_txt = _safe_num(mos_val, 1, prefix=mos_prefix, suffix="%")
 
-        with col_d3:
-            st.markdown(f"""
-            **3. Kết quả Thực tế sau T+:**
-            - Trạng thái hiện tại: **{target_row['Trạng thái']}**
-            - P/L Thực tế: **{target_row['PnL Thực tế (%)']:+.2f}%**
-            - Alpha vs VN-Index: **{target_row['Alpha vs VNI (%)']:+.2f}%**
-            - Đỉnh MFE: `{target_row['Đỉnh MFE']}k` | Đáy MAE: `{target_row['Đáy MAE']}k`
-            - Giá T+1: `{target_row['Giá T+1']}` | T+5: `{target_row['Giá T+5']}` | T+20: `{target_row['Giá T+20']}`
-            """)
+            f_score_val = target_row.get('F-Score')
+            f_score_txt = f"{int(float(f_score_val))}/9" if (f_score_val is not None and pd.notnull(f_score_val)) else "N/A"
+            z_score_txt = _safe_num(target_row.get('Z-Score'), 2)
+            kelly_val = target_row.get('Kelly f*')
+            kelly_txt = _safe_num(kelly_val, 2, default=str(kelly_val if kelly_val is not None else "N/A"))
 
-        # Hiển thị AI Thesis & Input Snapshot
-        st.markdown(f"**Luận điểm AI (Pass 1 & Pass 2):** {target_row['AI Thesis']}")
-        if target_row.get("Nguyên nhân nếu lỗ"):
-            st.error(f"⚠️ **Nguyên nhân thất bại (Loss Attribution):** `{target_row['Nguyên nhân nếu lỗ']}`")
+            pnl_txt = _safe_pct(target_row.get('PnL Thực tế (%)'), default="Đang chạy (N/A)")
+            alpha_txt = _safe_pct(target_row.get('Alpha vs VNI (%)'), default="Đang chạy (N/A)")
+            mfe_txt = _safe_num(target_row.get('Đỉnh MFE'), 1, suffix="k")
+            mae_txt = _safe_num(target_row.get('Đáy MAE'), 1, suffix="k")
+            t1_txt = _safe_num(target_row.get('Giá T+1'), 1, suffix="k", default="Chưa đạt")
+            t5_txt = _safe_num(target_row.get('Giá T+5'), 1, suffix="k", default="Chưa đạt")
+            t20_txt = _safe_num(target_row.get('Giá T+20'), 1, suffix="k", default="Chưa đạt")
 
-        with st.expander("📦 Xem Raw JSON Input Snapshot (Toàn bộ dữ liệu BCTC & Chỉ báo nạp vào AI lúc đó)"):
-            st.json(target_row["Input Snapshot"])
+            col_d1, col_d2, col_d3 = st.columns(3)
+            with col_d1:
+                st.markdown(f"""
+                **1. Thông tin Vị thế & Giá:**
+                - Mã: **{target_row.get('Mã', 'N/A')}** ({target_row.get('Hành động', 'N/A')})
+                - Ngày phát: `{target_row.get('Ngày phát', 'N/A')}`
+                - Giá vào (Entry): `{entry_txt}`
+                - Mục tiêu (Target): `{target_txt}`
+                - Ngưỡng cắt lỗ: `{sl_txt}`
+                """)
+
+            with col_d2:
+                st.markdown(f"""
+                **2. Chỉ số Định lượng (Quant Core):**
+                - Biên an toàn (MoS): **{mos_txt}**
+                - Điểm Piotroski F-Score: **{f_score_txt}**
+                - Điểm Altman Z-Score: **{z_score_txt}**
+                - Phân bổ Kelly f*: `{kelly_txt}`
+                """)
+
+            with col_d3:
+                st.markdown(f"""
+                **3. Kết quả Thực tế sau T+:**
+                - Trạng thái hiện tại: **{target_row.get('Trạng thái', 'OPEN')}**
+                - P/L Thực tế: **{pnl_txt}**
+                - Alpha vs VN-Index: **{alpha_txt}**
+                - Đỉnh MFE: `{mfe_txt}` | Đáy MAE: `{mae_txt}`
+                - Giá T+1: `{t1_txt}` | T+5: `{t5_txt}` | T+20: `{t20_txt}`
+                """)
+
+            # Hiển thị AI Thesis & Input Snapshot
+            thesis = target_row.get("AI Thesis") or "Không có ghi chú luận điểm."
+            st.markdown(f"**Luận điểm AI (Pass 1 & Pass 2):** {thesis}")
+            if target_row.get("Nguyên nhân nếu lỗ"):
+                st.error(f"⚠️ **Nguyên nhân thất bại (Loss Attribution):** `{target_row['Nguyên nhân nếu lỗ']}`")
+
+            snapshot = target_row.get("Input Snapshot")
+            if snapshot:
+                with st.expander("📦 Xem Raw JSON Input Snapshot (Toàn bộ dữ liệu BCTC & Chỉ báo nạp vào AI lúc đó)"):
+                    st.json(snapshot)
 
     # 6. PHÂN TÍCH NGUYÊN NHÂN THẤT BẠI (POST-MORTEM ATTRIBUTION)
     loss_reasons = metrics.get("loss_reasons", {})
