@@ -47,10 +47,19 @@ Stock - learning/
 │   ├── tab_portfolio.py        # Tab 4: Quản lý Danh mục Đầu tư:
 │   │                           # - Bảng st.data_editor chỉnh sửa trực tiếp số lượng, giá vốn
 │   │                           # - Lưu trữ bền vững vào file portfolio.json
-│   └── tab_ai.py               # Tab 5: Trợ lý Phân tích Chiến lược AI:
-│                               # - Chế độ 1: Báo cáo Định chế 8 Trụ cột chuẩn CFA (Cảnh báo 🟢🟡🔴)
-│                               # - Chế độ 2: Lượng hóa 2 Lượt (Quantamental Pro): Data Gate + EV + MoS + Kelly
-│                               # - Mô phỏng 4 kịch bản rủi ro thị trường & chu kỳ sóng Elliott / Wyckoff
+│   ├── tab_ai.py               # Tab 5: Trợ lý Phân tích Chiến lược AI:
+│   │                           # - Chế độ 1: Báo cáo Định chế 8 Trụ cột chuẩn CFA (Cảnh báo 🟢🟡🔴)
+│   │                           # - Chế độ 2: Lượng hóa 2 Lượt (Quantamental Pro): Data Gate + EV + MoS + Kelly
+│   │                           # - Mô phỏng 4 kịch bản rủi ro thị trường & chu kỳ sóng Elliott / Wyckoff
+│   └── tab_alpha_tracker.py    # Tab 6: Hệ thống Kiểm toán Tín hiệu (Alpha Tracker):
+│                               # - Bảng điều khiển đối soát: Hit Rate (Win Rate %), Profit Factor, Alpha vs VN-Index
+│                               # - Khám nghiệm Hộp đen (Inspector): Xem lại chính xác Bot đã nhìn thấy gì tại thời điểm phát tín hiệu
+│                               # - Phân tích nguyên nhân thất bại (Loss Attribution): Bóc tách do thị trường hay do AI
+│
+├── db_manager.py               # 🗄️ TẦNG CƠ SỞ DỮ LIỆU & AUDIT (Supabase PostgreSQL Client)
+│                               # - Lưu trữ Immutable Snapshot tín hiệu và quản lý vòng đời (Signal Lifecycle)
+│                               # - Tiến trình tự động 15:15 chiều kiểm toán và cập nhật giá T+1, T+5, T+20, MFE, MAE
+│                               # - Tính toán chỉ số hiệu quả định lượng (Win Rate, Profit Factor, Alpha) cho Tab 6
 │
 ├── quant_engine.py             # 📐 TẦNG TÍNH TOÁN ĐỊNH LƯỢNG TẤT ĐỊNH (Deterministic Quant Engine)
 │                               # - Data Gate: Kiểm tra tính mới BCTC và thanh khoản tối thiểu ADV20
@@ -113,50 +122,59 @@ Stock - learning/
 
 ```mermaid
 flowchart TD
-    subgraph Data Sources
-        Vnstock[Vnstock API / VCI] -->|Nến EOD, Intraday, Khối lượng| DataEngine[data_engine.py]
-        GoogleNews[Google News RSS] -->|Tin tức vĩ mô 24h| DataEngine
-        PortfolioJSON[(portfolio.json)] <-->|Đọc / Ghi danh mục| DataEngine
+    subgraph DataSources ["Data Sources"]
+        Vnstock["Vnstock API / VCI"] -->|Nến EOD, Intraday, Khối lượng| DataEngine["data_engine.py"]
+        GoogleNews["Google News RSS"] -->|Tin tức vĩ mô 24h| DataEngine
+        PortfolioJSON[("portfolio.json")] <-->|Đọc / Ghi danh mục| DataEngine
     end
 
-    subgraph Quantitative Core
-        DataEngine -->|Nến OHLC & BCTC| QuantEngine[quant_engine.py]
-        QuantEngine -->|Data Gate, F-Score, Z-Score, ATR| AIAnalyst[ai_analyst.py Gemini Flash]
+    subgraph QuantCore ["Quantitative Core"]
+        DataEngine -->|Nến OHLC & BCTC| QuantEngine["quant_engine.py"]
+        QuantEngine -->|Data Gate, F-Score, Z-Score, ATR| AIAnalyst["ai_analyst.py (Gemini Flash)"]
         QuantEngine -->|Hard Gates: MoS, Kelly, R| AIAnalyst
-        QuantEngine -->|F-Score & Data Gate Safety| TradingBot[trading_bot.py 24/7]
+        QuantEngine -->|F-Score & Data Gate Safety| TradingBot["trading_bot.py (24/7)"]
     end
 
-    subgraph Core Processing
-        DataEngine -->|Chuỗi nến & Chỉ số thị trường| AppCore[app.py]
+    subgraph CoreProc ["Core Processing"]
+        DataEngine -->|Chuỗi nến & Chỉ số thị trường| AppCore["app.py"]
         DataEngine -->|Bảng định giá P/E, P/B| AppCore
         DataEngine -->|Dữ liệu danh mục & Thị trường| AIAnalyst
-        DataEngine -->|Trạng thái biến động giá| DiscordAlerts[discord_alerts.py]
+        DataEngine -->|Trạng thái biến động giá| DiscordAlerts["discord_alerts.py"]
         AIAnalyst -->|Báo cáo định chế & 2-Pass Quant| DiscordAlerts
     end
 
-    subgraph User Interface Streamlit
-        AppCore --> Tab1[tabs/tab_overview.py]
-        AppCore --> Tab2[tabs/tab_market.py]
-        AppCore --> Tab3[tabs/tab_charts.py]
-        AppCore --> Tab4[tabs/tab_portfolio.py]
-        AppCore --> Tab5[tabs/tab_ai.py]
+    subgraph UI ["User Interface (Streamlit)"]
+        AppCore --> Tab1["tabs/tab_overview.py"]
+        AppCore --> Tab2["tabs/tab_market.py"]
+        AppCore --> Tab3["tabs/tab_charts.py"]
+        AppCore --> Tab4["tabs/tab_portfolio.py"]
+        AppCore --> Tab5["tabs/tab_ai.py"]
+        AppCore --> Tab6["tabs/tab_alpha_tracker.py"]
         
-        Tab2 --> CompTV[components/tradingview_chart.py]
-        Tab2 --> CompECharts[components/echarts_valuation.py]
+        Tab2 --> CompTV["components/tradingview_chart.py"]
+        Tab2 --> CompECharts["components/echarts_valuation.py"]
         Tab3 --> CompTV
         Tab5 -->|Quant Pro & CFA Report| AIAnalyst
+        Tab6 -->|Truy vấn kiểm toán & KPIs| DBManager["db_manager.py"]
     end
 
-    subgraph Background Automation
-        TradingBot -->|Quét giá & Stop Loss| DataEngine
-        TradingBot -->|Lịch trình ATO/Trưa/ATC| DiscordAlerts
-        RunCloud[run_cloud.py] -->|Khởi chạy song song| TradingBot
+    subgraph Audit_Storage ["Audit & Signal Lifecycle"]
+        AIAnalyst -->|Lưu Immutable Snapshot| DBManager
+        TradingBot -->|Ghi nhận tín hiệu Mua| DBManager
+        DBManager <-->|PostgreSQL REST API| SupabaseDB[("Supabase Cloud DB")]
+    end
+
+    subgraph Automation ["Background Automation"]
+        TradingBot -->|Quét giá, Stop Loss & Anti-Chasing| DataEngine
+        TradingBot -->|Kiểm toán sau phiên 15:15| DBManager
+        TradingBot -->|Lịch trình ATO/Trưa/ATC/Audit| DiscordAlerts
+        RunCloud["run_cloud.py"] -->|Khởi chạy song song| TradingBot
         RunCloud -->|Khởi chạy song song| AppCore
     end
 
-    subgraph External Notification
-        DiscordAlerts -->|Rich Embed Smart Fields| DiscordChannel[Discord Channel #stock-alerts]
-        DiscordAlerts -->|Direct Message| DiscordDM[Discord Private DM]
+    subgraph Notification ["External Notification"]
+        DiscordAlerts -->|Rich Embed Smart Fields| DiscordChannel["Discord Channel #stock-alerts"]
+        DiscordAlerts -->|Direct Message| DiscordDM["Discord Private DM"]
     end
 ```
 

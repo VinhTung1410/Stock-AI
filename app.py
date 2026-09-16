@@ -16,6 +16,7 @@ from tabs import (
     render_tab_charts,
     render_tab_portfolio,
     render_tab_ai,
+    render_tab_alpha_tracker,
 )
 
 load_dotenv()
@@ -358,12 +359,13 @@ with st.sidebar:
 
 
 # --- ĐIỀU PHỐI CÁC TABS GIAO DIỆN CHÍNH (TÊN GỌN GÀNG, KHÔNG OVERFLOW) ---
-tab_overview, tab_market_val, tab_charts, tab_portfolio, tab_ai = st.tabs([
+tab_overview, tab_market_val, tab_charts, tab_portfolio, tab_ai, tab_alpha = st.tabs([
     "Tổng quan & Watchlist", 
     "Thị trường & Định giá", 
     "Biểu đồ Kỹ thuật", 
     "Quản lý Danh mục", 
-    "Trợ lý Phân tích AI"
+    "Trợ lý Phân tích AI",
+    "🎯 Alpha Tracker"
 ])
 
 with tab_overview:
@@ -381,4 +383,7 @@ with tab_portfolio:
 
 with tab_ai:
     render_tab_ai(df_eval)
+
+with tab_alpha:
+    render_tab_alpha_tracker()
 
