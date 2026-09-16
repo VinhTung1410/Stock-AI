@@ -10,6 +10,7 @@
 """
 
 import os
+os.environ["VNSTOCK_TELEMETRY"] = "off"
 import sys
 import threading
 import subprocess
@@ -24,7 +25,7 @@ def start_bot_thread():
     logging.info("Đang khởi động tiến trình Trading Bot chạy ngầm...")
     bot_thread = threading.Thread(
         target=run_trading_bot_loop,
-        kwargs={"check_interval_sec": 30},
+        kwargs={"check_interval_sec": 60},
         daemon=True,
         name="TradingBotDaemon"
     )
