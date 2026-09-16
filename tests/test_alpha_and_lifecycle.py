@@ -17,7 +17,8 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+# Thêm thư mục gốc vào sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from data_engine import detect_gdkhq_event
 from db_manager import (

@@ -7,10 +7,11 @@ import os
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
-    except:
+    except Exception:
         pass
 
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+# Thêm thư mục gốc vào sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from quant_valuation import calculate_fair_value_and_mos, classify_stock_archetype, INSTITUTIONAL_CONSENSUS_TARGETS
 from quant_engine import (
