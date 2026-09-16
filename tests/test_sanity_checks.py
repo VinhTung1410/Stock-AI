@@ -20,8 +20,8 @@ if sys.stdout.encoding != 'utf-8':
     except Exception:
         pass
 
-# Thêm thư mục hiện tại vào sys.path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Thêm thư mục gốc của dự án vào sys.path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from quant_sanity_check import (
     validate_holding_position,
@@ -146,7 +146,6 @@ def test_case_5_market_regime_risk_budgeting():
 
 def test_case_6_quant_sanity_check_engine():
     print("\n--- TEST CASE 6: RUN FULL SANITY CHECK ENGINE ---")
-    # Test portfolio DF
     df_portfolio = pd.DataFrame([
         {
             'symbol': 'MSB',

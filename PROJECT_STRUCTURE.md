@@ -102,6 +102,11 @@ Stock - learning/
 │                               # - Chạy Web Dashboard Streamlit trên cổng $PORT (Thread 2)
 │                               # - Chuyên biệt cho Render.com, Koyeb, Linux VPS
 │
+├── tests/                      # 🧪 THƯ MỤC BỘ TEST TỰ ĐỘNG (Automated Test Suites)
+│   ├── test_sanity_checks.py   # Kiểm thử độc lập 6 lỗi logic & sanity checks định lượng
+│   ├── test_v2_system.py       # Kiểm thử toàn diện hệ thống định giá Archetype, Trailing Stop, Market Regime
+│   └── test_alpha_and_lifecycle.py # Kiểm thử Khiên chắn GDKHQ, Anti-Chasing & Supabase Lifecycle
+│
 ├── scripts/                    # 🛠️ THƯ MỤC CÔNG CỤ & KỊCH BẢN WINDOWS LOCAL
 │   ├── run_dashboard.bat       # Khởi chạy Dashboard Streamlit trên Local
 │   ├── run_bot.bat             # Khởi chạy độc lập Trading Bot giám sát thị trường
