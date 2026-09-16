@@ -1,4 +1,5 @@
 import os
+os.environ["VNSTOCK_TELEMETRY"] = "off"
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -71,12 +72,58 @@ st.markdown("""
         direction: ltr !important;
     }
 
-    /* 2. THANH ĐIỀU HƯỚNG TABS (BRAND BLUE #2563eb, TUYỆT ĐỐI KHÔNG ĐỎ) */
+    /* 2. THANH ĐIỀU HƯỚNG TABS (LAZY LOADING VIA ST.RADIO - BRAND BLUE #2563eb) */
     div[data-baseweb="tab-list"] {
         gap: 8px !important;
         border-bottom: 2px solid #e2e8f0 !important;
         padding-bottom: 0px !important;
         background: transparent !important;
+    }
+
+    /* Thanh điều hướng Lazy Loading Radio Group: Tự động đổi dáng thành Tab Bar 100% */
+    div[data-testid="stRadio"] > div[role="radiogroup"] {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+        border-bottom: 2px solid #e2e8f0 !important;
+        padding-bottom: 0px !important;
+        margin-bottom: 20px !important;
+        background: transparent !important;
+    }
+
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+        padding: 10px 18px !important;
+        font-size: 14px !important;
+        font-weight: 600 !important;
+        color: #64748b !important;
+        border: none !important;
+        border-bottom: 2.5px solid transparent !important;
+        margin-bottom: -2px !important;
+        background: transparent !important;
+        border-radius: 6px 6px 0 0 !important;
+        cursor: pointer !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label:hover {
+        color: #1e293b !important;
+        background: rgba(241, 245, 249, 0.6) !important;
+    }
+
+    /* Ẩn dấu chấm tròn radio mặc định */
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
+        display: none !important;
+    }
+
+    /* Tab đang Active: Màu Xanh thương hiệu đồng nhất với Primary Buttons */
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
+        border-bottom: 2.5px solid #2563eb !important;
+        background: transparent !important;
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) p,
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) span {
+        color: #2563eb !important;
+        font-weight: 700 !important;
     }
 
     button[data-baseweb="tab"] {
@@ -358,32 +405,40 @@ with st.sidebar:
     st.info("💡 **Gợi ý:** Bot tự động bắn tín hiệu Mua/Bán vào tin nhắn riêng (DM) Discord của bạn.")
 
 
-# --- ĐIỀU PHỐI CÁC TABS GIAO DIỆN CHÍNH (TÊN GỌN GÀNG, KHÔNG OVERFLOW) ---
-tab_overview, tab_market_val, tab_charts, tab_portfolio, tab_ai, tab_alpha = st.tabs([
-    "Tổng quan & Watchlist", 
-    "Thị trường & Định giá", 
-    "Biểu đồ Kỹ thuật", 
-    "Quản lý Danh mục", 
-    "Trợ lý Phân tích AI",
-    "🎯 Alpha Tracker"
-])
+# --- ĐIỀU PHỐI CÁC TABS LAZY LOADING (TỐI ƯU HIỆU NĂNG TỨC THÌ, TRÁNH TREO SERVER) ---
+active_tab = st.radio(
+    "Điều hướng Dashboard",
+    [
+        "Tổng quan & Watchlist", 
+        "Thị trường & Định giá", 
+        "Biểu đồ Kỹ thuật", 
+        "Quản lý Danh mục", 
+        "Trợ lý Phân tích AI",
+        "🎯 Alpha Tracker"
+    ],
+    horizontal=True,
+    label_visibility="collapsed"
+)
 
-with tab_overview:
+if active_tab == "Tổng quan & Watchlist":
     render_tab_overview(df_eval, raw_portfolio, df_wl=df_wl, raw_watchlist=raw_watchlist)
 
-with tab_market_val:
-    df_vnindex = get_cached_vnindex_data()
-    render_tab_market(df_vnindex)
+elif active_tab == "Thị trường & Định giá":
+    with st.spinner("Đang cập nhật biểu đồ & định giá VN-Index..."):
+        df_vnindex = get_cached_vnindex_data()
+        render_tab_market(df_vnindex)
 
-with tab_charts:
-    render_tab_charts(raw_portfolio)
+elif active_tab == "Biểu đồ Kỹ thuật":
+    with st.spinner("Đang tải dữ liệu nến TradingView..."):
+        render_tab_charts(raw_portfolio)
 
-with tab_portfolio:
+elif active_tab == "Quản lý Danh mục":
     render_tab_portfolio(raw_portfolio, raw_watchlist=raw_watchlist)
 
-with tab_ai:
+elif active_tab == "Trợ lý Phân tích AI":
     render_tab_ai(df_eval)
 
-with tab_alpha:
-    render_tab_alpha_tracker()
+elif active_tab == "🎯 Alpha Tracker":
+    with st.spinner("Đang kiểm toán đối soát Alpha Tracker từ Supabase..."):
+        render_tab_alpha_tracker()
 

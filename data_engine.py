@@ -1,4 +1,5 @@
 import os
+os.environ["VNSTOCK_TELEMETRY"] = "off"
 import json
 import logging
 from datetime import datetime, timedelta
@@ -1209,7 +1210,7 @@ def get_vnindex_valuation_data() -> pd.DataFrame:
         from vnstock.api.quote import Quote
         q = Quote(symbol="VNINDEX", source="VCI")
         end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=600)).strftime("%Y-%m-%d")
+        start_date = (datetime.now() - timedelta(days=200)).strftime("%Y-%m-%d")
         df = q.history(start=start_date, end=end_date)
         if df is not None and not df.empty:
             df = df.sort_values("time").reset_index(drop=True)
