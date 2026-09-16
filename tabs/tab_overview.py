@@ -69,7 +69,7 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
         col_dc1, col_dc2 = st.columns(2)
 
         with col_dc1:
-            if st.button("📢 Bắn Báo Cáo vào Kênh Discord (Webhook)", use_container_width=True):
+            if st.button("📢 Bắn Báo Cáo vào Kênh Discord (Webhook)", width="stretch"):
                 with st.spinner("Đang gọi AI phân tích danh mục & tin CafeF mới nhất..."):
                     from ai_analyst import generate_portfolio_analysis
                     tracked_symbols = [p["symbol"] for p in raw_portfolio]
@@ -84,7 +84,7 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
                         st.error("❌ Gửi thất bại, vui lòng kiểm tra lại Webhook trong file .env!")
 
         with col_dc2:
-            if st.button("📩 Bắn Tin Nhắn Riêng vào Discord Của Bạn (DM Bot)", use_container_width=True):
+            if st.button("📩 Bắn Tin Nhắn Riêng vào Discord Của Bạn (DM Bot)", width="stretch"):
                 with st.spinner("Đang kết nối bot và gửi báo cáo riêng vào DM cá nhân..."):
                     from ai_analyst import generate_portfolio_analysis
                     tracked_symbols = [p["symbol"] for p in raw_portfolio]
@@ -124,7 +124,7 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
 
         st.dataframe(
             df_eval_clean.style.format(active_eval_format),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             height=eval_height
         )
@@ -152,7 +152,7 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
                 active_wl_format = {k: v for k, v in wl_format.items() if k in df_wl_clean.columns}
                 st.dataframe(
                     df_wl_clean.style.format(active_wl_format),
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True,
                     height=wl_height
                 )

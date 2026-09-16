@@ -66,7 +66,7 @@ def render_tab_ai(df_eval: pd.DataFrame):
             key="ai_portfolio_custom_q"
         )
 
-        if st.button("🚀 Phân Tích Toàn Diện Danh Mục", type="primary", use_container_width=True, key="btn_run_portfolio_ai"):
+        if st.button("🚀 Phân Tích Toàn Diện Danh Mục", type="primary", width="stretch", key="btn_run_portfolio_ai"):
             with st.spinner("Gemini Flash đang đọc dữ liệu danh mục và lập kế hoạch hành động..."):
                 news = fetch_macro_news()
                 analysis_result = generate_portfolio_analysis(df_eval, news, custom_question=custom_q)
@@ -86,7 +86,7 @@ def render_tab_ai(df_eval: pd.DataFrame):
         with col_m1:
             st.info("💡 **Hệ thống AI sẽ quét:** Chỉ số VN-Index, P/E thị trường, thanh khoản phiên và các dòng tin tức vĩ mô 24h qua (lãi suất, tỷ giá, giá dầu).")
         with col_m2:
-            run_market_scenarios = st.button("⚡ Vẽ Kịch Bản Thị Trường", type="primary", use_container_width=True, key="btn_run_market_scenarios")
+            run_market_scenarios = st.button("⚡ Vẽ Kịch Bản Thị Trường", type="primary", width="stretch", key="btn_run_market_scenarios")
 
         if run_market_scenarios:
             with st.spinner("Đang định vị chu kỳ sóng và xây dựng ma trận kịch bản vĩ mô..."):
@@ -222,14 +222,14 @@ def render_tab_ai(df_eval: pd.DataFrame):
         btn_quant_key = f"btn_run_quant_{target_symbol}"
 
         with col_b1:
-            if st.button(f"⚡ Báo Cáo Định Chế 8 Trụ Cột", type="primary", use_container_width=True, key=btn_key):
+            if st.button(f"⚡ Báo Cáo Định Chế 8 Trụ Cột", type="primary", width="stretch", key=btn_key):
                 with st.spinner(f"Chuyên gia AI đang phân tích toàn diện 8 trụ cột cho mã {target_symbol}..."):
                     news = fetch_macro_news(limit=6, tracked_symbols=[target_symbol])
                     report = generate_institutional_stock_report(target_symbol, fin_data, tech_data, news)
                     st.session_state[f"cached_stock_report_{target_symbol}"] = report
 
         with col_b2:
-            if st.button(f"🔬 Lượng Hóa 2 Lượt (Quant Pro)", type="secondary", use_container_width=True, key=btn_quant_key):
+            if st.button(f"🔬 Lượng Hóa 2 Lượt (Quant Pro)", type="secondary", width="stretch", key=btn_quant_key):
                 with st.spinner(f"Hệ thống Quant đang kiểm tra Data Gate & tính toán hàng rào 2 lượt cho {target_symbol}..."):
                     res = generate_quantamental_2pass_report(target_symbol)
                     st.session_state[f"cached_stock_report_{target_symbol}"] = res.get("report_text", "")

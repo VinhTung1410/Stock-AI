@@ -347,7 +347,7 @@ with st.sidebar:
 
     st.divider()
     st.subheader("⚡ Thao tác nhanh")
-    if st.button("🔄 Làm mới dữ liệu tức thì", use_container_width=True):
+    if st.button("🔄 Làm mới dữ liệu tức thì", width="stretch"):
         st.cache_data.clear()
         _GSHEET_CACHE["timestamp"] = 0
         _GSHEET_CACHE["portfolio"] = None

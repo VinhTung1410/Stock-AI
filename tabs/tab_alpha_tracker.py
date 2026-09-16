@@ -44,7 +44,7 @@ def render_tab_alpha_tracker():
     # 1. NÚT ĐIỀU KHIỂN & LÀM MỚI
     col_ctrl1, col_ctrl2 = st.columns([3, 1])
     with col_ctrl2:
-        if st.button("⚡ Kích hoạt Kiểm toán Ngay", use_container_width=True, type="primary"):
+        if st.button("⚡ Kích hoạt Kiểm toán Ngay", width="stretch", type="primary"):
             with st.spinner("Đang chạy kiểm toán đối soát sau phiên..."):
                 audit_res = update_daily_tracking()
                 if audit_res.get("status") == "PENDING_DATA":
@@ -147,7 +147,7 @@ def render_tab_alpha_tracker():
     avail_cols = [c for c in display_cols if c in filtered_df.columns]
     st.dataframe(
         filtered_df[avail_cols],
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -251,4 +251,4 @@ def render_tab_alpha_tracker():
         st.markdown("### 📊 Phân Tích Nguyên Nhân Thất Bại (Loss Attribution)")
         st.caption("Thống kê xem các lệnh thua là do thị trường chung gãy, do doanh nghiệp xấu đi hay do AI lạc quan tếu:")
         loss_df = pd.DataFrame(list(loss_reasons.items()), columns=["Nguyên nhân", "Số lệnh"])
-        st.bar_chart(loss_df.set_index("Nguyên nhân"), color="#dc2626")
+        st.bar_chart(loss_df.set_index("Nguyên nhân"), color="#dc2626", width="stretch")
