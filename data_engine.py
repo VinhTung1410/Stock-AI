@@ -641,10 +641,23 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             "upper_wick_ratio": upper_wick_ratio
         })
         
+        # Tính giá trần / sàn ước lượng (HOSE ±7%, HNX ±10%)
+        # Mặc định an toàn cho HOSE: 6.8% - 7.0%
+        ref_price = prev_close
+        ceiling_price = round(ref_price * 1.069, 2) if ref_price else current_price
+        floor_price = round(ref_price * 0.931, 2) if ref_price else current_price
+        is_ceiling = (current_price >= ceiling_price * 0.998) or (change_pct >= 6.7)
+        is_floor = (current_price <= floor_price * 1.002) or (change_pct <= -6.7)
+
         res = {
             "symbol": symbol,
             "date": str(latest["time"]),
             "current_price": current_price,
+            "ref_price": ref_price,
+            "ceiling_price": ceiling_price,
+            "floor_price": floor_price,
+            "is_ceiling": is_ceiling,
+            "is_floor": is_floor,
             "change_pct": round(change_pct, 2),
             "open": open_price,
             "high": high,
@@ -666,6 +679,40 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
     except Exception as e:
         logging.error(f"Lỗi khi lấy kỹ thuật mã {symbol}: {e}")
         return {}
+
+
+def detect_gdkhq_event(symbol: str, tech_dict: dict, vnindex_chg_pct: float = 0.0) -> dict:
+    """
+    KHIÊN CHẮN NGÀY GIAO DỊCH KHÔNG HƯỞNG QUYỀN (GDKHQ / CORPORATE ACTION SHIELD):
+    Phát hiện hiện tượng sụt giảm giá kỹ thuật do chia cổ tức bằng tiền mặt hoặc cổ phiếu thưởng.
+    - Dấu hiệu: Thị giá sụt giảm sâu so với phiên trước (Gap Down đầu phiên <= -4.0%)
+      trong khi VN-Index không bán tháo diện rộng (VN-Index > -1.5%).
+    - Mục đích: Ngăn chặn triệt để tình trạng Trading Bot hoảng loạn bắn Stop-Loss sai.
+    """
+    if not tech_dict:
+        return {"is_gdkhq": False, "reason": ""}
+
+    curr_p = tech_dict.get("current_price", 0.0)
+    ref_p = tech_dict.get("ref_price", curr_p)
+    open_p = tech_dict.get("open", curr_p)
+    change_pct = tech_dict.get("change_pct", 0.0)
+
+    # 1. Kiểm tra bước nhảy giá đầu phiên (Opening Gap) so với giá tham chiếu
+    opening_gap_pct = ((open_p - ref_p) / ref_p * 100) if ref_p > 0 else 0.0
+
+    # Nếu cổ phiếu rơi mạnh bất thường ngay từ đầu phiên nhưng thị trường chung ổn định
+    if opening_gap_pct <= -4.5 and vnindex_chg_pct >= -1.5:
+        return {
+            "is_gdkhq": True,
+            "gap_pct": round(opening_gap_pct, 2),
+            "reason": (
+                f"Phát hiện Gap Down kỹ thuật bất thường ({opening_gap_pct:+.1f}%) "
+                f"trong khi VN-Index bình ổn ({vnindex_chg_pct:+.1f}%). "
+                f"Khả năng cao là ngày GDKHQ (chia cổ tức / phát hành thêm). Tạm dừng cắt lỗ cơ học!"
+            )
+        }
+
+    return {"is_gdkhq": False, "reason": ""}
 
 
 def evaluate_portfolio(portfolio: list) -> pd.DataFrame:

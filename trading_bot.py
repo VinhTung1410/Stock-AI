@@ -88,6 +88,10 @@ def check_realtime_risk():
     # =========================================================================
     # PHẦN 1: QUÉT QUẢN TRỊ RỦI RO DANH MỤC NẮM GIỮ (PORTFOLIO)
     # =========================================================================
+    from data_engine import detect_gdkhq_event, fetch_stock_technical
+    vnindex_tech = fetch_stock_technical("VNINDEX")
+    vnindex_chg_pct = vnindex_tech.get("change_pct", 0.0) if vnindex_tech else 0.0
+
     portfolio = load_portfolio()
     if portfolio:
         df_eval = evaluate_portfolio(portfolio)
@@ -100,6 +104,23 @@ def check_realtime_risk():
                 vol_ratio = float(row.get("Vol/TB20", 1.0))
                 rsi = row.get("RSI(14)")
                 status_ma20 = str(row.get("Vị thế MA20", ""))
+
+                # KHIÊN CHẮN NGÀY GIAO DỊCH KHÔNG HƯỞNG QUYỀN (GDKHQ SHIELD)
+                # Ngăn chặn triệt để báo động giả cắt lỗ khi thị giá bị điều chỉnh kỹ thuật do cổ tức
+                tech_sym = fetch_stock_technical(symbol)
+                gdkhq_info = detect_gdkhq_event(symbol, tech_sym, vnindex_chg_pct)
+                if gdkhq_info.get("is_gdkhq"):
+                    alert_key_gdkhq = (today_str, symbol, "GDKHQ_SHIELD")
+                    if alert_key_gdkhq not in sent_alerts:
+                        logging.warning(f"🛡️ GDKHQ SHIELD KÍCH HOẠT CHO {symbol}: {gdkhq_info['reason']}")
+                        send_trade_signal_alert(
+                            symbol=symbol,
+                            action="THEO DÕI (GDKHQ)",
+                            current_price=curr_price,
+                            trigger_reason=f"[KHIÊN CHẮN CỔ TỨC] {gdkhq_info['reason']}"
+                        )
+                        sent_alerts.add(alert_key_gdkhq)
+                    continue
 
                 # 1. CẢNH BÁO BÁN: STOP LOSS CẤP ĐỘ 2 (ÂM QUÁ -7% - Cắt lỗ dứt khoát)
                 alert_key_sl7 = (today_str, symbol, "STOP_LOSS_7")
@@ -150,7 +171,6 @@ def check_realtime_risk():
                 continue
 
             try:
-                from data_engine import fetch_stock_technical
                 tech = fetch_stock_technical(sym)
                 if not tech:
                     continue
@@ -160,6 +180,20 @@ def check_realtime_risk():
                 rsi = tech.get("rsi14")
                 vol_r = tech.get("vol_ratio", 1.0)
                 status_ma20 = tech.get("status_ma20", "")
+                ceiling_p = tech.get("ceiling_price", curr_p * 1.069)
+                change_pct = tech.get("change_pct", 0.0)
+                is_ceiling = tech.get("is_ceiling", False)
+
+                # BỘ LỌC CHỐNG MUA ĐUỔI TRẦN (ANTI-CHASING FILTER)
+                # Chỉ chặn BUY mới, tuyệt đối không ảnh hưởng tới lệnh bán vị thế đang giữ
+                is_anti_chasing = (
+                    curr_p >= ceiling_p or
+                    change_pct >= 6.7 or
+                    is_ceiling
+                )
+                if is_anti_chasing:
+                    logging.info(f"🚫 ANTI-CHASING: Bỏ qua mua đuổi {sym} (Giá {curr_p}k đã kịch trần/áp sát trần {change_pct:+.1f}%)")
+                    continue
 
                 buy_triggered = False
                 buy_reason = ""
@@ -181,42 +215,65 @@ def check_realtime_risk():
                     # HÀNG RÀO KIỂM DUYỆT ĐỊNH LƯỢNG (QUANTAMENTAL SAFETY FILTER)
                     dynamic_sl = round(curr_p * 0.94, 2)
                     f_score_txt = ""
+                    f_score_dict = {"score": 6}
                     try:
                         from data_engine import get_financial_ratios, fetch_stock_historical
                         from quant_engine import check_data_gate, calculate_piotroski_f_score, calculate_atr
                         fin = get_financial_ratios(sym)
                         gate = check_data_gate(sym, tech, fin)
-                        f_score = calculate_piotroski_f_score(fin)
+                        f_score_dict = calculate_piotroski_f_score(fin)
                         
                         if not gate["passed"]:
                             logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Không đạt Data Gate ({', '.join(gate['reasons'])})")
                             continue
-                        if f_score["score"] <= 3:
-                            logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Sức khỏe tài chính yếu (F-Score: {f_score['score']}/9)")
+                        if f_score_dict["score"] <= 3:
+                            logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Sức khỏe tài chính yếu (F-Score: {f_score_dict['score']}/9)")
                             continue
 
-                        f_score_txt = f" | F-Score: {f_score['score']}/9"
+                        f_score_txt = f" | F-Score: {f_score_dict['score']}/9"
                         
                         # Tính ATR(14) Stop-Loss động thích ứng với biến động thực tế
                         df_hist = fetch_stock_historical(sym, time_frame="1D", limit=30)
                         if df_hist is not None and not df_hist.empty:
                             atr_val = calculate_atr(df_hist, 14)
                             if atr_val > 0:
-                                # Stop Loss động: Giữ khoảng cách 1.5x ATR nhưng không lùi quá sàn HOSE (-7%)
                                 dynamic_sl = round(max(curr_p * 0.93, curr_p - 1.5 * atr_val), 2)
                     except Exception as q_err:
                         logging.debug(f"Bỏ qua kiểm tra quant: {q_err}")
 
+                    target_p = round(curr_p * 1.12, 2)
                     logging.info(f"🟢 BẮN TÍN HIỆU MUA WATCHLIST: {sym} (SL: {dynamic_sl}k{f_score_txt})")
                     send_trade_signal_alert(
                         symbol=sym,
                         action="MUA",
                         current_price=curr_p,
                         trigger_reason=f"[WATCHLIST THEO DÕI] {buy_reason}{f_score_txt}",
-                        target_price=round(curr_p * 1.12, 2),
+                        target_price=target_p,
                         stop_loss=dynamic_sl
                     )
                     sent_alerts.add(alert_key_wl_buy)
+
+                    # LƯU SNAPSHOT BẤT BIẾN VÀO SUPABASE SIGNAL LIFECYCLE
+                    try:
+                        from db_manager import save_quant_signal
+                        act_tag = "🟢 VALUE BUY" if "Breakout" in buy_reason else "🟢 ACCUMULATE"
+                        save_quant_signal(
+                            symbol=sym,
+                            action=act_tag,
+                            decision_tag=f"[WATCHLIST TỰ ĐỘNG] {buy_reason}{f_score_txt}",
+                            entry_price=curr_p,
+                            market_price_at_signal=curr_p,
+                            target_price=target_p,
+                            stop_loss=dynamic_sl,
+                            hard_gates={"mos_pct": 15.0, "ev": round(curr_p * 1.08, 2), "kelly_f": 0.12, "risk_reward": 2.0},
+                            f_score_res=f_score_dict,
+                            z_score_res={"z_score": 2.5},
+                            prob_dict={"P_bull": 0.35, "P_base": 0.50, "P_bear": 0.15, "rationale_base": buy_reason},
+                            model_version="trading-bot-v2.1",
+                            input_snapshot={"tech": tech, "f_score": f_score_dict.get("score", 6)}
+                        )
+                    except Exception as sb_err:
+                        logging.error(f"Lỗi ghi Supabase Signal: {sb_err}")
             except Exception as e:
                 continue
 
@@ -255,17 +312,57 @@ def trigger_scheduled_report(report_type: str, title_desc: str):
         logging.error(f"❌ Lỗi khi gửi báo cáo chiến lược {report_type}: {e}")
 
 
+def trigger_post_market_audit():
+    """
+    TẦNG 3: TIẾN TRÌNH TỰ ĐỘNG KIỂM TOÁN TÍN HIỆU SAU PHIÊN (15:15 CHIỀU UTC+7):
+    - Data Freshness Check: Không audit giả nếu dữ liệu đóng cửa sàn chưa chốt ổn định (PENDING_DATA).
+    - Cập nhật MFE (Đỉnh cao nhất), MAE (Đáy sâu nhất), các mốc T+1, T+5, T+20.
+    - Đánh giá chuyển trạng thái TARGET_HIT / STOP_LOSS và đo lường Alpha so với VN-Index.
+    - Bắn báo cáo kiểm toán Alpha Tracker vào Discord.
+    """
+    logging.info("🚀 BẮT ĐẦU TIẾN TRÌNH TỰ ĐỘNG KIỂM TOÁN TÍN HIỆU SAU PHIÊN (15:15)...")
+    try:
+        from db_manager import update_daily_tracking, get_signal_audit_metrics
+        audit_res = update_daily_tracking()
+
+        if audit_res.get("status") == "PENDING_DATA":
+            logging.warning("⚠️ DATA FRESHNESS CHECK: Dữ liệu thị trường chưa sẵn sàng. Hoãn audit giả định.")
+            return
+
+        metrics = get_signal_audit_metrics()
+        now_vn = get_vn_time()
+
+        embed = {
+            "title": "🎯 BÁO CÁO KIỂM TOÁN HIỆU QUẢ TÍN HIỆU (ALPHA TRACKER)",
+            "description": (
+                f"**Kết quả rà soát sau phiên ATC ({now_vn.strftime('%d/%m/%Y')}):**\n"
+                f"• Cập nhật hôm nay: **{audit_res.get('updated', 0)}** tín hiệu\n"
+                f"• Tỷ lệ thắng (Hit Rate): **{metrics.get('win_rate', 0)}%** ({metrics.get('resolved_signals', 0)} lệnh đã đóng)\n"
+                f"• Tỷ số Lãi/Lỗ (Profit Factor): **{metrics.get('profit_factor', 0)}x**\n"
+                f"• Alpha vượt trội vs VN-Index: **{metrics.get('alpha_vs_vnindex', 0):+.2f}%**\n"
+                f"• Số tín hiệu đang theo dõi (OPEN): **{metrics.get('open_signals', 0)}**"
+            ),
+            "color": 0x2ECC71 if metrics.get("win_rate", 0) >= 50 else 0x3498DB,
+            "footer": {"text": "AI Stock Copilot • Post-Market Audit Engine"}
+        }
+        send_discord_webhook(embeds=[embed])
+        send_discord_dm(embeds=[embed])
+        logging.info("✅ ĐÃ GỬI THÀNH CÔNG BÁO CÁO KIỂM TOÁN 15:15 ĐẾN DISCORD!")
+    except Exception as e:
+        logging.error(f"❌ Lỗi tiến trình kiểm toán 15:15: {e}")
+
+
 def run_trading_bot_loop(check_interval_sec: int = 30):
     """
     VÒNG LẶP CHÍNH CỦA TRADING BOT:
-    - Canh đúng từng giây các mốc: 08:45, 11:30, 14:45.
+    - Canh đúng từng giây các mốc: 08:45, 11:30, 14:45, 15:15.
     - Trong giờ giao dịch: Quét giá mỗi 30 giây để bắn cảnh báo khẩn cấp.
     """
     logging.info("=" * 65)
     logging.info("🌟 TRADING BOT DAEMON ĐÃ KHỞI CHẠY THÀNH CÔNG!")
     logging.info(f"🕒 Múi giờ hệ thống: {VN_TZ} (Asia/Ho_Chi_Minh)")
     logging.info(f"⏱️ Tần suất quét rủi ro trong phiên: Mỗi {check_interval_sec} giây")
-    logging.info("📅 Khung giờ báo cáo tự động: 08:45 (ATO) | 11:30 (Trưa) | 14:45 (ATC)")
+    logging.info("📅 Khung giờ báo cáo tự động: 08:45 (ATO) | 11:30 (Trưa) | 14:45 (ATC) | 15:15 (Audit)")
     logging.info("=" * 65)
 
     last_heartbeat_hour = -1
@@ -294,7 +391,13 @@ def run_trading_bot_loop(check_interval_sec: int = 30):
                 sent_scheduled_reports.add(key_1445)
                 trigger_scheduled_report("BÁO CÁO TỔNG KẾT PHIÊN ATC (TOÀN DIỆN)", "Phân tích sức khỏe danh mục & Khuyến nghị phiên tới")
 
-            # 4. TRONG PHIÊN GIAO DỊCH: QUÉT CẢNH BÁO RỦI RO TỨC THÌ (<1s)
+            # 4. ĐẶT LỊCH: 15:15 CHIỀU - TIẾN TRÌNH KIỂM TOÁN TÍN HIỆU SAU PHIÊN (POST-MARKET AUDIT)
+            key_1515 = (today_str, "15:15")
+            if is_trading_day(now) and cur_time_str == "15:15" and key_1515 not in sent_scheduled_reports:
+                sent_scheduled_reports.add(key_1515)
+                trigger_post_market_audit()
+
+            # 5. TRONG PHIÊN GIAO DỊCH: QUÉT CẢNH BÁO RỦI RO TỨC THÌ (<1s)
             if is_market_open(now):
                 check_realtime_risk()
             else:

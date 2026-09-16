@@ -931,6 +931,36 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
 </OUTPUT_FORMAT>"""
 
     final_report = call_gemini(client, pass2_prompt)
+
+    # TỰ ĐỘNG LƯU SNAPSHOT BẤT BIẾN VÀO SUPABASE (SIGNAL LIFECYCLE)
+    try:
+        from db_manager import save_quant_signal
+        save_quant_signal(
+            symbol=symbol,
+            action=hard_gates.get("action_state", "🟡 THEO DÕI"),
+            decision_tag=hard_gates.get("decision_tag", ""),
+            entry_price=curr_price,
+            market_price_at_signal=curr_price,
+            target_price=hard_gates.get("price_target"),
+            stop_loss=hard_gates.get("stop_loss"),
+            hard_gates=hard_gates,
+            f_score_res=f_score_res,
+            z_score_res=z_score_res,
+            prob_dict=prob_dict,
+            model_version=f"{MODEL_NAME}-v2.1",
+            input_snapshot={
+                "pe": pe,
+                "pb": pb,
+                "roe": fin_data.get("roe"),
+                "debt_equity": fin_data.get("debt_equity"),
+                "adv20_billion": tech_data.get("adv20_billion"),
+                "rsi14": tech_data.get("rsi14"),
+                "status_ma20": tech_data.get("status_ma20")
+            }
+        )
+    except Exception as db_err:
+        logging.warning(f"Không thể lưu snapshot tín hiệu vào Supabase: {db_err}")
+
     return {
         "status": "SUCCESS",
         "report_text": final_report,
