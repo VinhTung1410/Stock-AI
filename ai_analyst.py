@@ -2,13 +2,16 @@ import os
 import json
 import re
 import logging
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 from google import genai
 from data_engine import load_portfolio, evaluate_portfolio, fetch_macro_news
 from quant_engine import evaluate_holding_position, evaluate_market_regime
 from quant_valuation import calculate_fair_value_and_mos, INSTITUTIONAL_CONSENSUS_TARGETS
 
-load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")

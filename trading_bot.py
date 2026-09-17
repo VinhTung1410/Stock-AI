@@ -16,7 +16,6 @@ import time
 import logging
 from datetime import datetime, time as dtime
 from zoneinfo import ZoneInfo
-from dotenv import load_dotenv
 
 from data_engine import (
     load_portfolio, 
@@ -35,7 +34,11 @@ from discord_alerts import (
     send_trade_signal_alert
 )
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] (TradingBot) %(message)s"
