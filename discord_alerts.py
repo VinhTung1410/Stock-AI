@@ -1,4 +1,5 @@
 import os
+import time
 import logging
 import requests
 from dotenv import load_dotenv
@@ -42,15 +43,24 @@ def send_discord_dm(content: str = None, embeds: list = None) -> bool:
 
         # Bước 2: Gửi nội dung tin nhắn / Embed vào kênh DM
         if embeds:
-            msg_res = requests.post(
-                f"https://discord.com/api/v10/channels/{channel_id}/messages",
-                headers=headers,
-                json={"embeds": embeds},
-                timeout=10
-            )
-            if msg_res.status_code not in [200, 201]:
-                logging.error(f"Lỗi khi gửi Embed DM: {msg_res.status_code} - {msg_res.text}")
-                return False
+            flat_embeds = []
+            for item in embeds:
+                if isinstance(item, list):
+                    flat_embeds.extend(item)
+                elif isinstance(item, dict):
+                    flat_embeds.append(item)
+
+            for emb in flat_embeds:
+                msg_res = requests.post(
+                    f"https://discord.com/api/v10/channels/{channel_id}/messages",
+                    headers=headers,
+                    json={"embeds": [emb]},
+                    timeout=10
+                )
+                if msg_res.status_code not in [200, 201]:
+                    logging.error(f"Lỗi khi gửi Embed DM: {msg_res.status_code} - {msg_res.text}")
+                    return False
+                time.sleep(0.4)
 
         if content:
             # Tự động chia nhỏ tin nhắn nếu dài hơn 1900 ký tự (tránh giới hạn 2000 ký tự của Discord)
@@ -76,25 +86,32 @@ def send_discord_dm(content: str = None, embeds: list = None) -> bool:
 def send_discord_webhook(content: str = None, embeds: list = None) -> bool:
     """
     Gửi thông báo độc quyền vào Kênh Discord thông qua Webhook URL (không gửi vào tin nhắn riêng).
+    Hỗ trợ tự động phân tách đa Embeds tuần tự để bảo toàn 100% nội dung dài.
     """
     if not DISCORD_WEBHOOK_URL:
         logging.warning("Chưa cấu hình DISCORD_WEBHOOK_URL trong .env!")
         return False
 
-    payload = {}
-    if content:
-        payload["content"] = content
-    if embeds:
-        payload["embeds"] = embeds
-
     try:
-        response = requests.post(DISCORD_WEBHOOK_URL, json=payload, timeout=10)
-        if response.status_code in [200, 204]:
-            logging.info("Đã gửi tin nhắn qua Webhook thành công!")
-            return True
-        else:
-            logging.error(f"Lỗi khi gửi Webhook: {response.status_code} - {response.text}")
-            return False
+        if content:
+            requests.post(DISCORD_WEBHOOK_URL, json={"content": content}, timeout=10)
+
+        if embeds:
+            flat_embeds = []
+            for item in embeds:
+                if isinstance(item, list):
+                    flat_embeds.extend(item)
+                elif isinstance(item, dict):
+                    flat_embeds.append(item)
+
+            for emb in flat_embeds:
+                resp = requests.post(DISCORD_WEBHOOK_URL, json={"embeds": [emb]}, timeout=10)
+                if resp.status_code not in [200, 204]:
+                    logging.error(f"Lỗi khi gửi Webhook: {resp.status_code} - {resp.text}")
+                time.sleep(0.4)
+
+        logging.info("Đã gửi tin nhắn qua Webhook thành công!")
+        return True
     except Exception as e:
         logging.error(f"Lỗi khi gửi Webhook: {e}")
         return False
@@ -228,33 +245,44 @@ def format_portfolio_embed(portfolio_df, ai_summary: str, report_type: str = "B�
     desc_str = f"{summary_pnl}\n\n**Chi tiết từng mã:**\n{portfolio_desc}"[:4000]
     footer_text = "Stock AI Assistant • Dữ liệu vnstock • Phân tích bởi Gemini"
 
-    # Bảo vệ giới hạn Discord spec: Max 25 fields và tổng số ký tự Embed < 5500 (giới hạn Discord là 6000)
-    current_total_len = len(title_str) + len(desc_str) + len(footer_text)
-    safe_fields = []
-    for f in ai_fields[:25]:
-        f_len = len(f["name"]) + len(f["value"])
-        if current_total_len + f_len > 5500:
-            remaining = 5500 - current_total_len - len(f["name"]) - 15
-            if remaining > 60:
-                safe_fields.append({
-                    "name": f["name"][:256],
-                    "value": f["value"][:remaining] + "\n*(còn tiếp...)*",
-                    "inline": f.get("inline", False)
-                })
-            break
-        safe_fields.append(f)
-        current_total_len += f_len
+    # Phân phối thông minh các fields thành 1 hoặc 2 Embeds nguyên vẹn 100%, không bao giờ cắt chữ
+    fields_p1 = []
+    fields_p2 = []
+    curr_len_p1 = len(title_str) + len(desc_str) + len(footer_text)
 
-    embed = {
+    for f in ai_fields:
+        f_len = len(f.get("name", "")) + len(f.get("value", ""))
+        if len(fields_p1) < 20 and (curr_len_p1 + f_len) < 5200:
+            fields_p1.append(f)
+            curr_len_p1 += f_len
+        else:
+            fields_p2.append(f)
+
+    embed1 = {
         "title": title_str,
         "description": desc_str,
         "color": color,
-        "fields": safe_fields,
+        "fields": fields_p1,
         "footer": {
             "text": footer_text,
         },
     }
-    return embed
+
+    if not fields_p2:
+        return embed1
+
+    # Nếu bài viết dài, tạo Embed Phần 2 chứa trọn vẹn 100% các mục còn lại
+    title_p2 = f"📊 AI STOCK COPILOT - {report_type.upper()} (PHẦN 2)"[:256]
+    embed2 = {
+        "title": title_p2,
+        "description": "*(Tiếp nối: Tác động vĩ mô, dòng tiền tổ chức & Kế hoạch hành động phiên tới)*",
+        "color": color,
+        "fields": fields_p2[:25],
+        "footer": {
+            "text": footer_text,
+        },
+    }
+    return [embed1, embed2]
 
 
 def send_trade_signal_alert(symbol: str, action: str, current_price: float, trigger_reason: str, target_price: float = None, stop_loss: float = None) -> bool:
