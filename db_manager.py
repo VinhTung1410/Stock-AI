@@ -3,10 +3,12 @@ import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 import pandas as pd
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 from supabase import create_client, Client
-
-load_dotenv()
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 _supabase: Client = None

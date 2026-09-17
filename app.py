@@ -1,7 +1,22 @@
 import os
 os.environ["VNSTOCK_TELEMETRY"] = "off"
 import streamlit as st
-from dotenv import load_dotenv
+
+# Đồng bộ hóa st.secrets sang os.environ (Hỗ trợ Streamlit Cloud)
+try:
+    if hasattr(st, "secrets"):
+        for k, v in st.secrets.items():
+            if isinstance(v, (str, int, float, bool)) and k not in os.environ:
+                os.environ[k] = str(v)
+except Exception:
+    pass
+
+# Nạp biến môi trường từ .env (cho môi trường local)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 from data_engine import (
     load_portfolio, 
@@ -18,8 +33,6 @@ from tabs import (
     render_tab_ai,
     render_tab_alpha_tracker,
 )
-
-load_dotenv()
 
 # Cấu hình trang Dashboard
 st.set_page_config(

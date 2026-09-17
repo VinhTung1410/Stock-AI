@@ -6,15 +6,15 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import feedparser
-from dotenv import load_dotenv
-
 import re
 import requests
 import urllib.request
 import io
-
-# Nạp biến môi trường từ .env
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
