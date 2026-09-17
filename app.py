@@ -1,5 +1,10 @@
 import os
 os.environ["VNSTOCK_TELEMETRY"] = "off"
+try:
+    import vnai
+    vnai.disable_telemetry()
+except Exception:
+    pass
 import streamlit as st
 
 # Đồng bộ hóa st.secrets sang os.environ (Hỗ trợ Streamlit Cloud)
