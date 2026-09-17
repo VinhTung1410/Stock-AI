@@ -371,29 +371,37 @@ def run_trading_bot_loop(check_interval_sec: int = 30):
         try:
             now = get_vn_time()
             today_str = now.strftime("%Y-%m-%d")
-            cur_time_str = now.strftime("%H:%M")
+            cur_t = now.time()
 
-            # 1. ĐẶT LỊCH: 08:45 SÁNG - BÁO CÁO VĨ MÔ ĐẦU NGÀY TRƯỚC ATO
+            # Tự động dọn dẹp cache ngày cũ để tối ưu bộ nhớ dài hạn
+            for old_key in list(sent_scheduled_reports):
+                if old_key[0] != today_str:
+                    sent_scheduled_reports.discard(old_key)
+            for old_alert in list(sent_alerts):
+                if old_alert[0] != today_str:
+                    sent_alerts.discard(old_alert)
+
+            # 1. ĐẶT LỊCH: 08:45 SÁNG - BÁO CÁO VĨ MÔ ĐẦU NGÀY TRƯỚC ATO (Cửa sổ 08:45 - 09:00)
             key_0845 = (today_str, "08:45")
-            if is_trading_day(now) and cur_time_str == "08:45" and key_0845 not in sent_scheduled_reports:
+            if is_trading_day(now) and dtime(8, 45) <= cur_t < dtime(9, 0) and key_0845 not in sent_scheduled_reports:
                 sent_scheduled_reports.add(key_0845)
                 trigger_scheduled_report("BÁO CÁO ĐẦU NGÀY (TRƯỚC PHIÊN ATO)", "Điểm tin vĩ mô thế giới & Sẵn sàng mở phiên")
 
-            # 2. ĐẶT LỊCH: 11:30 TRƯA - TỔNG KẾT PHIÊN SÁNG
+            # 2. ĐẶT LỊCH: 11:30 TRƯA - TỔNG KẾT PHIÊN SÁNG (Cửa sổ 11:30 - 12:00)
             key_1130 = (today_str, "11:30")
-            if is_trading_day(now) and cur_time_str == "11:30" and key_1130 not in sent_scheduled_reports:
+            if is_trading_day(now) and dtime(11, 30) <= cur_t < dtime(12, 0) and key_1130 not in sent_scheduled_reports:
                 sent_scheduled_reports.add(key_1130)
                 trigger_scheduled_report("TỔNG KẾT PHIÊN SÁNG (NGHỈ TRƯA)", "Đánh giá biến động nửa ngày & Dòng tiền nổi bật")
 
-            # 3. ĐẶT LỊCH: 14:45 CHIỀU - BÁO CÁO TỔNG KẾT NGÀY SAU ATC
+            # 3. ĐẶT LỊCH: 14:45 CHIỀU - BÁO CÁO TỔNG KẾT NGÀY SAU ATC (Cửa sổ 14:45 - 15:15)
             key_1445 = (today_str, "14:45")
-            if is_trading_day(now) and cur_time_str == "14:45" and key_1445 not in sent_scheduled_reports:
+            if is_trading_day(now) and dtime(14, 45) <= cur_t < dtime(15, 15) and key_1445 not in sent_scheduled_reports:
                 sent_scheduled_reports.add(key_1445)
                 trigger_scheduled_report("BÁO CÁO TỔNG KẾT PHIÊN ATC (TOÀN DIỆN)", "Phân tích sức khỏe danh mục & Khuyến nghị phiên tới")
 
-            # 4. ĐẶT LỊCH: 15:15 CHIỀU - TIẾN TRÌNH KIỂM TOÁN TÍN HIỆU SAU PHIÊN (POST-MARKET AUDIT)
+            # 4. ĐẶT LỊCH: 15:15 CHIỀU - TIẾN TRÌNH KIỂM TOÁN TÍN HIỆU SAU PHIÊN (Cửa sổ 15:15 - 16:00)
             key_1515 = (today_str, "15:15")
-            if is_trading_day(now) and cur_time_str == "15:15" and key_1515 not in sent_scheduled_reports:
+            if is_trading_day(now) and dtime(15, 15) <= cur_t < dtime(16, 0) and key_1515 not in sent_scheduled_reports:
                 sent_scheduled_reports.add(key_1515)
                 trigger_post_market_audit()
 

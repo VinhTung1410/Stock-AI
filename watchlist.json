@@ -1,10 +1,5 @@
 [
   {
-    "symbol": "FPT",
-    "target_buy": 70.0,
-    "note": "Theo dõi từ Google Sheet"
-  },
-  {
     "symbol": "HPG",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
@@ -16,6 +11,21 @@
   },
   {
     "symbol": "VIC",
+    "target_buy": 0.0,
+    "note": "Theo dõi từ Google Sheet"
+  },
+  {
+    "symbol": "VCB",
+    "target_buy": 0.0,
+    "note": "Theo dõi từ Google Sheet"
+  },
+  {
+    "symbol": "VPB",
+    "target_buy": 0.0,
+    "note": "Theo dõi từ Google Sheet"
+  },
+  {
+    "symbol": "VHM",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
   }

@@ -224,13 +224,34 @@ def format_portfolio_embed(portfolio_df, ai_summary: str, report_type: str = "B�
 
     ai_fields = split_ai_summary_into_fields(ai_summary)
 
+    title_str = f"📊 AI STOCK COPILOT - {report_type.upper()}"[:256]
+    desc_str = f"{summary_pnl}\n\n**Chi tiết từng mã:**\n{portfolio_desc}"[:4000]
+    footer_text = "Stock AI Assistant • Dữ liệu vnstock • Phân tích bởi Gemini"
+
+    # Bảo vệ giới hạn Discord spec: Max 25 fields và tổng số ký tự Embed < 5500 (giới hạn Discord là 6000)
+    current_total_len = len(title_str) + len(desc_str) + len(footer_text)
+    safe_fields = []
+    for f in ai_fields[:25]:
+        f_len = len(f["name"]) + len(f["value"])
+        if current_total_len + f_len > 5500:
+            remaining = 5500 - current_total_len - len(f["name"]) - 15
+            if remaining > 60:
+                safe_fields.append({
+                    "name": f["name"][:256],
+                    "value": f["value"][:remaining] + "\n*(còn tiếp...)*",
+                    "inline": f.get("inline", False)
+                })
+            break
+        safe_fields.append(f)
+        current_total_len += f_len
+
     embed = {
-        "title": f"📊 AI STOCK COPILOT - {report_type.upper()}",
-        "description": f"{summary_pnl}\n\n**Chi tiết từng mã:**\n{portfolio_desc}",
+        "title": title_str,
+        "description": desc_str,
         "color": color,
-        "fields": ai_fields,
+        "fields": safe_fields,
         "footer": {
-            "text": "Stock AI Assistant • Dữ liệu vnstock • Phân tích bởi Gemini",
+            "text": footer_text,
         },
     }
     return embed

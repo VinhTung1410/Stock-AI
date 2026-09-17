@@ -35,8 +35,8 @@ def render_tab_alpha_tracker():
         <h2 style="font-size: 24px; font-weight: 800; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
             🎯 KIỂM TOÁN HIỆU QUẢ TÍN HIỆU (ALPHA TRACKER)
         </h2>
-        <p style="font-size: 13.5px; color: #64748b; margin: 0;">
-            Hệ thống đối soát độc lập: Đánh giá tỷ lệ thắng thực tế, tỷ số Lãi/Lỗ, và đo lường Alpha vượt trội so với VN-Index sau $T+1, T+5, T+20$.
+        <p style="font-size: 13.5px; color: #64748b; margin: 0; font-family: 'Inter', -apple-system, sans-serif;">
+            Hệ thống đối soát độc lập: Đánh giá tỷ lệ thắng thực tế, tỷ số Lãi/Lỗ, và đo lường Alpha vượt trội so với VN-Index sau <b>T+1, T+5, T+20</b>.
         </p>
     </div>
     """, unsafe_allow_html=True)
