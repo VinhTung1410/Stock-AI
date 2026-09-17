@@ -13,8 +13,7 @@ from data_engine import (
 )
 from tabs import (
     render_tab_overview,
-    render_tab_market,
-    render_tab_charts,
+    render_tab_market_and_charts,
     render_tab_portfolio,
     render_tab_ai,
     render_tab_alpha_tracker,
@@ -35,7 +34,7 @@ st.set_page_config(
 # ==============================================================================
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&subset=vietnamese&display=swap');
 
     /* 1. TYPOGRAPHY & BẢO VỆ FONT ICON (TRÁNH LỖI HIỂN THỊ CHỮ keyboard_double) */
     html, body {
@@ -326,33 +325,113 @@ st.markdown("""
         color: #0f172a !important;
         letter-spacing: -0.5px !important;
     }
+
+    /* 7. CUSTOM LOADER & SPINNER FINTECH PRO (TINH GỌN, CHUẨN TRỤC DỌC 100%) */
+    @keyframes shimmerBar {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+
+    /* Container Loader: Flexbox chuẩn, align-items center, gap 8px tinh tế */
+    div[data-testid="stSpinner"] {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: #ffffff !important;
+        border: 1px solid #cbd5e1 !important;
+        border-radius: 8px !important;
+        padding: 8px 16px !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05) !important;
+        margin: 16px auto !important;
+        width: fit-content !important;
+        box-sizing: border-box !important;
+        gap: 8px !important;
+    }
+
+    /* Triệt tiêu 100% margin thừa thãi để trục canh giữa chuẩn xác */
+    div[data-testid="stSpinner"] > div,
+    div[data-testid="stSpinner"] svg,
+    div[data-testid="stSpinner"] p,
+    div[data-testid="stSpinner"] span {
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+    }
+
+    /* Thẻ bọc icon Spinner: Flex canh giữa tuyệt đối theo trục dọc */
+    div[data-testid="stSpinner"] > div:first-child {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        line-height: 1 !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* Icon SVG Spinner: Kích thước chuẩn 18px, màu xanh thương hiệu #2563eb */
+    div[data-testid="stSpinner"] svg {
+        width: 18px !important;
+        height: 18px !important;
+        stroke: #2563eb !important;
+        color: #2563eb !important;
+        display: block !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* Text: Thẳng hàng tuyệt đối với Spinner, không rớt chữ */
+    div[data-testid="stSpinner"] p,
+    div[data-testid="stSpinner"] span {
+        font-family: 'Inter', sans-serif !important;
+        font-size: 13.5px !important;
+        font-weight: 600 !important;
+        color: #1e293b !important;
+        line-height: 18px !important;
+        white-space: nowrap !important;
+        word-break: normal !important;
+        letter-spacing: 0.1px !important;
+    }
+
+    /* Thanh chạy ánh sáng tiến trình (Shimmer Bar) đỉnh trang */
+    header[data-testid="stHeader"]::after {
+        content: "";
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: linear-gradient(90deg, #2563eb, #60a5fa, #38bdf8, #2563eb);
+        background-size: 200% 100%;
+        animation: shimmerBar 1.6s ease-in-out infinite;
+        opacity: 0.9;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=180, show_spinner=False)
 def get_cached_portfolio_eval():
     """Cache đánh giá danh mục trong 3 phút."""
     portfolio = load_portfolio()
     return evaluate_portfolio(portfolio), portfolio
 
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=180, show_spinner=False)
 def get_cached_watchlist_eval():
     """Cache đánh giá danh mục theo dõi (Watchlist) trong 3 phút."""
     watchlist = load_watchlist()
     return evaluate_watchlist(watchlist), watchlist
 
 
-@st.cache_data(ttl=1800)
+@st.cache_data(ttl=1800, show_spinner=False)
 def get_cached_vnindex_data():
     """Cache dữ liệu nến và bội số P/E, P/B của VN-Index trong 30 phút."""
     return get_vnindex_valuation_data()
 
 
-# --- DỮ LIỆU ĐẦU VÀO ---
-df_eval, raw_portfolio = get_cached_portfolio_eval()
-df_wl, raw_watchlist = get_cached_watchlist_eval()
+# --- DỮ LIỆU ĐẦU VÀO (BỌC TRONG SPINNER NGHỆ THUẬT CHỐNG TRẮNG TRANG) ---
+with st.spinner("Đang đồng bộ danh mục & nạp dữ liệu thị trường trực tiếp..."):
+    df_eval, raw_portfolio = get_cached_portfolio_eval()
+    df_wl, raw_watchlist = get_cached_watchlist_eval()
 
 
 # --- SIDEBAR ĐIỀU KHIỂN (GOM NHÓM GESTALT CARD) ---
@@ -410,8 +489,7 @@ active_tab = st.radio(
     "Điều hướng Dashboard",
     [
         "Tổng quan & Watchlist", 
-        "Thị trường & Định giá", 
-        "Biểu đồ Kỹ thuật", 
+        "Thị trường & Biểu đồ Kỹ thuật", 
         "Quản lý Danh mục", 
         "Trợ lý Phân tích AI",
         "🎯 Alpha Tracker"
@@ -423,20 +501,18 @@ active_tab = st.radio(
 if active_tab == "Tổng quan & Watchlist":
     render_tab_overview(df_eval, raw_portfolio, df_wl=df_wl, raw_watchlist=raw_watchlist)
 
-elif active_tab == "Thị trường & Định giá":
-    with st.spinner("Đang cập nhật biểu đồ & định giá VN-Index..."):
+elif active_tab == "Thị trường & Biểu đồ Kỹ thuật":
+    with st.spinner("Đang cập nhật chỉ số thị trường & nến kỹ thuật..."):
         df_vnindex = get_cached_vnindex_data()
-        render_tab_market(df_vnindex)
-
-elif active_tab == "Biểu đồ Kỹ thuật":
-    with st.spinner("Đang tải dữ liệu nến TradingView..."):
-        render_tab_charts(raw_portfolio)
+        render_tab_market_and_charts(raw_portfolio, raw_watchlist=raw_watchlist, df_vnindex=df_vnindex)
 
 elif active_tab == "Quản lý Danh mục":
-    render_tab_portfolio(raw_portfolio, raw_watchlist=raw_watchlist)
+    with st.spinner("Đang nạp bảng cấu hình danh mục đầu tư..."):
+        render_tab_portfolio(raw_portfolio, raw_watchlist=raw_watchlist)
 
 elif active_tab == "Trợ lý Phân tích AI":
-    render_tab_ai(df_eval)
+    with st.spinner("Đang khởi tạo trợ lý phân tích AI..."):
+        render_tab_ai(df_eval)
 
 elif active_tab == "🎯 Alpha Tracker":
     with st.spinner("Đang kiểm toán đối soát Alpha Tracker từ Supabase..."):
