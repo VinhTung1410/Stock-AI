@@ -11,6 +11,11 @@
 
 import os
 os.environ["VNSTOCK_TELEMETRY"] = "off"
+try:
+    import vnai
+    vnai.disable_telemetry()
+except Exception:
+    pass
 import sys
 import threading
 import subprocess
@@ -41,9 +46,9 @@ def main():
     port = os.environ.get("PORT", "8501")
     logging.info(f"Đang khởi động Streamlit Web Dashboard trên cổng {port}...")
 
-    # 3. Chạy giao diện Web Streamlit
+    # 3. Chạy giao diện Web Streamlit (-u unbuffered để đẩy log ngay lập tức)
     cmd = [
-        sys.executable, "-m", "streamlit", "run", "app.py",
+        sys.executable, "-u", "-m", "streamlit", "run", "app.py",
         "--server.port", str(port),
         "--server.address", "0.0.0.0",
         "--server.headless", "true",
