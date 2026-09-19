@@ -7,9 +7,9 @@ tốt và nổ chuông Discord hay không mà không cần chờ đến giờ gi
 =============================================================================
 """
 
-import sys
 import os
-import time
+import sys
+
 from dotenv import load_dotenv
 
 if sys.platform == "win32":
@@ -21,15 +21,15 @@ if sys.platform == "win32":
 # Đảm bảo import được các module từ thư mục gốc
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from discord_alerts import (
-    send_trade_signal_alert, 
-    send_discord_message, 
-    send_discord_dm, 
-    send_discord_webhook, 
-    format_portfolio_embed
-)
-from data_engine import load_portfolio, evaluate_portfolio, fetch_macro_news
 from ai_analyst import generate_portfolio_analysis
+from data_engine import (
+    evaluate_portfolio,
+    evaluate_watchlist,
+    fetch_macro_news,
+    load_portfolio,
+    load_watchlist,
+)
+from discord_alerts import format_portfolio_embed, send_discord_dm, send_discord_message, send_trade_signal_alert
 from trading_bot import check_realtime_risk
 
 load_dotenv()
@@ -105,7 +105,7 @@ def test_full_ai_report():
 
     ai_text = generate_portfolio_analysis(df_eval, news, watchlist_df=df_wl)
     embed = format_portfolio_embed(df_eval, ai_text, report_type="BÁO CÁO CHIẾN LƯỢC TOÀN DIỆN")
-    
+
     print("📤 Đang gửi Rich Embed vào Discord...")
     success = send_discord_message(embeds=[embed])
     if success:
@@ -118,7 +118,7 @@ def test_morning_recommendation_report():
     """Bắn bản tin Khuyến nghị Cổ phiếu đầu ngày 08:45 Sáng (Top Picks phong cách SSI/TCBS)."""
     print("\n🌅 Đang khởi tạo Bản tin Khuyến nghị Đầu Ngày 08:45 Sáng (trước ATO)...")
     from ai_analyst import generate_morning_strategy_report
-    from data_engine import load_watchlist, evaluate_watchlist, scan_market_opportunities
+    from data_engine import evaluate_watchlist, load_watchlist, scan_market_opportunities
 
     portfolio = load_portfolio()
     df_eval = evaluate_portfolio(portfolio)

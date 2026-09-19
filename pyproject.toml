@@ -1,0 +1,23 @@
+[project]
+name = "stock-ai"
+version = "2.0.0"
+description = "Quantamental stock analysis with deterministic hard gates"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "offline: Tests that run without external APIs",
+    "integration: Tests requiring Supabase or live API keys",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501", "E722", "F841", "W291", "W293", "E402", "E741"]

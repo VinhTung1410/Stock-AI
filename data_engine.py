@@ -1,20 +1,22 @@
 import os
+
 os.environ["VNSTOCK_TELEMETRY"] = "off"
 try:
     import vnai
     vnai.disable_telemetry()
 except Exception:
     pass
+import io
 import json
 import logging
-from datetime import datetime, timedelta
-import pandas as pd
-import numpy as np
-import feedparser
 import re
-import requests
 import urllib.request
-import io
+from datetime import datetime, timedelta
+
+import feedparser
+import pandas as pd
+import requests
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -57,7 +59,6 @@ def fetch_google_sheet_data(sheet_url: str = None) -> tuple:
     """
     global _GSHEET_CACHE
     import time
-    import io
     now_ts = time.time()
     if _GSHEET_CACHE["portfolio"] is not None and (now_ts - _GSHEET_CACHE["timestamp"]) < 45:
         return _GSHEET_CACHE["portfolio"], _GSHEET_CACHE["watchlist"]
@@ -328,7 +329,7 @@ def update_google_sheet_watchlist(watchlist_data: list) -> tuple:
         return False, str(e)
 
 
-def load_portfolio(filepath: str = "portfolio.json") -> list:
+def load_portfolio(filepath: str = "data/portfolio.json") -> list:
     """
     Đọc thông tin danh mục cổ phiếu.
     Ưu tiên kéo từ Google Sheet (nếu cấu hình GOOGLE_SHEET_URL).
@@ -356,7 +357,7 @@ def load_portfolio(filepath: str = "portfolio.json") -> list:
         return []
 
 
-def load_watchlist(filepath: str = "watchlist.json") -> list:
+def load_watchlist(filepath: str = "data/watchlist.json") -> list:
     """
     Đọc danh sách cổ phiếu đang theo dõi (Watchlist).
     Ưu tiên kéo từ Google Sheet (nếu có), fallback sang watchlist.json.
@@ -382,13 +383,13 @@ def load_watchlist(filepath: str = "watchlist.json") -> list:
         return []
 
 
-def save_portfolio(portfolio_data: list, filepath: str = "portfolio.json"):
+def save_portfolio(portfolio_data: list, filepath: str = "data/portfolio.json"):
     """Lưu danh mục cổ phiếu ra file json."""
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(portfolio_data, f, ensure_ascii=False, indent=2)
 
 
-def save_watchlist(watchlist_data: list, filepath: str = "watchlist.json"):
+def save_watchlist(watchlist_data: list, filepath: str = "data/watchlist.json"):
     """Lưu danh sách cổ phiếu theo dõi ra file json."""
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(watchlist_data, f, ensure_ascii=False, indent=2)
@@ -584,11 +585,11 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
     try:
         from vnstock.api.quote import Quote
         q = Quote(symbol=sym_clean, source="VCI")
-        
+
         # Lấy ngày hiện tại và 120 ngày trước để đủ tính MA50 & RSI14 & ATR
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d")
-        
+
         df = q.history(start=start_date, end=end_date)
         if df is None or df.empty:
             logging.warning(f"Không lấy được dữ liệu cho {symbol}")
@@ -646,7 +647,7 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             "vol_ratio": vol_ratio,
             "upper_wick_ratio": upper_wick_ratio
         })
-        
+
         # Tính giá trần / sàn ước lượng (HOSE ±7%, HNX ±10%)
         # Mặc định an toàn cho HOSE: 6.8% - 7.0%
         ref_price = prev_close
@@ -728,9 +729,10 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
     - Bổ sung Trailing Stop cho vị thế lãi, Stop-loss cho vị thế lỗ.
     - Gắn thẻ Hành động V2 (Chốt lời từng phần / Nâng chặn lãi vs Theo dõi).
     """
-    from quant_valuation import calculate_fair_value_and_mos
-    from quant_engine import evaluate_holding_position
     from concurrent.futures import ThreadPoolExecutor
+
+    from quant_engine import evaluate_holding_position
+    from quant_valuation import calculate_fair_value_and_mos
 
     # Tối ưu hóa hiệu năng: Kéo dữ liệu kỹ thuật đa luồng song song (giảm thời gian chờ từ 20s xuống ~3s)
     symbols = [item["symbol"] for item in portfolio]
@@ -755,7 +757,7 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
 
         tech = tech_map.get(symbol) or fetch_stock_technical(symbol)
         curr_price = tech.get("current_price", cost_price)
-        
+
         cost_value = volume * cost_price * 1000  # Đơn vị giá vnstock thường là nghìn VNĐ
         market_value = volume * curr_price * 1000
         pnl_vnd = market_value - cost_value
@@ -774,7 +776,7 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
         # Đánh giá vị thế nắm giữ V2
         row_dict = {"symbol": symbol, "avg_price": cost_price, "volume": volume, "market_price": curr_price}
         pos_eval = evaluate_holding_position(row_dict, tech)
-        
+
         action_v2 = pos_eval.get("action", "🟢 NẮM GIỮ")
         defense_target = pos_eval.get("trailing_stop") if pos_eval.get("is_profit") else pos_eval.get("stop_loss")
 
@@ -812,8 +814,9 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
     - Hiển thị Fair Value & Margin of Safety (MoS %).
     - Giúp phát hiện sớm các cổ phiếu đạt tiêu chuẩn an toàn vốn.
     """
-    from quant_valuation import calculate_fair_value_and_mos
     from concurrent.futures import ThreadPoolExecutor
+
+    from quant_valuation import calculate_fair_value_and_mos
 
     # Tối ưu hóa tải song song đa luồng cho watchlist
     symbols = [item["symbol"] for item in watchlist]
@@ -876,7 +879,7 @@ def fetch_macro_news(limit: int = 15, tracked_symbols: list = None) -> list:
         ("https://cafef.vn/thi-truong-chung-khoan.rss", "Thị trường"),
         ("https://cafef.vn/doanh-nghiep.rss", "Doanh nghiệp"),
     ]
-    
+
     if tracked_symbols is None:
         tracked_symbols = []
     tracked_upper = [s.upper() for s in tracked_symbols if s]
@@ -979,21 +982,240 @@ SECTOR_MAP = {
 }
 
 
-def scan_market_opportunities(extra_symbols: list = None) -> list:
-    """
-    🎯 BỘ LỌC CƠ HỘI ĐẦU NGÀY CHUẨN CTCK (SSI, TCBS, MBS, TPS):
-    Nguyên lý 2 tầng: 'Catalyst (Câu chuyện xúc tác) + Technical Confluence (Kỹ thuật cho phép)'
-    1. Cào tin tức CafeF mới nhất: gom các mã có xúc tác (KQKD, Cổ tức, Vĩ mô ngành, Nội bộ gom...).
-    2. Kết hợp với Watchlist người dùng theo dõi và nhóm dẫn dắt thị trường.
-    3. Kiểm tra dữ liệu giao dịch thực tế vnstock:
-       - CHỈ KHUYẾN NGHỊ MUA KHI:
-         + Có câu chuyện xúc tác rõ ràng (hoặc thuộc Watchlist chiến lược).
-         + Kỹ thuật cho phép: Giá nằm trên/sát MA20, RSI lành mạnh (45 - 68), Dòng tiền vào.
-       - CẢNH BÁO BẪY TIN TỨC nếu có tin tốt nhưng giá dưới MA20 / cắm đầu giảm.
-    """
-    from concurrent.futures import ThreadPoolExecutor
+# ==============================================================================
+# HỆ THỐNG KIỂM SOÁT ĐỘ TIN CẬY TÍN HIỆU (SIGNAL CREDIBILITY & COOLDOWN ENGINE)
+# ==============================================================================
 
-    # 1. Thu thập tin tức CafeF và tạo bản đồ Xúc tác (Catalyst Map)
+SIGNAL_COOLDOWN_FILE = os.path.join(os.path.dirname(__file__), "data", ".signal_cooldown.json")
+COOLDOWN_DAYS = 5
+MAX_DAILY_BUY_SIGNALS = 2
+MAX_OPEN_POSITIONS = 8
+HIGH_CONVICTION_THRESHOLD = 70.0
+MEDIUM_CONVICTION_THRESHOLD = 55.0
+
+
+def calculate_conviction_score(
+    mos_pct: float,
+    val_confidence: str = "MEDIUM",
+    curr_price: float = 0.0,
+    ma20: float = 0.0,
+    rsi: float = 50.0,
+    vol_ratio: float = 1.0,
+    cat_info: dict = None,
+    foreign_flow: dict = None,
+    is_trap: bool = False
+) -> dict:
+    """Calculate 4-pillar conviction score (100-point institutional scale).
+
+    Pillars:
+    - Pillar 1: Valuation & Margin of Safety (Max 40 pts)
+    - Pillar 2: Technical Confluence (Max 25 pts)
+    - Pillar 3: Catalyst & Narrative (Max 20 pts)
+    - Pillar 4: Liquidity & Smart Money Flow (Max 15 pts)
+
+    Classification:
+    - >= 70 pts: HIGH (Eligible for RECOMMEND_BUY)
+    - 55 - 69 pts: MEDIUM (WATCH_CONFIRMATION / Momentum setup)
+    - < 55 pts: LOW (REJECT / CAUTION)
+    """
+    # 1. Pillar 1: Valuation & Margin of Safety (Max 40 pts)
+    if mos_pct >= 25.0:
+        mos_pts = 40.0
+    elif mos_pct >= 15.0:
+        mos_pts = 30.0
+    elif mos_pct >= 8.0:
+        mos_pts = 20.0
+    elif mos_pct >= 0.0:
+        mos_pts = 10.0
+    else:
+        mos_pts = 0.0
+
+    if str(val_confidence).upper() in ["LOW", "N/A"]:
+        mos_pts = min(mos_pts, 25.0)
+
+    # 2. Pillar 2: Technical Confluence & Trend (Max 25 pts)
+    tech_pts = 0.0
+    if curr_price > 0 and ma20 > 0:
+        if curr_price >= ma20:
+            tech_pts += 10.0
+        elif curr_price >= ma20 * 0.985:
+            tech_pts += 5.0
+
+    if 48.0 <= rsi <= 62.0:
+        tech_pts += 10.0
+    elif (44.0 <= rsi < 48.0) or (62.0 < rsi <= 68.0):
+        tech_pts += 6.0
+    elif 40.0 <= rsi <= 72.0:
+        tech_pts += 2.0
+
+    if not is_trap:
+        tech_pts += 5.0
+    else:
+        tech_pts -= 15.0  # Heavy penalty for distribution/bull trap
+
+    # 3. Pillar 3: Catalyst & Verified Narrative (Max 20 pts)
+    cat_pts = 0.0
+    if cat_info:
+        tag = str(cat_info.get("tag", "")).upper()
+        if any(k in tag for k in ["KQKD", "CỔ TỨC", "VĨ MÔ", "NỘI BỘ", "M&A", "TĂNG TRƯỞNG"]):
+            cat_pts = 20.0
+        elif any(k in tag for k in ["WATCHLIST", "CHIẾN LƯỢC", "NGÀNH"]):
+            cat_pts = 15.0
+        else:
+            cat_pts = 10.0
+    else:
+        cat_pts = 5.0
+
+    # 4. Pillar 4: Liquidity & Smart Money Flow (Max 15 pts)
+    flow_pts = 0.0
+    if vol_ratio >= 1.3:
+        flow_pts += 10.0
+    elif vol_ratio >= 1.0:
+        flow_pts += 7.0
+    elif vol_ratio >= 0.85:
+        flow_pts += 4.0
+    else:
+        flow_pts += 1.0
+
+    if foreign_flow:
+        f_status = foreign_flow.get("status", "")
+        f_badge = foreign_flow.get("badge", "")
+        if f_status == "BUYING" or "MUA RÒNG" in str(f_badge).upper():
+            flow_pts += 5.0
+        elif f_status == "SELLING" or "BÁN RÒNG" in str(f_badge).upper():
+            flow_pts += 0.0
+        else:
+            flow_pts += 3.0
+    else:
+        flow_pts += 3.0
+
+    total_score = round(max(0.0, min(100.0, mos_pts + tech_pts + cat_pts + flow_pts)), 1)
+    if total_score >= HIGH_CONVICTION_THRESHOLD:
+        tier = "HIGH"
+    elif total_score >= MEDIUM_CONVICTION_THRESHOLD:
+        tier = "MEDIUM"
+    else:
+        tier = "LOW"
+
+    return {
+        "score": total_score,
+        "tier": tier,
+        "breakdown": {
+            "valuation": mos_pts,
+            "technical": tech_pts,
+            "catalyst": cat_pts,
+            "liquidity": flow_pts
+        }
+    }
+
+
+def load_signal_cooldown() -> dict:
+    """Load signal cooldown registry from local JSON file."""
+    if os.path.exists(SIGNAL_COOLDOWN_FILE):
+        try:
+            with open(SIGNAL_COOLDOWN_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+
+def save_signal_cooldown(data: dict):
+    """Persist signal cooldown registry to local JSON file."""
+    try:
+        os.makedirs(os.path.dirname(SIGNAL_COOLDOWN_FILE), exist_ok=True)
+        with open(SIGNAL_COOLDOWN_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.warning(f"Could not persist signal cooldown to disk: {e}")
+
+
+def is_symbol_in_cooldown(symbol: str, cooldown_days: int = COOLDOWN_DAYS) -> bool:
+    """Check if a ticker is currently within the active cooldown window.
+
+    Priority 1: Query Supabase signals table (Cloud persistence across restarts).
+    Priority 2: Fallback to local JSON cache (data/.signal_cooldown.json) for offline resilience.
+    """
+    sym = symbol.upper().strip()
+    try:
+        from db_manager import check_symbol_recent_signal
+        if check_symbol_recent_signal(sym, days=cooldown_days):
+            return True
+    except Exception as e:
+        logging.debug(f"Supabase cooldown check fallback: {e}")
+
+    # Fallback to local cache
+    history = load_signal_cooldown()
+    rec = history.get(sym)
+    if not rec:
+        return False
+    last_signal_date = rec.get("last_signal_date")
+    if not last_signal_date:
+        return False
+    try:
+        last_dt = datetime.strptime(last_signal_date, "%Y-%m-%d").date()
+        today = datetime.now().date()
+        delta = (today - last_dt).days
+        return delta < cooldown_days
+    except Exception:
+        return False
+
+
+def record_signal_cooldown(symbol: str, action: str = "RECOMMEND_BUY", conviction_score: float = 0.0):
+    """Record ticker into the cooldown registry after triggering a recommendation."""
+    history = load_signal_cooldown()
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    history[symbol.upper()] = {
+        "last_signal_date": today_str,
+        "action": action,
+        "conviction_score": conviction_score
+    }
+    save_signal_cooldown(history)
+
+
+def get_active_cooldown_symbols(cooldown_days: int = COOLDOWN_DAYS) -> list:
+    """Return active cooldown symbols combining Supabase OPEN tracking records and local cache."""
+    active = set()
+    # 1. Supabase OPEN tracking records
+    try:
+        from db_manager import fetch_open_signals
+        open_signals = fetch_open_signals()
+        for s in open_signals:
+            sym = s.get("symbol")
+            if sym:
+                active.add(sym.upper())
+    except Exception as e:
+        logging.debug(f"Supabase open signals fallback: {e}")
+
+    # 2. Local JSON cache
+    history = load_signal_cooldown()
+    today = datetime.now().date()
+    for sym, info in history.items():
+        dt_str = info.get("last_signal_date", "")
+        if not dt_str:
+            continue
+        try:
+            d = datetime.strptime(dt_str, "%Y-%m-%d").date()
+            if (today - d).days < cooldown_days:
+                active.add(sym.upper())
+        except Exception:
+            continue
+    return list(active)
+
+
+def scan_market_opportunities(extra_symbols: list = None) -> list:
+    """Scan market opportunities using 2-tier Catalyst + Technical Confluence approach.
+
+    1. Ingest RSS financial news to identify catalyst stocks (earnings, dividends, macro).
+    2. Merge with user watchlist and top market liquid leaders.
+    3. Evaluate technical indicators (MA20, RSI, Volume ratio, Smart money flow).
+    4. Compute 4-pillar conviction score (0-100) and enforce hard gates (MoS, Cooldown, Daily Budget).
+
+    Returns:
+        List of opportunity dictionaries ranked by conviction score.
+    """
+
+    # 1. Ingest CafeF RSS and build catalyst map
     catalyst_map = {}
     try:
         news_items = fetch_macro_news(limit=25)
@@ -1007,9 +1229,9 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                         "summary": n.get("summary", "")
                     }
     except Exception as e:
-        logging.warning(f"Không thể cào tin CafeF cho bộ lọc cơ hội: {e}")
+        logging.warning(f"Failed to fetch CafeF RSS for opportunity scanner: {e}")
 
-    # 2. Bổ sung các mã từ Watchlist (người dùng tự đưa vào theo dõi)
+    # 2. Add symbols from watchlist
     watchlist_items = load_watchlist()
     for w in watchlist_items:
         w_sym = w.get("symbol", "").upper()
@@ -1066,9 +1288,9 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             is_trap = trap_info.get("is_trap", False)
 
             # Tích hợp định giá Fair Value & Biên an toàn MoS
-            from quant_valuation import calculate_fair_value_and_mos
             from quant_engine import calculate_weighted_entry_and_rr
-            
+            from quant_valuation import calculate_fair_value_and_mos
+
             val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=sector)
             fv = val_res.get("fair_value", curr_price * 1.10)
             mos_pct = val_res.get("mos_pct", 0.0)
@@ -1077,13 +1299,30 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             p_target = val_res.get("price_target") or round(fv * 1.05, 2)
 
             # --- KIỂM TRA ĐIỀU KIỆN KỸ THUẬT THỰC CHIẾN ---
+            # --- TÍNH ĐIỂM CONVICTION THEO 4 TRỤ CỘT ---
+            conviction = calculate_conviction_score(
+                mos_pct=mos_pct,
+                val_confidence=val_conf,
+                curr_price=curr_price,
+                ma20=ma20,
+                rsi=rsi,
+                vol_ratio=vol_ratio,
+                cat_info=cat_info,
+                foreign_flow=foreign_flow,
+                is_trap=is_trap
+            )
+            conv_score = conviction["score"]
+            conv_tier = conviction["tier"]
+            conv_breakdown = conviction["breakdown"]
+
+            # --- KIỂM TRA ĐIỀU KIỆN KỸ THUẬT THỰC CHIẾN ---
             tech_allowed = curr_price >= (ma20 * 0.985)
             rsi_allowed = (44 <= rsi <= 68)
             vol_allowed = (vol_ratio >= 0.90)
             no_trap = not is_trap
 
-            # A. ĐẠT TOÀN DIỆN: ĐỊNH GIÁ RẺ (MOS >= 15%) HOẶC CÓ XÚC TÁC + KỸ THUẬT CHO PHÉP
-            if (mos_pct >= 15.0 or cat_info) and tech_allowed and rsi_allowed and vol_allowed and no_trap:
+            # A. ĐẠT CHUẨN HIGH CONVICTION (>= 70) VÀ KỸ THUẬT AN TOÀN -> KHUYẾN NGHỊ MUA
+            if conv_score >= HIGH_CONVICTION_THRESHOLD and tech_allowed and rsi_allowed and vol_allowed and no_trap:
                 target_price = p_target
                 stop_loss = round(max(ma20 * 0.95, curr_price * 0.93), 2)
                 # Đảm bảo Stop < current
@@ -1092,7 +1331,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                 # Phân tách 2 phong cách giao dịch: Lướt sóng T+ vs Gom hàng vị thế
                 if vol_ratio >= 1.25 and change_pct >= 0.5:
                     style_type = "⚡ [LƯỚT SÓNG T+ / BREAKOUT]"
-                    setup_type = "⚡ BREAKOUT NỔ VOL VƯỢT NỀN"
+                    setup_type = f"⚡ BREAKOUT NỔ VOL VƯỢT NỀN (Conviction: {conv_score:.0f}/100)"
                     p_min = round(curr_price * 0.995, 2)
                     p_max = round(curr_price * 1.005, 2)
                     entry_zone = f"{p_min} - {p_max}"
@@ -1104,7 +1343,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     execution_plan = f"Mua dứt khoát 1 lần quanh {curr_price}k (vùng {entry_zone}k). Vượt {p_max}k KHÔNG mua đuổi."
                 else:
                     style_type = "💎 [GOM HÀNG VỊ THẾ / TRUNG HẠN]"
-                    setup_type = "💎 TÍCH LŨY NỀN GIÁ TRÊN MA20"
+                    setup_type = f"💎 TÍCH LŨY NỀN GIÁ TRÊN MA20 (Conviction: {conv_score:.0f}/100)"
                     p_low = round(min(ma20, curr_price * 0.985), 2)
                     p_high = round(curr_price * 1.005, 2)
                     entry_zone = f"{p_low} - {p_high}"
@@ -1120,6 +1359,9 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "symbol": sym,
                     "sector": sector,
                     "status": "RECOMMEND_BUY",
+                    "conviction_score": conv_score,
+                    "conviction_tier": conv_tier,
+                    "conviction_breakdown": conv_breakdown,
                     "style_type": style_type,
                     "setup_type": setup_type,
                     "story_tag": story_tag,
@@ -1138,17 +1380,29 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
-                    "rationale": f"Định giá MoS: {mos_pct:+.1f}% ({val_method}). Kỹ thuật: Trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}."
+                    "rationale": f"Conviction {conv_score:.0f}/100 ({conv_tier}). Định giá MoS: {mos_pct:+.1f}% ({val_method}). Kỹ thuật: Trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}."
                 }
 
-            # B. CƠ BẢN & ĐỊNH GIÁ HẤP DẪN (MOS >= 8%) NHƯNG KỸ THUẬT CHƯA CHO PHÉP (VÍ DỤ MWG)
-            # TUYỆT ĐỐI KHÔNG CHỤP MŨ LÀ BẪY TIN -> CHUYỂN SANG WATCH / WAIT FOR CONFIRMATION
-            elif mos_pct >= 8.0:
+            # B. MEDIUM CONVICTION (55-69) HOẶC CƠ BẢN TỐT (MOS >= 8%) NHƯNG KỸ THUẬT CHƯA XÁC NHẬN
+            # -> ĐƯA VÀO RADAR THEO DÕI (WATCH_CONFIRMATION) CHO LƯỚT SÓNG HOẶC CHỜ NỀN
+            elif conv_score >= MEDIUM_CONVICTION_THRESHOLD or mos_pct >= 8.0:
+                watch_reason = []
+                if curr_price < ma20:
+                    watch_reason.append(f"giá dưới MA20 ({ma20:.1f})")
+                if rsi < 45:
+                    watch_reason.append(f"RSI yếu ({rsi:.1f})")
+                if conv_score < HIGH_CONVICTION_THRESHOLD:
+                    watch_reason.append(f"Conviction {conv_score:.0f}/100 cần thêm lực cầu")
+                reason_str = ", ".join(watch_reason) if watch_reason else "chờ tín hiệu xác nhận dòng tiền"
+
                 return {
                     "symbol": sym,
                     "sector": sector,
                     "status": "WATCH_CONFIRMATION",
-                    "setup_type": "🟡 THEO DÕI / CHỜ NỀN CÂN BẰNG",
+                    "conviction_score": conv_score,
+                    "conviction_tier": conv_tier,
+                    "conviction_breakdown": conv_breakdown,
+                    "setup_type": f"🟡 THEO DÕI / CHỜ NỀN CÂN BẰNG (Conviction: {conv_score:.0f}/100)",
                     "story_tag": story_tag,
                     "story": story_title,
                     "current_price": curr_price,
@@ -1159,11 +1413,11 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
-                    "rationale": f"Cơ bản tốt, Biên an toàn hấp dẫn (MoS {mos_pct:+.1f}%), nhưng giá đang nằm dưới MA20 ({ma20:.1f}) hoặc RSI yếu ({rsi:.1f}). Ưu tiên theo dõi chờ nến xác nhận ngừng rơi, không mua đuổi."
+                    "rationale": f"Cơ bản tốt (MoS {mos_pct:+.1f}%), Conviction {conv_score:.0f}/100 nhưng {reason_str}. Ưu tiên theo dõi chờ nến xác nhận ngừng rơi, không mua đuổi."
                 }
 
             # C. CÓ TIN HOẶC DÍNH BẪY PHÂN PHỐI / ĐỊNH GIÁ ĐẮT -> CẢNH BÁO BẪY
-            elif cat_info or is_trap:
+            elif cat_info or is_trap or conv_score < MEDIUM_CONVICTION_THRESHOLD:
                 caution_reason = []
                 if is_trap:
                     caution_reason.append(trap_info.get("warning_msg", "Phát hiện bẫy kỹ thuật"))
@@ -1175,11 +1429,15 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     caution_reason.append(f"RSI {rsi:.1f} yếu")
                 if foreign_flow.get("status") == "SELLING":
                     caution_reason.append(f"Tây bán ròng {foreign_flow.get('foreign_net_val_bil')} tỷ")
+                if conv_score < MEDIUM_CONVICTION_THRESHOLD:
+                    caution_reason.append(f"Điểm Conviction thấp ({conv_score:.0f}/100)")
 
                 return {
                     "symbol": sym,
                     "sector": sector,
                     "status": "CAUTION_TRAP",
+                    "conviction_score": conv_score,
+                    "conviction_tier": conv_tier,
                     "setup_type": "⚠️ CẢNH BÁO BẪY / CHƯA ĐẠT CHUẨN MUA",
                     "story_tag": story_tag,
                     "story": story_title,
@@ -1210,16 +1468,77 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
         except Exception as e:
             logging.debug(f"Lỗi khi xử lý {sym}: {e}")
 
-    # Tách thành 2 nhóm: Khuyến nghị Mua và Cảnh báo
-    buy_picks = [r for r in all_results if r["status"] == "RECOMMEND_BUY"]
+    # Tách nhóm kết quả ban đầu
+    buy_candidates = [r for r in all_results if r["status"] == "RECOMMEND_BUY"]
+    watch_picks = [r for r in all_results if r["status"] == "WATCH_CONFIRMATION"]
     caution_picks = [r for r in all_results if r["status"] == "CAUTION_TRAP"]
 
-    # Ưu tiên mã có vol nổ và R:R tốt
-    buy_picks.sort(key=lambda x: (x["vol_ratio"], x["risk_reward"]), reverse=True)
-    caution_picks.sort(key=lambda x: x["vol_ratio"], reverse=True)
+    # 1. COOLDOWN FILTER (5-DAY): Deduplicate consecutive buy signals on the same symbol
+    eligible_buys = []
+    for c in buy_candidates:
+        sym = c["symbol"]
+        if is_symbol_in_cooldown(sym, cooldown_days=COOLDOWN_DAYS):
+            # Downgrade to WATCH_CONFIRMATION
+            c["status"] = "WATCH_CONFIRMATION"
+            c["setup_type"] = f"⏳ THEO DÕI NẮM GIỮ (Đang Cooldown {COOLDOWN_DAYS} ngày)"
+            c["rationale"] = (
+                f"Mã {sym} đã phát tín hiệu khuyến nghị gần đây. "
+                f"Hệ thống kích hoạt Cooldown {COOLDOWN_DAYS} ngày để bảo vệ vốn và tránh mua đuổi gia tăng giá vốn."
+            )
+            watch_picks.append(c)
+        else:
+            eligible_buys.append(c)
 
-    # Trả về tối đa 4 khuyến nghị mua + 2 cảnh báo bẫy tin
-    return buy_picks[:4] + caution_picks[:2]
+    # 2. PORTFOLIO DIVERSIFICATION GUARD (MAX 8 POSITIONS)
+    active_cooldown_syms = get_active_cooldown_symbols(cooldown_days=COOLDOWN_DAYS)
+    active_positions_count = len(active_cooldown_syms)
+
+    if active_positions_count >= MAX_OPEN_POSITIONS:
+        for c in eligible_buys:
+            c["status"] = "WATCH_CONFIRMATION"
+            c["setup_type"] = f"🛡️ CHỜ THU HỒI VỐN (Đã mở {active_positions_count}/{MAX_OPEN_POSITIONS} vị thế)"
+            c["rationale"] = (
+                f"Conviction {c.get('conviction_score', 0):.0f}/100 đạt chuẩn mua, nhưng danh mục đã đạt "
+                f"hạn mức tối đa {MAX_OPEN_POSITIONS} vị thế đang theo dõi. Ưu tiên quản trị rủi ro, không mở thêm vị thế."
+            )
+            watch_picks.append(c)
+        eligible_buys = []
+
+    # 3. DAILY SIGNAL BUDGET (MAX 2 BUYS / DAY)
+    # Priority ranking by Conviction Score desc, then Vol Ratio and R:R
+    eligible_buys.sort(
+        key=lambda x: (x.get("conviction_score", 0), x.get("vol_ratio", 1.0), x.get("risk_reward", 1.0)),
+        reverse=True
+    )
+
+    approved_buys = eligible_buys[:MAX_DAILY_BUY_SIGNALS]
+    overflow_buys = eligible_buys[MAX_DAILY_BUY_SIGNALS:]
+
+    # Overflow candidates downgraded gracefully to WATCH_CONFIRMATION
+    for c in overflow_buys:
+        c["status"] = "WATCH_CONFIRMATION"
+        c["setup_type"] = f"🎯 TIỀM NĂNG (VƯỢT HẠN MỨC {MAX_DAILY_BUY_SIGNALS} MÃ MUA/NGÀY)"
+        c["rationale"] = (
+            f"Conviction {c.get('conviction_score', 0):.0f}/100 rất tốt nhưng hệ thống giới hạn "
+            f"tối đa {MAX_DAILY_BUY_SIGNALS} mã mua/ngày để tập trung sức mua. Đưa vào radar ưu tiên phiên tới."
+        )
+        watch_picks.append(c)
+
+    # Record cooldown for approved buy signals
+    for b in approved_buys:
+        record_signal_cooldown(
+            symbol=b["symbol"],
+            action="RECOMMEND_BUY",
+            conviction_score=b.get("conviction_score", 0.0)
+        )
+
+    # Sort watch and caution lists
+    watch_picks.sort(key=lambda x: x.get("conviction_score", 0), reverse=True)
+    caution_picks.sort(key=lambda x: x.get("vol_ratio", 1.0), reverse=True)
+
+    # Return up to 2 Buys + 2 Watch + 2 Caution
+    return approved_buys + watch_picks[:2] + caution_picks[:2]
+
 
 
 
@@ -1252,7 +1571,7 @@ def get_vnindex_valuation_data() -> pd.DataFrame:
             latest_idx = df["close"].iloc[-1]
             base_pe = 13.6
             base_pb = 1.72
-            
+
             pe_list = []
             pb_list = []
             for i, val in enumerate(df["close"]):
@@ -1261,7 +1580,7 @@ def get_vnindex_valuation_data() -> pd.DataFrame:
                 pb_val = round(base_pb * ratio + (i % 4 - 1.5) * 0.015, 2)
                 pe_list.append(max(9.5, pe_val))
                 pb_list.append(max(1.1, pb_val))
-                
+
             df["PE"] = pe_list
             df["PB"] = pb_list
         return df
@@ -1360,7 +1679,7 @@ if __name__ == "__main__":
     print("=== KIỂM TRA SPRINT 1: DATA ENGINE ===")
     portfolio = load_portfolio()
     print(f"Đã đọc {len(portfolio)} mã trong danh mục.")
-    
+
     df_eval = evaluate_portfolio(portfolio)
     print("\n--- BẢNG THEO DÕI DANH MỤC THỰC TẾ ---")
     print(df_eval.to_string(index=False))

@@ -1,19 +1,17 @@
 import re
 import textwrap
-import streamlit as st
+
 import pandas as pd
-from data_engine import (
-    fetch_macro_news,
-    fetch_stock_technical,
-    get_financial_ratios,
-    get_vnindex_valuation_data
-)
+import streamlit as st
+
 from ai_analyst import (
-    generate_portfolio_analysis,
-    generate_market_risk_scenarios,
     generate_institutional_stock_report,
-    generate_quantamental_2pass_report
+    generate_market_risk_scenarios,
+    generate_portfolio_analysis,
+    generate_quantamental_2pass_report,
 )
+from data_engine import fetch_macro_news, fetch_stock_technical, get_financial_ratios, get_vnindex_valuation_data
+
 
 def sanitize_markdown_report(text: str) -> str:
     """
@@ -222,14 +220,14 @@ def render_tab_ai(df_eval: pd.DataFrame):
         btn_quant_key = f"btn_run_quant_{target_symbol}"
 
         with col_b1:
-            if st.button(f"⚡ Báo Cáo Định Chế 8 Trụ Cột", type="primary", width="stretch", key=btn_key):
+            if st.button("⚡ Báo Cáo Định Chế 8 Trụ Cột", type="primary", width="stretch", key=btn_key):
                 with st.spinner(f"Chuyên gia AI đang phân tích toàn diện 8 trụ cột cho mã {target_symbol}..."):
                     news = fetch_macro_news(limit=6, tracked_symbols=[target_symbol])
                     report = generate_institutional_stock_report(target_symbol, fin_data, tech_data, news)
                     st.session_state[f"cached_stock_report_{target_symbol}"] = report
 
         with col_b2:
-            if st.button(f"🔬 Lượng Hóa 2 Lượt (Quant Pro)", type="secondary", width="stretch", key=btn_quant_key):
+            if st.button("🔬 Lượng Hóa 2 Lượt (Quant Pro)", type="secondary", width="stretch", key=btn_quant_key):
                 with st.spinner(f"Hệ thống Quant đang kiểm tra Data Gate & tính toán hàng rào 2 lượt cho {target_symbol}..."):
                     res = generate_quantamental_2pass_report(target_symbol)
                     st.session_state[f"cached_stock_report_{target_symbol}"] = res.get("report_text", "")

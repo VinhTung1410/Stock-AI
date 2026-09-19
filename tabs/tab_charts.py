@@ -1,12 +1,13 @@
 import textwrap
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
+
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from data_engine import get_stock_chart_data
-from components.tradingview_chart import generate_tradingview_html
 from components.echarts_valuation import generate_echarts_valuation_html
+from components.tradingview_chart import generate_tradingview_html
+from data_engine import get_stock_chart_data
 
 
 def render_market_header_card(df_vnindex: pd.DataFrame):

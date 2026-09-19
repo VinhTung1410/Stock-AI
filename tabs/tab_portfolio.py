@@ -1,7 +1,10 @@
 import os
-import streamlit as st
+
 import pandas as pd
+import streamlit as st
+
 from data_engine import save_portfolio, save_watchlist, update_google_sheet_portfolio, update_google_sheet_watchlist
+
 
 def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
     """Render Tab 4: Quản lý và chỉnh sửa danh mục nắm giữ & watchlist trực tiếp, đồng bộ 2 chiều với Google Sheets."""
@@ -90,7 +93,7 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
             })
 
         save_portfolio(new_portfolio)
-        
+
         # Xóa cache widget data editor để nạp lại dữ liệu sạch
         if "editor_portfolio" in st.session_state:
             del st.session_state["editor_portfolio"]

@@ -12,26 +12,28 @@
 =============================================================================
 """
 
-import time
 import logging
-from datetime import datetime, time as dtime
+import time
+from datetime import datetime
+from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
+from ai_analyst import generate_morning_strategy_report, generate_portfolio_analysis
 from data_engine import (
-    load_portfolio, 
-    evaluate_portfolio, 
-    load_watchlist, 
-    evaluate_watchlist, 
-    scan_market_opportunities, 
-    fetch_macro_news
+    evaluate_portfolio,
+    evaluate_watchlist,
+    fetch_macro_news,
+    is_symbol_in_cooldown,
+    load_portfolio,
+    load_watchlist,
+    record_signal_cooldown,
+    scan_market_opportunities,
 )
-from ai_analyst import generate_portfolio_analysis, generate_morning_strategy_report
 from discord_alerts import (
-    send_discord_webhook,
-    send_discord_dm,
     format_portfolio_embed,
-    send_risk_alert,
-    send_trade_signal_alert
+    send_discord_dm,
+    send_discord_webhook,
+    send_trade_signal_alert,
 )
 
 try:
@@ -54,18 +56,18 @@ sent_scheduled_reports = set()
 
 
 def get_vn_time() -> datetime:
-    """Lấy thời gian hiện tại chuẩn múi giờ Việt Nam."""
+    """Return current timestamp in Vietnam timezone (UTC+7)."""
     return datetime.now(VN_TZ)
 
 
 def is_market_open(dt: datetime) -> bool:
+    """Check if Vietnam Stock Exchange (HOSE/HNX) is currently in trading session.
+
+    - Mon to Fri
+    - Morning: 09:00 - 11:30
+    - Afternoon: 13:00 - 14:45
     """
-    Kiểm tra thị trường chứng khoán Việt Nam có đang trong phiên giao dịch không:
-    - Thứ 2 đến Thứ 6.
-    - Sáng: 09:00 - 11:30.
-    - Chiều: 13:00 - 14:45.
-    """
-    if dt.weekday() >= 5:  # Thứ 7 (5), Chủ Nhật (6)
+    if dt.weekday() >= 5:  # Saturday (5), Sunday (6)
         return False
 
     t = dt.time()
@@ -75,21 +77,21 @@ def is_market_open(dt: datetime) -> bool:
 
 
 def is_trading_day(dt: datetime) -> bool:
-    """Kiểm tra có phải ngày giao dịch (Thứ 2 đến Thứ 6) không."""
+    """Check if the given datetime falls on a regular trading day (Mon-Fri)."""
     return dt.weekday() < 5
 
 
 def check_realtime_risk():
-    """
-    TẦNG 1: CẢNH BÁO TỨC THÌ (< 1 GIÂY) VÀO DM DISCORD RIÊNG
-    1. Quét Danh mục Nắm giữ (Holdings): Bắn cảnh báo BÁN/Cắt lỗ (-5%, -7%, gãy MA20, RSI > 75).
-    2. Quét Danh mục Theo dõi (Watchlist): Bắn cảnh báo MUA (chạm giá chờ mua, bứt phá MA20 + vol).
+    """Tier 1: Real-time risk and opportunity monitoring (< 1s latency).
+
+    1. Holdings scan: Check stop-loss, trailing stops, MA20 breakdowns, overbought RSI.
+    2. Watchlist scan: Check target buy entries, MA20 breakouts with volume expansion.
     """
     now = get_vn_time()
     today_str = now.strftime("%Y-%m-%d")
 
     # =========================================================================
-    # PHẦN 1: QUÉT QUẢN TRỊ RỦI RO DANH MỤC NẮM GIỮ (PORTFOLIO)
+    # PART 1: REAL-TIME PORTFOLIO RISK AUDIT (HOLDINGS)
     # =========================================================================
     from data_engine import detect_gdkhq_event, fetch_stock_technical
     vnindex_tech = fetch_stock_technical("VNINDEX")
@@ -220,12 +222,12 @@ def check_realtime_risk():
                     f_score_txt = ""
                     f_score_dict = {"score": 6}
                     try:
-                        from data_engine import get_financial_ratios, fetch_stock_historical
-                        from quant_engine import check_data_gate, calculate_piotroski_f_score, calculate_atr
+                        from data_engine import fetch_stock_historical, get_financial_ratios
+                        from quant_engine import calculate_atr, calculate_piotroski_f_score, check_data_gate
                         fin = get_financial_ratios(sym)
                         gate = check_data_gate(sym, tech, fin)
                         f_score_dict = calculate_piotroski_f_score(fin)
-                        
+
                         if not gate["passed"]:
                             logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Không đạt Data Gate ({', '.join(gate['reasons'])})")
                             continue
@@ -234,7 +236,7 @@ def check_realtime_risk():
                             continue
 
                         f_score_txt = f" | F-Score: {f_score_dict['score']}/9"
-                        
+
                         # Tính ATR(14) Stop-Loss động thích ứng với biến động thực tế
                         df_hist = fetch_stock_historical(sym, time_frame="1D", limit=30)
                         if df_hist is not None and not df_hist.empty:
@@ -243,6 +245,11 @@ def check_realtime_risk():
                                 dynamic_sl = round(max(curr_p * 0.93, curr_p - 1.5 * atr_val), 2)
                     except Exception as q_err:
                         logging.debug(f"Bỏ qua kiểm tra quant: {q_err}")
+
+                    # KIỂM TRA COOLDOWN 5 NGÀY ĐỂ BẢO VỆ VỐN & TRÁNH SPAM LẶP LẠI TÍN HIỆU
+                    if is_symbol_in_cooldown(sym, cooldown_days=5):
+                        logging.info(f"⏳ Bỏ qua cảnh báo mua {sym}: đang trong thời gian cooldown 5 ngày.")
+                        continue
 
                     target_p = round(curr_p * 1.12, 2)
                     logging.info(f"🟢 BẮN TÍN HIỆU MUA WATCHLIST: {sym} (SL: {dynamic_sl}k{f_score_txt})")
@@ -255,6 +262,7 @@ def check_realtime_risk():
                         stop_loss=dynamic_sl
                     )
                     sent_alerts.add(alert_key_wl_buy)
+                    record_signal_cooldown(sym, action="MUA", conviction_score=75.0)
 
                     # LƯU SNAPSHOT BẤT BIẾN VÀO SUPABASE SIGNAL LIFECYCLE
                     try:
@@ -277,17 +285,13 @@ def check_realtime_risk():
                         )
                     except Exception as sb_err:
                         logging.error(f"Lỗi ghi Supabase Signal: {sb_err}")
-            except Exception as e:
+            except Exception:
                 continue
 
 
 def trigger_scheduled_report(report_type: str, title_desc: str):
-    """
-    TẦNG 2: BÁO CÁO CHIẾN LƯỢC TOÀN DIỆN CỦA AI (HẸN GIỜ CHUẨN XÁC)
-    - 08:45 Sáng: Báo cáo khuyến nghị đầu ngày (Gợi ý cổ phiếu tiềm năng chuẩn CTCK).
-    - 11:30 & 14:45: Báo cáo đánh giá danh mục & chiến lược phiên.
-    """
-    logging.info(f"🚀 BẮT ĐẦU TẠO BÁO CÁO CHIẾN LƯỢC: {report_type} ({title_desc})")
+    """Tier 2: AI-driven scheduled strategy reports (ATO 08:45, Lunch 11:30, ATC 14:45)."""
+    logging.info(f"🚀 Starting scheduled strategy report: {report_type} ({title_desc})")
     try:
         portfolio = load_portfolio()
         df_eval = evaluate_portfolio(portfolio)
@@ -296,7 +300,7 @@ def trigger_scheduled_report(report_type: str, title_desc: str):
         news = fetch_macro_news(limit=10, tracked_symbols=[p["symbol"] for p in portfolio] + [w["symbol"] for w in watchlist])
 
         if "08:45" in report_type or "ATO" in report_type:
-            # Báo cáo đầu ngày: Quét cơ hội thị trường + Watchlist
+            # Morning report: Market opportunity scan + Watchlist
             opportunities = scan_market_opportunities(extra_symbols=[w["symbol"] for w in watchlist])
             ai_text = generate_morning_strategy_report(df_eval, df_wl, opportunities, news)
         else:
@@ -304,32 +308,32 @@ def trigger_scheduled_report(report_type: str, title_desc: str):
 
         embed = format_portfolio_embed(df_eval, ai_text, report_type=report_type)
 
-        # Gửi vào Kênh Webhook chung
+        # Send to Discord Webhook channel
         send_discord_webhook(embeds=[embed])
 
-        # Gửi vào Hộp thư cá nhân (DM Bot) của bạn
+        # Send to private DM
         send_discord_dm(embeds=[embed])
 
-        logging.info(f"✅ ĐÃ BẮN THÀNH CÔNG BÁO CÁO {report_type} ĐẾN DISCORD!")
+        logging.info(f"✅ Successfully dispatched {report_type} report to Discord!")
     except Exception as e:
-        logging.error(f"❌ Lỗi khi gửi báo cáo chiến lược {report_type}: {e}")
+        logging.error(f"❌ Error dispatching scheduled report {report_type}: {e}")
 
 
 def trigger_post_market_audit():
+    """Tier 3: Automated post-market signal audit process (15:15 UTC+7).
+
+    - Data Freshness Check: Skip audit if market closing data not finalized (PENDING_DATA).
+    - Update MFE (highest high), MAE (lowest low), and T+1, T+5, T+20 marks.
+    - Evaluate state transition (TARGET_HIT / STOP_LOSS) and measure Alpha vs VN-Index.
+    - Dispatch Alpha Tracker audit summary embed to Discord.
     """
-    TẦNG 3: TIẾN TRÌNH TỰ ĐỘNG KIỂM TOÁN TÍN HIỆU SAU PHIÊN (15:15 CHIỀU UTC+7):
-    - Data Freshness Check: Không audit giả nếu dữ liệu đóng cửa sàn chưa chốt ổn định (PENDING_DATA).
-    - Cập nhật MFE (Đỉnh cao nhất), MAE (Đáy sâu nhất), các mốc T+1, T+5, T+20.
-    - Đánh giá chuyển trạng thái TARGET_HIT / STOP_LOSS và đo lường Alpha so với VN-Index.
-    - Bắn báo cáo kiểm toán Alpha Tracker vào Discord.
-    """
-    logging.info("🚀 BẮT ĐẦU TIẾN TRÌNH TỰ ĐỘNG KIỂM TOÁN TÍN HIỆU SAU PHIÊN (15:15)...")
+    logging.info("🚀 Starting automated post-market signal audit (15:15)...")
     try:
-        from db_manager import update_daily_tracking, get_signal_audit_metrics
+        from db_manager import get_signal_audit_metrics, update_daily_tracking
         audit_res = update_daily_tracking()
 
         if audit_res.get("status") == "PENDING_DATA":
-            logging.warning("⚠️ DATA FRESHNESS CHECK: Dữ liệu thị trường chưa sẵn sàng. Hoãn audit giả định.")
+            logging.warning("⚠️ DATA FRESHNESS CHECK: Market data not ready. Deferring audit.")
             return
 
         metrics = get_signal_audit_metrics()
@@ -350,16 +354,16 @@ def trigger_post_market_audit():
         }
         send_discord_webhook(embeds=[embed])
         send_discord_dm(embeds=[embed])
-        logging.info("✅ ĐÃ GỬI THÀNH CÔNG BÁO CÁO KIỂM TOÁN 15:15 ĐẾN DISCORD!")
+        logging.info("✅ Successfully dispatched 15:15 audit report to Discord!")
     except Exception as e:
-        logging.error(f"❌ Lỗi tiến trình kiểm toán 15:15: {e}")
+        logging.error(f"❌ Error in 15:15 post-market audit process: {e}")
 
 
 def run_trading_bot_loop(check_interval_sec: int = 30):
-    """
-    VÒNG LẶP CHÍNH CỦA TRADING BOT:
-    - Canh đúng từng giây các mốc: 08:45, 11:30, 14:45, 15:15.
-    - Trong giờ giao dịch: Quét giá mỗi 30 giây để bắn cảnh báo khẩn cấp.
+    """Main event loop for the background trading bot.
+
+    - Accurately triggers scheduled reports: 08:45, 11:30, 14:45, 15:15.
+    - Scans intraday prices every 30 seconds for emergency risk alerts.
     """
     logging.info("=" * 65)
     logging.info("🌟 TRADING BOT DAEMON ĐÃ KHỞI CHẠY THÀNH CÔNG!")

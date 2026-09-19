@@ -1,8 +1,9 @@
 import textwrap
-import json
-import streamlit as st
+
 import pandas as pd
-from db_manager import get_signal_audit_metrics, update_daily_tracking, get_supabase_client
+import streamlit as st
+
+from db_manager import get_signal_audit_metrics, update_daily_tracking
 
 
 def _safe_pct(val, default="Đang chạy (N/A)"):
@@ -140,8 +141,8 @@ def render_tab_alpha_tracker():
 
     # Hiển thị bảng tổng hợp
     display_cols = [
-        "ID", "Mã", "Ngày phát", "Hành động", "Giá vào", "Giá Target", "Stop-Loss", 
-        "Trạng thái", "PnL Thực tế (%)", "Alpha vs VNI (%)", "Đỉnh MFE", "Đáy MAE", 
+        "ID", "Mã", "Ngày phát", "Hành động", "Giá vào", "Giá Target", "Stop-Loss",
+        "Trạng thái", "PnL Thực tế (%)", "Alpha vs VNI (%)", "Đỉnh MFE", "Đáy MAE",
         "MoS (%)", "F-Score", "Nguyên nhân nếu lỗ"
     ]
     avail_cols = [c for c in display_cols if c in filtered_df.columns]
@@ -158,7 +159,7 @@ def render_tab_alpha_tracker():
     # 5. BÓC TÁCH CHI TIẾT SNAPSHOT (INSPECTOR: BOT NHÌN THẤY GÌ LÚC ĐÓ?)
     st.divider()
     st.markdown("### 🔍 Hộp Đen Kiểm Toán: 'Tại thời điểm phát tín hiệu, Bot thực sự nhìn thấy gì?'")
-    
+
     def _format_signal_label(x):
         matches = filtered_df[filtered_df["ID"] == x]
         if matches.empty:

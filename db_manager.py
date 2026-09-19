@@ -1,37 +1,39 @@
-import os
 import logging
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
+
 import pandas as pd
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 _supabase: Client = None
 
 
 def get_supabase_client() -> Client:
-    """Khởi tạo và trả về Supabase Client an toàn, tự động chuẩn hóa URL."""
+    """Initialize and return the Supabase client (singleton, auto-cleans URL)."""
     global _supabase
     if _supabase is None:
         url = os.environ.get("SUPABASE_URL", "").strip()
         key = os.environ.get("SUPABASE_KEY", "").strip()
 
         if not url or not key:
-            logging.warning("Chưa cấu hình SUPABASE_URL hoặc SUPABASE_KEY trong .env")
+            logging.warning("SUPABASE_URL or SUPABASE_KEY not configured in .env")
             return None
 
-        # Tự động loại bỏ đuôi /rest/v1 hoặc dấu / thừa
+        # Automatically strip /rest/v1 suffix or trailing slashes
         clean_url = url.split("/rest/v1")[0].rstrip("/")
 
         try:
             _supabase = create_client(clean_url, key)
         except Exception as e:
-            logging.error(f"Lỗi khởi tạo Supabase Client: {e}")
+            logging.error(f"Failed to initialize Supabase client: {e}")
             return None
     return _supabase
 
@@ -51,10 +53,14 @@ def save_quant_signal(
     model_version: str = "gemini-flash-v2.1",
     input_snapshot: dict = None
 ) -> int:
-    """
-    LƯU TRỌN VẸN SNAPSHOT BẤT BIẾN (IMMUTABLE SNAPSHOT) KHI NỔ TÍN HIỆU:
-    Lưu đầy đủ: signal_id, signal_timestamp, entry_price, market_price_at_signal,
-    Data Gate, F-Score, Z-Score, MoS, Kelly, EV, Probability và input_snapshot nguyên bản.
+    """Save an immutable signal snapshot to Supabase when a buy/sell signal fires.
+
+    Stores the complete context at signal time: entry price, hard gate results,
+    F-Score, Z-Score, probabilities, and raw input data. Also creates an
+    initial OPEN tracking record for post-market audit.
+
+    Returns:
+        Signal ID (int) on success, or None on failure.
     """
     client = get_supabase_client()
     if not client:
@@ -117,7 +123,7 @@ def save_quant_signal(
 
 
 def fetch_open_signals() -> list:
-    """Lấy danh sách các tín hiệu đang OPEN để tiến trình kiểm toán theo dõi."""
+    """Fetch all signals with OPEN status for the post-market audit process."""
     client = get_supabase_client()
     if not client:
         return []
@@ -131,17 +137,63 @@ def fetch_open_signals() -> list:
                 open_list.append(row)
         return open_list
     except Exception as e:
-        logging.error(f"Lỗi truy vấn Open Signals: {e}")
+        logging.error(f"Failed to query open signals: {e}")
         return []
 
 
+def check_symbol_recent_signal(symbol: str, days: int = 5) -> bool:
+    """Check if a ticker has had a BUY signal within the last N days on Supabase."""
+    client = get_supabase_client()
+    if not client:
+        return False
+    try:
+        from datetime import timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        res = (
+            client.table("signals")
+            .select("id, symbol, created_at, action")
+            .eq("symbol", symbol.upper().strip())
+            .gte("created_at", cutoff)
+            .ilike("action", "%BUY%")
+            .execute()
+        )
+        return bool(res.data and len(res.data) > 0)
+    except Exception as e:
+        logging.debug(f"Error checking Supabase signal cooldown for {symbol}: {e}")
+        return False
+
+
+def get_open_signals_count() -> int:
+    """Count active OPEN positions in Supabase signal_tracking table."""
+    client = get_supabase_client()
+    if not client:
+        return 0
+    try:
+        res = (
+            client.table("signal_tracking")
+            .select("id", count="exact")
+            .eq("status", "OPEN")
+            .execute()
+        )
+        if hasattr(res, "count") and res.count is not None:
+            return res.count
+        return len(res.data or [])
+    except Exception as e:
+        logging.debug(f"Error counting open signals: {e}")
+        return 0
+
+
 def update_daily_tracking() -> dict:
-    """
-    TIẾN TRÌNH KIỂM TOÁN TÍN HIỆU SAU PHIÊN (15:15 POST-MARKET AUDIT):
-    1. Data Freshness Check: Kiểm tra dữ liệu đóng cửa chính thức của sàn. Nếu chưa ổn định -> PENDING_DATA.
-    2. Cập nhật MFE (Đỉnh cao nhất), MAE (Đáy sâu nhất), và các mốc T+1, T+5, T+20, T+60.
-    3. Đánh giá Hit Target / Stop Loss dứt khoát -> Chuyển trạng thái TARGET_HIT / STOP_LOSS.
-    4. Tính toán Alpha so với VN-Index và gắn nhãn nguyên nhân nếu thua (Loss Attribution).
+    """Post-market audit process (runs at 15:15 VN time).
+
+    Steps:
+    1. Data Freshness Check — verify official close prices are available
+    2. Update MFE (max favorable), MAE (max adverse), and T+1/5/20/60 marks
+    3. Transition signals to TARGET_HIT or STOP_LOSS when thresholds are crossed
+    4. Calculate Alpha vs VN-Index and attribute losses (market vs AI)
+
+    Returns:
+        Dict with 'status', 'updated_count', 'resolved_count'.
     """
     client = get_supabase_client()
     if not client:
@@ -152,15 +204,15 @@ def update_daily_tracking() -> dict:
     # 1. DATA FRESHNESS CHECK
     vnindex_tech = fetch_stock_technical("VNINDEX")
     if not vnindex_tech or not vnindex_tech.get("current_price"):
-        logging.warning("⚠️ DATA FRESHNESS CHECK FAILED: Dữ liệu thị trường chưa chốt phiên. Đánh dấu PENDING_DATA.")
-        return {"status": "PENDING_DATA", "message": "Dữ liệu thị trường chưa sẵn sàng", "updated": 0}
+        logging.warning("⚠️ DATA FRESHNESS CHECK FAILED: Market close data not finalized. Tagged as PENDING_DATA.")
+        return {"status": "PENDING_DATA", "message": "Market data not ready", "updated": 0}
 
     vnindex_chg = vnindex_tech.get("change_pct", 0.0)
 
     open_signals = fetch_open_signals()
     if not open_signals:
-        logging.info("ℹ️ Không có tín hiệu nào đang ở trạng thái OPEN cần kiểm toán.")
-        return {"status": "SUCCESS", "message": "Không có tín hiệu OPEN", "updated": 0}
+        logging.info("ℹ️ No signals in OPEN status require auditing.")
+        return {"status": "SUCCESS", "message": "No open signals", "updated": 0}
 
     updated_count = 0
     now_utc = datetime.now(timezone.utc).isoformat()
@@ -258,7 +310,7 @@ def update_daily_tracking() -> dict:
                 "pnl_vs_vnindex": alpha_pct,
                 "loss_attribution": loss_attribution
             })
-            logging.info(f"🎯 VỊ THẾ {sym} ĐÃ ĐÓNG: Trạng thái = {new_status} | P/L = {pnl_pct:+.2f}% | Alpha = {alpha_pct:+.2f}%")
+            logging.info(f"🎯 POSITION {sym} CLOSED: Status = {new_status} | P/L = {pnl_pct:+.2f}% | Alpha = {alpha_pct:+.2f}%")
 
         # Cập nhật Supabase
         if tracking_id:
@@ -269,15 +321,12 @@ def update_daily_tracking() -> dict:
 
         updated_count += 1
 
-    logging.info(f"✅ HOÀN TẤT KIỂM TOÁN SAU PHIÊN: Đã cập nhật {updated_count} tín hiệu!")
-    return {"status": "SUCCESS", "message": f"Cập nhật thành công {updated_count} tín hiệu", "updated": updated_count}
+    logging.info(f"✅ POST-MARKET AUDIT COMPLETE: Updated {updated_count} signals.")
+    return {"status": "SUCCESS", "message": f"Successfully updated {updated_count} signals", "updated": updated_count}
 
 
 def get_signal_audit_metrics() -> dict:
-    """
-    TRUY VẤN VÀ TÍNH TOÁN CÁC CHỈ SỐ KIỂM TOÁN HIỆU QUẢ CHO TAB 6 (ALPHA TRACKER):
-    Hit Rate, Average Return, Profit Factor, Alpha vs VN-Index, Lịch sử chi tiết & Bóc tách nguyên nhân.
-    """
+    """Query and calculate signal audit metrics for Alpha Tracker (Hit Rate, Profit Factor, Alpha vs VN-Index, Loss Attribution)."""
     client = get_supabase_client()
     empty_res = {
         "total_signals": 0,

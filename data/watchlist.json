@@ -28,5 +28,15 @@
     "symbol": "VHM",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
+  },
+  {
+    "symbol": "BSR",
+    "target_buy": 0.0,
+    "note": "Theo dõi từ Google Sheet"
+  },
+  {
+    "symbol": "PVD",
+    "target_buy": 0.0,
+    "note": "Theo dõi từ Google Sheet"
   }
 ]

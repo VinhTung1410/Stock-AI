@@ -1,25 +1,33 @@
 """
-QUANT_ENGINE.PY - BỘ MÁY TÍNH TOÁN ĐỊNH LƯỢNG TẤT ĐỊNH (DETERMINISTIC QUANT ENGINE)
-Chuẩn mực Quản lý Quỹ:
-- Tính toán 100% bằng code Python, triệt tiêu hoàn toàn lỗi ảo giác số học của LLM.
-- Hàng rào kiểm soát chất lượng dữ liệu (Data Gate).
-- Điểm kiểm toán Piotroski F-Score (0-9) & Altman Z-Score (nguy cơ kiệt quệ tài chính).
-- Cắt lỗ động theo độ biến động thực tế ATR(14) và biên độ trần/sàn HOSE.
-- Tam giác định giá, Kỳ vọng sinh lời Expected Value (EV), Biên an toàn (MoS %) và Tỷ lệ Kelly Criterion (f*).
+Deterministic Quantitative Engine — computes all financial metrics via Python
+to eliminate LLM numerical hallucination.
+
+Capabilities:
+- Data Gate: reject signals when data quality is insufficient
+- Piotroski F-Score (0-9): financial health scoring
+- Altman Z-Score: bankruptcy risk assessment
+- ATR(14) volatility-based stop loss
+- Valuation triangle, Expected Value, Margin of Safety, Kelly Criterion
 """
 
-import math
 import logging
+
 import pandas as pd
 
-from quant_valuation import calculate_fair_value_and_mos, classify_stock_archetype, INSTITUTIONAL_CONSENSUS_TARGETS
+from quant_valuation import calculate_fair_value_and_mos
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
 def calculate_atr(df_history: pd.DataFrame, period: int = 14) -> float:
-    """
-    Tính Average True Range (ATR 14) phản ánh độ biến động giá thực tế của cổ phiếu.
+    """Calculate Average True Range reflecting actual price volatility.
+
+    Args:
+        df_history: OHLC DataFrame with 'high', 'low', 'close' columns.
+        period: ATR lookback window (default: 14).
+
+    Returns:
+        ATR value rounded to 2 decimals, or 0.0 on insufficient data.
     """
     try:
         if df_history is None or len(df_history) < period:
@@ -42,9 +50,19 @@ def calculate_atr(df_history: pd.DataFrame, period: int = 14) -> float:
 
 
 def calculate_piotroski_f_score(fin_dict: dict) -> dict:
-    """
-    Chấm điểm sức khỏe tài chính Piotroski F-Score (Thang điểm 0 - 9):
-    Đánh giá Khả năng sinh lời, Đòn bẩy/Thanh khoản, và Hiệu quả hoạt động.
+    """Score financial health using Piotroski F-Score model (0-9 scale).
+
+    Evaluates three pillars:
+    - Profitability (max 4 pts): ROA, cash flow, ROE, net margin
+    - Leverage / Liquidity (max 3 pts): D/E, current ratio, financial leverage
+    - Operating Efficiency (max 2 pts): gross margin, ROIC
+
+    Args:
+        fin_dict: Financial data with keys: roe, roa, debt_equity,
+                  current_ratio, gross_margin, net_margin, p_cf, roic.
+
+    Returns:
+        Dict with 'score' (0-9), 'max_score', 'rating', and 'breakdown'.
     """
     score = 0
     breakdown = {}
@@ -117,12 +135,18 @@ def calculate_piotroski_f_score(fin_dict: dict) -> dict:
 
 
 def calculate_altman_z_score(fin_dict: dict) -> dict:
-    """
-    Tính chỉ số phá sản Altman Z-Score ước lượng cho thị trường mới nổi (Emerging Market Z''-Score):
+    """Estimate Altman Z''-Score for emerging markets (bankruptcy risk).
+
     Z'' = 6.56*X1 + 3.26*X2 + 6.72*X3 + 1.05*X4
-    - Z > 2.90: Vùng Xanh (An toàn cao)
-    - 1.23 <= Z <= 2.90: Vùng Xám (Cần thận trọng theo dõi)
-    - Z < 1.23: Vùng Đỏ (Rủi ro kiệt quệ tài chính)
+    - Z >= 2.90: Safe Zone (green)
+    - 1.23 <= Z < 2.90: Grey Zone (caution)
+    - Z < 1.23: Distress Zone (red)
+
+    Args:
+        fin_dict: Financial data with keys: roa, debt_equity, current_ratio.
+
+    Returns:
+        Dict with 'z_score', 'zone' description, and 'icon' emoji.
     """
     try:
         roa = (fin_dict.get("roa") or 0.0) / 100.0
@@ -156,9 +180,21 @@ def calculate_altman_z_score(fin_dict: dict) -> dict:
 
 
 def check_data_gate(symbol: str, tech_dict: dict, fin_dict: dict, min_adv20_billion: float = 2.0) -> dict:
-    """
-    CỔNG KIỂM TRA DỮ LIỆU CỨNG (DATA GATE):
-    Ngăn chặn tuyệt đối việc đưa ra khuyến nghị mua bừa bãi đối với cổ phiếu cạn thanh khoản hoặc thiếu BCTC.
+    """Hard data quality gate — blocks recommendations for illiquid or stale-data stocks.
+
+    Checks:
+    1. Valid market price exists
+    2. Average daily volume (ADV20) meets minimum threshold
+    3. Financial statements are recent enough
+
+    Args:
+        symbol: Stock ticker.
+        tech_dict: Technical data with current_price, volume, adv20_billion.
+        fin_dict: Financial data with 'period' key.
+        min_adv20_billion: Minimum daily trading value in billion VND.
+
+    Returns:
+        Dict with 'passed' (bool), 'daily_value_billion', and 'reasons' list.
     """
     passed = True
     reasons = []
@@ -230,15 +266,18 @@ def evaluate_market_regime(
     portfolio_drawdown_pct: float = 0.0,
     margin_exposure_pct: float = 0.0
 ) -> dict:
-    """
-    Xác định Trạng thái thị trường (Market Regime) & Ngân sách Rủi ro Đa biến (Risk Budgeting):
-    - Không tự động gán cứng Bullish = 70-80% cổ phiếu.
-    - Kết hợp:
-      1. Market Trend (Điểm số VN-Index so với MA20 & MA50)
-      2. Market Breadth (Tỷ lệ cổ phiếu nằm trên MA20 trên thị trường)
-      3. Liquidity (Thanh khoản so với TB20 phiên)
-      4. Portfolio Drawdown (Mức sụt giảm NAV hiện tại)
-      5. Margin Exposure (Tỷ lệ đòn bẩy)
+    """Classify market regime and compute multi-variable risk budget.
+
+    Combines 5 factors into a risk score (0-100):
+    1. Market Trend — VN-Index vs MA20/MA50
+    2. Market Breadth — % of stocks above MA20
+    3. Liquidity — volume vs 20-day average
+    4. Portfolio Drawdown — current NAV decline
+    5. Margin Exposure — leverage ratio
+
+    Returns:
+        Dict with 'regime' (BULLISH/NEUTRAL/CORRECTION/RISK-OFF),
+        'stock_pct', 'cash_pct', 'risk_budget_score', 'bias', etc.
     """
     if not vnindex_tech:
         return {
@@ -336,17 +375,24 @@ def evaluate_market_regime(
 
 
 def calculate_weighted_entry_and_rr(
-    entry_prices: list,
-    weights: list = None,
+    entry_prices: list[float],
+    weights: list[float] | None = None,
     target_price: float = 0.0,
     stop_loss: float = 0.0
 ) -> dict:
-    """
-    TÍNH TOÁN ĐIỂM VÀO BÌNH QUÂN TRỌNG SỐ (WEIGHTED AVERAGE ENTRY) VÀ TỶ LỆ R:R CHUẨN XÁC:
-    - Reward = Target - Weighted Entry
-    - Risk = Weighted Entry - Stop Loss
-    - R:R = Reward / Risk
-    - Bắt buộc tính từ cùng một Weighted Entry, TUYỆT ĐỐI không tính R:R từ Current Price nếu Entry Price khác!
+    """Compute weighted average entry price and risk/reward ratio.
+
+    R:R is always calculated from the weighted entry — never from
+    current market price — to prevent misleading ratios.
+
+    Args:
+        entry_prices: List of entry prices for staged buying.
+        weights: Capital allocation weights (default: 30/40/30 for 3 entries).
+        target_price: Price target for profit taking.
+        stop_loss: Stop loss price level.
+
+    Returns:
+        Dict with 'weighted_entry', 'reward', 'risk', 'rr_ratio', 'is_valid'.
     """
     if not entry_prices:
         return {
@@ -394,16 +440,21 @@ def calculate_weighted_entry_and_rr(
     }
 
 
-def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict = None) -> dict:
-    """
-    ĐÁNH GIÁ VỊ THẾ ĐANG NẮM GIỮ (PORTFOLIO POSITION EVALUATOR) - CHUẨN V2.1:
-    - QUY TẮC CỐT TỬ 1: Khi cổ phiếu đang LÃI (P/L > 0), TUYỆT ĐỐI KHÔNG DÙNG TỪ "CẮT LỖ".
-      Phải chuyển sang "CHỐT LỜI TỪNG PHẦN / BẢO VỆ THÀNH QUẢ" và tính mốc TRAILING STOP cụ thể bằng số.
-    - QUY TẮC CỐT TỬ 2 (VALIDATION CLAMP): Đối với vị thế LONG, TRAILING STOP LUÔN NHỎ HƠN THỊ GIÁ HIỆN TẠI.
-      Tuyệt đối cấm xảy ra lỗi Current Price = 12.80 mà Trailing Stop = 12.84!
-    - Khi cổ phiếu LỖ (P/L <= 0):
-      + Vị thế Đầu tư giá trị dài hạn: Quản trị bằng THESIS BREAKER (chỉ bán khi luận điểm vỡ).
-      + Vị thế Lướt sóng Trading: Quản trị bằng STOP-LOSS KỸ THUẬT dứt khoát.
+def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict | None = None) -> dict:
+    """Evaluate an existing portfolio position and recommend action.
+
+    Core rules:
+    - Profitable positions (P/L > 0): use trailing stop, NEVER label as 'cut loss'.
+    - Trailing stop is always clamped below current price (validation invariant).
+    - Losing positions: value investments use thesis breaker; trades use technical stop.
+
+    Args:
+        row: Position data with 'symbol', 'avg_price', 'volume'.
+        tech_data: Technical data with 'current_price', 'atr', 'ma20'.
+        fin_dict: Optional financial data for enhanced evaluation.
+
+    Returns:
+        Dict with 'action', 'trailing_stop'/'stop_loss', 'pl_pct', 'detail', etc.
     """
     symbol = row.get("symbol", "")
     entry_price = float(row.get("avg_price", 0.0))
@@ -486,7 +537,7 @@ def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict = None)
             stop_loss = max(tech_stop, entry_price * 0.93)
         else:
             stop_loss = entry_price * 0.93
-            
+
         # Đảm bảo Stop-loss < curr_price
         stop_loss = min(round(float(stop_loss), 2), round(curr_price * 0.97, 2))
 
@@ -548,20 +599,20 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
     4. Dòng tiền lớn & Quản trị rủi ro (Smart Flow & Risk): Max 15 điểm
     """
     scores = {}
-    
+
     # --- Trụ cột 1: Sức khỏe tài chính (Max 35) ---
     f_res = calculate_piotroski_f_score(fin_dict)
     f_pts = min(round((f_res.get("score", 5) / 9.0) * 18, 1), 18.0)  # Max 18đ
-    
+
     z_res = calculate_altman_z_score(fin_dict)
     z_val = z_res.get("z_score", 2.0)
     z_pts = 10.0 if z_val >= 2.9 else (6.0 if z_val >= 1.8 else 2.0)  # Max 10đ
-    
+
     roe = (fin_dict.get("roe") or 0.0) if fin_dict else 0.0
     roe_pts = 7.0 if roe >= 18.0 else (5.0 if roe >= 12.0 else (3.0 if roe >= 8.0 else 1.0)) # Max 7đ
     pillar_fundamental = round(f_pts + z_pts + roe_pts, 1)
     scores["pillar_fundamental"] = pillar_fundamental
-    
+
     # --- Trụ cột 2: Định giá & Biên an toàn (Max 30) ---
     mos_pct = mos_data.get("mos_pct", 0.0) if mos_data else 0.0
     if mos_pct >= 25.0:
@@ -577,21 +628,21 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
     else:
         mos_pts = 2.0  # Quá đắt
     scores["pillar_valuation"] = mos_pts
-    
+
     # --- Trụ cột 3: Kỹ thuật & Xu hướng (Max 20) ---
     curr = tech_data.get("current_price", 0.0)
     ma20 = tech_data.get("ma20", curr)
     rsi = tech_data.get("rsi", 50.0)
     vol = tech_data.get("volume", 0)
     vol_ma20 = tech_data.get("vol_ma20", vol)
-    
+
     tech_pts = 0.0
     # Nằm trên MA20
     if curr >= ma20:
         tech_pts += 8.0
     elif curr >= ma20 * 0.98:
         tech_pts += 4.0
-        
+
     # RSI lành mạnh (45 - 65)
     if 48.0 <= rsi <= 65.0:
         tech_pts += 7.0
@@ -601,14 +652,14 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
         tech_pts += 3.0
     else:
         tech_pts += 1.0
-        
+
     # Khối lượng có tín hiệu hấp thụ
     if vol_ma20 > 0 and vol >= vol_ma20 * 1.1:
         tech_pts += 5.0
     else:
         tech_pts += 3.0
     scores["pillar_technical"] = round(tech_pts, 1)
-    
+
     # --- Trụ cột 4: Dòng tiền lớn & Thanh khoản (Max 15) ---
     flow_pts = 0.0
     foreign = tech_data.get("foreign_flow") or {}
@@ -619,7 +670,7 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
         flow_pts += 5.0
     else:
         flow_pts += 1.0  # Bị xả mạnh
-        
+
     adv20 = tech_data.get("adv20_billion", 10.0)
     if adv20 >= 30.0:
         flow_pts += 7.0
@@ -630,9 +681,9 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
     else:
         flow_pts += 0.0
     scores["pillar_smart_flow"] = round(flow_pts, 1)
-    
+
     total_score = round(pillar_fundamental + mos_pts + tech_pts + flow_pts, 1)
-    
+
     if total_score >= 80.0:
         rating = "XUẤT SẮC (Ưu tiên giải ngân lớn / Tích lũy chủ lực)"
         grade = "A+"
@@ -645,7 +696,7 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
     else:
         rating = "YẾU / RỦI RO (Không đạt tiêu chí giải ngân)"
         grade = "C"
-        
+
     return {
         "total_score": total_score,
         "grade": grade,
@@ -663,23 +714,29 @@ def evaluate_decision_hard_gates(
     price_base: float,
     price_bear: float,
     atr: float = 0.0,
-    trap_info: dict = None,
-    foreign_flow: dict = None,
+    trap_info: dict | None = None,
+    foreign_flow: dict | None = None,
     adv20_billion: float = 0.0,
     symbol: str = "",
-    fin_dict: dict = None,
+    fin_dict: dict | None = None,
     sector: str = "",
-    tech_data: dict = None
+    tech_data: dict | None = None
 ) -> dict:
-    """
-    TÍNH TOÁN HÀNG RÀO QUYẾT ĐỊNH ĐỊNH LƯỢNG (HARD GATES) - CHUẨN V2.1:
-    TÁCH BIỆT RẠCH RÒI TÍN HIỆU GIÁ TRỊ (VALUE) VÀ TÍN HIỆU KỸ THUẬT (TECHNICAL):
-    - Tuyệt đối không dùng 'Kỹ thuật yếu = AVOID / TRÁNH BẪY' nếu Cơ bản & Định giá vẫn tốt.
-    - 4 TRẠNG THÁI QUYẾT ĐỊNH CHUẨN:
-      1. 🟢 VALUE BUY: Cơ bản tốt + MoS >= 15% + Kỹ thuật bứt phá/trên MA20
-      2. 🟢 ACCUMULATE: Cơ bản tốt + MoS >= 15% + Kỹ thuật tích lũy nền chặt
-      3. 🟡 WATCH / WAIT FOR CONFIRMATION: Cơ bản tốt + MoS >= 8% nhưng Kỹ thuật yếu/rơi (như MWG), hoặc MoS chưa đủ dày
-      4. 🔴 REDUCE / EXIT: Định giá quá đắt (MoS âm) hoặc gãy nền sâu / Thesis Breaker kích hoạt
+    """Compute deterministic hard gates for buy/sell decision.
+
+    Strictly separates value signals from technical signals:
+    - Good fundamentals + weak technicals = WATCH (never AVOID)
+    - Automatically rejects buy if MoS < 8%, R:R < 1.5, or Kelly <= 0
+
+    Decision states:
+    1. 🟢 VALUE BUY — strong fundamentals + MoS >= 15% + bullish technicals
+    2. 🟢 ACCUMULATE — strong fundamentals + MoS >= 15% + base formation
+    3. 🟡 WATCH — good value but weak technicals (needs confirmation)
+    4. 🔴 REDUCE/EXIT — overvalued or thesis breaker triggered
+
+    Returns:
+        Dict with 'decision_tag', 'action_state', 'mos_pct', 'ev',
+        'kelly_f', 'risk_reward', 'tech_signal', etc.
     """
     if not current_price or current_price <= 0:
         return {}
@@ -691,13 +748,13 @@ def evaluate_decision_hard_gates(
         fin_dict=fin_dict or {},
         sector=sector
     )
-    
+
     fair_value = val_model.get("fair_value", price_base)
     mos_pct = val_model.get("mos_pct", round(((price_base - current_price) / price_base) * 100, 2))
     val_method = val_model.get("valuation_method", "N/A")
     val_confidence = val_model.get("confidence", "MEDIUM")
     price_target = val_model.get("price_target") or round(fair_value * 1.08, 2)
-    
+
     # 1. Expected Value
     ev = (p_bull * price_bull) + (p_base * price_base) + (p_bear * price_bear)
     ev = round(float(ev), 2)
@@ -714,7 +771,7 @@ def evaluate_decision_hard_gates(
 
     downside_val = max(current_price - stop_loss, 0.01)
     upside_val = max(price_target - current_price, 0.01)
-    
+
     # 3. Tỷ lệ Risk / Reward R (theo Current nếu chưa có weighted entry)
     rr = round(upside_val / downside_val, 2) if downside_val > 0 else 1.0
 
@@ -728,7 +785,7 @@ def evaluate_decision_hard_gates(
     ma20 = tech_data.get("ma20", current_price) if tech_data else current_price
     ma50 = tech_data.get("ma50", current_price) if tech_data else current_price
     rsi = tech_data.get("rsi", 50.0) if tech_data else 50.0
-    
+
     is_falling_knife = False
     if current_price < ma20 * 0.95 and rsi < 36.0:
         is_falling_knife = True

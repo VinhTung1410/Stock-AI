@@ -1,7 +1,9 @@
+import logging
 import os
 import time
-import logging
+
 import requests
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -218,7 +220,7 @@ def format_portfolio_embed(portfolio_df, ai_summary: str, report_type: str = "B�
     for _, row in portfolio_df.iterrows():
         pnl_pct = row["Lãi/Lỗ (%)"]
         pnl_icon = "🟢" if pnl_pct >= 0 else "🔴"
-        
+
         # Trailing Stop hoặc Stop-loss
         def_val = row.get("Chặn lãi/Cắt lỗ (k)")
         if def_val:
@@ -315,7 +317,7 @@ def send_trade_signal_alert(symbol: str, action: str, current_price: float, trig
             "text": "Trading Signal Bot • Tín hiệu riêng tư 24/7",
         },
     }
-    
+
     # Ưu tiên gửi thẳng vào DM riêng của User
     if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
         return send_discord_dm(embeds=[embed])
@@ -350,8 +352,8 @@ def send_risk_alert(symbol: str, current_price: float, cost_price: float, trigge
 
 
 if __name__ == "__main__":
-    from data_engine import load_portfolio, evaluate_portfolio, fetch_macro_news
     from ai_analyst import generate_portfolio_analysis
+    from data_engine import evaluate_portfolio, fetch_macro_news, load_portfolio
 
     print("=== KIỂM TRA GỬI BÁO CÁO TOÀN DIỆN ĐẾN DISCORD ===")
     portfolio = load_portfolio()

@@ -1,1 +1,1 @@
-# tests package
+# Stock-AI test package

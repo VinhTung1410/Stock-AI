@@ -1,5 +1,7 @@
 import json
+
 import pandas as pd
+
 
 def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
     """

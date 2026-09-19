@@ -1,9 +1,12 @@
-import textwrap
 import html
-import streamlit as st
+import textwrap
+
 import pandas as pd
+import streamlit as st
+
 from data_engine import fetch_macro_news
-from discord_alerts import send_discord_webhook, format_portfolio_embed, send_discord_dm
+from discord_alerts import format_portfolio_embed, send_discord_dm, send_discord_webhook
+
 
 def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.DataFrame = None, raw_watchlist: list = None):
     """Render Tab 1: Tổng quan danh mục nắm giữ, Cổ phiếu theo dõi (Watchlist), Cảnh báo Discord & Tin tức CafeF."""
@@ -105,7 +108,7 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
         st.caption("Quản trị lãi/lỗ, Biên an toàn (MoS %), Mốc Trailing Stop bảo vệ lợi nhuận và vị thế kỹ thuật.")
         df_eval_clean = df_eval[df_eval["Mã CP"].astype(str).str.strip().str.len() >= 3].copy()
         eval_height = min(360, (len(df_eval_clean) + 1) * 36 + 6)
-        
+
         eval_format = {
             "Giá vốn (k)": "{:.2f}",
             "Thị giá (k)": "{:.2f}",
@@ -166,7 +169,7 @@ def render_tab_overview(df_eval: pd.DataFrame, raw_portfolio: list, df_wl: pd.Da
         # 3. BẢN ĐỒ HIỆU SUẤT NHÓM NGÀNH NÓNG (HOT SECTORS)
         st.markdown("### 🔥 Dòng Tiền & Sóng Ngành Nóng Trong Phiên")
         st.caption("Tổng hợp biến động dòng tiền theo các nhóm ngành dẫn dắt thị trường.")
-        
+
         sectors_data = [
             {"name": "Dầu khí & Năng lượng", "change": "+2.85%", "val": 2.85, "leader": "BSR, PVD, PVS"},
             {"name": "Chứng khoán", "change": "+1.92%", "val": 1.92, "leader": "SSI, VND, VCI"},

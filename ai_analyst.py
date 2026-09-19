@@ -1,16 +1,18 @@
-import os
 import json
-import re
 import logging
+import os
+import re
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
 from google import genai
-from data_engine import load_portfolio, evaluate_portfolio, fetch_macro_news
+
+from data_engine import evaluate_portfolio, fetch_macro_news, load_portfolio
 from quant_engine import evaluate_holding_position, evaluate_market_regime
-from quant_valuation import calculate_fair_value_and_mos, INSTITUTIONAL_CONSENSUS_TARGETS
+from quant_valuation import calculate_fair_value_and_mos
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -113,12 +115,7 @@ def get_ai_client():
     return genai.Client(api_key=GEMINI_API_KEY)
 
 
-from quant_sanity_check import (
-    validate_holding_position,
-    validate_trade_setup,
-    validate_valuation_mos,
-    validate_value_vs_technical
-)
+from quant_sanity_check import validate_holding_position, validate_trade_setup
 
 
 def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, custom_question: str = None) -> str:
@@ -139,17 +136,17 @@ def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, cus
             entry_p = float(row.get("avg_price", row.get("Giá vốn (k)", 0.0)))
             curr_p = float(row.get("market_price", row.get("Thị giá (k)", entry_p)))
             pl_p = ((curr_p - entry_p) / entry_p * 100) if entry_p > 0 else 0.0
-            
+
             mock_tech = {
                 "current_price": curr_p,
                 "atr": float(row.get("atr", 0.0)) if "atr" in row else (curr_p * 0.025),
                 "ma20": float(row.get("ma20", curr_p)) if "ma20" in row else curr_p
             }
             eval_res = evaluate_holding_position(row.to_dict(), mock_tech)
-            
+
             # SANITY CHECK CỨNG
             _, _, eval_res = validate_holding_position(eval_res)
-            
+
             if eval_res["is_profit"]:
                 quant_eval_lines.append(
                     f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá ATC: {curr_p:.2f}k | Lãi: +{pl_p:.1f}% | "
@@ -295,11 +292,11 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
         val_method = val_res.get("valuation_method", o.get("valuation_method", "N/A"))
         val_conf = val_res.get("confidence", o.get("confidence", "MEDIUM"))
         p_target = val_res.get("price_target") or o.get("target_price") or round(fv * 1.05, 2)
-        
+
         status = o.get("status", "")
         avg_entry = o.get("avg_cost", o.get("current_price", 0.0))
         stop = o.get("stop_loss", round(avg_entry * 0.93, 2))
-        
+
         # SANITY CHECK CHO R:R THEO WEIGHTED ENTRY
         setup_dict = {
             "weighted_entry": avg_entry,
@@ -434,7 +431,7 @@ def generate_market_risk_scenarios(vnindex_df, news_items) -> str:
 
     if news_items:
         news_str = "\n".join([
-            f"- [{n.get('tag', n.get('keyword', 'TIN TỨC')).upper()}] {n.get('title', '')}" 
+            f"- [{n.get('tag', n.get('keyword', 'TIN TỨC')).upper()}] {n.get('title', '')}"
             for n in news_items[:8]
         ])
     else:
@@ -700,13 +697,13 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     - Lượt 2 (LLM): Nhận các số liệu do Python tính toán và viết Báo cáo Định chế chuẩn CFA, tuyệt đối không bịa số.
     """
     client = get_ai_client()
-    from data_engine import fetch_stock_technical, get_financial_ratios, fetch_macro_news
+    from data_engine import fetch_macro_news, fetch_stock_technical, get_financial_ratios
     from quant_engine import (
-        check_data_gate,
-        calculate_piotroski_f_score,
         calculate_altman_z_score,
+        calculate_piotroski_f_score,
         calculate_valuation_triangle,
-        evaluate_decision_hard_gates
+        check_data_gate,
+        evaluate_decision_hard_gates,
     )
 
     symbol = symbol.strip().upper()
@@ -749,7 +746,7 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
 
     ff = tech_data.get("foreign_flow", {})
     ff_str = f"Mua {ff.get('buy_val_bil', 0):.1f} tỷ, Bán {ff.get('sell_val_bil', 0):.1f} tỷ, Ròng {ff.get('net_val_bil', 0):+.1f} tỷ ({ff.get('status_vi', 'N/A')})" if ff else "Chưa có số liệu giao dịch."
-    
+
     tr = tech_data.get("trap_info", {})
     tr_str = f"⚠️ CẢNH BÁO BẪY: {tr.get('warning_msg')}" if tr.get("is_trap") else "✅ Không phát hiện bẫy nguy hiểm."
     adv_str = f"{tech_data.get('adv20_billion', 0):.2f} tỷ/phiên" if tech_data.get('adv20_billion') else "N/A"
@@ -797,7 +794,7 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
             prob_dict = json.loads(json_match.group(0))
         else:
             prob_dict = json.loads(raw_text)
-        
+
         p_bull = float(prob_dict.get("P_bull", 0.25))
         p_base = float(prob_dict.get("P_base", 0.50))
         p_bear = float(prob_dict.get("P_bear", 0.25))
@@ -979,7 +976,7 @@ if __name__ == "__main__":
     portfolio = load_portfolio()
     df_eval = evaluate_portfolio(portfolio)
     news = fetch_macro_news()
-    
+
     print("Đang gửi dữ liệu đến Gemini...")
     analysis = generate_portfolio_analysis(df_eval, news)
     print("\n--- BÁO CÁO PHÂN TÍCH TỪ GEMINI ---")

@@ -1,26 +1,33 @@
 """
-QUANT_SANITY_CHECK.PY - BỘ KIỂM TOÁN TÍNH NHẤT QUÁN TOÁN HỌC (SANITY CHECK ENGINE)
-Chuẩn mực Quỹ định chế:
-- 100% Nhất quán toán học (Mathematical Consistency) trước khi render báo cáo hoặc giao diện.
-- Kiểm tra chặt chẽ:
-  1. Current Price > Trailing Stop / Stop Loss (Vị thế Long).
-  2. Target > Entry > Stop Loss (Điểm mua mới).
-  3. R:R tính chuẩn xác từ cùng một Weighted Average Entry.
-  4. MoS % = (Fair Value - Current Price) / Fair Value * 100%.
-  5. Vị thế đang LÃI tuyệt đối cấm dùng từ CẮT LỖ.
-  6. Fundamental tốt + MoS dương không bị tự động chụp mũ AVOID / TRÁNH BẪY.
+Mathematical Consistency & Sanity Check Engine — institutional-grade
+validation layer before rendering UI or sending data to LLMs.
+
+Enforces 6 invariant rules:
+1. Long position: Current Price > Trailing Stop / Stop Loss.
+2. New trade setup: Target > Entry > Stop Loss.
+3. R:R consistency from the same weighted average entry.
+4. MoS % = (Fair Value - Current Price) / Fair Value * 100%.
+5. Profitable positions strictly prohibited from 'cut loss' labels.
+6. Strong value + positive MoS never misclassified as 'AVOID'.
 """
 
 import logging
+
 import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-def validate_holding_position(pos: dict) -> tuple:
-    """
-    Kiểm toán vị thế đang nắm giữ:
-    - Trả về: (is_valid: bool, issues: list[str], sanitized_pos: dict)
+def validate_holding_position(pos: dict) -> tuple[bool, list[str], dict]:
+    """Audit a holding position against mathematical and label consistency rules.
+
+    Checks:
+    - P/L % matches (current - entry) / entry
+    - Profitable positions use trailing stop (not stop loss), clamped < current price
+    - Losing positions have stop loss < current price
+
+    Returns:
+        tuple of (is_valid: bool, issues: list[str], sanitized_pos: dict)
     """
     issues = []
     sanitized = dict(pos)
@@ -65,11 +72,15 @@ def validate_holding_position(pos: dict) -> tuple:
     return is_valid, issues, sanitized
 
 
-def validate_trade_setup(setup: dict) -> tuple:
-    """
-    Kiểm toán thiết lập giao dịch mua mới / tích lũy:
-    - Target > Entry > Stop Loss
+def validate_trade_setup(setup: dict) -> tuple[bool, list[str], dict]:
+    """Audit new buy / accumulation trade setup for order and R:R consistency.
+
+    Enforces:
+    - Long order: Target > Entry > Stop Loss
     - R:R = (Target - Entry) / (Entry - Stop Loss)
+
+    Returns:
+        tuple of (is_valid: bool, issues: list[str], sanitized_setup: dict)
     """
     issues = []
     sanitized = dict(setup)
@@ -104,11 +115,15 @@ def validate_trade_setup(setup: dict) -> tuple:
     return is_valid, issues, sanitized
 
 
-def validate_valuation_mos(val_dict: dict) -> tuple:
-    """
-    Kiểm toán Biên an toàn MoS % và tính sẵn có của mô hình định giá:
+def validate_valuation_mos(val_dict: dict) -> tuple[bool, list[str], dict]:
+    """Audit Margin of Safety (MoS) % and valuation model availability.
+
+    Enforces:
     - MoS % = (Fair Value - Current Price) / Fair Value * 100%
-    - Bắt buộc có Methodology và Confidence
+    - Valuation methodology and confidence presence
+
+    Returns:
+        tuple of (is_valid: bool, issues: list[str], sanitized_val: dict)
     """
     issues = []
     sanitized = dict(val_dict)
@@ -134,10 +149,14 @@ def validate_valuation_mos(val_dict: dict) -> tuple:
     return is_valid, issues, sanitized
 
 
-def validate_value_vs_technical(symbol: str, mos_pct: float, action_state: str, decision_tag: str) -> tuple:
-    """
-    Quy tắc cốt tử: Cơ bản & Định giá tốt (MoS >= 8%) nhưng Kỹ thuật yếu (như MWG)
-    TUYỆT ĐỐI KHÔNG CHỤP MŨ LÀ AVOID / TRÁNH BẪY!
+def validate_value_vs_technical(symbol: str, mos_pct: float, action_state: str, decision_tag: str) -> tuple[bool, str, str]:
+    """Guard against misclassifying high-value stocks with weak technicals as 'AVOID'.
+
+    If fundamental MoS >= 8% but technical is currently lagging (e.g. below MA20),
+    auto-remediates action to 'WATCH / WAIT FOR BASE' instead of 'AVOID'.
+
+    Returns:
+        tuple of (is_valid: bool, new_action: str, new_tag: str)
     """
     is_valid = True
     new_action = action_state
@@ -154,10 +173,11 @@ def validate_value_vs_technical(symbol: str, mos_pct: float, action_state: str, 
     return is_valid, new_action, new_tag
 
 
-def run_full_portfolio_sanity_check(df_portfolio: pd.DataFrame) -> tuple:
-    """
-    Kiểm toán toàn bộ bảng danh mục trước khi render UI hoặc gửi sang LLM.
-    Trả về: (all_passed: bool, log_issues: list[str], clean_df: pd.DataFrame)
+def run_full_portfolio_sanity_check(df_portfolio: pd.DataFrame) -> tuple[bool, list[str], pd.DataFrame]:
+    """Audit the entire portfolio DataFrame before UI rendering or LLM dispatch.
+
+    Returns:
+        tuple of (all_passed: bool, log_issues: list[str], clean_df: pd.DataFrame)
     """
     if df_portfolio is None or df_portfolio.empty:
         return True, [], df_portfolio

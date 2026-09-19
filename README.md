@@ -1,130 +1,281 @@
-# 📈 AI Stock Copilot (Trợ Lý Đầu Tư & Cảnh Báo Chứng Khoán Tự Động)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Tests](https://github.com/VinhTung1410/Stock-AI/actions/workflows/ci.yml/badge.svg)
+![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?logo=streamlit&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-Hệ sinh thái phân tích chứng khoán tự động chuyên nghiệp kết hợp **vnstock (VCI)**, **Gemini 2.5 Pro (Google GenAI)**, **TradingView Lightweight Charts (60 FPS Native)**, **Apache ECharts Bội số Định giá**, **Discord Webhook / Bot DM**, và kiến trúc vận hành 24/7 trên **Render.com / Streamlit Cloud**.
+# Stock-AI 📈
 
----
+> A quantamental stock analysis system that eliminates LLM hallucination through deterministic hard gates — built for the Vietnam stock market.
 
-## 🌟 Tính Năng Cốt Lõi
-
-1. **Kiến Trúc Lượng Hóa Hai Lượt (Quantamental 2-Pass Engine) Chuẩn CFA:**
-   * **Nguyên lý cốt lõi**: *"Python tính toán 100% số học tất định — Gemini AI chỉ đánh giá ngữ nghĩa và chất xúc tác"*, giải quyết triệt để ảo giác số học và bẫy đỉnh chu kỳ.
-   * **Data Gate (Cổng dữ liệu)**: Tự động từ chối khuyến nghị nếu thanh khoản $ADV20 < 3$ tỷ VNĐ/phiên hoặc BCTC quá hạn (> 2 quý).
-   * **Piotroski F-Score (Thang 0-9)**: Đánh giá chất lượng lợi nhuận, cấu trúc đòn bẩy và hiệu quả hoạt động.
-   * **Altman Z-Score**: Sàng lọc nguy cơ suy kiệt tài chính (Vùng an toàn, Vùng xám, Vùng nguy hiểm).
-   * **Tam giác định giá & Hàng rào quyết định (Hard Gates)**: Tính toán Giá trị kỳ vọng $EV$, Biên an toàn $MoS \%$, Tỷ lệ Lãi/Lỗ $R$, và Tỷ lệ phân bổ vốn tối ưu **Kelly Criterion ($f^*$)**. Hệ thống khóa cứng khuyến nghị (từ chối Mua nếu $MoS < 8\%$ hoặc $R < 1.5$ hoặc Kelly $\le 0$).
-
-2. **Biểu đồ TradingView 60 FPS Native & Dropdown Khung Thời Gian:**
-   * Đa khung thời gian: `1m`, `5m`, `15m`, `30m`, `1h`, `1 ngày (1D)`, `1 tuần (1W)`, `1 tháng (1M)`.
-   * Tách riêng 3 subpanel phân tích: **Khối lượng (Volume)**, **MACD**, và **RSI**.
-   * Hỗ trợ **kéo thả chuột trực tiếp để chỉnh độ cao** từng subpanel (`pane-resizer`).
-   * **Đường dóng dọc liền mạch tuyệt đối** từ đỉnh nến chính xuyên suốt qua tất cả các subpanel.
-   * Định dạng mốc thời gian chuẩn Tiếng Việt: `29 Tháng Năm '26` trên nhãn chuột, và `Tháng Mười hai`, `Tháng Hai`... trên trục thời gian.
-   * Bật/tắt linh hoạt các chỉ báo kỹ thuật: `MA20`, `MA50`, `EMA9`, `EMA21`, `Bollinger Bands`.
-
-3. **Phân tích Bội số Định giá Thị trường (P/E & P/B ECharts):**
-   * Biểu đồ kép tương tác trực quan: Điểm số VN-INDEX (cột trái) đối chiếu với P/E hoặc P/B (cột phải).
-   * Đường định giá trung bình lịch sử (`TB: ...x`).
-   * Thanh trượt **DataZoom** tương tác mượt mà, chống đè chữ và che nhãn ngày tháng.
-   * Tùy chọn 3 bố cục: *Toàn cảnh P/E*, *Toàn cảnh P/B*, và *So sánh song song (2 cột)*.
-
-4. **Header Thị Trường & Thanh Khoản Chuẩn Ngữ Nghĩa Tài Chính:**
-   * Card giao diện Responsive Card: Sử dụng dynamic font `clamp()` và `min-width: max-content`, **chặn đứng hoàn toàn lỗi cắt xén số liệu thành dấu ba chấm (`...`)**.
-   * Màu sắc đơn vị chuẩn tài chính: `CP` và `Tỷ` mang màu xám trung tính, không bị xung đột ngữ nghĩa với mã màu vàng tham chiếu.
-   * Độ rộng thị trường chi tiết: Số mã tăng (trần tím), giảm (sàn xanh lơ), tham chiếu vàng và trạng thái phiên khớp lệnh.
-
-5. **Trợ Lý AI Chiến Lược Định Chế & Kiến Trúc Phòng Thủ 2 Lớp (Zero-Chinese Policy):**
-   * **Kiến trúc phòng thủ 2 lớp**: Lớp 1 (System Prompt Rule) + Lớp 2 (Deterministic Regex Sanitizer), triệt tiêu 100% hiện tượng AI sinh nhầm ký tự tiếng Trung (ví dụ `证券公司 SSI`).
-   * **Chế độ 1: Báo cáo Định chế 8 Trụ cột**: Đánh giá toàn diện mô hình kinh doanh, sức khỏe tài chính, lợi thế cạnh tranh, định giá P/B Justified & Graham, kỹ thuật và rủi ro.
-   * **Chế độ 2: Lượng hóa 2 Lượt (Quant Pro)**: Pass 1 gán xác suất $\to$ Python tính toán Hard Gates $\to$ Pass 2 viết báo cáo định chế.
-   * **Báo cáo tóm tắt 3 màu cảnh báo trực quan**: Huy hiệu `🟢 Tốt`, `🟡 Trung bình`, `🔴 Rủi ro` giúp nhà đầu tư nắm bắt cơ hội trong 30 giây.
-   * **Mô phỏng 3-4 kịch bản rủi ro thị trường**: Lạc quan (Bull), Cơ sở (Base), Bi quan (Bear) kèm xác suất, điều kiện kích hoạt và nhóm ngành hưởng lợi.
-
-6. **Theo dõi Danh mục Cá nhân hóa:**
-   * Quản lý các mã cổ phiếu đang nắm giữ, tự động tính toán lãi/lỗ (VND và %).
-   * Chỉnh sửa trực tiếp trên giao diện web với bảng `st.data_editor` và lưu trữ bền vững vào `portfolio.json`.
-
-7. **Hệ Thống Cảnh Báo Đa Kênh Tự Động (Discord Rich Embed):**
-   * Gửi Rich Embed thông tin danh mục, tín hiệu Stop Loss và khuyến nghị mua/bán vào Kênh Discord qua Webhook.
-   * Gửi tin nhắn riêng tư (DM) trực tiếp vào tài khoản Discord cá nhân.
-   * **Bộ tách trường thông minh**: Tự động nhận diện La Mã (I, II, III, IV) và đánh số thứ tự `(Phần 2)`, `(Phần 3)`, loại bỏ hoàn toàn lỗi lặp nối chuỗi `(tiếp theo) (tiếp theo)...`.
-   * Bot ngầm giám sát 24/7 theo lịch trình ATO (08:45), Nghỉ trưa (11:30) và ATC (14:45).
+**[🌐 Live Demo](https://stock-ai-recq.onrender.com/)** · **[📖 Architecture Docs](docs/PROJECT_STRUCTURE.md)** · **[📜 System Rules](docs/rule.md)**
 
 ---
 
-## 🏛️ Cấu Trúc Dự Án (Project Structure)
+## The Problem
 
-> 📘 **Xem tài liệu kiến trúc kỹ thuật chi tiết tại:** [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) và [rule.md](rule.md)
+Retail investors in Vietnam increasingly rely on AI (ChatGPT, Gemini) for stock analysis. But LLMs **hallucinate financial numbers** — a 15% ROE becomes 51%, a P/E of 8 becomes 18.
 
-```text
-Stock - learning/
-│
-├── app.py                      # 🚀 Tầng điều phối Streamlit Web chính
-├── components/                 # 📊 Tầng biểu đồ TradingView & ECharts
-├── tabs/                       # 📑 5 Tab chức năng nghiệp vụ riêng biệt
-├── quant_engine.py             # 📐 Tầng tính toán định lượng: F-Score, Z-Score, ATR, Kelly
-├── data_engine.py              # ⚙️ Tầng dữ liệu & tính toán chỉ báo kỹ thuật
-├── ai_analyst.py               # 🧠 Tầng trí tuệ nhân tạo Gemini (2-Pass Quantamental + Sanitizer)
-├── discord_alerts.py           # 🔔 Tầng cảnh báo Discord (Webhook & DM, Smart Field Splitter)
-├── trading_bot.py              # 🤖 Tầng tự động hóa giám sát thị trường 24/7 (kèm Quant Filter)
-├── rule.md                     # 📜 Quy chuẩn hệ thống, ngôn ngữ & kiến trúc lượng hóa
-├── run_cloud.py                # ☁️ Tiến trình khởi chạy kép trên Cloud (Render/Linux)
-├── scripts/                    # 🛠️ Bộ công cụ & kịch bản khởi chạy Windows
-│   ├── run_dashboard.bat       # Khởi chạy Web Dashboard trên Local
-│   ├── run_bot.bat             # Khởi chạy Trading Bot ngầm
-│   ├── clean_cache.bat         # 1-click dọn sạch thư mục cache bytecode
-│   ├── simulate_morning_report.py   # Bắn thử nghiệm báo cáo chiến lược sáng (ATO)
-│   └── simulate_afternoon_report.py # Bắn thử nghiệm báo cáo tổng kết chiều (ATC)
-├── portfolio.json              # 💾 Cơ sở dữ liệu danh mục đầu tư mẫu
-├── requirements.txt            # Danh mục thư viện Python phụ thuộc
-└── Procfile                    # Chỉ thị tiến trình triển khai Web trên Cloud
+Wrong numbers → wrong buy/sell signals → **real money lost**.
+
+## The Approach
+
+### "Python computes. AI only judges."
+
+Instead of asking an LLM to calculate financial metrics (where it will hallucinate), this system uses a **2-pass quantamental pipeline**:
+
+| Pass | Engine | Role |
+|---|---|---|
+| **Pass 1** | Deterministic Python | Compute F-Score, Z-Score, ATR, Kelly Criterion, Margin of Safety — all verified by code |
+| **Hard Gates** | Rule-based filter | Automatically **REJECT** buy signals if MoS < 8%, Risk/Reward < 1.5×, or Kelly ≤ 0 |
+| **Pass 2** | Gemini AI | Write the narrative report using **only** the verified numbers from Pass 1 |
+
+A regex-based sanitizer strips any remaining Chinese characters (a common Gemini artifact for Vietnamese content).
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph DataSources ["Data Sources"]
+        Vnstock["Vnstock API / VCI"] -->|OHLC, Volume, Financials| DataEngine["data_engine.py"]
+        GoogleNews["Google News RSS"] -->|Macro News 24h| DataEngine
+        PortfolioJSON[("data/portfolio.json")] <-->|Read / Write| DataEngine
+    end
+
+    subgraph QuantCore ["Quantitative Core"]
+        DataEngine -->|OHLC & Financial Statements| QuantEngine["quant_engine.py"]
+        QuantEngine -->|Data Gate, F-Score, Z-Score, ATR| AIAnalyst["ai_analyst.py"]
+        QuantEngine -->|Hard Gates: MoS, Kelly, R:R| AIAnalyst
+        QuantEngine -->|F-Score & Data Gate Safety| TradingBot["trading_bot.py"]
+    end
+
+    subgraph UI ["User Interface — Streamlit"]
+        AppCore["app.py"] --> Tab1["Overview & Watchlist"]
+        AppCore --> Tab2["Market & Technical Charts"]
+        AppCore --> Tab3["Portfolio Management"]
+        AppCore --> Tab4["AI Strategy Analysis"]
+        AppCore --> Tab5["Alpha Tracker & Audit"]
+        Tab2 --> CompTV["TradingView Charts 60 FPS"]
+        Tab2 --> CompECharts["ECharts P/E & P/B Valuation"]
+        Tab4 -->|2-Pass Quant + CFA Report| AIAnalyst
+        Tab5 -->|Audit KPIs & Signal Inspector| DBManager["db_manager.py"]
+    end
+
+    subgraph Audit ["Signal Lifecycle & Audit"]
+        AIAnalyst -->|Immutable Snapshot| DBManager
+        TradingBot -->|Save Buy Signals| DBManager
+        DBManager <-->|PostgreSQL REST API| Supabase[("Supabase Cloud DB")]
+    end
+
+    subgraph Automation ["24/7 Background Bot"]
+        TradingBot -->|Price Scan, Stop Loss, Anti-Chasing| DataEngine
+        TradingBot -->|Post-Market Audit 15:15| DBManager
+        TradingBot -->|ATO / Lunch / ATC Reports| Discord["Discord Alerts"]
+    end
+
+    subgraph Notification ["External Notification"]
+        Discord -->|Rich Embed + Smart Splitter| Channel["Discord Channel"]
+        Discord -->|Direct Message| DM["Discord Private DM"]
+    end
 ```
 
 ---
 
-## 🚀 Hướng Dẫn Cài Đặt & Chạy Local
+## Key Features
 
-### 1. Kích hoạt môi trường ảo Python:
-```powershell
-& "$HOME\.venv\Scripts\Activate.ps1"
+| Feature | Description |
+|---|---|
+| **Quantamental 2-Pass Engine** | Deterministic Python calculations + LLM narrative — CFA-aligned methodology |
+| **Piotroski F-Score (0–9)** | Financial health scoring across profitability, leverage, and efficiency |
+| **Altman Z-Score** | Bankruptcy risk assessment (Safe / Grey / Danger zones) |
+| **Kelly Criterion & MoS** | Optimal position sizing and margin of safety calculations |
+| **4-Archetype Valuation** | Tailored models for Banks, Cyclicals, Real Estate, and Growth stocks |
+| **TradingView Charts** | 60 FPS native charts · 8 timeframes · MACD, RSI, Bollinger Bands |
+| **P/E & P/B Valuation Charts** | Interactive ECharts with historical mean overlay and DataZoom |
+| **Signal Auditing (Alpha Tracker)** | Immutable snapshots in Supabase · Win Rate · Profit Factor · Alpha vs VN-Index |
+| **Discord Bot 24/7** | Automated monitoring with Rich Embeds · smart field splitting · DM alerts |
+| **Anti-Hallucination Defense** | 2-layer: system prompt rules + deterministic regex sanitizer |
+| **Anti-Chasing Filter** | Blocks buy signals when price hits ceiling (+6.85% HOSE limit) |
+| **GDKHQ Shield** | Prevents false stop-loss triggers during ex-dividend gap-downs |
+| **Signal Credibility Engine** | 4-pillar conviction scoring (≥70 for BUY) · 5-day cooldown · Max 2 BUY/day budget · Max 8 open positions guard |
+
+---
+
+## 🛡️ Institutional Signal Credibility Engine
+
+To solve the **"Signal Overload Problem"** (where retail bots fire 4–5 unvetted buy signals per day, eroding credibility and inducing capital dilution), Stock-AI integrates an institutional quantitative risk layer:
+
+```mermaid
+flowchart TD
+    Candidate[Candidate Pool from News & Watchlist] --> ConvictionCalc[4-Pillar Conviction Scoring 0-100]
+    ConvictionCalc --> ScoreCheck{Conviction Score}
+    
+    ScoreCheck -->|< 55 pts| Reject[⛔ CAUTION / REJECT]
+    ScoreCheck -->|55 - 69 pts| Watch[🟡 WATCH_CONFIRMATION<br/>Radar Lướt sóng T+ / Chờ nền]
+    ScoreCheck -->|≥ 70 pts| CooldownCheck{In 5-Day Cooldown?}
+    
+    CooldownCheck -->|Yes| CooldownDowngrade[⏳ WATCH_CONFIRMATION<br/>Đang Cooldown 5 ngày]
+    CooldownCheck -->|No| PortGuard{Active Positions < 8?}
+    
+    PortGuard -->|Full ≥ 8| PortDowngrade[🛡️ WATCH_CONFIRMATION<br/>Chờ thu hồi vốn]
+    PortGuard -->|Available| BudgetCap{Daily Signal Budget<br/>Max 2 BUY / day}
+    
+    BudgetCap -->|Top 1-2| ApprovedBUY[🟢 RECOMMEND_BUY<br/>Ghi nhận Cooldown 5 ngày]
+    BudgetCap -->|Rank 3+| OverflowWatch[🎯 WATCH_CONFIRMATION<br/>Vượt hạn mức ngân sách]
 ```
 
-### 2. Cài đặt thư viện:
+### 1. 4-Pillar Conviction Scoring Matrix (100 Points)
+| Pillar | Weight | Rationale & Defense |
+|---|:---:|---|
+| **Valuation & Margin of Safety** | **40 pts** | Prevents growth traps. Requires MoS $\ge 15\%$ for $30$ pts, $\ge 25\%$ for $40$ pts. Anchored to 4-archetype models. |
+| **Technical Confluence** | **25 pts** | Prevents "catching falling knives". Price $\ge \text{MA20}$, healthy RSI ($48-62$), $-15$ pts penalty if distribution trap detected. |
+| **Catalyst & Story** | **20 pts** | Validates market narrative (Verified earnings, dividend, macro, insider buying). |
+| **Liquidity & Smart Money Flow** | **15 pts** | Volume spike ($> 1.3\times \text{MA20}$) + Foreign institutional net buying. |
+
+### 2. Risk Controls & Budgeting
+* **70-Point High Conviction Gate**: A ticker must secure consensus across at least 3 out of 4 pillars to trigger a `RECOMMEND_BUY`.
+* **5-Day Cross-Day Cooldown**: Persisted across trading days (`data/.signal_cooldown.json`) to prevent daily alert spam for the same ticker.
+* **Daily Signal Budget (Max 2 BUYs/day)**: Excess high-conviction candidates are gracefully converted to `WATCH_CONFIRMATION` for the next session's watchlist.
+* **Portfolio Diversification Guard (Max 8 positions)**: Automatically caps maximum open concurrent positions to protect liquidity and portfolio NAV.
+
+---
+
+## 💻 Interactive Live Dashboard & User Experience
+
+Stock-AI is deployed as a live cloud application accessible to recruiters, investors, and analysts:
+
+<div align="center">
+
+[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-stock--ai--recq.onrender.com-00C781?style=for-the-badge&logo=render&logoColor=white)](https://stock-ai-recq.onrender.com/)
+[![Cloud Architecture](https://img.shields.io/badge/Architecture-Streamlit_%2B_Supabase_%2B_Gemini-blue?style=for-the-badge)](https://stock-ai-recq.onrender.com/)
+
+</div>
+
+### Functional Modules & UI Architecture
+
+```mermaid
+graph TD
+    UI[🖥️ Streamlit Enterprise Dashboard]
+    UI --> Tab1[Tab 1: Portfolio & Risk Budgeting]
+    UI --> Tab2[Tab 2: 60 FPS TradingView & ECharts]
+    UI --> Tab3[Tab 3: Macro & Sector Intelligence]
+    UI --> Tab4[Tab 4: 2-Pass CFA Quantamental AI]
+    UI --> Tab5[Tab 5: Alpha Tracker & Signal Audit]
+
+    Tab1 --- T1_Desc["Real-time NAV, Multi-Asset Allocation, Trailing Stops"]
+    Tab2 --- T2_Desc["Lightweight Charts, MACD/RSI Overlays, Historical P/E & P/B Bands"]
+    Tab3 --- T3_Desc["Real-time CafeF RSS parsing & Catalyst Tagging Engine"]
+    Tab4 --- T4_Desc["Deterministic Python Gates + Gemini 2.1 Narrative"]
+    Tab5 --- T5_Desc["Post-Market Audit (15:15), Win Rate, Profit Factor, MFE/MAE"]
+```
+
+| Tab / Module | Business Function (Technical BA Scope) | Quant & Analytical Value |
+|---|---|---|
+| **Tab 1: Overview & Portfolio** | Real-time NAV computation, P&L tracking, weighted entry prices, and dynamic trailing stop monitoring. | Capital preservation via deterministic risk budgeting based on market regime (Bull / Neutral / Correction / Risk-off). |
+| **Tab 2: Technical & Valuation Charts** | Embedded 60 FPS TradingView charts with 8 timeframes + Apache ECharts P/E & P/B historical valuation bands. | Confluence analysis: bridges technical timing with multi-year valuation percentile anchoring. |
+| **Tab 3: Macro Intelligence** | Automated real-time RSS ingestion with NLP keyword extraction for sector drivers and insider transactions. | Supplies catalyst signals for the 4-pillar conviction scoring engine. |
+| **Tab 4: AI Quantamental Analyst** | 2-Pass CFA-grade investment report generation with anti-hallucination sanitization. | Delivers institutional reports separating Fair Value (Intrinsic) from Price Target (Expected horizon). |
+| **Tab 5: Alpha Tracker (Audit Trail)** | Immutable audit dashboard backed by Supabase PostgreSQL for signal performance verification. | Computes cumulative Alpha vs VN-Index benchmark, Win Rate, Profit Factor, and MFE/MAE price excursions. |
+
+> 🌐 **Note for International Recruiters:** The application consumes live market feeds from the Vietnam Stock Exchange (HOSE/HNX). While stock data and market narratives are localized to the Vietnamese market, the entire data engineering pipeline, valuation formulas (DCF, DDM, SOTP), risk management gates (Piotroski, Altman Z, Kelly, Cooldown), and test architecture adhere strictly to international CFA & Wall Street standards.
+
+---
+
+## Tech Stack
+
+| Layer | Technologies |
+|---|---|
+| **Frontend** | Streamlit · TradingView Lightweight Charts · Apache ECharts |
+| **AI** | Google Gemini API (`gemini-3.5-flash-lite`) |
+| **Quantitative** | Python · pandas · numpy |
+| **Database** | Supabase (PostgreSQL) — signal lifecycle & audit |
+| **Data Source** | vnstock (VCI) · Google News RSS |
+| **Alerts** | Discord Bot + Webhook (Rich Embed) |
+| **Deployment** | Render.com (Web Service + Background Worker) |
+| **Testing** | pytest · ruff |
+
+---
+
+## Quick Start
+
+### 1. Clone & install
+
 ```bash
+git clone https://github.com/VinhTung1410/Stock-AI.git
+cd Stock-AI
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. Cấu hình biến môi trường (`.env`):
-Tạo file `.env` ở thư mục gốc và điền các khóa API của bạn:
-```env
-GEMINI_API_KEY="your_gemini_api_key_here"
-DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/..."
-DISCORD_BOT_TOKEN="your_discord_bot_token"
-DISCORD_USER_ID="your_discord_user_id"
-VNSTOCK_API_KEY="your_vnstock_key_if_sponsor"
+### 2. Configure environment
+
+```bash
+cp .env.example .env
+# Edit .env with your API keys (see .env.example for all options)
 ```
 
-### 4. Khởi chạy ứng dụng:
-* **Cách 1**: Nhấp đúp vào file [run_dashboard.bat](run_dashboard.bat) ở thư mục gốc hoặc trong thư mục `scripts/`.
-* **Cách 2**: Chạy qua dòng lệnh Terminal:
-  ```bash
-  streamlit run app.py
-  ```
-* Ứng dụng sẽ mở tự động tại: `http://localhost:8501`.
+### 3. Run the dashboard
+
+```bash
+streamlit run app.py
+# Opens at http://localhost:8501
+```
+
+### 4. Run tests
+
+```bash
+pytest tests/ -m offline -v     # Unit tests (no API needed)
+pytest tests/ -v                # All tests (requires .env keys)
+```
 
 ---
 
-## ☁️ Hướng Dẫn Triển Khai Production 24/7 (Render.com)
+## Cloud Deployment (Render.com)
 
-1. Đẩy mã nguồn lên kho lưu trữ GitHub của bạn:
-   ```bash
-   git add .
-   git commit -m "feat: complete professional stock dashboard with gemini ai"
-   git push origin main
-   ```
-2. Đăng nhập [Render.com](https://dashboard.render.com/) và tạo một **Web Service** mới liên kết với repository của bạn.
-3. Thiết lập thông số:
-   * **Runtime**: `Python 3`
-   * **Build Command**: `pip install -r requirements.txt`
-   * **Start Command**: `python run_cloud.py` (Khởi chạy đồng thời cả Web Streamlit và Bot 24/7).
-4. Thêm các biến môi trường tương ứng trong tab **Environment** của Render.
-5. Cài đặt [UptimeRobot](https://uptimerobot.com) ping kiểm tra HTTP 5 phút/lần vào địa chỉ web Render để giữ cho dịch vụ thức liên tục 24/7/365 hoàn toàn miễn phí!
+1. Push to GitHub: `git push origin main`
+2. Create a **Web Service** on [Render](https://dashboard.render.com/)
+3. Configure:
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `python run_cloud.py`
+4. Add environment variables from `.env.example`
+5. (Optional) Set up [UptimeRobot](https://uptimerobot.com) to ping every 5 minutes
+
+---
+
+## Project Structure
+
+```
+Stock-AI/
+├── app.py                  # Streamlit entrypoint & UI orchestration
+├── data_engine.py          # Data layer: vnstock, indicators, news, portfolio I/O
+├── quant_engine.py         # Deterministic quant: F-Score, Z-Score, ATR, Kelly, Hard Gates
+├── quant_valuation.py      # Fair value models: 4 archetypes + consensus anchoring
+├── quant_sanity_check.py   # Mathematical consistency auditor
+├── ai_analyst.py           # Gemini AI: 2-pass pipeline + anti-hallucination sanitizer
+├── discord_alerts.py       # Discord Rich Embed + DM + smart field splitter
+├── trading_bot.py          # 24/7 background monitor (Vietnam timezone)
+├── db_manager.py           # Supabase client: signal lifecycle & audit tracking
+├── run_cloud.py            # Dual-process runner for cloud deployment
+├── components/             # TradingView & ECharts visualization components
+├── tabs/                   # 5 Streamlit feature tabs
+├── tests/                  # pytest test suites (offline + integration)
+├── data/                   # Portfolio & watchlist JSON data
+├── prompts/                # AI prompt templates
+├── docs/                   # Architecture docs & system rules
+└── scripts/                # Windows batch scripts & simulation tools
+```
+
+---
+
+## Documentation
+
+- **[Project Architecture](docs/PROJECT_STRUCTURE.md)** — Full module descriptions, data flow diagrams
+- **[System Rules](docs/rule.md)** — Quantamental conventions, language policies, defensive architecture
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE)

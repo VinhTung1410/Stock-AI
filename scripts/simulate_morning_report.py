@@ -1,6 +1,7 @@
-import sys
-import os
 import logging
+import os
+import sys
+
 from dotenv import load_dotenv
 
 if sys.platform == "win32":
@@ -11,20 +12,16 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from data_engine import (
-    load_portfolio,
-    evaluate_portfolio,
-    load_watchlist,
-    evaluate_watchlist,
-    scan_market_opportunities,
-    fetch_macro_news
-)
 from ai_analyst import generate_morning_strategy_report
-from discord_alerts import (
-    send_discord_webhook,
-    send_discord_dm,
-    format_portfolio_embed
+from data_engine import (
+    evaluate_portfolio,
+    evaluate_watchlist,
+    fetch_macro_news,
+    load_portfolio,
+    load_watchlist,
+    scan_market_opportunities,
 )
+from discord_alerts import format_portfolio_embed, send_discord_dm, send_discord_webhook
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -55,10 +52,10 @@ def run_morning_report():
 
     print("\n🧠 3. AI Gemini đóng vai Giám đốc Chiến lược CTCK lập báo cáo ATO 08:45...", flush=True)
     morning_ai_text = generate_morning_strategy_report(df_eval, df_wl, opportunities, news)
-    
+
     morning_embed = format_portfolio_embed(
-        df_eval, 
-        morning_ai_text, 
+        df_eval,
+        morning_ai_text,
         report_type="🌅 CHIẾN LƯỢC ATO ĐẦU NGÀY (08:45)"
     )
 

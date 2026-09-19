@@ -1,4 +1,5 @@
 import os
+
 os.environ["VNSTOCK_TELEMETRY"] = "off"
 try:
     import vnai
@@ -24,19 +25,19 @@ except ImportError:
     pass
 
 from data_engine import (
-    load_portfolio, 
-    evaluate_portfolio, 
-    load_watchlist, 
-    evaluate_watchlist, 
+    _GSHEET_CACHE,
+    evaluate_portfolio,
+    evaluate_watchlist,
     get_vnindex_valuation_data,
-    _GSHEET_CACHE
+    load_portfolio,
+    load_watchlist,
 )
 from tabs import (
-    render_tab_overview,
-    render_tab_market_and_charts,
-    render_tab_portfolio,
     render_tab_ai,
     render_tab_alpha_tracker,
+    render_tab_market_and_charts,
+    render_tab_overview,
+    render_tab_portfolio,
 )
 
 # Cấu hình trang Dashboard
@@ -506,9 +507,9 @@ with st.sidebar:
 active_tab = st.radio(
     "Điều hướng Dashboard",
     [
-        "Tổng quan & Watchlist", 
-        "Thị trường & Biểu đồ Kỹ thuật", 
-        "Quản lý Danh mục", 
+        "Tổng quan & Watchlist",
+        "Thị trường & Biểu đồ Kỹ thuật",
+        "Quản lý Danh mục",
         "Trợ lý Phân tích AI",
         "🎯 Alpha Tracker"
     ],

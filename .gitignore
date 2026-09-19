@@ -1,10 +1,32 @@
+# Secrets
 .env
-.venv/
+.env.local
+.env.*.local
+.agents/
+
+# IDE
+.vscode/
+.idea/
+
+# Python
 __pycache__/
 *.pyc
-*.log
-.DS_Store
-.streamlit/secrets.toml
-scratch/
-.vscode/
+*.pyo
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+htmlcov/
+.coverage
 
+# OS
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Project
+scratch/
+*.log
+data/.signal_cooldown.json

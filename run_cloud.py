@@ -10,16 +10,18 @@
 """
 
 import os
+
 os.environ["VNSTOCK_TELEMETRY"] = "off"
 try:
     import vnai
     vnai.disable_telemetry()
 except Exception:
     pass
+import logging
+import subprocess
 import sys
 import threading
-import subprocess
-import logging
+
 from trading_bot import run_trading_bot_loop
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [RUNNER] %(message)s")

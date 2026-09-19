@@ -1,18 +1,19 @@
 """
-QUANT_VALUATION.PY - BỘ MÁY ĐỊNH GIÁ FAIR VALUE & BIÊN AN TOÀN (MARGIN OF SAFETY)
-Chuẩn mực Quỹ đầu tư giá trị (Value-First Framework):
-- Phân hóa mô hình định giá cho 4 nhóm ngành chính:
-  1. Ngân hàng: Justified P/B dựa trên ROE và Cost of Equity (COE).
-  2. Tăng trưởng & Bán lẻ / Công nghệ: Historical Median P/E & Forward EPS.
-  3. Cổ phiếu Chu kỳ: Normalized Mid-Cycle Earnings (triệt tiêu bẫy P/E thấp ở đỉnh chu kỳ).
-  4. Bất động sản & Tài sản: P/B sàn lịch sử kết hợp chiết khấu đòn bẩy nợ.
-- Tích hợp mỏ neo Consensus từ các CTCK lớn (SSI, HSC, Vietcap) có chiết khấu an toàn 15-20%.
-- Tính toán Biên an toàn (Margin of Safety - MOS %):
-  MOS = (Fair Value Base - Current Price) / Fair Value Base * 100%
+Fair Value & Margin of Safety Engine — archetype-specific valuation models
+for the Vietnam stock market.
+
+Supports 4 valuation archetypes:
+1. Bank: Justified P/B based on ROE and Cost of Equity
+2. Growth / Retail / Tech: Historical Median P/E & Forward EPS
+3. Cyclical: Normalized Mid-Cycle Earnings (avoids peak-P/E traps)
+4. Real Estate: Historical floor P/B with leverage discount
+
+Integrates institutional consensus targets (SSI, HSC, Vietcap) with
+15-20% safety discount as valuation ceiling anchors.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -38,12 +39,20 @@ INSTITUTIONAL_CONSENSUS_TARGETS = {
 
 
 def classify_stock_archetype(symbol: str, sector: str = "") -> str:
-    """
-    Phân loại cổ phiếu vào 4 nhóm mô hình định giá:
-    - BANK: Ngân hàng & Tài chính
-    - CYCLICAL: Thép, Hóa chất, Dầu khí, Phân bón, Vận tải biển
-    - REAL_ESTATE: Bất động sản dân cư & KCN
-    - GROWTH_COMPOUNDER: Công nghệ, Bán lẻ, Hàng tiêu dùng, Sản xuất cơ bản
+    """Classify a stock into one of 4 valuation archetypes.
+
+    Archetypes determine which valuation model is applied:
+    - BANK: Banks & financials → Justified P/B
+    - CYCLICAL: Steel, oil, chemicals → Normalized mid-cycle earnings
+    - REAL_ESTATE: Property developers → Floor P/B + leverage discount
+    - GROWTH_COMPOUNDER: Tech, retail, consumer → Historical median P/E
+
+    Args:
+        symbol: Stock ticker (e.g. 'FPT', 'VCB').
+        sector: Vietnamese sector name for fallback classification.
+
+    Returns:
+        One of: 'BANK', 'CYCLICAL', 'REAL_ESTATE', 'GROWTH_COMPOUNDER'.
     """
     sym = symbol.strip().upper()
     sec = sector.lower()
@@ -60,21 +69,27 @@ def classify_stock_archetype(symbol: str, sector: str = "") -> str:
 def calculate_fair_value_and_mos(
     symbol: str,
     current_price: float,
-    fin_dict: dict = None,
+    fin_dict: dict | None = None,
     sector: str = ""
 ) -> Dict[str, Any]:
-    """
-    TÍNH TOÁN GIÁ TRỊ HỢP LÝ (FAIR VALUE) VÀ BIÊN AN TOÀN (MARGIN OF SAFETY - MOS %)
-    Theo chuẩn mực Quỹ đầu tư giá trị (Value-First):
-    - Trả về:
-      + fair_value_base: Giá trị hợp lý kịch bản cơ sở
-      + fair_value_bear: Giá trị hợp lý kịch bản thận trọng (vùng hỗ trợ định giá cứng)
-      + fair_value_bull: Giá trị kỳ vọng chu kỳ thuận lợi (tham khảo)
-      + mos_pct: Biên an toàn = (Fair Value Base - Current Price) / Fair Value Base * 100%
-      + valuation_rating: HẤP DẪN RẤT CAO / HẤP DẪN / HỢP LÝ / ĐẮT / QUÁ ĐẮT
-      + valuation_method: Tên mô hình định giá áp dụng
-      + consensus_target: Giá mục tiêu mỏ neo của CTCK lớn (nếu có)
-      + consensus_source: Nguồn mỏ neo
+    """Calculate fair value and margin of safety using archetype-specific models.
+
+    Returns a comprehensive valuation assessment including:
+    - Fair value for base, bear, and bull scenarios
+    - Margin of Safety percentage
+    - Valuation rating (from VERY ATTRACTIVE to OVERVALUED)
+    - Methodology used and confidence level
+    - Institutional consensus target if available
+
+    Args:
+        symbol: Stock ticker.
+        current_price: Current market price.
+        fin_dict: Optional financial data for enhanced valuation.
+        sector: Vietnamese sector name for archetype classification.
+
+    Returns:
+        Dict with 'fair_value', 'mos_pct', 'valuation_rating',
+        'valuation_method', 'confidence', 'price_target', etc.
     """
     if not current_price or current_price <= 0:
         return {
@@ -132,7 +147,7 @@ def calculate_fair_value_and_mos(
         coe = 0.13
         g = 0.055
         roe_dec = max(roe / 100.0, 0.05)
-        
+
         justified_pb = (roe_dec - g) / (coe - g) if (coe - g) > 0 else 1.2
         target_pb = max(min(justified_pb, 2.2), 0.9)
 

@@ -1,5 +1,7 @@
 import json
+
 import pandas as pd
+
 
 def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str:
     """

@@ -1,8 +1,7 @@
-import sys
-import os
-import json
 import logging
-from datetime import datetime
+import os
+import sys
+
 from dotenv import load_dotenv
 
 if sys.platform == "win32":
@@ -14,23 +13,16 @@ if sys.platform == "win32":
 # Ensure parent directory is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from ai_analyst import generate_morning_strategy_report, generate_portfolio_analysis
 from data_engine import (
-    load_portfolio,
     evaluate_portfolio,
-    load_watchlist,
     evaluate_watchlist,
+    fetch_macro_news,
+    load_portfolio,
+    load_watchlist,
     scan_market_opportunities,
-    fetch_macro_news
 )
-from ai_analyst import (
-    generate_morning_strategy_report,
-    generate_portfolio_analysis
-)
-from discord_alerts import (
-    send_discord_webhook,
-    send_discord_dm,
-    format_portfolio_embed
-)
+from discord_alerts import format_portfolio_embed, send_discord_dm, send_discord_webhook
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -61,11 +53,11 @@ def run_simulation():
 
     print("\n🧠 3. AI Gemini đóng vai Giám đốc Chiến lược CTCK lập báo cáo 08:45...")
     morning_ai_text = generate_morning_strategy_report(df_eval, df_wl, opportunities, news)
-    
+
     # Format embed for 08:45
     morning_embed = format_portfolio_embed(
-        df_eval, 
-        morning_ai_text, 
+        df_eval,
+        morning_ai_text,
         report_type="🌅 KHUYẾN NGHỊ ĐẦU NGÀY (08:45 - 11/09)"
     )
 

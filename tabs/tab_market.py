@@ -1,9 +1,12 @@
+import textwrap
+
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
-import pandas as pd
-import textwrap
-from components.tradingview_chart import generate_tradingview_html
+
 from components.echarts_valuation import generate_echarts_valuation_html
+from components.tradingview_chart import generate_tradingview_html
+
 
 def render_tab_market(df_vnindex: pd.DataFrame):
     """Render Tab 2: Thị trường VN-Index & Bội số Định giá P/E, P/B."""
@@ -20,7 +23,7 @@ def render_tab_market(df_vnindex: pd.DataFrame):
         if val_bil < 10000 or val_bil > 35000:
             val_bil = 16961.869
 
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timedelta, timezone
         vn_time = datetime.now(timezone(timedelta(hours=7)))
         is_weekday = vn_time.weekday() < 5
         curr_min = vn_time.hour * 60 + vn_time.minute

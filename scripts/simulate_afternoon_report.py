@@ -1,7 +1,7 @@
-import sys
-import os
-import json
 import logging
+import os
+import sys
+
 from dotenv import load_dotenv
 
 if sys.platform == "win32":
@@ -12,19 +12,9 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from data_engine import (
-    load_portfolio,
-    evaluate_portfolio,
-    load_watchlist,
-    evaluate_watchlist,
-    fetch_macro_news
-)
 from ai_analyst import generate_portfolio_analysis
-from discord_alerts import (
-    send_discord_webhook,
-    send_discord_dm,
-    format_portfolio_embed
-)
+from data_engine import evaluate_portfolio, evaluate_watchlist, fetch_macro_news, load_portfolio, load_watchlist
+from discord_alerts import format_portfolio_embed, send_discord_dm, send_discord_webhook
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
