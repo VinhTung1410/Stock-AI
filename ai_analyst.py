@@ -409,7 +409,6 @@ Yêu cầu xuất bản & Cấu trúc 4 phần chuẩn mực:
 - Dùng gạch đầu dòng phân cấp.
 """
     return call_gemini(client, prompt)
-    return call_gemini(client, prompt)
 
 
 def generate_market_risk_scenarios(vnindex_df, news_items) -> str:

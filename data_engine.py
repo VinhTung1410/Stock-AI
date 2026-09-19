@@ -855,9 +855,13 @@ def fetch_macro_news(limit: int = 15, tracked_symbols: list = None) -> list:
                 summary_clean = re.sub(r"<[^>]+>", "", summary_raw).strip()
                 summary_clean = html.unescape(" ".join(summary_clean.split()))
 
-                # Trích xuất link ảnh nếu có
-                img_match = re.search(r'src="([^"]+\.(?:jpg|png|jpeg|webp)[^"]*)"', summary_raw)
-                img_url = img_match.group(1) if img_match else None
+                # Trích xuất link ảnh nếu có (linear non-backtracking parsing)
+                img_match = re.search(r'src="([^"]+)"', summary_raw)
+                img_url = None
+                if img_match:
+                    candidate_url = img_match.group(1).strip()
+                    if re.search(r'\.(?:jpg|png|jpeg|webp)(?:$|[?#])', candidate_url, re.IGNORECASE):
+                        img_url = candidate_url
 
                 # Gắn nhãn phân loại tự động
                 full_text = (title + " " + summary_clean).lower()
