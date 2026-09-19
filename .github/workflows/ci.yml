@@ -23,7 +23,8 @@ jobs:
           python-version: "3.12"
 
       - name: Install Linter
-        run: pip install --only-binary :all: ruff==0.16.8
+        run: |
+          pip install --only-binary ':all:' ruff==0.16.8
 
       - name: Run Ruff Lint Check
         run: ruff check . --output-format=github
@@ -44,7 +45,8 @@ jobs:
           python-version: "3.12"
 
       - name: Install pip-audit
-        run: pip install --only-binary :all: pip-audit==2.7.3
+        run: |
+          pip install --only-binary ':all:' pip-audit==2.7.3
 
       - name: Run Vulnerability Scan on Requirements
         continue-on-error: true
@@ -69,9 +71,9 @@ jobs:
 
       - name: Install Dependencies & Test Tools
         run: |
-          python -m pip install --upgrade --only-binary :all: pip==24.3.1
-          pip install --only-binary :all: -r requirements.txt
-          pip install --only-binary :all: pytest-cov==7.1.0
+          python -m pip install --upgrade --only-binary ':all:' pip==24.3.1
+          pip install --only-binary ':all:' -r requirements.txt
+          pip install --only-binary ':all:' pytest-cov==7.1.0
 
       - name: Run Offline Test Suite with Coverage
         env:
