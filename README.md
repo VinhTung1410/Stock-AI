@@ -1,5 +1,9 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
-![Tests](https://github.com/VinhTung1410/Stock-AI/actions/workflows/ci.yml/badge.svg)
+![CI/CD Pipeline](https://github.com/VinhTung1410/Stock-AI/actions/workflows/ci.yml/badge.svg)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=VinhTung1410_Stock-AI&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=VinhTung1410_Stock-AI)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=VinhTung1410_Stock-AI&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=VinhTung1410_Stock-AI)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=VinhTung1410_Stock-AI&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=VinhTung1410_Stock-AI)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=VinhTung1410_Stock-AI&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=VinhTung1410_Stock-AI)
 ![Streamlit](https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?logo=streamlit&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
@@ -193,7 +197,36 @@ graph TD
 | **Data Source** | vnstock (VCI) · Google News RSS |
 | **Alerts** | Discord Bot + Webhook (Rich Embed) |
 | **Deployment** | Render.com (Web Service + Background Worker) |
-| **Testing** | pytest · ruff |
+| **Testing & CI/CD** | pytest · pytest-cov · ruff · SonarQube Cloud · pip-audit |
+
+---
+
+## Continuous Integration & Quality Gates
+
+Every code change pushed to `main` is subjected to a 5-stage automated enterprise verification pipeline in GitHub Actions:
+
+```mermaid
+graph LR
+    Push[git push] --> Lint[1. Ruff Linter]
+    Push --> SecAudit[2. pip-audit CVE Scan]
+    Lint --> Test[3. Pytest 35 Unit Tests]
+    Test --> Coverage[Generate coverage.xml]
+    Coverage --> Sonar[4. SonarQube Scan]
+    SecAudit --> Sonar
+    Sonar --> Gate{Quality Gate Passed?}
+    Gate -->|Yes| Deploy[5. Render.com Auto-Deploy]
+    Gate -->|No| Reject[❌ Block Deployment]
+```
+
+1. **Code Style & Linting (`ruff`)**: Strict PEP 8 enforcement, zero unused imports, clean formatting.
+2. **Supply Chain Security (`pip-audit`)**: Continuous scanning of pinned dependencies against known CVE databases.
+3. **Quant Gates & Offline Tests (`pytest`)**: 35 deterministic unit tests covering Piotroski F-Score (0-9), Altman Z-Score, ATR stop clamping, Margin of Safety, Kelly fractions, GDKHQ dividend gap protection, and anti-chasing filters.
+4. **Code Quality & Security (`SonarQube Cloud`)**:
+   - **Security**: Grade A (0 Vulnerabilities, deterministic dependency locking)
+   - **Reliability**: Grade A (0 Bugs, linear non-backtracking parsing)
+   - **Maintainability**: Grade A (Clean cognitive complexity, no duplicate branches)
+   - **Coverage Integration**: Automatic ingestion of `coverage.xml` test report.
+5. **Production Quality Gate (`Render.com`)**: Webhook deployment is only triggered after all previous gates pass with 100% green status.
 
 ---
 
