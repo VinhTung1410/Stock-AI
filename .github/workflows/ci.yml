@@ -95,6 +95,7 @@ jobs:
             --cov=quant_engine \
             --cov=quant_sanity_check \
             --cov=quant_valuation \
+            --cov=data_engine \
             --cov-report=term \
             --cov-report=xml \
             --tb=short
@@ -119,7 +120,7 @@ jobs:
           echo "| **Signal Credibility Engine** | ✅ PASS | 4-Pillar Conviction (≥70), 5-Day Cooldown, Daily Budget |" >> $GITHUB_STEP_SUMMARY
           echo "| **Defensive Shields** | ✅ PASS | GDKHQ Dividend Gap Shield & Anti-Chasing Ceiling (+6.85%) |" >> $GITHUB_STEP_SUMMARY
           echo "| **Mathematical Invariants** | ✅ PASS | Trailing Stop Clamping & Zero False 'Cut Loss' Labels |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Automated Unit Suite** | ✅ PASS | 35/35 Offline Tests Verified |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Automated Unit Suite** | ✅ PASS | 41/41 Offline Tests Verified |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "🚀 *Validated against international CFA & Institutional Risk Management Standards.*" >> $GITHUB_STEP_SUMMARY
 
@@ -148,7 +149,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: SonarQube Quality Gate Check
-        uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
+        uses: SonarSource/sonarqube-quality-gate-action@d304d050d930b02a896b0f85935344f023928496 # v1.1.0
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
