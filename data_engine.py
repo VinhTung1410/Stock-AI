@@ -87,6 +87,43 @@ def _normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
     return df.rename(columns={i: col_names[i] for i in range(min(len(col_names), df.shape[1]))})
 
 
+def _is_valid_symbol(sym: str) -> bool:
+    """Validate 3-character ticker format."""
+    return bool(sym and re.match(r"^[A-Z0-9]{3}$", sym))
+
+
+def _parse_sheet_portfolio(df: pd.DataFrame) -> list:
+    """Extract valid portfolio holdings from normalized sheet DataFrame."""
+    portfolio = []
+    for _, row in df.iterrows():
+        sym = str(row.get("symbol", "")).strip().upper()
+        if not _is_valid_symbol(sym):
+            continue
+        volume = _parse_numeric(row.get("volume"), 0, is_int=True)
+        if volume <= 0:
+            continue
+        cost_price = _parse_numeric(row.get("cost_price"), 0.0)
+        note_val = row.get("note", "")
+        note = str(note_val).strip() if pd.notnull(note_val) and str(note_val).strip() != "nan" else ""
+        portfolio.append({"symbol": sym, "volume": volume, "cost_price": cost_price, "note": note})
+    return portfolio
+
+
+def _parse_sheet_watchlist(df: pd.DataFrame) -> list:
+    """Extract watchlist items from sheet DataFrame."""
+    watchlist = []
+    for _, row in df.iterrows():
+        sym = str(row.iloc[0]).strip().upper()
+        if not _is_valid_symbol(sym):
+            continue
+        t_str = row.iloc[1] if len(row) > 1 and pd.notnull(row.iloc[1]) else "0"
+        target_buy = _parse_numeric(t_str, 0.0)
+        note_val = row.iloc[2] if len(row) > 2 and pd.notnull(row.iloc[2]) else "Theo dõi từ Google Sheet"
+        note = str(note_val).strip() if str(note_val).strip() != "nan" else "Theo dõi từ Google Sheet"
+        watchlist.append({"symbol": sym, "target_buy": target_buy, "note": note})
+    return watchlist
+
+
 def _parse_xlsx_sheets(target_url: str) -> tuple:
     """Download and parse multi-sheet XLSX from Google Sheets."""
     match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", target_url)
@@ -101,52 +138,23 @@ def _parse_xlsx_sheets(target_url: str) -> tuple:
     portfolio, watchlist = [], []
     if len(xl.sheet_names) >= 1:
         df1 = xl.parse(xl.sheet_names[0], dtype=str)
-        col_names_lower = [str(c).lower() for c in df1.columns]
-        if not any("mã" in c or "symbol" in c for c in col_names_lower):
+        if not any(k in str(c).lower() for c in df1.columns for k in ["mã", "symbol"]):
             df1 = xl.parse(xl.sheet_names[0], header=None, dtype=str)
-        df1 = _normalize_column_names(df1)
-        for _, row in df1.iterrows():
-            sym = str(row.get("symbol", "")).strip().upper()
-            if not sym or not re.match(r"^[A-Z0-9]{3}$", sym):
-                continue
-            volume = _parse_numeric(row.get("volume"), 0, is_int=True)
-            cost_price = _parse_numeric(row.get("cost_price"), 0.0)
-            note = str(row.get("note", "")).strip() if pd.notnull(row.get("note")) and str(row.get("note")).strip() != "nan" else ""
-            if volume > 0:
-                portfolio.append({"symbol": sym, "volume": volume, "cost_price": cost_price, "note": note})
+        portfolio = _parse_sheet_portfolio(_normalize_column_names(df1))
 
     if len(xl.sheet_names) >= 2:
         df2 = xl.parse(xl.sheet_names[1], header=None, dtype=str)
-        for _, row in df2.iterrows():
-            sym = str(row.iloc[0]).strip().upper()
-            if not sym or not re.match(r"^[A-Z0-9]{3}$", sym):
-                continue
-            t_str = row.iloc[1] if len(row) > 1 and pd.notnull(row.iloc[1]) else "0"
-            target_buy = _parse_numeric(t_str, 0.0)
-            note = str(row.iloc[2]).strip() if len(row) > 2 and pd.notnull(row.iloc[2]) and str(row.iloc[2]).strip() != "nan" else "Theo dõi từ Google Sheet"
-            watchlist.append({"symbol": sym, "target_buy": target_buy, "note": note})
+        watchlist = _parse_sheet_watchlist(df2)
 
     return (portfolio, watchlist) if (portfolio or watchlist) else (None, None)
 
 
-def _parse_csv_fallback(target_url: str) -> tuple:
-    """Download and parse single-sheet CSV fallback from Google Sheets."""
-    csv_url = parse_google_sheet_csv_url(target_url)
-    df = pd.read_csv(csv_url, dtype=str)
-    if df is None or df.empty:
-        return None, None
-    df = _normalize_column_names(df)
-    if "symbol" not in df.columns:
-        df_no_head = pd.read_csv(csv_url, header=None, dtype=str)
-        if df_no_head is None or df_no_head.empty:
-            return None, None
-        col_names = ["symbol", "volume", "cost_price", "note"]
-        df = df_no_head.rename(columns={i: col_names[i] for i in range(min(len(col_names), df_no_head.shape[1]))})
-
+def _split_csv_rows(df: pd.DataFrame) -> tuple[list, list]:
+    """Classify rows into portfolio and watchlist from unified single-sheet CSV."""
     portfolio, watchlist = [], []
     for _, row in df.iterrows():
         sym = str(row.get("symbol", "")).strip().upper()
-        if not sym or not re.match(r"^[A-Z0-9]{3}$", sym):
+        if not _is_valid_symbol(sym):
             continue
         volume = _parse_numeric(row.get("volume"), 0, is_int=True)
         cost_price = _parse_numeric(row.get("cost_price"), 0.0)
@@ -159,6 +167,29 @@ def _parse_csv_fallback(target_url: str) -> tuple:
         else:
             watchlist.append({"symbol": sym, "target_buy": target_buy if target_buy > 0 else cost_price, "note": note})
     return portfolio, watchlist
+
+
+def _parse_csv_fallback(target_url: str) -> tuple:
+    """Download and parse single-sheet CSV fallback from Google Sheets."""
+    csv_url = parse_google_sheet_csv_url(target_url)
+    try:
+        df = pd.read_csv(csv_url, dtype=str)
+    except Exception:
+        return None, None
+    if df.empty:
+        return None, None
+    df = _normalize_column_names(df)
+    if "symbol" not in df.columns:
+        try:
+            df_no_head = pd.read_csv(csv_url, header=None, dtype=str)
+        except Exception:
+            return None, None
+        if df_no_head.empty:
+            return None, None
+        col_names = ["symbol", "volume", "cost_price", "note"]
+        df = df_no_head.rename(columns={i: col_names[i] for i in range(min(len(col_names), df_no_head.shape[1]))})
+
+    return _split_csv_rows(df)
 
 
 def fetch_google_sheet_data(sheet_url: str = None) -> tuple:
@@ -187,7 +218,7 @@ def fetch_google_sheet_data(sheet_url: str = None) -> tuple:
             _GSHEET_CACHE.update({"timestamp": now_ts, "portfolio": portfolio or [], "watchlist": watchlist or []})
             return portfolio or [], watchlist or []
     except Exception as e:
-        logging.error(f"Error reading Google Sheet CSV: {e}")
+        logging.exception("Error reading Google Sheet CSV: %s", e)
 
     return None, None
 
