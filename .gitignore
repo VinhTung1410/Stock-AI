@@ -18,6 +18,7 @@ build/
 .pytest_cache/
 htmlcov/
 .coverage
+coverage.xml
 
 # OS
 .DS_Store
