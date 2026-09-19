@@ -12,6 +12,7 @@ from google import genai
 
 from data_engine import evaluate_portfolio, fetch_macro_news, load_portfolio
 from quant_engine import evaluate_holding_position, evaluate_market_regime
+from quant_sanity_check import validate_holding_position, validate_trade_setup
 from quant_valuation import calculate_fair_value_and_mos
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -115,7 +116,55 @@ def get_ai_client():
     return genai.Client(api_key=GEMINI_API_KEY)
 
 
-from quant_sanity_check import validate_holding_position, validate_trade_setup
+def _build_portfolio_quant_summary(portfolio_df) -> str:
+    """Build pre-computed quantitative and sanity check summary lines for portfolio."""
+    if portfolio_df is None or portfolio_df.empty:
+        return "Chưa có mã nào trong danh mục."
+
+    lines = []
+    for _, row in portfolio_df.iterrows():
+        sym = str(row.get("symbol", row.get("Mã CP", ""))).upper()
+        entry_p = float(row.get("avg_price", row.get("Giá vốn (k)", 0.0)))
+        curr_p = float(row.get("market_price", row.get("Thị giá (k)", entry_p)))
+        pl_p = ((curr_p - entry_p) / entry_p * 100) if entry_p > 0 else 0.0
+
+        mock_tech = {
+            "current_price": curr_p,
+            "atr": float(row.get("atr", 0.0)) if "atr" in row else (curr_p * 0.025),
+            "ma20": float(row.get("ma20", curr_p)) if "ma20" in row else curr_p,
+        }
+        eval_res = evaluate_holding_position(row.to_dict(), mock_tech)
+        _, _, eval_res = validate_holding_position(eval_res)
+
+        if eval_res["is_profit"]:
+            lines.append(
+                f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá ATC: {curr_p:.2f}k | Lãi: +{pl_p:.1f}% | "
+                f"Hành động: {eval_res['action']} | 🛡️ MỐC TRAILING STOP BẢO VỆ LÃI: **{eval_res['trailing_stop']:.2f}k** | "
+                f"Chi tiết: {eval_res['detail']}"
+            )
+        else:
+            lines.append(
+                f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá ATC: {curr_p:.2f}k | Lỗ: {pl_p:.1f}% | "
+                f"Hành động: {eval_res['action']} | 🛡️ MỐC STOP-LOSS KỸ THUẬT: **{eval_res['stop_loss']:.2f}k** | "
+                f"Thesis Breaker: {eval_res['thesis_breaker']} | Chi tiết: {eval_res['detail']}"
+            )
+    return "\n".join(lines) if lines else "Chưa có mã nào trong danh mục."
+
+
+def _format_news_summary(news_items, limit: int = 8) -> str:
+    """Format news items into concise summary lines for LLM context."""
+    if not news_items:
+        return "Không có tin tức mới."
+    lines = []
+    for n in (news_items or [])[:limit]:
+        tag = n.get("tag", n.get("keyword", "TIN TỨC")).upper()
+        line = f"- [{tag}] {n['title']}"
+        if n.get("summary"):
+            line += f" | Tóm tắt: {n['summary'][:160]}..."
+        if n.get("matched_symbols"):
+            line += f" | 🔥 Trực tiếp tác động: {', '.join(n['matched_symbols'])}"
+        lines.append(line)
+    return "\n".join(lines) if lines else "Không có tin tức mới."
 
 
 def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, custom_question: str = None) -> str:
@@ -128,52 +177,10 @@ def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, cus
     """
     client = get_ai_client()
 
-    # Chạy tính toán định lượng & Sanity Check cho từng mã trong danh mục
-    quant_eval_lines = []
-    if portfolio_df is not None and not portfolio_df.empty:
-        for _, row in portfolio_df.iterrows():
-            sym = str(row.get("symbol", row.get("Mã CP", ""))).upper()
-            entry_p = float(row.get("avg_price", row.get("Giá vốn (k)", 0.0)))
-            curr_p = float(row.get("market_price", row.get("Thị giá (k)", entry_p)))
-            pl_p = ((curr_p - entry_p) / entry_p * 100) if entry_p > 0 else 0.0
-
-            mock_tech = {
-                "current_price": curr_p,
-                "atr": float(row.get("atr", 0.0)) if "atr" in row else (curr_p * 0.025),
-                "ma20": float(row.get("ma20", curr_p)) if "ma20" in row else curr_p
-            }
-            eval_res = evaluate_holding_position(row.to_dict(), mock_tech)
-
-            # SANITY CHECK CỨNG
-            _, _, eval_res = validate_holding_position(eval_res)
-
-            if eval_res["is_profit"]:
-                quant_eval_lines.append(
-                    f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá ATC: {curr_p:.2f}k | Lãi: +{pl_p:.1f}% | "
-                    f"Hành động: {eval_res['action']} | 🛡️ MỐC TRAILING STOP BẢO VỆ LÃI: **{eval_res['trailing_stop']:.2f}k** | "
-                    f"Chi tiết: {eval_res['detail']}"
-                )
-            else:
-                quant_eval_lines.append(
-                    f"• **{sym}** | Giá vốn: {entry_p:.2f}k | Thị giá ATC: {curr_p:.2f}k | Lỗ: {pl_p:.1f}% | "
-                    f"Hành động: {eval_res['action']} | 🛡️ MỐC STOP-LOSS KỸ THUẬT: **{eval_res['stop_loss']:.2f}k** | "
-                    f"Thesis Breaker: {eval_res['thesis_breaker']} | Chi tiết: {eval_res['detail']}"
-                )
-    quant_eval_str = "\n".join(quant_eval_lines) if quant_eval_lines else "Chưa có mã nào trong danh mục."
-
+    quant_eval_str = _build_portfolio_quant_summary(portfolio_df)
     portfolio_str = portfolio_df.to_string(index=False) if portfolio_df is not None and not portfolio_df.empty else "Chưa có dữ liệu."
     watchlist_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else ""
-
-    news_lines = []
-    for n in news_items[:8]:
-        tag = n.get("tag", n.get("keyword", "TIN TỨC")).upper()
-        line = f"- [{tag}] {n['title']}"
-        if n.get("summary"):
-            line += f" | Tóm tắt: {n['summary'][:160]}..."
-        if n.get("matched_symbols"):
-            line += f" | 🔥 Trực tiếp tác động: {', '.join(n['matched_symbols'])}"
-        news_lines.append(line)
-    news_str = "\n".join(news_lines) if news_lines else "Không có tin tức mới."
+    news_str = _format_news_summary(news_items, limit=8)
 
     prompt = f"""Bạn là Giám đốc Quản trị Rủi ro & Chiến lược Danh mục Đầu tư (Senior Portfolio Manager) theo trường phái Value-First + Technical Timing.
 Bây giờ là 15:00 CHIỀU - phiên giao dịch chứng khoán vừa khép lại tại ATC.

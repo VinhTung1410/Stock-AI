@@ -51,12 +51,118 @@ def parse_google_sheet_csv_url(url: str) -> str:
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
 
+def _parse_numeric(val, default=0.0, is_int: bool = False):
+    """Safely parse numeric values from sheet strings."""
+    if not val or str(val).lower() == "nan":
+        return int(default) if is_int else float(default)
+    cleaned = str(val).replace(",", "").strip()
+    if is_int:
+        cleaned = cleaned.replace(".", "")
+    try:
+        return int(float(cleaned)) if is_int else float(cleaned)
+    except (ValueError, TypeError):
+        return int(default) if is_int else float(default)
+
+
+def _normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize common Google Sheet column variations to standard schema."""
+    col_map = {}
+    for col in df.columns:
+        c_clean = str(col).strip().lower()
+        if any(k in c_clean for k in ["mã", "symbol", "ticker", "cp"]):
+            col_map[col] = "symbol"
+        elif any(k in c_clean for k in ["khối lượng", "số lượng", "volume", "kl", "qty"]):
+            col_map[col] = "volume"
+        elif any(k in c_clean for k in ["giá vốn", "cost_price", "giá mua", "cost"]):
+            col_map[col] = "cost_price"
+        elif any(k in c_clean for k in ["giá chờ mua", "giá mục tiêu", "target", "chờ mua"]):
+            col_map[col] = "target_buy"
+        elif any(k in c_clean for k in ["loại", "type", "phân loại"]):
+            col_map[col] = "type"
+        elif any(k in c_clean for k in ["ghi chú", "note", "ngành", "nhóm"]):
+            col_map[col] = "note"
+    if col_map:
+        return df.rename(columns=col_map)
+    col_names = ["symbol", "volume", "cost_price", "note"]
+    return df.rename(columns={i: col_names[i] for i in range(min(len(col_names), df.shape[1]))})
+
+
+def _parse_xlsx_sheets(target_url: str) -> tuple:
+    """Download and parse multi-sheet XLSX from Google Sheets."""
+    match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", target_url)
+    if not match:
+        return None, None
+    sheet_id = match.group(1)
+    xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+    req = urllib.request.Request(xlsx_url, headers={"User-Agent": "Mozilla/5.0"})
+    content = urllib.request.urlopen(req, timeout=10).read()
+    xl = pd.ExcelFile(io.BytesIO(content))
+
+    portfolio, watchlist = [], []
+    if len(xl.sheet_names) >= 1:
+        df1 = xl.parse(xl.sheet_names[0], dtype=str)
+        col_names_lower = [str(c).lower() for c in df1.columns]
+        if not any("mã" in c or "symbol" in c for c in col_names_lower):
+            df1 = xl.parse(xl.sheet_names[0], header=None, dtype=str)
+        df1 = _normalize_column_names(df1)
+        for _, row in df1.iterrows():
+            sym = str(row.get("symbol", "")).strip().upper()
+            if not sym or not re.match(r"^[A-Z0-9]{3}$", sym):
+                continue
+            volume = _parse_numeric(row.get("volume"), 0, is_int=True)
+            cost_price = _parse_numeric(row.get("cost_price"), 0.0)
+            note = str(row.get("note", "")).strip() if pd.notnull(row.get("note")) and str(row.get("note")).strip() != "nan" else ""
+            if volume > 0:
+                portfolio.append({"symbol": sym, "volume": volume, "cost_price": cost_price, "note": note})
+
+    if len(xl.sheet_names) >= 2:
+        df2 = xl.parse(xl.sheet_names[1], header=None, dtype=str)
+        for _, row in df2.iterrows():
+            sym = str(row.iloc[0]).strip().upper()
+            if not sym or not re.match(r"^[A-Z0-9]{3}$", sym):
+                continue
+            t_str = row.iloc[1] if len(row) > 1 and pd.notnull(row.iloc[1]) else "0"
+            target_buy = _parse_numeric(t_str, 0.0)
+            note = str(row.iloc[2]).strip() if len(row) > 2 and pd.notnull(row.iloc[2]) and str(row.iloc[2]).strip() != "nan" else "Theo dõi từ Google Sheet"
+            watchlist.append({"symbol": sym, "target_buy": target_buy, "note": note})
+
+    return (portfolio, watchlist) if (portfolio or watchlist) else (None, None)
+
+
+def _parse_csv_fallback(target_url: str) -> tuple:
+    """Download and parse single-sheet CSV fallback from Google Sheets."""
+    csv_url = parse_google_sheet_csv_url(target_url)
+    df = pd.read_csv(csv_url, dtype=str)
+    if df is None or df.empty:
+        return None, None
+    df = _normalize_column_names(df)
+    if "symbol" not in df.columns:
+        df_no_head = pd.read_csv(csv_url, header=None, dtype=str)
+        if df_no_head is None or df_no_head.empty:
+            return None, None
+        col_names = ["symbol", "volume", "cost_price", "note"]
+        df = df_no_head.rename(columns={i: col_names[i] for i in range(min(len(col_names), df_no_head.shape[1]))})
+
+    portfolio, watchlist = [], []
+    for _, row in df.iterrows():
+        sym = str(row.get("symbol", "")).strip().upper()
+        if not sym or not re.match(r"^[A-Z0-9]{3}$", sym):
+            continue
+        volume = _parse_numeric(row.get("volume"), 0, is_int=True)
+        cost_price = _parse_numeric(row.get("cost_price"), 0.0)
+        target_buy = _parse_numeric(row.get("target_buy"), 0.0)
+        row_type = str(row.get("type", "")).strip().upper()
+        note = str(row.get("note", "")).strip() if pd.notnull(row.get("note")) else ""
+
+        if volume > 0 and row_type not in ["WATCH", "THEO DÕI", "THEODOI"]:
+            portfolio.append({"symbol": sym, "volume": volume, "cost_price": cost_price, "note": note})
+        else:
+            watchlist.append({"symbol": sym, "target_buy": target_buy if target_buy > 0 else cost_price, "note": note})
+    return portfolio, watchlist
+
+
 def fetch_google_sheet_data(sheet_url: str = None) -> tuple:
-    """
-    Đọc dữ liệu từ Google Sheet công khai (hỗ trợ cả 2 Sheet: Sheet 1 = Danh mục, Sheet 2 = Watchlist).
-    Tự động thử định dạng XLSX đa trang tính trước, fallback về CSV nếu cần.
-    Cache 45 giây để tối ưu hiệu năng.
-    """
+    """Ingest holdings and watchlist from public Google Sheet (XLSX multi-sheet with CSV fallback)."""
     global _GSHEET_CACHE
     import time
     now_ts = time.time()
@@ -67,181 +173,23 @@ def fetch_google_sheet_data(sheet_url: str = None) -> tuple:
     if not target_url:
         return None, None
 
-    portfolio = []
-    watchlist = []
-
     try:
-        # Cách 1: Thử tải toàn bộ Workbook định dạng XLSX để lấy cả Sheet 1 & Sheet 2
-        match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", target_url)
-        if match:
-            sheet_id = match.group(1)
-            xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
-            logging.info(f"Đang đồng bộ Google Sheets đa trang tính (XLSX): {xlsx_url}")
-            req = urllib.request.Request(xlsx_url, headers={"User-Agent": "Mozilla/5.0"})
-            content = urllib.request.urlopen(req, timeout=10).read()
-            xl = pd.ExcelFile(io.BytesIO(content))
-
-            # --- Sheet 1: Danh mục nắm giữ (Portfolio) ---
-            if len(xl.sheet_names) >= 1:
-                df1 = xl.parse(xl.sheet_names[0], dtype=str)
-                # Kiểm tra có header hay không
-                col_names_lower = [str(c).lower() for c in df1.columns]
-                has_header = any("mã" in c or "symbol" in c for c in col_names_lower)
-                if not has_header:
-                    df1 = xl.parse(xl.sheet_names[0], header=None, dtype=str)
-
-                col_map = {}
-                for col in df1.columns:
-                    c_clean = str(col).strip().lower()
-                    if any(k in c_clean for k in ["mã", "symbol", "ticker", "cp"]):
-                        col_map[col] = "symbol"
-                    elif any(k in c_clean for k in ["khối lượng", "số lượng", "volume", "kl", "qty"]):
-                        col_map[col] = "volume"
-                    elif any(k in c_clean for k in ["giá vốn", "cost_price", "giá mua", "cost"]):
-                        col_map[col] = "cost_price"
-                    elif any(k in c_clean for k in ["ghi chú", "note", "ngành", "nhóm"]):
-                        col_map[col] = "note"
-
-                if col_map:
-                    df1 = df1.rename(columns=col_map)
-                else:
-                    # Mặc định cột 0: Mã, cột 1: Khối lượng, cột 2: Giá vốn
-                    col_names = ["symbol", "volume", "cost_price", "note"]
-                    df1 = df1.rename(columns={i: col_names[i] for i in range(min(len(col_names), df1.shape[1]))})
-
-                for _, row in df1.iterrows():
-                    sym = str(row.get("symbol", "")).strip().upper()
-                    if not sym or not re.match(r"^[A-Z0-9]{3}$", sym):
-                        continue
-                    vol_str = str(row.get("volume", "0")).replace(",", "").replace(".", "").strip()
-                    try:
-                        volume = int(float(vol_str)) if vol_str and vol_str != "nan" else 0
-                    except:
-                        volume = 0
-
-                    cost_str = str(row.get("cost_price", "0")).replace(",", "").strip()
-                    try:
-                        cost_price = float(cost_str) if cost_str and cost_str != "nan" else 0.0
-                    except:
-                        cost_price = 0.0
-
-                    note = str(row.get("note", "")).strip() if pd.notnull(row.get("note")) and str(row.get("note")).strip() != "nan" else ""
-                    if volume > 0:
-                        portfolio.append({
-                            "symbol": sym,
-                            "volume": volume,
-                            "cost_price": cost_price,
-                            "note": note
-                        })
-
-            # --- Sheet 2: Danh sách theo dõi (Watchlist) nếu có ---
-            if len(xl.sheet_names) >= 2:
-                df2 = xl.parse(xl.sheet_names[1], header=None, dtype=str)
-                for _, row in df2.iterrows():
-                    sym = str(row.iloc[0]).strip().upper()
-                    if not sym or not re.match(r"^[A-Z0-9]{3}$", sym):
-                        continue
-                    target_str = str(row.iloc[1]).replace(",", "").strip() if len(row) > 1 and pd.notnull(row.iloc[1]) else "0"
-                    try:
-                        target_buy = float(target_str) if target_str and target_str != "nan" else 0.0
-                    except:
-                        target_buy = 0.0
-
-                    note = str(row.iloc[2]).strip() if len(row) > 2 and pd.notnull(row.iloc[2]) and str(row.iloc[2]).strip() != "nan" else "Theo dõi từ Google Sheet"
-                    watchlist.append({
-                        "symbol": sym,
-                        "target_buy": target_buy,
-                        "note": note
-                    })
-
-            if portfolio or watchlist:
-                _GSHEET_CACHE["timestamp"] = now_ts
-                _GSHEET_CACHE["portfolio"] = portfolio
-                _GSHEET_CACHE["watchlist"] = watchlist
-                logging.info(f"✅ Đã đồng bộ Google Sheets (XLSX): {len(portfolio)} mã danh mục, {len(watchlist)} mã theo dõi.")
-                return portfolio, watchlist
+        portfolio, watchlist = _parse_xlsx_sheets(target_url)
+        if portfolio is not None or watchlist is not None:
+            _GSHEET_CACHE.update({"timestamp": now_ts, "portfolio": portfolio or [], "watchlist": watchlist or []})
+            return portfolio or [], watchlist or []
     except Exception as e_xlsx:
-        logging.warning(f"Không thể đọc XLSX từ Google Sheet ({e_xlsx}), chuyển sang tải CSV dự phòng...")
+        logging.warning(f"Could not parse Google Sheet XLSX ({e_xlsx}), falling back to CSV...")
 
-    # Cách 2 (Dự phòng): Tải CSV đơn trang tính
     try:
-        csv_url = parse_google_sheet_csv_url(target_url)
-        df = pd.read_csv(csv_url, dtype=str)
-        if df is None or df.empty:
-            return None, None
-
-        col_map = {}
-        for col in df.columns:
-            c_clean = str(col).strip().lower()
-            if any(k in c_clean for k in ["mã", "symbol", "ticker", "cp"]):
-                col_map[col] = "symbol"
-            elif any(k in c_clean for k in ["khối lượng", "số lượng", "volume", "kl", "qty"]):
-                col_map[col] = "volume"
-            elif any(k in c_clean for k in ["giá vốn", "cost_price", "giá mua", "cost"]):
-                col_map[col] = "cost_price"
-            elif any(k in c_clean for k in ["giá chờ mua", "giá mục tiêu", "target", "chờ mua"]):
-                col_map[col] = "target_buy"
-            elif any(k in c_clean for k in ["loại", "type", "phân loại"]):
-                col_map[col] = "type"
-            elif any(k in c_clean for k in ["ghi chú", "note", "ngành", "nhóm"]):
-                col_map[col] = "note"
-
-        df = df.rename(columns=col_map)
-        if "symbol" not in df.columns:
-            df_no_head = pd.read_csv(csv_url, header=None, dtype=str)
-            if df_no_head is not None and not df_no_head.empty:
-                col_names = ["symbol", "volume", "cost_price", "note"]
-                df = df_no_head.rename(columns={i: col_names[i] for i in range(min(len(col_names), df_no_head.shape[1]))})
-            else:
-                return None, None
-
-        for _, row in df.iterrows():
-            sym = str(row.get("symbol", "")).strip().upper()
-            if not sym or not re.match(r"^[A-Z0-9]{3}$", sym):
-                continue
-
-            vol_str = str(row.get("volume", "0")).replace(",", "").replace(".", "").strip()
-            try:
-                volume = int(float(vol_str)) if vol_str and vol_str != "nan" else 0
-            except:
-                volume = 0
-
-            cost_str = str(row.get("cost_price", "0")).replace(",", "").strip()
-            try:
-                cost_price = float(cost_str) if cost_str and cost_str != "nan" else 0.0
-            except:
-                cost_price = 0.0
-
-            target_str = str(row.get("target_buy", "0")).replace(",", "").strip()
-            try:
-                target_buy = float(target_str) if target_str and target_str != "nan" else 0.0
-            except:
-                target_buy = 0.0
-
-            row_type = str(row.get("type", "")).strip().upper()
-            note = str(row.get("note", "")).strip() if pd.notnull(row.get("note")) else ""
-
-            if volume > 0 and row_type not in ["WATCH", "THEO DÕI", "THEODOI"]:
-                portfolio.append({
-                    "symbol": sym,
-                    "volume": volume,
-                    "cost_price": cost_price,
-                    "note": note
-                })
-            else:
-                watchlist.append({
-                    "symbol": sym,
-                    "target_buy": target_buy if target_buy > 0 else cost_price,
-                    "note": note
-                })
-
-        _GSHEET_CACHE["timestamp"] = now_ts
-        _GSHEET_CACHE["portfolio"] = portfolio
-        _GSHEET_CACHE["watchlist"] = watchlist
-        return portfolio, watchlist
+        portfolio, watchlist = _parse_csv_fallback(target_url)
+        if portfolio is not None or watchlist is not None:
+            _GSHEET_CACHE.update({"timestamp": now_ts, "portfolio": portfolio or [], "watchlist": watchlist or []})
+            return portfolio or [], watchlist or []
     except Exception as e:
-        logging.error(f"❌ Lỗi khi đọc Google Sheet CSV: {e}")
-        return None, None
+        logging.error(f"Error reading Google Sheet CSV: {e}")
+
+    return None, None
 
 
 def clean_json_records(records: list) -> list:
