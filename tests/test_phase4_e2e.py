@@ -194,8 +194,9 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
             side_effect=TimeoutError("Server unreachable")
         )
 
+        coro = async_call_gemini(mock_client, "Prompt test", max_retries=2, retry_delay=0.01)
         with pytest.raises(RuntimeError, match="failed after 2 attempts"):
-            asyncio.run(async_call_gemini(mock_client, "Prompt test", max_retries=2, retry_delay=0.01))
+            asyncio.run(coro)
 
     def test_async_analyze_stock_ai_failure_handled_gracefully(self):
         """Async analysis handles AI generation exceptions without crashing."""
