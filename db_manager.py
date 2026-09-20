@@ -33,7 +33,7 @@ def get_supabase_client() -> Client:
         try:
             _supabase = create_client(clean_url, key)
         except Exception as e:
-            logging.error(f"Failed to initialize Supabase client: {e}")
+            logging.exception("Failed to initialize Supabase client")
             return None
     return _supabase
 
@@ -118,7 +118,7 @@ def save_quant_signal(
         logging.info(f"✅ ĐÃ LƯU SNAPSHOT TÍN HIỆU {symbol} (ID: {signal_id}) VÀO SUPABASE THÀNH CÔNG!")
         return signal_id
     except Exception as e:
-        logging.error(f"Lỗi khi lưu tín hiệu vào Supabase: {e}")
+        logging.exception("Lỗi khi lưu tín hiệu vào Supabase")
         return None
 
 
@@ -137,7 +137,7 @@ def fetch_open_signals() -> list:
                 open_list.append(row)
         return open_list
     except Exception as e:
-        logging.error(f"Failed to query open signals: {e}")
+        logging.exception("Failed to query open signals")
         return []
 
 
@@ -430,5 +430,5 @@ def get_signal_audit_metrics() -> dict:
             "loss_reasons": loss_reasons
         }
     except Exception as e:
-        logging.error(f"Lỗi tính toán chỉ số kiểm toán: {e}")
+        logging.exception("Lỗi tính toán chỉ số kiểm toán")
         return empty_res

@@ -83,7 +83,7 @@ def send_discord_dm(content: str = None, embeds: list = None) -> bool:
         logging.info("Đã gửi tin nhắn riêng (DM) đến bạn thành công!")
         return True
     except Exception as e:
-        logging.error(f"Ngoại lệ khi gửi DM: {e}")
+        logging.exception("Ngoại lệ khi gửi DM")
         return False
 
 
@@ -117,7 +117,7 @@ def send_discord_webhook(content: str = None, embeds: list = None) -> bool:
         logging.info("Đã gửi tin nhắn qua Webhook thành công!")
         return True
     except Exception as e:
-        logging.error(f"Lỗi khi gửi Webhook: {e}")
+        logging.exception("Lỗi khi gửi Webhook")
         return False
 
 

@@ -28,6 +28,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # Danh sách mã cổ phiếu trụ cột / thanh khoản cao phục vụ quét cơ hội đầu ngày (08:45 sáng)
 TOP_MARKET_SYMBOLS = ["HPG", "SSI", "FPT", "MWG", "TCB", "VHM"]
 
+TAG_MACRO = "VĨ MÔ"
+TAG_INSIDER = "NỘI BỘ"
+TAG_EARNINGS = "KQKD"
+TAG_DIVIDEND = "CỔ TỨC"
+
 
 # Cache bộ nhớ tạm để tránh spam request Google Sheets liên tục
 _GSHEET_CACHE = {
@@ -273,7 +278,7 @@ def update_google_sheet_portfolio(portfolio_data: list) -> tuple:
         logging.error("Lỗi: Quá thời gian chờ phản hồi từ Google Apps Script (>30s).")
         return False, "Hết thời gian chờ (Timeout > 30s). Google Apps Script xử lý quá lâu."
     except Exception as e:
-        logging.error(f"Lỗi kết nối Webhook Google Sheet: {e}")
+        logging.exception("Lỗi kết nối Webhook Google Sheet")
         return False, str(e)
 
 
@@ -304,7 +309,7 @@ def update_google_sheet_watchlist(watchlist_data: list) -> tuple:
         logging.error("Lỗi: Quá thời gian chờ phản hồi Watchlist từ Google Apps Script (>30s).")
         return False, "Hết thời gian chờ (Timeout > 30s). Google Apps Script xử lý quá lâu."
     except Exception as e:
-        logging.error(f"Lỗi kết nối Webhook Google Sheet Watchlist: {e}")
+        logging.exception("Lỗi kết nối Webhook Google Sheet Watchlist")
         return False, str(e)
 
 
@@ -331,8 +336,8 @@ def load_portfolio(filepath: str = "data/portfolio.json") -> list:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception as e:
-        logging.error(f"Lỗi đọc {filepath}: {e}")
+    except Exception:
+        logging.exception(f"Lỗi đọc {filepath}")
         return []
 
 
@@ -357,8 +362,8 @@ def load_watchlist(filepath: str = "data/watchlist.json") -> list:
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception as e:
-        logging.error(f"Lỗi đọc {filepath}: {e}")
+    except Exception:
+        logging.exception(f"Lỗi đọc {filepath}")
         return []
 
 
@@ -498,7 +503,7 @@ def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> d
         for n in news_items:
             title = n.get("title", "")
             tag = n.get("tag", "").upper()
-            if symbol.upper() in title.upper() or tag in ["KQKD", "CỔ TỨC", "NỘI BỘ", "VĨ MÔ"]:
+            if symbol.upper() in title.upper() or tag in [TAG_EARNINGS, TAG_DIVIDEND, TAG_INSIDER, TAG_MACRO]:
                 has_news = True
                 news_matched_title = title
                 break
@@ -662,8 +667,8 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
         }
         _TECH_CACHE[cache_key] = (now, res)
         return res
-    except Exception as e:
-        logging.error(f"Lỗi khi lấy kỹ thuật mã {symbol}: {e}")
+    except Exception:
+        logging.exception(f"Lỗi khi lấy kỹ thuật mã {symbol}")
         return {}
 
 
@@ -903,13 +908,13 @@ def fetch_macro_news(limit: int = 15, tracked_symbols: list = None) -> list:
                     tag = "CỔ TỨC"
                     tag_color = "#10b981"  # Green
                 elif any(w in full_text for w in ["lợi nhuận", "kết quả kinh doanh", "kqkd", "báo cáo tài chính", "bctc", "lãi ròng", "doanh thu"]):
-                    tag = "KQKD"
+                    tag = TAG_EARNINGS
                     tag_color = "#8b5cf6"  # Purple
                 elif any(w in full_text for w in ["chủ tịch", "tổng giám đốc", "mua vào", "bán ra", "thoái vốn", "đăng ký bán", "đăng ký mua", "nội bộ"]):
-                    tag = "NỘI BỘ"
+                    tag = TAG_INSIDER
                     tag_color = "#f59e0b"  # Amber
                 elif any(w in full_text for w in ["lãi suất", "fed", "ngân hàng nhà nước", "tỷ giá", "lạm phát", "gdp", "fdi"]):
-                    tag = "VĨ MÔ"
+                    tag = TAG_MACRO
                     tag_color = "#ec4899"  # Pink
 
                 # Kiểm tra mã cổ phiếu liên quan
@@ -935,8 +940,8 @@ def fetch_macro_news(limit: int = 15, tracked_symbols: list = None) -> list:
                     break
             if len(news_items) >= limit:
                 break
-        except Exception as e:
-            logging.error(f"Lỗi khi cào RSS CafeF ({feed_url}): {e}")
+        except Exception:
+            logging.exception(f"Lỗi khi cào RSS CafeF ({feed_url})")
 
     return news_items
 
@@ -1040,7 +1045,7 @@ def calculate_conviction_score(
     cat_pts = 0.0
     if cat_info:
         tag = str(cat_info.get("tag", "")).upper()
-        if any(k in tag for k in ["KQKD", "CỔ TỨC", "VĨ MÔ", "NỘI BỘ", "M&A", "TĂNG TRƯỞNG"]):
+        if any(k in tag for k in [TAG_EARNINGS, TAG_DIVIDEND, TAG_MACRO, TAG_INSIDER, "M&A", "TĂNG TRƯỞNG"]):
             cat_pts = 20.0
         elif any(k in tag for k in ["WATCHLIST", "CHIẾN LƯỢC", "NGÀNH"]):
             cat_pts = 15.0
@@ -1598,8 +1603,8 @@ def get_stock_chart_data(symbol: str) -> pd.DataFrame:
         if df is not None and not df.empty:
             df = df.sort_values("time").reset_index(drop=True)
         return df
-    except Exception as e:
-        logging.error(f"Lỗi khi lấy nến cho {symbol}: {e}")
+    except Exception:
+        logging.exception(f"Lỗi khi lấy nến cho {symbol}")
         return pd.DataFrame()
 
 
@@ -1629,8 +1634,8 @@ def get_vnindex_valuation_data() -> pd.DataFrame:
             df["PE"] = pe_list
             df["PB"] = pb_list
         return df
-    except Exception as e:
-        logging.error(f"Lỗi khi lấy dữ liệu VNINDEX: {e}")
+    except Exception:
+        logging.exception("Lỗi khi lấy dữ liệu VNINDEX")
         return pd.DataFrame()
 
 
@@ -1714,8 +1719,8 @@ def get_financial_ratios(symbol: str) -> dict:
             "market_cap_bil": round(market_cap / 1e9, 1) if market_cap is not None else None,
             "dividend_yield": round(dividend_yield, 2) if dividend_yield is not None else None,
         }
-    except Exception as e:
-        logging.error(f"Lỗi khi lấy chỉ số tài chính cho {symbol}: {e}")
+    except Exception:
+        logging.exception(f"Lỗi khi lấy chỉ số tài chính cho {symbol}")
         return {}
 
 
