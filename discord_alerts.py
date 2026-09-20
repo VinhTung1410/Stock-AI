@@ -156,8 +156,8 @@ def split_ai_summary_into_fields(ai_summary: str) -> list:
     part_count = 1
     current_chunk = ""
 
-    # Regex nhận diện tiêu đề mục lớn (hỗ trợ số La Mã kèm emoji đầu hoặc sau, in đậm markdown)
-    header_pattern = re.compile(r'^(?:[#*>\s]*)(?:[^\w\s]{1,3}\s*)?([I|V|X]+\.\s+[^:\n*]+)', re.IGNORECASE)
+    # Regex nhận diện tiêu đề mục lớn & tiểu mục (hỗ trợ số La Mã I-X hoặc ký tự A-D kèm emoji đầu hoặc sau, in đậm markdown)
+    header_pattern = re.compile(r'^(?:[#*>\s]*)(?:[^\w\s]{1,3}\s*)?((?:[I|V|X]+|[A-D])\.\s+[^:\n*]+)', re.IGNORECASE)
 
     def flush_field(title, content, part_idx):
         if not content.strip():

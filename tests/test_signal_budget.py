@@ -263,3 +263,127 @@ class TestSignalBudgetAndGuards:
             assert len(buy_results) == 0, "No BUY signals allowed when portfolio cap is full"
             assert len(watch_results) >= 1
             assert any("THU HỒI VỐN" in w["setup_type"] or "VỊ THẾ" in w["setup_type"] for w in watch_results)
+
+
+@pytest.mark.offline
+class TestSignalDeduplication:
+    """Validate cross-category deduplication and guarantee 0% duplicate ticker rate."""
+
+    def test_bsr_in_news_and_watchlist_dedup(self, tmp_path):
+        """BSR present in RSS news, user watchlist, and extra_symbols must appear at most once."""
+        fake_cooldown_file = str(tmp_path / ".test_cooldown.json")
+
+        def mock_tech(sym):
+            return {
+                "current_price": 19.5,
+                "ma20": 19.0,
+                "ma50": 18.5,
+                "rsi14": 56.0,
+                "vol_ratio": 1.4,
+                "change_pct": 2.1,
+                "trap_info": {"is_trap": False},
+                "foreign_flow": {"status": "BUYING", "badge": "TÂY MUA RÒNG"}
+            }
+
+        def mock_val(symbol, current_price, sector):
+            return {
+                "fair_value": 26.0,
+                "mos_pct": 33.3,
+                "valuation_method": "P/B Chu kỳ",
+                "confidence": "HIGH"
+            }
+
+        mock_news = [
+            {"tag": "KQKD", "title": "BSR báo lãi lớn quý 1", "matched_symbols": ["BSR"]},
+            {"tag": "VĨ MÔ", "title": "Giá dầu thế giới tăng mạnh", "matched_symbols": ["BSR"]}
+        ]
+        mock_wl = [{"symbol": "BSR", "note": "Mã trọng tâm lọc dầu"}]
+
+        with patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file), \
+             patch("db_manager.check_symbol_recent_signal", return_value=False), \
+             patch("db_manager.fetch_open_signals", return_value=[]), \
+             patch("data_engine.fetch_stock_technical", side_effect=mock_tech), \
+             patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val), \
+             patch("data_engine.fetch_macro_news", return_value=mock_news), \
+             patch("data_engine.load_watchlist", return_value=mock_wl):
+
+            results = scan_market_opportunities(extra_symbols=["BSR"])
+            bsr_matches = [r for r in results if r.get("symbol") == "BSR"]
+
+            assert len(bsr_matches) == 1, f"Expected BSR to appear exactly once, but got {len(bsr_matches)}"
+
+    def test_output_strictly_unique_symbols(self, tmp_path):
+        """Under any candidate combination, the final output must contain 0 duplicate symbols."""
+        fake_cooldown_file = str(tmp_path / ".test_cooldown.json")
+
+        def mock_tech(sym):
+            return {
+                "current_price": 30.0,
+                "ma20": 29.0,
+                "ma50": 28.0,
+                "rsi14": 55.0,
+                "vol_ratio": 1.3,
+                "change_pct": 1.5,
+                "trap_info": {"is_trap": False},
+                "foreign_flow": {"status": "BUYING"}
+            }
+
+        def mock_val(symbol, current_price, sector):
+            return {
+                "fair_value": 45.0,
+                "mos_pct": 50.0,
+                "valuation_method": "DCF",
+                "confidence": "HIGH"
+            }
+
+        with patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file), \
+             patch("db_manager.check_symbol_recent_signal", return_value=False), \
+             patch("db_manager.fetch_open_signals", return_value=[]), \
+             patch("data_engine.fetch_stock_technical", side_effect=mock_tech), \
+             patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val), \
+             patch("data_engine.fetch_macro_news", return_value=[]), \
+             patch("data_engine.load_watchlist", return_value=[{"symbol": "HPG"}]):
+
+            # Pass duplicate symbols in extra_symbols
+            results = scan_market_opportunities(extra_symbols=["HPG", "HPG", "FPT", "FPT", "BSR", "BSR"])
+            symbols = [r["symbol"] for r in results]
+
+            assert len(symbols) == len(set(symbols)), f"Duplicate symbols detected: {symbols}"
+
+    def test_ai_morning_report_defensive_dedup(self):
+        """generate_morning_strategy_report must defensively deduplicate any passed opportunities."""
+        from ai_analyst import generate_morning_strategy_report
+        import pandas as pd
+
+        duplicated_opps = [
+            {"symbol": "BSR", "status": "RECOMMEND_BUY", "current_price": 19.5, "sector": "Dầu khí", "story_tag": "KQKD", "story": "Lãi lớn"},
+            {"symbol": "BSR", "status": "WATCH_CONFIRMATION", "current_price": 19.5, "sector": "Dầu khí", "setup_type": "Theo dõi", "rationale": "Chờ nền"},
+            {"symbol": "HPG", "status": "RECOMMEND_BUY", "current_price": 28.0, "sector": "Thép", "story_tag": "ĐẦU TƯ CÔNG", "story": "Dung Quất 2"},
+        ]
+
+        captured_prompt = []
+
+        def mock_call_gemini(client, prompt):
+            captured_prompt.append(prompt)
+            return "BÁO CÁO CHIẾN LƯỢC ĐẦU NGÀY..."
+
+        with patch("ai_analyst.call_gemini", side_effect=mock_call_gemini), \
+             patch("quant_valuation.calculate_fair_value_and_mos", return_value={"fair_value": 25.0, "mos_pct": 20.0, "valuation_method": "P/B", "confidence": "HIGH"}), \
+             patch("data_engine.fetch_stock_technical", return_value={"current_price": 1280.0, "change_pct": 0.5, "ma20": 1270.0, "ma50": 1260.0, "rsi14": 55.0, "status_ma20": "TRÊN MA20"}):
+
+            res = generate_morning_strategy_report(
+                portfolio_df=pd.DataFrame(),
+                watchlist_df=pd.DataFrame(),
+                opportunities=duplicated_opps,
+                news_items=[]
+            )
+
+            assert len(captured_prompt) == 1
+            prompt_text = captured_prompt[0]
+
+            # BSR was passed twice in opportunities, but defensive dedup ensures it is processed once
+            # It was first RECOMMEND_BUY, so it appears in section 3, not in section 4
+            assert "• Mã: **BSR**" in prompt_text
+            # Check count of "• Mã: **BSR**"
+            assert prompt_text.count("• Mã: **BSR**") == 1, "BSR must only appear once in AI prompt opportunities"
+

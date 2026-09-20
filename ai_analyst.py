@@ -286,6 +286,16 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
 - ĐỊNH HƯỚNG QUẢN TRỊ RỦI RO: {regime_data['bias']} (Ưu tiên phòng thủ: {regime_data['defense_priority']})
 """
 
+    # Defensive Deduplication Gate: Guarantee every candidate ticker is processed at most once
+    seen_opp_symbols = set()
+    deduped_opportunities = []
+    for o in opportunities:
+        sym_check = (o.get("symbol") or "").strip().upper()
+        if sym_check and sym_check not in seen_opp_symbols:
+            seen_opp_symbols.add(sym_check)
+            deduped_opportunities.append(o)
+    opportunities = deduped_opportunities
+
     buy_lines = []
     watch_lines = []
     caution_lines = []
@@ -325,18 +335,18 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
                 f"  - **Kế hoạch giải ngân:** {o.get('execution_plan', 'Chia 2-3 phần')}\n"
                 f"  - **Luận điểm & Xúc tác:** [{o.get('story_tag')}] {o.get('story')}"
             )
-        elif status == "WATCH_CONFIRMATION" or (mos >= 8.0 and status != "RECOMMEND_BUY"):
-            # MWG và các mã cơ bản tốt nhưng kỹ thuật yếu -> WATCH / WAIT FOR CONFIRMATION
-            watch_lines.append(
-                f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) — 🟡 **[THEO DÕI / CHỜ NỀN CÂN BẰNG]**\n"
-                f"  - **Giá trị hợp lý (Fair Value):** {fv:.2f}k | **Mô hình:** {val_method} ({val_conf})\n"
-                f"  - **Biên an toàn (MoS):** {mos:+.1f}% | **Mục tiêu giá:** {p_target:.2f}k | **Thị giá hiện tại:** {o.get('current_price')}k\n"
-                f"  - **Lý do theo dõi:** Cơ bản và định giá đạt tiêu chuẩn an toàn vốn, nhưng giá đang kiểm định dưới MA20 hoặc RSI yếu. Tuyệt đối không mua bắt dao rơi, kiên nhẫn chờ nến xác nhận tạo nền cân bằng thanh khoản."
-            )
         elif status == "CAUTION_TRAP":
             caution_lines.append(
                 f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) — ⛔ **[ĐỨNG NGOÀI / TRÁNH BẪY]**\n"
                 f"  - **Thị giá:** {o['current_price']}k | **Cảnh báo rủi ro:** {o.get('rationale')}"
+            )
+        else:
+            # WATCH_CONFIRMATION hoặc mã cơ bản tốt nhưng kỹ thuật yếu -> WATCH / WAIT FOR CONFIRMATION
+            watch_lines.append(
+                f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) — 🟡 **[THEO DÕI / CHỜ NỀN CÂN BẰNG]**\n"
+                f"  - **Giá trị hợp lý (Fair Value):** {fv:.2f}k | **Mô hình:** {val_method} ({val_conf})\n"
+                f"  - **Biên an toàn (MoS):** {mos:+.1f}% | **Mục tiêu giá:** {p_target:.2f}k | **Thị giá hiện tại:** {o.get('current_price')}k\n"
+                f"  - **Lý do theo dõi:** {o.get('setup_type', 'Chờ xác nhận')} — {o.get('rationale', 'Định giá và cơ bản đạt chuẩn nhưng giá cần tích lũy thêm trên MA20. Tuyệt đối không mua vội, chờ tín hiệu dòng tiền.')}"
             )
 
     buy_str = "\n".join(buy_lines) if buy_lines else "Thị trường chưa có mã nào đạt đồng thời Biên an toàn (MoS >= 15%) và tín hiệu kỹ thuật ổn định."
@@ -360,22 +370,25 @@ Hãy xuất bản bản tin "CHIẾN LƯỢC PHIÊN HÔM NAY & KHUYẾN NGHỊ �
 === 2. DANH SÁCH THEO DÕI (WATCHLIST) ===
 {w_str}
 
-=== 3. CƠ HỘI ĐẠT CHUẨN ĐỊNH LƯỢNG (BIÊN AN TOÀN + KỸ THUẬT CHO PHÉP) ===
+=== 3. CƠ HỘI ĐẠT CHUẨN ĐỊNH LƯỢNG (BIÊN AN TOÀN + KỸ THUẬT CHO PHÉP - TỐI ĐA 1-2 MÃ MUA) ===
 {buy_str}
 
-=== 4. CỔ PHIẾU CƠ BẢN TỐT CẦN THEO DÕI CHỜ NỀN (WATCH / WAIT FOR CONFIRMATION) ===
+=== 4. CỔ PHIẾU CƠ BẢN TỐT CẦN THEO DÕI CHỜ NỀN (WATCH / WAIT FOR CONFIRMATION - CHỈ QUAN SÁT) ===
 {watch_str}
 
-=== 5. CẢNH BÁO BẪY PHÂN PHỐI & RỦI RO CAO ===
+=== 5. CẢNH BÁO BẪY PHÂN PHỐI & RỦI RO CAO (CAUTION - TRÁNH BẮT ĐÁY) ===
 {caution_str}
 
 === 6. ĐIỂM TIN VĨ MÔ SÁNG NAY (CAFEF) ===
 {news_str}
 
-QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM (MATHEMATICAL CONSISTENCY):
+QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM (MATHEMATICAL CONSISTENCY & UX CLARITY):
 1. R:R PHẢI DÙNG ĐÚNG GIÁ VỐN BQ DỰ KIẾN (WEIGHTED AVERAGE ENTRY) ĐÃ CÔNG BỐ. Tuyệt đối không tính R:R từ Current Price nếu kế hoạch vào lệnh chia 3 bước!
 2. FAIR VALUE VÀ PRICE TARGET PHẢI TÁCH BIỆT NHAU: Fair Value là giá trị hợp lý nội tại (kèm Mô hình định giá và Độ tin cậy), Target là mục tiêu giá theo khung thời gian đầu tư 6-12T.
-3. KHÔNG ĐƯỢC DÙNG 'KỸ THUẬT YẾU = TRÁNH BẪY' NẾU CƠ BẢN VÀ MOS VẪN TỐT. Với các mã như **MWG** (MoS 9.1%), phải xếp vào mục 'THEO DÕI CHỜ NỀN CÂN BẰNG', cấm chụp mũ là bẫy tin!
+3. PHÂN TÁCH BẠCH RÕ RÀNG 3 NHÓM (TRÁNH GÂY NHẦM LẪN CHO NHÀ ĐẦU TƯ):
+   - Nhóm Mua chỉ tối đa 1-2 mã thực sự xuất sắc đạt chuẩn.
+   - Nhóm Theo Dõi (Watchlist) TUYỆT ĐỐI KHÔNG khuyến nghị Mua vội, phải ghi rõ 'Chờ nền cân bằng'.
+   - Nhóm Cảnh Báo ghi rõ 'Đứng ngoài / Tránh bẫy'.
 4. TỶ TRỌNG CỔ PHIẾU PHẢI DỰA TRÊN RISK BUDGETING ĐA BIẾN (không tự động ép 70-80% khi Bullish).
 
 Yêu cầu xuất bản & Cấu trúc 4 phần chuẩn mực:
@@ -384,14 +397,23 @@ Yêu cầu xuất bản & Cấu trúc 4 phần chuẩn mực:
 - Phân bổ đề xuất: {regime_data['stock_pct']} Cổ phiếu / {regime_data['cash_pct']} Tiền mặt (Hạn mức tối đa {regime_data['max_stock_nav']}% NAV).
 - Phân tích điểm số VN-Index ({idx_price:.2f}), mốc hỗ trợ MA20 ({idx_ma20:.2f})/MA50 ({idx_ma50:.2f}).
 
-**II. DANH MỤC THEO DÕI & CƠ HỘI GIẢI NGÂN (4 TRẠNG THÁI CHUẨN)**
-- Trình bày theo đúng dữ liệu mục 3, 4, 5 do Python đã tính:
-  • Cổ phiếu **[MÃ]** ([Ngành]) — [HUY HIỆU: 🟢 VALUE BUY, 🟢 ACCUMULATE, hoặc 🟡 THEO DÕI / CHỜ NỀN CÂN BẰNG]
-    - **Giá trị hợp lý (Fair Value):** ...k (Mô hình: ... | Độ tin cậy: ...) | **Mục tiêu giá:** ...k
-    - **Biên an toàn (MoS):** ...% | **Vùng gom:** ...k
-    - **Giá vốn BQ dự kiến (Weighted Entry):** ...k | **Kế hoạch giải ngân:** ...
-    - **Dừng lỗ:** ...k | **Tỷ lệ R:R:** ...x (tính trên Giá vốn BQ)
-    - **Luận điểm cốt lõi & Xúc tác:** [...]
+**II. CƠ HỘI ĐẦU TƯ & RADAR THEO DÕI (PHÂN TÁCH 3 NHÓM RÕ RÀNG)**
+Trình bày rõ ràng thành 3 tiểu mục riêng biệt để người đọc không bao giờ nhầm lẫn giữa Mua và Theo dõi:
+
+**A. 🟢 KHUYẾN NGHỊ MUA MỚI / TÍCH LŨY (TỐI ĐA 1-2 MÃ ĐẠT CHUẨN)**
+(Chỉ lấy mã từ Mục 3 phía trên, nếu không có mã nào thì ghi rõ: "Phiên nay không khuyến nghị mở mua mới để bảo toàn sức mua")
+• Cổ phiếu **[MÃ]** ([Ngành]) — [🟢 VALUE BUY hoặc 🟢 ACCUMULATE]
+  - **Giá trị hợp lý (Fair Value):** ...k (Mô hình: ... | Độ tin cậy: ...) | **Mục tiêu giá:** ...k
+  - **Biên an toàn (MoS):** ...% | **Vùng gom:** ...k
+  - **Giá vốn BQ dự kiến (Weighted Entry):** ...k | **Kế hoạch giải ngân:** ...
+  - **Dừng lỗ:** ...k | **Tỷ lệ R:R:** ...x (tính trên Giá vốn BQ)
+  - **Luận điểm cốt lõi & Xúc tác:** [...]
+
+**B. 🟡 RADAR THEO DÕI CHỜ NỀN (CHƯA PHẢI ĐIỂM MUA - QUAN SÁT TÍCH LŨY)**
+(Lấy từ Mục 4 phía trên. Nhắc nhở nhà đầu tư kiên nhẫn, không mua bắt dao rơi)
+
+**C. ⛔ CẢNH BÁO PHÒNG THỦ & TRÁNH BẪY (CAUTION)**
+(Lấy từ Mục 5 phía trên. Tuyệt đối đứng ngoài các mã phân phối/bẫy tin)
 
 **III. KỊCH BẢN HÀNH ĐỘNG TRONG PHIÊN (BULL / BASE / BEAR)**
 - Kịch bản Bull (Hưng phấn ATO): Hành động gì? (Cấm FOMO mua đuổi).

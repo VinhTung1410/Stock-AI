@@ -1519,8 +1519,33 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
     watch_picks.sort(key=lambda x: x.get("conviction_score", 0), reverse=True)
     caution_picks.sort(key=lambda x: x.get("vol_ratio", 1.0), reverse=True)
 
-    # Return up to 2 Buys + 2 Watch + 2 Caution
-    return approved_buys + watch_picks[:2] + caution_picks[:2]
+    # 4. FINAL DEDUPLICATION & CANONICAL MAPPING GATE
+    # Guarantees no ticker symbol appears more than once across BUY, WATCH, and CAUTION
+    seen_symbols = set()
+    final_buys = []
+    final_watch = []
+    final_caution = []
+
+    for b in approved_buys:
+        sym = b.get("symbol")
+        if sym and sym not in seen_symbols:
+            seen_symbols.add(sym)
+            final_buys.append(b)
+
+    for w in watch_picks:
+        sym = w.get("symbol")
+        if sym and sym not in seen_symbols and len(final_watch) < 2:
+            seen_symbols.add(sym)
+            final_watch.append(w)
+
+    for c in caution_picks:
+        sym = c.get("symbol")
+        if sym and sym not in seen_symbols and len(final_caution) < 2:
+            seen_symbols.add(sym)
+            final_caution.append(c)
+
+    # Return up to 2 Buys + 2 Watch + 2 Caution (Strictly deduplicated)
+    return final_buys + final_watch + final_caution
 
 
 

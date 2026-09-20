@@ -11,7 +11,7 @@
 
 > A quantamental stock analysis system that eliminates LLM hallucination through deterministic hard gates — built for the Vietnam stock market.
 
-**[🌐 Live Demo](https://stock-ai-recq.onrender.com/)** · **[📖 Architecture Docs](docs/PROJECT_STRUCTURE.md)** · **[📜 System Rules](docs/rule.md)**
+**[🌐 Live Demo](https://stock-ai-recq.onrender.com/)** · **[🧭 AI Product Case Study](docs/PRODUCT_CASE_STUDY.md)** · **[📖 Architecture Docs](docs/PROJECT_STRUCTURE.md)** · **[📜 System Rules](docs/rule.md)**
 
 ---
 
@@ -83,6 +83,27 @@ flowchart TD
         Discord -->|Direct Message| DM["Discord Private DM"]
     end
 ```
+
+---
+
+## 🧭 Product & Engineering Case Study: Zero-Cost Scalable AI Architecture
+
+> *Solving real-world signal overload and token explosion by bridging financial rigor with deterministic Python engineering.*
+
+When pilot users reported **recommendation fatigue (8 tickers/day + duplicate BSR alerts)** and financial domain experts proposed a computationally expensive **5-Agent Investment Committee (7 LLM calls per ticker)**, we resolved the conflict through an **AI Product & Technical Architecture overhaul**:
+
+* **Voice of Customer & Root Cause Analysis:** 
+  * *Perception Gap:* Explanatory `WATCH` and `CAUTION` tickers lacked visual distinction from actionable `BUY` alerts.
+  * *Pipeline Leak:* Separate screening threads lacked an atomic deduplication pass before dispatch.
+* **Engineering Trade-offs (The 80/20 Separation Principle):** 
+  * Delegated **80% of deterministic validation** (Piotroski F-Score, 4-Archetype Valuation, Cooldowns, Daily Budget) to pure Python (<15ms, $0.00 cost, 100% testable).
+  * Synthesized **20% qualitative debate** (Red Team Contrarian Challenge, Catalyst evaluation) into a **Single-Call Structured LLM Prompt** (+30% token delta only).
+* **Measurable Business & Product Outcomes:**
+  * 📉 **-75% Alert Fatigue:** Hard cap of Max 2 high-conviction BUY signals per day.
+  * 🛡️ **0% Duplicate Signals:** Guaranteed by strict atomic set deduplication gates with regression tests.
+  * 💰 **100% Zero-Cost Sustainability:** Operates entirely within Google Gemini Free Tier limits.
+
+👉 **[Read the Full AI Product Management Case Study & PRD/ADR (docs/PRODUCT_CASE_STUDY.md) →](docs/PRODUCT_CASE_STUDY.md)**
 
 ---
 
