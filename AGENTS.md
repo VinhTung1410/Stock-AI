@@ -96,3 +96,24 @@ Based on the detected tier (`TIER_DETECTED`):
   ```
   Follow the steps provided in that skill for environment selection, package installation, and exclusive files downloading.
 * Run a background script to verify the license via `vnii.license.LicenseVerifier` once installation completes.
+
+### 7. Code Quality & SonarCloud Rules (Important)
+
+When writing or modifying code in this project, you MUST adhere to the following SonarCloud Quality Gate standards to prevent CI/CD failures and Code Smells:
+
+* **Cognitive Complexity (S3776):** 
+  * Keep the Cognitive Complexity of any single function **under 15**. 
+  * Avoid deep nesting (`if` inside `if` inside `for`).
+  * Use early returns (`if not valid: return`) to reduce nesting.
+  * Extract complex logic into smaller, focused helper functions.
+* **Logging Exceptions (S8572):**
+  * Inside `except Exception as e:` blocks, use `logging.exception("...")` instead of `logging.error(f"... {e}")`. This ensures stack traces are properly recorded.
+* **String Duplication (S1192):**
+  * If a string literal (e.g., `"VĨ MÔ"`, `"NỘI BỘ"`) is used 3 times or more in a file, extract it into a constant at the top of the file/class (e.g., `CATEGORY_MACRO = "VĨ MÔ"`).
+* **Unused Variables/Parameters (S1172, S1481):**
+  * Remove unused function parameters. 
+  * Replace unused local variables with `_` (e.g., `_, value = get_data()`) or remove them entirely.
+* **Regex Complexity (S5843):**
+  * Keep Regular Expressions simple. If a regex is too complex (> 20 chars/complexity), break it down or document it thoroughly.
+* **Extract Conditional Expressions (S3358):**
+  * Avoid deeply nested ternary operators or inline conditional expressions. Extract them into independent statements for readability.

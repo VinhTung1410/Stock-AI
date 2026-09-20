@@ -28,7 +28,6 @@ EXCHANGE_DAILY_LIMITS = {
 
 
 def reconcile_price(
-    symbol: str,
     tech_data: Optional[Dict[str, Any]] = None,
     exchange: str = "HOSE"
 ) -> Tuple[str, float, List[str]]:
@@ -76,7 +75,6 @@ def reconcile_price(
 
 
 def reconcile_corporate_actions(
-    symbol: str,
     tech_data: Optional[Dict[str, Any]] = None,
     corporate_actions: Optional[List[Dict[str, Any]]] = None
 ) -> Tuple[List[Dict[str, Any]], bool]:
@@ -125,7 +123,6 @@ def reconcile_corporate_actions(
 
 
 def reconcile_financial_period(
-    symbol: str,
     fin_data: Optional[Dict[str, Any]] = None
 ) -> Tuple[List[str], List[str]]:
     """Audit financial statement freshness and reporting period alignment.
@@ -170,6 +167,38 @@ def reconcile_financial_period(
     return missing, stale
 
 
+def _classify_source_tier(source: str, tag: str) -> str:
+    """Classify news source into hierarchical credibility tier."""
+    src_upper = source.upper()
+    if any(k in src_upper for k in ("UBCK", "HOSE", "CBTT")):
+        return SOURCE_TIER_OFFICIAL_FILING
+    if "BCTC" in tag or "AUDIT" in tag:
+        return SOURCE_TIER_AUDITED_FINANCIALS
+    if src_upper in ("CAFEF", "VIETSTOCK", "VNECONOMY", "VNDIRECT"):
+        return SOURCE_TIER_FINANCIAL_MEDIA
+    return SOURCE_TIER_GENERAL_RSS
+
+
+def _compute_news_age_and_status(pub_date_str: Any, now: datetime) -> Tuple[float, str]:
+    """Parse news publication timestamp and calculate age in hours and freshness bucket."""
+    age_hours = 24.0
+    if pub_date_str:
+        try:
+            pub_date = datetime.strptime(str(pub_date_str)[:19], "%Y-%m-%d %H:%M:%S")
+            age_hours = (now - pub_date).total_seconds() / 3600.0
+        except Exception:
+            pass
+
+    if age_hours > 72.0:
+        status = "HISTORICAL"
+    elif age_hours <= 12.0:
+        status = "BREAKING"
+    else:
+        status = "CONFIRMED"
+
+    return round(age_hours, 1), status
+
+
 def reconcile_news_freshness(
     news: Optional[List[Dict[str, Any]]] = None
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
@@ -178,56 +207,76 @@ def reconcile_news_freshness(
     Returns:
         tuple of (reconciled_news: list[dict], news_warnings: list[str])
     """
-    reconciled = []
-    warnings = []
-
     if not news:
         return [], ["No news catalyst detected in the last 72 hours"]
 
     now = datetime.now()
+    reconciled = []
 
     for item in news:
         tag = (item.get("tag") or "TIN_TỨC").upper()
         title = item.get("title", "")
         source = item.get("source", "CafeF")
-
-        # Assign Source Tier
-        if "UBCK" in source.upper() or "HOSE" in source.upper() or "CBTT" in source.upper():
-            tier = SOURCE_TIER_OFFICIAL_FILING
-        elif "BCTC" in tag or "AUDIT" in tag:
-            tier = SOURCE_TIER_AUDITED_FINANCIALS
-        elif source.upper() in ["CAFEF", "VIETSTOCK", "VNECONOMY", "VNDIRECT"]:
-            tier = SOURCE_TIER_FINANCIAL_MEDIA
-        else:
-            tier = SOURCE_TIER_GENERAL_RSS
-
-        # Freshness evaluation
-        pub_date_str = item.get("published_date") or item.get("date")
-        age_hours = 24.0  # Default assumed fresh if date unparsed
-        if pub_date_str:
-            try:
-                pub_date = datetime.strptime(str(pub_date_str)[:19], "%Y-%m-%d %H:%M:%S")
-                age_hours = (now - pub_date).total_seconds() / 3600.0
-            except Exception:
-                pass
-
-        if age_hours > 72.0:
-            status = "HISTORICAL"
-        elif age_hours <= 12.0:
-            status = "BREAKING"
-        else:
-            status = "CONFIRMED"
-
+        tier = _classify_source_tier(source, tag)
+        age_hours, status = _compute_news_age_and_status(
+            item.get("published_date") or item.get("date"),
+            now
+        )
         reconciled.append({
             "title": title,
             "tag": tag,
             "source": source,
             "tier": tier,
             "freshness": status,
-            "age_hours": round(age_hours, 1)
+            "age_hours": age_hours
         })
 
-    return reconciled, warnings
+    return reconciled, []
+
+
+def _calculate_quality_score(
+    price_status: str,
+    reconciled_price: float,
+    tech_data: Optional[Dict[str, Any]],
+    fin_data: Optional[Dict[str, Any]],
+    fin_missing: List[str],
+    fin_stale: List[str],
+    news: Optional[List[Dict[str, Any]]]
+) -> Tuple[float, str]:
+    """Compute 100-point data quality score and assign quality tier."""
+    quality_score = 100.0
+
+    if price_status == "CONFLICT":
+        quality_score -= 65.0 if reconciled_price <= 0.0 else 45.0
+    elif price_status == "ADJUSTED":
+        quality_score -= 10.0
+
+    if not tech_data:
+        quality_score -= 35.0
+
+    if not fin_data:
+        quality_score -= 30.0
+    elif fin_missing:
+        quality_score -= min(len(fin_missing) * 6.0, 30.0)
+
+    if fin_stale:
+        quality_score -= 15.0
+
+    if not news:
+        quality_score -= 5.0
+
+    final_score = max(0.0, min(100.0, round(quality_score, 1)))
+
+    if final_score >= 85.0:
+        tier = "HIGH"
+    elif final_score >= 65.0:
+        tier = "MEDIUM"
+    elif final_score >= 40.0:
+        tier = "LOW"
+    else:
+        tier = "CRITICAL"
+
+    return final_score, tier
 
 
 def reconcile_data(
@@ -256,66 +305,36 @@ def reconcile_data(
     stale_data: List[str] = []
 
     # 1. Price Reconciliation
-    price_status, reconciled_price, price_issues = reconcile_price(sym, tech_data, exchange=exchange)
+    price_status, reconciled_price, price_issues = reconcile_price(tech_data, exchange=exchange)
     if price_status == "CONFLICT":
         conflicting_data.extend(price_issues)
     elif price_status == "ADJUSTED":
         stale_data.extend(price_issues)
 
     # 2. Corporate Actions
-    tagged_actions, is_ex_dividend = reconcile_corporate_actions(sym, tech_data, corporate_actions)
+    tagged_actions, is_ex_dividend = reconcile_corporate_actions(tech_data, corporate_actions)
 
     # 3. Financial Statements
-    fin_missing, fin_stale = reconcile_financial_period(sym, fin_data)
+    fin_missing, fin_stale = reconcile_financial_period(fin_data)
     missing_data.extend(fin_missing)
     stale_data.extend(fin_stale)
 
     # 4. News Catalysts
-    reconciled_news, news_warnings = reconcile_news_freshness(news)
+    reconciled_news, _ = reconcile_news_freshness(news)
 
     # 5. Compute Data Quality Score (100-point scale)
-    quality_score = 100.0
-
-    if price_status == "CONFLICT":
-        if reconciled_price <= 0.0:
-            quality_score -= 65.0
-        else:
-            quality_score -= 45.0
-    elif price_status == "ADJUSTED":
-        quality_score -= 10.0
-
-    if not tech_data:
-        quality_score -= 35.0
-
-    # Missing financial fields penalty (up to -30)
-    if not fin_data:
-        quality_score -= 30.0
-    elif fin_missing:
-        penalty = min(len(fin_missing) * 6.0, 30.0)
-        quality_score -= penalty
-
-    # Stale financial statements penalty
-    if fin_stale:
-        quality_score -= 15.0
-
-    # News penalty
-    if not news or len(news) == 0:
-        quality_score -= 5.0
-
-    quality_score = max(0.0, min(100.0, round(quality_score, 1)))
-
-    # Assign Quality Tier
-    if quality_score >= 85.0:
-        quality_tier = "HIGH"
-    elif quality_score >= 65.0:
-        quality_tier = "MEDIUM"
-    elif quality_score >= 40.0:
-        quality_tier = "LOW"
-    else:
-        quality_tier = "CRITICAL"
+    quality_score, quality_tier = _calculate_quality_score(
+        price_status=price_status,
+        reconciled_price=reconciled_price,
+        tech_data=tech_data,
+        fin_data=fin_data,
+        fin_missing=fin_missing,
+        fin_stale=fin_stale,
+        news=news
+    )
 
     # Determine Gate Status
-    gate_passed = quality_tier in ["HIGH", "MEDIUM"] and price_status != "CONFLICT"
+    gate_passed = quality_tier in ("HIGH", "MEDIUM") and price_status != "CONFLICT"
     recommendation_allowed = gate_passed and quality_tier != "LOW"
 
     # Source Tiers Summary
@@ -354,7 +373,13 @@ def format_data_quality_badge(reconcile_result: Dict[str, Any]) -> str:
     conflicts = len(reconcile_result.get("conflicting_data", []))
     missing = len(reconcile_result.get("missing_data", []))
 
-    status_icon = "🟢" if tier == "HIGH" else ("🟡" if tier == "MEDIUM" else "🔴")
+    status_icon_map = {
+        "HIGH": "🟢",
+        "MEDIUM": "🟡",
+        "LOW": "🔴",
+        "CRITICAL": "🔴"
+    }
+    status_icon = status_icon_map.get(tier, "🔴")
     return (
         f"{status_icon} **Data Quality:** `{tier}` ({score:.0f}/100) | "
         f"Conflicts: `{conflicts}` | Missing: `{missing}`"

@@ -1018,89 +1018,64 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
     }
 
 
-def analyze_stock_with_smart_committee(
-    symbol: str,
-    tech_data: dict = None,
-    fin_data: dict = None,
-    news_items: list = None
-) -> dict:
-    """
-    BÁO CÁO PHÂN TÍCH ĐỊNH CHẾ TOÀN DIỆN V2 (SMART COMPRESSED INVESTMENT COMMITTEE):
-    1 API call duy nhất — Đạt 80% giá trị của V2 Master Prompt với token tăng tối thiểu (+30%).
+VALID_PM_STATES = (
+    "STRONG_OPPORTUNITY", "ATTRACTIVE", "WATCHLIST", "WAIT_BETTER_ENTRY",
+    "HOLD_MAINTAIN", "RISK_ELEVATED", "AVOID", "INSUFFICIENT_DATA"
+)
 
-    Quy trình tích hợp:
-    - Phase 0: Data Reconciliation Gate (data_gate.py) — 100% Python deterministic.
-    - Quant Engine: Fair Value, MoS, Piotroski F-Score, Altman Z-Score, ATR Stop, R:R.
-    - 5-Expert Sequential Reasoning (FA View -> TA View -> Macro & Catalyst View -> Red Team 3 câu -> PM Decision 8 trạng thái).
-    - 2-Tier Language Sanitizer (100% Vietnamese, zero CJK, bold tickers).
-    """
-    client = get_ai_client()
+
+def _resolve_input_data(symbol: str, tech_data: dict = None, fin_data: dict = None, news_items: list = None):
+    """Resolve default technical, financial, and news data if not supplied."""
     sym = (symbol or "").strip().upper()
-
-    if tech_data is None:
+    resolved_tech = tech_data
+    if resolved_tech is None:
         try:
             from data_engine import fetch_stock_technical
-            tech_data = fetch_stock_technical(sym)
+            resolved_tech = fetch_stock_technical(sym)
         except Exception:
-            tech_data = {}
+            resolved_tech = {}
 
-    if fin_data is None:
+    resolved_fin = fin_data
+    if resolved_fin is None:
         try:
             from data_engine import get_financial_ratios
-            fin_data = get_financial_ratios(sym)
+            resolved_fin = get_financial_ratios(sym)
         except Exception:
-            fin_data = {}
+            resolved_fin = {}
 
-    if news_items is None:
+    resolved_news = news_items
+    if resolved_news is None:
         try:
             from data_engine import fetch_macro_news
-            news_items = fetch_macro_news(limit=6, tracked_symbols=[sym])
+            resolved_news = fetch_macro_news(limit=6, tracked_symbols=[sym])
         except Exception:
-            news_items = []
+            resolved_news = []
 
-    # 1. PHASE 0: DATA RECONCILIATION GATE (100% DETERMINISTIC PYTHON)
-    from data_gate import format_data_quality_badge, reconcile_data
-    gate_res = reconcile_data(
-        symbol=sym,
-        tech_data=tech_data,
-        fin_data=fin_data,
-        news=news_items
-    )
+    return sym, resolved_tech, resolved_fin, resolved_news
 
-    # Hard Gate check: Reject if price conflict, statutory band breach, or critical quality
-    if not gate_res.get("gate_passed") or gate_res.get("price_status") == "CONFLICT":
-        conflicts = "; ".join(gate_res.get("conflicting_data", ["Xung đột dữ liệu giá hoặc vi phạm quy chế sàn"]))
-        refusal_report = (
-            "======================================================\n"
-            "⛔ **TỪ CHỐI KHUYẾN NGHỊ: DỮ LIỆU KHÔNG ĐẠT CHUẨN AN TOÀN QUỸ**\n"
-            "======================================================\n\n"
-            f"• **Mã cổ phiếu:** **{sym}**\n"
-            f"• **Chất lượng dữ liệu:** `{gate_res.get('data_quality', 'CRITICAL')}` ({gate_res.get('quality_score', 0):.0f}/100)\n"
-            f"• **Lý do từ chối:** {conflicts}\n\n"
-            "⚠️ **Khuyến cáo:** Hệ thống Data Reconciliation Gate (Phase 0) từ chối phân tích cổ phiếu có dữ liệu bị sai lệch, giá âm hoặc vi phạm biên độ quy chế để bảo vệ vốn nhà đầu tư!"
-        )
-        return {
-            "status": "DATA_GATE_REJECTED",
-            "symbol": sym,
-            "data_quality": gate_res.get("data_quality", "CRITICAL"),
-            "quality_score": gate_res.get("quality_score", 0.0),
-            "gate_res": gate_res,
-            "report_text": refusal_report,
-            "pm_decision": "INSUFFICIENT_DATA"
-        }
 
-    # 2. PYTHON DETERMINISTIC QUANT ENGINE
-    from quant_engine import calculate_altman_z_score, calculate_piotroski_f_score
-    from quant_valuation import calculate_fair_value_and_mos
+def _format_z_score(z_raw, zone: str):
+    """Safely format Altman Z-score value."""
+    if z_raw is None:
+        return "N/A", "N/A (Chưa đủ BCTC)"
+    try:
+        val_str = f"{float(z_raw):.2f}"
+    except (ValueError, TypeError):
+        val_str = str(z_raw)
+    return val_str, f"{val_str} ({zone})"
 
-    val_res = calculate_fair_value_and_mos(symbol=sym, current_price=tech_data.get("current_price", 0.0))
-    fv = val_res.get("fair_value", tech_data.get("current_price", 0.0) * 1.10)
-    mos = val_res.get("mos_pct", 0.0)
-    val_method = val_res.get("valuation_method", "P/B")
-    val_conf = val_res.get("confidence", "MEDIUM")
 
-    f_score_res = calculate_piotroski_f_score(fin_data)
-    z_score_res = calculate_altman_z_score(fin_data)
+def _format_committee_prompt_context(
+    sym: str,
+    tech_data: dict,
+    gate_res: dict,
+    val_res: dict,
+    f_score_res: dict,
+    z_score_res: dict,
+    news_items: list
+) -> str:
+    """Format prompt string for smart compressed investment committee analysis."""
+    from data_gate import format_data_quality_badge
 
     curr_price = float(tech_data.get("current_price", 0.0))
     ma20_val = tech_data.get("ma20")
@@ -1112,6 +1087,11 @@ def analyze_stock_with_smart_committee(
     ma50_str = f"{ma50_val}k" if ma50_val is not None else "N/A"
     rsi_str = f"{rsi_val}" if rsi_val is not None else "N/A"
     vol_str = f"{vol_val}x" if vol_val is not None else "N/A"
+
+    fv = val_res.get("fair_value", curr_price * 1.10)
+    mos = val_res.get("mos_pct", 0.0)
+    val_method = val_res.get("valuation_method", "P/B")
+    val_conf = val_res.get("confidence", "MEDIUM")
 
     p_target = val_res.get("price_target") or round(fv * 1.05, 2)
     stop_loss = round(curr_price * 0.93, 2) if curr_price > 0 else 0.0
@@ -1134,19 +1114,9 @@ def analyze_stock_with_smart_committee(
         f_eval = "N/A"
 
     z_raw = z_score_res.get("z_score")
-    if z_raw is not None:
-        try:
-            z_eval = f"{float(z_raw):.2f}"
-            z_val_str = f"{z_eval} ({z_score_res.get('zone', 'Vùng an toàn')})"
-        except (ValueError, TypeError):
-            z_eval = str(z_raw)
-            z_val_str = f"{z_eval} ({z_score_res.get('zone', 'N/A')})"
-    else:
-        z_eval = "N/A"
-        z_val_str = "N/A (Chưa đủ BCTC)"
+    z_eval, z_val_str = _format_z_score(z_raw, z_score_res.get("zone", "Vùng an toàn"))
 
-    # 3. SMART COMPRESSED PROMPT (5-EXPERT SEQUENTIAL REASONING + 3-QUESTION RED TEAM)
-    prompt = f"""Bạn là Investment Committee (Hội đồng Đầu tư Định chế) gồm 5 vai trò chuyên môn:
+    return f"""Bạn là Investment Committee (Hội đồng Đầu tư Định chế) gồm 5 vai trò chuyên môn:
 1. Chuyên gia Phân tích Cơ bản (FA Analyst)
 2. Chuyên gia Kỹ thuật & Định thời điểm (TA & Timing Specialist)
 3. Chuyên gia Vĩ mô & Động lực Ngành (Macro & Catalyst Strategist)
@@ -1202,10 +1172,103 @@ QUY TẮC BẮT BUỘC:
 - KHÔNG dùng bảng markdown (|---|). Dùng danh sách gạch đầu dòng phân cấp.
 """
 
+
+def _extract_pm_decision(report_text: str) -> str:
+    """Extract PM Decision from AI report using priority matching."""
+    # Priority 1: Match explicit PM DECISION statement
+    pattern = re.compile(
+        r'(?:PM[_\s]*DECISION|PHÁN QUYẾT PM|QUYẾT ĐỊNH PM)[:\s—\-]+([A-Z_]+)',
+        re.IGNORECASE
+    )
+    for m in reversed(pattern.findall(report_text)):
+        candidate = m.strip().upper()
+        if candidate in VALID_PM_STATES:
+            return candidate
+
+    # Priority 2: Search exclusively in Bước 5 / Decision section
+    b5_pos = report_text.rfind("BƯỚC 5")
+    scope = report_text[b5_pos:] if b5_pos != -1 else report_text
+    for line in scope.splitlines():
+        for state in VALID_PM_STATES:
+            if re.search(r'\b' + re.escape(state) + r'\b', line):
+                return state
+
+    # Priority 3: Fallback default
+    return "WATCHLIST"
+
+
+def analyze_stock_with_smart_committee(
+    symbol: str,
+    tech_data: dict = None,
+    fin_data: dict = None,
+    news_items: list = None
+) -> dict:
+    """
+    BÁO CÁO PHÂN TÍCH ĐỊNH CHẾ TOÀN DIỆN V2 (SMART COMPRESSED INVESTMENT COMMITTEE):
+    1 API call duy nhất — Đạt 80% giá trị của V2 Master Prompt với token tăng tối thiểu (+30%).
+
+    Quy trình tích hợp:
+    - Phase 0: Data Reconciliation Gate (data_gate.py) — 100% Python deterministic.
+    - Quant Engine: Fair Value, MoS, Piotroski F-Score, Altman Z-Score, ATR Stop, R:R.
+    - 5-Expert Sequential Reasoning (FA View -> TA View -> Macro & Catalyst View -> Red Team 3 câu -> PM Decision 8 trạng thái).
+    - 2-Tier Language Sanitizer (100% Vietnamese, zero CJK, bold tickers).
+    """
+    client = get_ai_client()
+    sym, tech_data, fin_data, news_items = _resolve_input_data(symbol, tech_data, fin_data, news_items)
+
+    # 1. PHASE 0: DATA RECONCILIATION GATE (100% DETERMINISTIC PYTHON)
+    from data_gate import reconcile_data
+    gate_res = reconcile_data(
+        symbol=sym,
+        tech_data=tech_data,
+        fin_data=fin_data,
+        news=news_items
+    )
+
+    # Hard Gate check: Reject if price conflict, statutory band breach, or critical quality
+    if not gate_res.get("gate_passed") or gate_res.get("price_status") == "CONFLICT":
+        conflicts = "; ".join(gate_res.get("conflicting_data", ["Xung đột dữ liệu giá hoặc vi phạm quy chế sàn"]))
+        refusal_report = (
+            "======================================================\n"
+            "⛔ **TỪ CHỐI KHUYẾN NGHỊ: DỮ LIỆU KHÔNG ĐẠT CHUẨN AN TOÀN QUỸ**\n"
+            "======================================================\n\n"
+            f"• **Mã cổ phiếu:** **{sym}**\n"
+            f"• **Chất lượng dữ liệu:** `{gate_res.get('data_quality', 'CRITICAL')}` ({gate_res.get('quality_score', 0):.0f}/100)\n"
+            f"• **Lý do từ chối:** {conflicts}\n\n"
+            "⚠️ **Khuyến cáo:** Hệ thống Data Reconciliation Gate (Phase 0) từ chối phân tích cổ phiếu có dữ liệu bị sai lệch, giá âm hoặc vi phạm biên độ quy chế để bảo vệ vốn nhà đầu tư!"
+        )
+        return {
+            "status": "DATA_GATE_REJECTED",
+            "symbol": sym,
+            "data_quality": gate_res.get("data_quality", "CRITICAL"),
+            "quality_score": gate_res.get("quality_score", 0.0),
+            "gate_res": gate_res,
+            "report_text": refusal_report,
+            "pm_decision": "INSUFFICIENT_DATA"
+        }
+
+    # 2. PYTHON DETERMINISTIC QUANT ENGINE
+    from quant_engine import calculate_altman_z_score, calculate_piotroski_f_score
+    from quant_valuation import calculate_fair_value_and_mos
+
+    val_res = calculate_fair_value_and_mos(symbol=sym, current_price=tech_data.get("current_price", 0.0))
+    f_score_res = calculate_piotroski_f_score(fin_data)
+    z_score_res = calculate_altman_z_score(fin_data)
+
+    prompt = _format_committee_prompt_context(
+        sym=sym,
+        tech_data=tech_data,
+        gate_res=gate_res,
+        val_res=val_res,
+        f_score_res=f_score_res,
+        z_score_res=z_score_res,
+        news_items=news_items
+    )
+
     try:
         report_text = call_gemini(client, prompt)
     except Exception as api_err:
-        logging.error(f"Lỗi AI Generation cho mã {sym}: {api_err}")
+        logging.exception("Lỗi AI Generation cho mã %s: %s", sym, api_err)
         return {
             "status": "AI_GENERATION_FAILED",
             "symbol": sym,
@@ -1220,40 +1283,7 @@ QUY TẮC BẮT BUỘC:
             "error": str(api_err)
         }
 
-    # Strict PM Decision parsing (prevents false positive matching from Red Team counter-arguments)
-    valid_pm_states = [
-        "STRONG_OPPORTUNITY", "ATTRACTIVE", "WATCHLIST", "WAIT_BETTER_ENTRY",
-        "HOLD_MAINTAIN", "RISK_ELEVATED", "AVOID", "INSUFFICIENT_DATA"
-    ]
-    pm_decision = None
-
-    # Priority 1: Match explicit PM DECISION statement
-    explicit_match = re.findall(
-        r'(?:PM\s*DECISION|PHÁN\s*QUYẾT\s*PM|QUYẾT\s*ĐỊNH\s*(?:CUỐI\s*CÙNG|PM)|PM_DECISION)[:\s—\-]+([A-Z_]+)',
-        report_text,
-        re.IGNORECASE
-    )
-    for m in reversed(explicit_match):
-        candidate = m.strip().upper()
-        if candidate in valid_pm_states:
-            pm_decision = candidate
-            break
-
-    # Priority 2: Search exclusively in Bước 5 / Decision section
-    if not pm_decision:
-        b5_pos = report_text.rfind("BƯỚC 5")
-        scope = report_text[b5_pos:] if b5_pos != -1 else report_text
-        for line in scope.splitlines():
-            for state in valid_pm_states:
-                if re.search(r'\b' + re.escape(state) + r'\b', line):
-                    pm_decision = state
-                    break
-            if pm_decision:
-                break
-
-    # Priority 3: Fallback default
-    if not pm_decision:
-        pm_decision = "WATCHLIST"
+    pm_decision = _extract_pm_decision(report_text)
 
     return {
         "status": "SUCCESS",
