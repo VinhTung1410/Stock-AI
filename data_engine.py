@@ -1281,6 +1281,43 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             val_conf = val_res.get("confidence", "MEDIUM")
             p_target = val_res.get("price_target") or round(fv * 1.05, 2)
 
+            # --- PHASE 0: DATA RECONCILIATION GATE (100% PYTHON DETERMINISTIC) ---
+            from data_gate import reconcile_data
+            reconcile_res = reconcile_data(
+                symbol=sym,
+                tech_data=tech,
+                fin_data={
+                    "mos_pct": mos_pct,
+                    "f_score": val_res.get("f_score", 7),
+                    "z_score": val_res.get("z_score", 3.0),
+                    "pe": 12.0,
+                    "pb": 1.5
+                },
+                news=[cat_info] if cat_info else []
+            )
+
+            # Hard gate reject if price conflict or statutory exchange breach detected
+            if not reconcile_res.get("gate_passed"):
+                return {
+                    "symbol": sym,
+                    "sector": sector,
+                    "status": "CAUTION_TRAP",
+                    "conviction_score": 0.0,
+                    "conviction_tier": "CRITICAL",
+                    "setup_type": "⛔ DỮ LIỆU KHÔNG ĐẠT CHUẨN (DATA GATE REJECT)",
+                    "story_tag": "RỦI RO DỮ LIỆU",
+                    "story": "Xung đột dữ liệu giá hoặc vi phạm biên độ quy chế",
+                    "current_price": curr_price,
+                    "fair_value": fv,
+                    "mos_pct": mos_pct,
+                    "valuation_method": val_method,
+                    "confidence": "LOW",
+                    "data_quality": reconcile_res.get("data_quality", "CRITICAL"),
+                    "data_quality_score": reconcile_res.get("quality_score", 0.0),
+                    "data_badge": reconcile_res.get("badge", "DATA CONFLICT"),
+                    "rationale": "; ".join(reconcile_res.get("conflicting_data", ["Xung đột dữ liệu giá"]))
+                }
+
             # --- KIỂM TRA ĐIỀU KIỆN KỸ THUẬT THỰC CHIẾN ---
             # --- TÍNH ĐIỂM CONVICTION THEO 4 TRỤ CỘT ---
             conviction = calculate_conviction_score(

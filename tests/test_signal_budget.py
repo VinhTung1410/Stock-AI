@@ -352,8 +352,9 @@ class TestSignalDeduplication:
 
     def test_ai_morning_report_defensive_dedup(self):
         """generate_morning_strategy_report must defensively deduplicate any passed opportunities."""
-        from ai_analyst import generate_morning_strategy_report
         import pandas as pd
+
+        from ai_analyst import generate_morning_strategy_report
 
         duplicated_opps = [
             {"symbol": "BSR", "status": "RECOMMEND_BUY", "current_price": 19.5, "sector": "Dầu khí", "story_tag": "KQKD", "story": "Lãi lớn"},
