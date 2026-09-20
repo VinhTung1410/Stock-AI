@@ -121,3 +121,7 @@ When writing or modifying code in this project, you MUST adhere to the following
   * All new modules, calculation engines, and logic components MUST have unit test coverage of **at least 80%** (target 85-95%+).
   * Always ensure new modules are included in `--cov=<module_name>` in `.github/workflows/ci.yml` so that coverage is reported to `coverage.xml` and uploaded to SonarCloud.
   * Deterministic logic (e.g. quant calculations, data validation, risk gates) must have dedicated test cases covering edge cases, missing data, and failure branches.
+* **Duplicated Lines Density (new_duplicated_lines_density <= 3.0%):**
+  * SonarCloud enforces a strict Quality Gate threshold: new duplicated lines must be **<= 3.0%**.
+  * **Zero Duplicate Sync/Async Orchestration:** When writing paired synchronous and asynchronous interfaces (e.g., `analyze_stock_with_smart_committee` and `async_analyze_stock_with_smart_committee`), NEVER duplicate input validation, Data Gate reconciliation, quant metrics, prompt formatting, or response dict assembly. Always extract them into shared private helpers (e.g., `_prepare_..._context`, `_build_..._response`).
+  * **Preserve Domain Prompt Integrity:** NEVER truncate, delete, or butcher investment prompts, 5-expert guidelines, docstrings, or test assertions to artificially reduce line count. Eliminate code duplication through proper structural abstraction.
