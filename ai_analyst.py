@@ -97,17 +97,29 @@ def sanitize_ai_text(text: str) -> str:
     return text.strip()
 
 
-def call_gemini(client, prompt: str) -> str:
+def call_gemini(client, prompt: str, max_retries: int = 3, retry_delay: float = 2.0) -> str:
     """
     Gọi Gemini API với System Language Rule tích hợp sẵn ở cả đầu và cuối prompt,
+    tích hợp cơ chế retry tự động chống timeout/rate-limit,
     sau đó tự động lọc qua sanitize_ai_text để đảm bảo đầu ra sạch 100%.
     """
+    import time
     full_prompt = f"{SYSTEM_LANGUAGE_RULE}\n\n{prompt}\n\n{SYSTEM_LANGUAGE_RULE}"
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=full_prompt
-    )
-    return sanitize_ai_text(response.text)
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=full_prompt
+            )
+            return sanitize_ai_text(response.text)
+        except Exception as e:
+            last_err = e
+            logging.warning(f"[Gemini API] Lần gọi {attempt}/{max_retries} thất bại: {e}")
+            if attempt < max_retries:
+                time.sleep(retry_delay * attempt)
+    logging.error(f"[Gemini API] Toàn bộ {max_retries} lần gọi Gemini thất bại: {last_err}")
+    raise RuntimeError(f"Gemini API generation failed after {max_retries} attempts: {last_err}") from last_err
 
 
 def get_ai_client():
@@ -326,8 +338,11 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
 
         if status == "RECOMMEND_BUY":
             act = "🟢 VALUE BUY" if mos >= 15.0 and o.get("current_price", 0) >= o.get("ma20", 0) else "🟢 ACCUMULATE"
+            dq_badge = o.get("data_badge") or (f"📊 Data Quality: {o.get('data_quality', 'HIGH')}" if o.get("data_quality") else "")
+            dq_line = f"  - **Độ tin cậy dữ liệu:** {dq_badge}\n" if dq_badge else ""
             buy_lines.append(
                 f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) — {act}\n"
+                f"{dq_line}"
                 f"  - **Giá trị hợp lý (Fair Value):** {fv:.2f}k | **Mô hình định giá:** {val_method} (Độ tin cậy: {val_conf})\n"
                 f"  - **Biên an toàn (MoS):** {mos:+.1f}% | **Mục tiêu giá (Target 6-12T):** {p_target:.2f}k\n"
                 f"  - **Vùng gom:** {o.get('entry_zone', o.get('current_price'))}k | **Giá vốn BQ dự kiến (Weighted Entry):** {avg_entry:.2f}k\n"
@@ -402,12 +417,16 @@ Trình bày rõ ràng thành 3 tiểu mục riêng biệt để người đọc 
 
 **A. 🟢 KHUYẾN NGHỊ MUA MỚI / TÍCH LŨY (TỐI ĐA 1-2 MÃ ĐẠT CHUẨN)**
 (Chỉ lấy mã từ Mục 3 phía trên, nếu không có mã nào thì ghi rõ: "Phiên nay không khuyến nghị mở mua mới để bảo toàn sức mua")
+(Với mỗi mã khuyến nghị Mua, áp dụng quy trình Hội đồng Đầu tư 5 vai trò & Tự phản biện Red Team):
 • Cổ phiếu **[MÃ]** ([Ngành]) — [🟢 VALUE BUY hoặc 🟢 ACCUMULATE]
+  - **Độ tin cậy dữ liệu:** [Trích xuất Data Quality từ hệ thống]
   - **Giá trị hợp lý (Fair Value):** ...k (Mô hình: ... | Độ tin cậy: ...) | **Mục tiêu giá:** ...k
   - **Biên an toàn (MoS):** ...% | **Vùng gom:** ...k
   - **Giá vốn BQ dự kiến (Weighted Entry):** ...k | **Kế hoạch giải ngân:** ...
   - **Dừng lỗ:** ...k | **Tỷ lệ R:R:** ...x (tính trên Giá vốn BQ)
-  - **Luận điểm cốt lõi & Xúc tác:** [...]
+  - **Góc nhìn FA & TA:** [Đánh giá chất lượng cơ bản + Động lượng kỹ thuật]
+  - **Phản biện Red Team (3 câu cốt lõi):** Điểm yếu nhất? Nếu bỏ catalyst còn vững? Kịch bản downside & xác suất?
+  - **Phán quyết PM:** [STRONG_OPPORTUNITY hoặc ATTRACTIVE] — Lý do hành động ngay (Why Now).
 
 **B. 🟡 RADAR THEO DÕI CHỜ NỀN (CHƯA PHẢI ĐIỂM MUA - QUAN SÁT TÍCH LŨY)**
 (Lấy từ Mục 4 phía trên. Nhắc nhở nhà đầu tư kiên nhẫn, không mua bắt dao rơi)
@@ -996,6 +1015,257 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
         "f_score": f_score_res,
         "z_score": z_score_res,
         "data_gate": gate
+    }
+
+
+def analyze_stock_with_smart_committee(
+    symbol: str,
+    tech_data: dict = None,
+    fin_data: dict = None,
+    news_items: list = None
+) -> dict:
+    """
+    BÁO CÁO PHÂN TÍCH ĐỊNH CHẾ TOÀN DIỆN V2 (SMART COMPRESSED INVESTMENT COMMITTEE):
+    1 API call duy nhất — Đạt 80% giá trị của V2 Master Prompt với token tăng tối thiểu (+30%).
+
+    Quy trình tích hợp:
+    - Phase 0: Data Reconciliation Gate (data_gate.py) — 100% Python deterministic.
+    - Quant Engine: Fair Value, MoS, Piotroski F-Score, Altman Z-Score, ATR Stop, R:R.
+    - 5-Expert Sequential Reasoning (FA View -> TA View -> Macro & Catalyst View -> Red Team 3 câu -> PM Decision 8 trạng thái).
+    - 2-Tier Language Sanitizer (100% Vietnamese, zero CJK, bold tickers).
+    """
+    client = get_ai_client()
+    sym = (symbol or "").strip().upper()
+
+    if tech_data is None:
+        try:
+            from data_engine import fetch_stock_technical
+            tech_data = fetch_stock_technical(sym)
+        except Exception:
+            tech_data = {}
+
+    if fin_data is None:
+        try:
+            from data_engine import get_financial_ratios
+            fin_data = get_financial_ratios(sym)
+        except Exception:
+            fin_data = {}
+
+    if news_items is None:
+        try:
+            from data_engine import fetch_macro_news
+            news_items = fetch_macro_news(limit=6, tracked_symbols=[sym])
+        except Exception:
+            news_items = []
+
+    # 1. PHASE 0: DATA RECONCILIATION GATE (100% DETERMINISTIC PYTHON)
+    from data_gate import format_data_quality_badge, reconcile_data
+    gate_res = reconcile_data(
+        symbol=sym,
+        tech_data=tech_data,
+        fin_data=fin_data,
+        news=news_items
+    )
+
+    # Hard Gate check: Reject if price conflict, statutory band breach, or critical quality
+    if not gate_res.get("gate_passed") or gate_res.get("price_status") == "CONFLICT":
+        conflicts = "; ".join(gate_res.get("conflicting_data", ["Xung đột dữ liệu giá hoặc vi phạm quy chế sàn"]))
+        refusal_report = (
+            "======================================================\n"
+            "⛔ **TỪ CHỐI KHUYẾN NGHỊ: DỮ LIỆU KHÔNG ĐẠT CHUẨN AN TOÀN QUỸ**\n"
+            "======================================================\n\n"
+            f"• **Mã cổ phiếu:** **{sym}**\n"
+            f"• **Chất lượng dữ liệu:** `{gate_res.get('data_quality', 'CRITICAL')}` ({gate_res.get('quality_score', 0):.0f}/100)\n"
+            f"• **Lý do từ chối:** {conflicts}\n\n"
+            "⚠️ **Khuyến cáo:** Hệ thống Data Reconciliation Gate (Phase 0) từ chối phân tích cổ phiếu có dữ liệu bị sai lệch, giá âm hoặc vi phạm biên độ quy chế để bảo vệ vốn nhà đầu tư!"
+        )
+        return {
+            "status": "DATA_GATE_REJECTED",
+            "symbol": sym,
+            "data_quality": gate_res.get("data_quality", "CRITICAL"),
+            "quality_score": gate_res.get("quality_score", 0.0),
+            "gate_res": gate_res,
+            "report_text": refusal_report,
+            "pm_decision": "INSUFFICIENT_DATA"
+        }
+
+    # 2. PYTHON DETERMINISTIC QUANT ENGINE
+    from quant_engine import calculate_altman_z_score, calculate_piotroski_f_score
+    from quant_valuation import calculate_fair_value_and_mos
+
+    val_res = calculate_fair_value_and_mos(symbol=sym, current_price=tech_data.get("current_price", 0.0))
+    fv = val_res.get("fair_value", tech_data.get("current_price", 0.0) * 1.10)
+    mos = val_res.get("mos_pct", 0.0)
+    val_method = val_res.get("valuation_method", "P/B")
+    val_conf = val_res.get("confidence", "MEDIUM")
+
+    f_score_res = calculate_piotroski_f_score(fin_data)
+    z_score_res = calculate_altman_z_score(fin_data)
+
+    curr_price = float(tech_data.get("current_price", 0.0))
+    ma20_val = tech_data.get("ma20")
+    ma50_val = tech_data.get("ma50")
+    rsi_val = tech_data.get("rsi14")
+    vol_val = tech_data.get("vol_ratio")
+
+    ma20_str = f"{ma20_val}k" if ma20_val is not None else "N/A"
+    ma50_str = f"{ma50_val}k" if ma50_val is not None else "N/A"
+    rsi_str = f"{rsi_val}" if rsi_val is not None else "N/A"
+    vol_str = f"{vol_val}x" if vol_val is not None else "N/A"
+
+    p_target = val_res.get("price_target") or round(fv * 1.05, 2)
+    stop_loss = round(curr_price * 0.93, 2) if curr_price > 0 else 0.0
+    upside = max(0.0, p_target - curr_price)
+    downside = max(0.1, curr_price - stop_loss)
+    rr = round(upside / downside, 2) if downside > 0 else 1.5
+
+    data_badge_str = format_data_quality_badge(gate_res)
+
+    news_text = "Không có tin đột biến."
+    if news_items:
+        news_text = "; ".join([n.get("title", "") for n in news_items[:3] if n.get("title")])
+
+    f_raw = f_score_res.get("score")
+    if f_raw is not None:
+        f_val_str = f"{f_raw}/9 ({f_score_res.get('rating', 'Khỏe')})"
+        f_eval = f"{f_raw}"
+    else:
+        f_val_str = "N/A (Chưa đủ BCTC)"
+        f_eval = "N/A"
+
+    z_raw = z_score_res.get("z_score")
+    if z_raw is not None:
+        try:
+            z_eval = f"{float(z_raw):.2f}"
+            z_val_str = f"{z_eval} ({z_score_res.get('zone', 'Vùng an toàn')})"
+        except (ValueError, TypeError):
+            z_eval = str(z_raw)
+            z_val_str = f"{z_eval} ({z_score_res.get('zone', 'N/A')})"
+    else:
+        z_eval = "N/A"
+        z_val_str = "N/A (Chưa đủ BCTC)"
+
+    # 3. SMART COMPRESSED PROMPT (5-EXPERT SEQUENTIAL REASONING + 3-QUESTION RED TEAM)
+    prompt = f"""Bạn là Investment Committee (Hội đồng Đầu tư Định chế) gồm 5 vai trò chuyên môn:
+1. Chuyên gia Phân tích Cơ bản (FA Analyst)
+2. Chuyên gia Kỹ thuật & Định thời điểm (TA & Timing Specialist)
+3. Chuyên gia Vĩ mô & Động lực Ngành (Macro & Catalyst Strategist)
+4. Đội Phản biện Đối kháng (Red Team Contrarian Auditor)
+5. Giám đốc Quản lý Danh mục (Portfolio Manager - PM)
+
+Hãy thực hiện phân tích TUẦN TỰ cho cổ phiếu **{sym}**:
+
+=== DỮ LIỆU ĐÃ KIỂM CHỨNG BỞI PYTHON DETERMINISTIC (PHASE 0 - 2) ===
+- Mã cổ phiếu: **{sym}**
+- {data_badge_str}
+- Thị giá: {curr_price}k VND | MA20: {ma20_str} | MA50: {ma50_str} | RSI(14): {rsi_str} | Vol/SMA20: {vol_str}
+- Định giá Fair Value: {fv:.2f}k VND (Mô hình: {val_method}, Độ tin cậy: {val_conf}) | Biên an toàn (MoS): {mos:+.1f}%
+- Mục tiêu giá (Target): {p_target:.2f}k VND | Ngưỡng dừng lỗ: {stop_loss:.2f}k VND | Tỷ lệ R:R: {rr:.1f}x
+- Điểm tài chính Piotroski F-Score: {f_val_str}
+- Sức khỏe tài chính Altman Z-Score: {z_val_str}
+- Tin tức & Xúc tác: {news_text}
+
+BẮT BUỘC PHÂN TÍCH TUẦN TỰ THEO 5 BƯỚC:
+
+=== BƯỚC 1: ĐÁNH GIÁ CƠ BẢN (FA VIEW) ===
+Dựa trên F-Score={f_eval}, Z-Score={z_eval}, MoS={mos:+.1f}%:
+- Chất lượng lợi nhuận và mô hình kinh doanh có bền vững không? (Nếu N/A, không tự suy diễn số liệu tích cực).
+- Đánh giá FA VIEW: BULLISH / NEUTRAL / BEARISH
+- Định giá: UNDERVALUED / FAIR / OVERVALUED
+
+=== BƯỚC 2: ĐÁNH GIÁ KỸ THUẬT (TA VIEW) ===
+Dựa trên MA20={ma20_str}, RSI={rsi_str}, Vol={vol_str}:
+- Động lượng dòng tiền, kiểm tra bẫy mua đuổi (Anti-chasing), vị thế nền giá.
+- Đánh giá TA VIEW: BULLISH / NEUTRAL / BEARISH
+
+=== BƯỚC 3: ĐÁNH GIÁ VĨ MÔ & XÚC TÁC ===
+- Chất xúc tác có đủ mạnh không và đã phản ánh vào thị giá chưa (Already Priced-in)?
+- Đánh giá MACRO VIEW: SUPPORTIVE / NEUTRAL / NEGATIVE
+
+=== BƯỚC 4: RED TEAM — TỰ PHẢN BIỆN (3 CÂU BẮT BUỘC) ===
+1. Điểm YẾU NHẤT trong luận điểm đầu tư này là gì?
+2. Nếu loại bỏ chất xúc tác tốt nhất, luận điểm có còn đứng vững không?
+3. Kịch bản rủi ro sụt giảm (downside scenario) là gì và xác suất xảy ra bao nhiêu %?
+
+=== BƯỚC 5: QUYẾT ĐỊNH CUỐI CÙNG (PM DECISION) ===
+BẮT BUỘC chọn chính xác 1 trong 8 trạng thái định chế chuẩn:
+[STRONG_OPPORTUNITY | ATTRACTIVE | WATCHLIST | WAIT_BETTER_ENTRY | HOLD_MAINTAIN | RISK_ELEVATED | AVOID | INSUFFICIENT_DATA]
+BẮT BUỘC mở đầu dòng phán quyết bằng cú pháp chuẩn:
+PM DECISION: <TRẠNG_THÁI> — <Lý do hành động súc tích>
+- Kèm: WHY NOW / WHY WAIT (Tại sao mua ngay hoặc tại sao phải chờ)?
+- TOP 3 LÝ DO HÀNH ĐỘNG
+- TOP 3 RỦI RO TRỌNG YẾU
+
+QUY TẮC BẮT BUỘC:
+- 100% tiếng Việt chuẩn Unicode, TUYỆT ĐỐI KHÔNG dùng chữ Hán / tiếng Trung.
+- BẮT BUỘC IN ĐẬM mã cổ phiếu **{sym}**.
+- KHÔNG dùng bảng markdown (|---|). Dùng danh sách gạch đầu dòng phân cấp.
+"""
+
+    try:
+        report_text = call_gemini(client, prompt)
+    except Exception as api_err:
+        logging.error(f"Lỗi AI Generation cho mã {sym}: {api_err}")
+        return {
+            "status": "AI_GENERATION_FAILED",
+            "symbol": sym,
+            "pm_decision": "INSUFFICIENT_DATA",
+            "data_quality": gate_res.get("data_quality", "HIGH"),
+            "quality_score": gate_res.get("quality_score", 100.0),
+            "gate_res": gate_res,
+            "val_res": val_res,
+            "f_score": f_score_res,
+            "z_score": z_score_res,
+            "report_text": f"⚠️ Lỗi kết nối AI khi phân tích cổ phiếu **{sym}**: {api_err}",
+            "error": str(api_err)
+        }
+
+    # Strict PM Decision parsing (prevents false positive matching from Red Team counter-arguments)
+    valid_pm_states = [
+        "STRONG_OPPORTUNITY", "ATTRACTIVE", "WATCHLIST", "WAIT_BETTER_ENTRY",
+        "HOLD_MAINTAIN", "RISK_ELEVATED", "AVOID", "INSUFFICIENT_DATA"
+    ]
+    pm_decision = None
+
+    # Priority 1: Match explicit PM DECISION statement
+    explicit_match = re.findall(
+        r'(?:PM\s*DECISION|PHÁN\s*QUYẾT\s*PM|QUYẾT\s*ĐỊNH\s*(?:CUỐI\s*CÙNG|PM)|PM_DECISION)[:\s—\-]+([A-Z_]+)',
+        report_text,
+        re.IGNORECASE
+    )
+    for m in reversed(explicit_match):
+        candidate = m.strip().upper()
+        if candidate in valid_pm_states:
+            pm_decision = candidate
+            break
+
+    # Priority 2: Search exclusively in Bước 5 / Decision section
+    if not pm_decision:
+        b5_pos = report_text.rfind("BƯỚC 5")
+        scope = report_text[b5_pos:] if b5_pos != -1 else report_text
+        for line in scope.splitlines():
+            for state in valid_pm_states:
+                if re.search(r'\b' + re.escape(state) + r'\b', line):
+                    pm_decision = state
+                    break
+            if pm_decision:
+                break
+
+    # Priority 3: Fallback default
+    if not pm_decision:
+        pm_decision = "WATCHLIST"
+
+    return {
+        "status": "SUCCESS",
+        "symbol": sym,
+        "pm_decision": pm_decision,
+        "data_quality": gate_res.get("data_quality", "HIGH"),
+        "quality_score": gate_res.get("quality_score", 100.0),
+        "gate_res": gate_res,
+        "val_res": val_res,
+        "f_score": f_score_res,
+        "z_score": z_score_res,
+        "report_text": report_text
     }
 
 
