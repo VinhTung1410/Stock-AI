@@ -51,7 +51,11 @@ def run_morning_report():
     news = fetch_macro_news(limit=10, tracked_symbols=tracked_symbols)
 
     print("\n🧠 3. AI Gemini đóng vai Giám đốc Chiến lược CTCK lập báo cáo ATO 08:45...", flush=True)
+    import time
+    start_t = time.time()
     morning_ai_text = generate_morning_strategy_report(df_eval, df_wl, opportunities, news)
+    elapsed_t = time.time() - start_t
+    print(f"  ⏱️ Thời gian tạo chiến lược ATO: {elapsed_t:.2f}s", flush=True)
 
     morning_embed = format_portfolio_embed(
         df_eval,

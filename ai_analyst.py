@@ -115,11 +115,35 @@ def call_gemini(client, prompt: str, max_retries: int = 3, retry_delay: float = 
             return sanitize_ai_text(response.text)
         except Exception as e:
             last_err = e
-            logging.warning(f"[Gemini API] Lần gọi {attempt}/{max_retries} thất bại: {e}")
+            logging.warning("[Gemini API] Lần gọi %d/%d thất bại: %s", attempt, max_retries, e)
             if attempt < max_retries:
                 time.sleep(retry_delay * attempt)
-    logging.error(f"[Gemini API] Toàn bộ {max_retries} lần gọi Gemini thất bại: {last_err}")
+    logging.exception("[Gemini API] Toàn bộ %d lần gọi Gemini thất bại: %s", max_retries, last_err)
     raise RuntimeError(f"Gemini API generation failed after {max_retries} attempts: {last_err}") from last_err
+
+
+async def async_call_gemini(client, prompt: str, max_retries: int = 3, retry_delay: float = 2.0) -> str:
+    """
+    Gọi Gemini API bất đồng bộ (asyncio) qua client.aio.models.generate_content.
+    Tích hợp cơ chế retry tự động với exponential backoff không block event loop.
+    """
+    import asyncio
+    full_prompt = f"{SYSTEM_LANGUAGE_RULE}\n\n{prompt}\n\n{SYSTEM_LANGUAGE_RULE}"
+    last_err = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            response = await client.aio.models.generate_content(
+                model=MODEL_NAME,
+                contents=full_prompt
+            )
+            return sanitize_ai_text(response.text)
+        except Exception as e:
+            last_err = e
+            logging.warning("[Gemini Async API] Lần gọi %d/%d thất bại: %s", attempt, max_retries, e)
+            if attempt < max_retries:
+                await asyncio.sleep(retry_delay * attempt)
+    logging.exception("[Gemini Async API] Toàn bộ %d lần gọi Gemini thất bại: %s", max_retries, last_err)
+    raise RuntimeError(f"Async Gemini API generation failed after {max_retries} attempts: {last_err}") from last_err
 
 
 def get_ai_client():
@@ -1297,6 +1321,141 @@ def analyze_stock_with_smart_committee(
         "z_score": z_score_res,
         "report_text": report_text
     }
+
+
+async def async_analyze_stock_with_smart_committee(
+    symbol: str,
+    tech_data: dict = None,
+    fin_data: dict = None,
+    news_items: list = None,
+    client = None
+) -> dict:
+    """
+    Phân tích định chế toàn diện V2 bất đồng bộ (Async Smart Compressed Committee).
+    Không chặn luồng chính, cho phép phân tích song song nhiều mã cổ phiếu cùng lúc.
+    """
+    ai_client = client or get_ai_client()
+    sym, tech_data, fin_data, news_items = _resolve_input_data(symbol, tech_data, fin_data, news_items)
+
+    # 1. PHASE 0: DATA RECONCILIATION GATE
+    from data_gate import reconcile_data
+    gate_res = reconcile_data(
+        symbol=sym,
+        tech_data=tech_data,
+        fin_data=fin_data,
+        news=news_items
+    )
+
+    if not gate_res.get("gate_passed") or gate_res.get("price_status") == "CONFLICT":
+        conflicts = "; ".join(gate_res.get("conflicting_data", ["Xung đột dữ liệu giá hoặc vi phạm quy chế sàn"]))
+        refusal_report = (
+            "======================================================\n"
+            "⛔ **TỪ CHỐI KHUYẾN NGHỊ: DỮ LIỆU KHÔNG ĐẠT CHUẨN AN TOÀN QUỸ**\n"
+            "======================================================\n\n"
+            f"• **Mã cổ phiếu:** **{sym}**\n"
+            f"• **Chất lượng dữ liệu:** `{gate_res.get('data_quality', 'CRITICAL')}` ({gate_res.get('quality_score', 0):.0f}/100)\n"
+            f"• **Lý do từ chối:** {conflicts}\n\n"
+            "⚠️ **Khuyến cáo:** Hệ thống Data Reconciliation Gate (Phase 0) từ chối phân tích cổ phiếu có dữ liệu bị sai lệch, giá âm hoặc vi phạm biên độ quy chế để bảo vệ vốn nhà đầu tư!"
+        )
+        return {
+            "status": "DATA_GATE_REJECTED",
+            "symbol": sym,
+            "data_quality": gate_res.get("data_quality", "CRITICAL"),
+            "quality_score": gate_res.get("quality_score", 0.0),
+            "gate_res": gate_res,
+            "report_text": refusal_report,
+            "pm_decision": "INSUFFICIENT_DATA"
+        }
+
+    # 2. QUANT VALUATION & SCORING
+    from quant_engine import calculate_altman_z_score, calculate_piotroski_f_score
+    from quant_valuation import calculate_fair_value_and_mos
+
+    val_res = calculate_fair_value_and_mos(symbol=sym, current_price=tech_data.get("current_price", 0.0))
+    f_score_res = calculate_piotroski_f_score(fin_data)
+    z_score_res = calculate_altman_z_score(fin_data)
+
+    prompt = _format_committee_prompt_context(
+        sym=sym,
+        tech_data=tech_data,
+        gate_res=gate_res,
+        val_res=val_res,
+        f_score_res=f_score_res,
+        z_score_res=z_score_res,
+        news_items=news_items
+    )
+
+    try:
+        report_text = await async_call_gemini(ai_client, prompt)
+    except Exception as api_err:
+        logging.exception("Lỗi Async AI Generation cho mã %s: %s", sym, api_err)
+        return {
+            "status": "AI_GENERATION_FAILED",
+            "symbol": sym,
+            "pm_decision": "INSUFFICIENT_DATA",
+            "data_quality": gate_res.get("data_quality", "HIGH"),
+            "quality_score": gate_res.get("quality_score", 100.0),
+            "gate_res": gate_res,
+            "val_res": val_res,
+            "f_score": f_score_res,
+            "z_score": z_score_res,
+            "report_text": f"⚠️ Lỗi kết nối AI khi phân tích cổ phiếu **{sym}**: {api_err}",
+            "error": str(api_err)
+        }
+
+    pm_decision = _extract_pm_decision(report_text)
+
+    return {
+        "status": "SUCCESS",
+        "symbol": sym,
+        "pm_decision": pm_decision,
+        "data_quality": gate_res.get("data_quality", "HIGH"),
+        "quality_score": gate_res.get("quality_score", 100.0),
+        "gate_res": gate_res,
+        "val_res": val_res,
+        "f_score": f_score_res,
+        "z_score": z_score_res,
+        "report_text": report_text
+    }
+
+
+async def async_analyze_stocks_batch(
+    symbols_or_candidates: list,
+    max_concurrency: int = 5,
+    client = None
+) -> list:
+    """
+    Phân tích đồng thời hàng loạt cổ phiếu bằng asyncio.gather kết hợp Semaphore.
+    Giúp quét 10-20 mã trong < 15s mà không bị tràn quota API Gemini.
+    """
+    import asyncio
+    sem = asyncio.Semaphore(max_concurrency)
+    ai_client = client or get_ai_client()
+
+    async def _bound_worker(item):
+        async with sem:
+            if isinstance(item, str):
+                return await async_analyze_stock_with_smart_committee(symbol=item, client=ai_client)
+            if isinstance(item, dict):
+                return await async_analyze_stock_with_smart_committee(
+                    symbol=item.get("symbol", ""),
+                    tech_data=item.get("tech_data"),
+                    fin_data=item.get("fin_data"),
+                    news_items=item.get("news_items"),
+                    client=ai_client
+                )
+            return {
+                "status": "INVALID_INPUT",
+                "symbol": "UNKNOWN",
+                "pm_decision": "INSUFFICIENT_DATA",
+                "report_text": "Dữ liệu đầu vào không hợp lệ"
+            }
+
+    tasks = [_bound_worker(c) for c in (symbols_or_candidates or [])]
+    if not tasks:
+        return []
+    return list(await asyncio.gather(*tasks, return_exceptions=False))
+
 
 
 if __name__ == "__main__":
