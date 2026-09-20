@@ -117,3 +117,7 @@ When writing or modifying code in this project, you MUST adhere to the following
   * Keep Regular Expressions simple. If a regex is too complex (> 20 chars/complexity), break it down or document it thoroughly.
 * **Extract Conditional Expressions (S3358):**
   * Avoid deeply nested ternary operators or inline conditional expressions. Extract them into independent statements for readability.
+* **Code Coverage on New Code (> 80%):**
+  * All new modules, calculation engines, and logic components MUST have unit test coverage of **at least 80%** (target 85-95%+).
+  * Always ensure new modules are included in `--cov=<module_name>` in `.github/workflows/ci.yml` so that coverage is reported to `coverage.xml` and uploaded to SonarCloud.
+  * Deterministic logic (e.g. quant calculations, data validation, risk gates) must have dedicated test cases covering edge cases, missing data, and failure branches.

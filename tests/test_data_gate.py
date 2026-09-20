@@ -148,3 +148,95 @@ class TestDataReconciliationGate:
         assert "Data Quality:" in badge
         assert "HIGH" in badge
         assert "92" in badge
+
+        # Test MEDIUM and LOW badges
+        badge_med = format_data_quality_badge({"data_quality": "MEDIUM", "quality_score": 70.0})
+        assert "🟡" in badge_med
+        badge_crit = format_data_quality_badge({"data_quality": "CRITICAL", "quality_score": 20.0})
+        assert "🔴" in badge_crit
+
+    def test_reconcile_price_empty_and_mismatch(self):
+        """Reconcile price handles empty tech data and reported vs computed mismatch."""
+        from data_gate import reconcile_price
+
+        status, p, issues = reconcile_price(tech_data=None)
+        assert status == "CONFLICT"
+        assert p == 0.0
+
+        # Price mismatch: reported +5%, computed +2%
+        tech = {
+            "current_price": 102.0,
+            "ref_price": 100.0,
+            "change_pct": 5.0
+        }
+        status_adj, p_adj, issues_adj = reconcile_price(tech_data=tech)
+        assert status_adj == "ADJUSTED"
+        assert any("Price Change Mismatch" in iss for iss in issues_adj)
+
+    def test_reconcile_corporate_actions_invalid_dates_and_empty(self):
+        """Corporate action parsing handles invalid dates and empty items."""
+        from data_gate import reconcile_corporate_actions
+
+        actions = [
+            {"action_type": "DIVIDEND"},  # Missing ex_date
+            {"action_type": "BONUS", "ex_date": "invalid-date-format"}  # Malformed date
+        ]
+        tagged, is_ex = reconcile_corporate_actions(tech_data=None, corporate_actions=actions)
+        assert len(tagged) == 0
+        assert is_ex is False
+
+    def test_reconcile_financial_period_missing_and_invalid(self):
+        """Reconcile financial statements handles missing dict and invalid quarter formats."""
+        from data_gate import reconcile_financial_period
+
+        missing, stale = reconcile_financial_period(fin_data=None)
+        assert "fin_data_dict" in missing
+
+        fin_malformed = {
+            "roe": 10.0,
+            "f_score": 5,
+            "z_score": 2.0,
+            "pe": 10.0,
+            "pb": 1.0,
+            "latest_quarter": "INVALID_Q",
+            "latest_year": "NOT_A_YEAR"
+        }
+        missing_m, stale_m = reconcile_financial_period(fin_data=fin_malformed)
+        assert len(missing_m) == 0
+        assert len(stale_m) == 0
+
+    def test_reconcile_news_source_tiers_and_malformed_date(self):
+        """Test news classification for BCTC tag, RSS general source, and invalid date."""
+        from data_gate import (
+            SOURCE_TIER_AUDITED_FINANCIALS,
+            SOURCE_TIER_GENERAL_RSS,
+        )
+
+        news = [
+            {"title": "Báo cáo kiểm toán 2024", "source": "Doanh nghiệp", "tag": "AUDIT", "date": "bad-date"},
+            {"title": "Tin tổng hợp thị trường", "source": "Báo Lao Động", "tag": "TIN_TỨC", "date": None}
+        ]
+        reconciled, _ = reconcile_news_freshness(news)
+        assert len(reconciled) == 2
+        assert reconciled[0]["tier"] == SOURCE_TIER_AUDITED_FINANCIALS
+        assert reconciled[1]["tier"] == SOURCE_TIER_GENERAL_RSS
+
+    def test_reconcile_data_tier_low(self):
+        """Test data quality producing LOW tier score."""
+        # Partially missing financials + adjusted price -> score in 40-65 range
+        tech = {
+            "current_price": 102.0,
+            "ref_price": 100.0,
+            "change_pct": 5.0  # Mismatch triggers ADJUSTED (-10)
+        }
+        fin = {
+            "roe": 10.0,
+            "pe": 15.0,
+            "pb": 1.5,
+            # missing f_score and z_score (-12)
+            "latest_quarter": 1,
+            "latest_year": datetime.now().year - 2  # Stale (-15)
+        }
+        res = reconcile_data(symbol="TEST", tech_data=tech, fin_data=fin, news=[])
+        assert res["data_quality"] in ["LOW", "MEDIUM"]
+        assert res["quality_score"] < 70.0
