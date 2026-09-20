@@ -3,13 +3,14 @@ Unit tests for Phase 3: Smart Compressed Prompt & Built-in Red Team.
 Validates 5-expert sequential reasoning, Red Team contrarian challenge,
 8 PM decision states, and zero-token Data Gate rejection.
 """
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 
 from ai_analyst import (
     analyze_stock_with_smart_committee,
+    call_gemini,
     generate_morning_strategy_report,
     sanitize_ai_text,
 )
@@ -215,9 +216,6 @@ class TestSmartCompressedPrompt:
 
     def test_call_gemini_retry_resilience(self):
         """call_gemini must retry on transient error and succeed when recovered."""
-        from unittest.mock import MagicMock
-        from ai_analyst import call_gemini
-
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.text = "BÁO CÁO HỢP LỆ"
