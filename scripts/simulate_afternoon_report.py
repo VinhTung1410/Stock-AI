@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
-    except:
+    except Exception:
         pass
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

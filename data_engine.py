@@ -326,7 +326,7 @@ def load_portfolio(filepath: str = "data/portfolio.json") -> list:
             # Tự động sao lưu bản copy xuống portfolio.json
             try:
                 save_portfolio(p_data, filepath)
-            except:
+            except Exception:
                 pass
             return p_data
 
@@ -353,7 +353,7 @@ def load_watchlist(filepath: str = "data/watchlist.json") -> list:
             try:
                 with open(filepath, "w", encoding="utf-8") as f:
                     json.dump(w_data, f, ensure_ascii=False, indent=2)
-            except:
+            except Exception:
                 pass
             return w_data
 

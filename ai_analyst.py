@@ -297,7 +297,7 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
         try:
             from data_engine import fetch_stock_technical
             vnindex_tech = fetch_stock_technical("VNINDEX")
-        except:
+        except Exception:
             vnindex_tech = {}
 
     idx_price = vnindex_tech.get("current_price", 0.0)

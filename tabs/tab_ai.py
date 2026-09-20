@@ -142,7 +142,7 @@ def render_tab_ai(df_eval: pd.DataFrame):
                     rsi_status = '<span style="color:#15803d; font-size:10.5px; font-weight:700;">(Quá bán)</span>'
                 else:
                     rsi_status = '<span style="color:#64748b; font-size:10.5px; font-weight:600;">(Trung tính)</span>'
-            except:
+            except Exception:
                 rsi_status = ""
 
             pe_val = fin_data.get('pe', 'N/A')

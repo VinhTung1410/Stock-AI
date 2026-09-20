@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
-    except:
+    except Exception:
         pass
 
 # Ensure parent directory is in sys.path

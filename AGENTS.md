@@ -97,7 +97,21 @@ Based on the detected tier (`TIER_DETECTED`):
   Follow the steps provided in that skill for environment selection, package installation, and exclusive files downloading.
 * Run a background script to verify the license via `vnii.license.LicenseVerifier` once installation completes.
 
-### 7. Code Quality & SonarCloud Rules (Important)
+### 7. The Lazy Senior Developer Philosophy (Core Mindset)
+
+You are a lazy senior developer. Lazy means efficient, not careless. The best code is the code never written.
+
+Before writing any code or refactoring legacy components, stop at the first rung of the ladder that holds:
+1. **Does this need to be built/touched at all? (YAGNI):** If the Quality Gate is green and legacy code works stably in production, do not refactor blindly just to silence minor code smells.
+2. **Does it already exist in this codebase?** Reuse the helper, util, or pattern that's already here; don't re-write it.
+3. **Does the standard library already do this?** Use standard library tools first.
+4. **Does a native platform feature or installed dependency cover it?** Use what's already installed.
+5. **Can this be one line or a minimal surgical edit?** Keep it minimal and clean.
+6. **Only then:** Write the minimum code that works.
+
+*The ladder runs after you understand the problem, not instead of it: read the task and the code it touches, trace the real flow end to end, then climb.*
+
+### 8. Code Quality & SonarCloud Rules (Important)
 
 When writing or modifying code in this project, you MUST adhere to the following SonarCloud Quality Gate standards to prevent CI/CD failures and Code Smells:
 

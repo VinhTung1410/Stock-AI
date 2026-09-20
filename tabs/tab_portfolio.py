@@ -68,7 +68,7 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
                     volume = max(0, int(float(raw_vol)))
                 else:
                     volume = 0
-            except:
+            except Exception:
                 volume = 0
 
             # Xử lý an toàn giá vốn (tránh float nan)
@@ -78,7 +78,7 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
                     cost_price = round(float(raw_cost), 2)
                 else:
                     cost_price = 0.0
-            except:
+            except Exception:
                 cost_price = 0.0
 
             # Xử lý an toàn ghi chú
@@ -153,7 +153,7 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
                     target_buy = round(float(raw_target), 2)
                 else:
                     target_buy = 0.0
-            except:
+            except Exception:
                 target_buy = 0.0
 
             # Xử lý an toàn ghi chú
