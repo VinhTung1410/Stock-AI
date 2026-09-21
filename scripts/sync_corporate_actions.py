@@ -5,7 +5,7 @@ from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data_engine import load_portfolio, save_portfolio, fetch_corporate_dividends
+from data_engine import fetch_corporate_dividends, load_portfolio, save_portfolio
 from db_manager import get_supabase_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
