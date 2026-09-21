@@ -133,6 +133,7 @@ When writing or modifying code in this project, you MUST adhere to the following
   * Avoid deeply nested ternary operators or inline conditional expressions. Extract them into independent statements for readability.
 * **Code Coverage on New Code (> 80%):**
   * All new modules, calculation engines, and logic components MUST have unit test coverage of **at least 80%** (target 85-95%+).
+  * **NO EXCUSES FOR LOCAL ENV ERRORS:** Even if the local test runner (e.g., `pytest`) fails to execute due to environment configuration, the Agent MUST STILL write the complete unit test files (`tests/test_*.py`) and commit them. CI/CD will run them. NEVER skip writing tests.
   * Always ensure new modules are included in `--cov=<module_name>` in `.github/workflows/ci.yml` so that coverage is reported to `coverage.xml` and uploaded to SonarCloud.
   * Deterministic logic (e.g. quant calculations, data validation, risk gates) must have dedicated test cases covering edge cases, missing data, and failure branches.
 * **Duplicated Lines Density (new_duplicated_lines_density <= 3.0%):**
