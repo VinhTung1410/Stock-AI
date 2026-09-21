@@ -1,14 +1,17 @@
 from unittest import mock
 
 import pandas as pd
+import pytest
 
 from ai_analyst import generate_portfolio_analysis
 from data_engine import fetch_corporate_dividends
 
+pytestmark = pytest.mark.offline
+
 
 def test_fetch_corporate_dividends_success():
     """Test lấy cổ tức thành công, mock Vnstock."""
-    with mock.patch("data_engine.Vnstock") as MockVnstock:
+    with mock.patch("vnstock.Vnstock") as MockVnstock:
         # Giả lập DataFrame trả về
         mock_df = pd.DataFrame({
             "ex_right_date": ["2026-09-21"],
@@ -23,12 +26,14 @@ def test_fetch_corporate_dividends_success():
         assert len(df) == 1
         assert df.iloc[0]["ex_right_date"] == "2026-09-21"
 
+
 def test_fetch_corporate_dividends_exception():
     """Test lỗi lấy cổ tức."""
-    with mock.patch("data_engine.Vnstock") as MockVnstock:
+    with mock.patch("vnstock.Vnstock") as MockVnstock:
         MockVnstock.side_effect = Exception("Network Error")
         df = fetch_corporate_dividends("FPT")
         assert df is None
+
 
 @mock.patch("ai_analyst.call_gemini")
 def test_generate_portfolio_analysis_fallback_q5(mock_call_gemini):
@@ -45,6 +50,7 @@ def test_generate_portfolio_analysis_fallback_q5(mock_call_gemini):
     assert "Câu hỏi 5" in result
     assert "📌 II." in result
 
+
 def test_trading_bot_value_strategy_skips_stoploss():
     """Test _check_single_holding_risk bỏ qua MA20 và StopLoss cho strategy VALUE."""
     from trading_bot import _check_single_holding_risk
@@ -59,9 +65,9 @@ def test_trading_bot_value_strategy_skips_stoploss():
         "Vol/TB20": 2.0
     }
     
-    with mock.patch("trading_bot.fetch_stock_technical") as mock_tech:
+    with mock.patch("data_engine.fetch_stock_technical") as mock_tech:
         mock_tech.return_value = {"current_price": 80.0}
-        with mock.patch("trading_bot.detect_gdkhq_event") as mock_gdkhq:
+        with mock.patch("data_engine.detect_gdkhq_event") as mock_gdkhq:
             mock_gdkhq.return_value = {"is_gdkhq": False}
             with mock.patch("trading_bot._handle_stop_loss") as mock_sl:
                 with mock.patch("trading_bot._handle_ma20_breakdown") as mock_ma20:
@@ -70,3 +76,42 @@ def test_trading_bot_value_strategy_skips_stoploss():
                     # Cả 2 hàm cắt lỗ và MA20 đều KHÔNG được gọi vì chiến lược là VALUE
                     mock_sl.assert_not_called()
                     mock_ma20.assert_not_called()
+
+
+def test_sync_corporate_actions():
+    """Test đồng bộ cổ tức trong scripts/sync_corporate_actions.py."""
+    from scripts.sync_corporate_actions import (
+        _check_and_notify_gdkhq,
+        _get_gdkhq_column,
+        sync_corporate_actions,
+    )
+
+    # 1. Test _get_gdkhq_column
+    assert _get_gdkhq_column(pd.DataFrame(columns=["ex_right_date"])) == "ex_right_date"
+    assert _get_gdkhq_column(pd.DataFrame(columns=["unknown_col"])) is None
+
+    # 2. Test _check_and_notify_gdkhq with None df
+    with mock.patch("scripts.sync_corporate_actions.fetch_corporate_dividends", return_value=None):
+        assert not _check_and_notify_gdkhq("FPT", 100.0, "2026-09-21")
+
+    # 3. Test _check_and_notify_gdkhq with matching event
+    matching_df = pd.DataFrame({"ex_right_date": ["2026-09-21"]})
+    with mock.patch("scripts.sync_corporate_actions.fetch_corporate_dividends", return_value=matching_df):
+        with mock.patch("scripts.sync_corporate_actions.get_supabase_client", return_value=mock.MagicMock()):
+            assert _check_and_notify_gdkhq("FPT", 100.0, "2026-09-21")
+
+    # 4. Test _check_and_notify_gdkhq exception handling
+    with mock.patch("scripts.sync_corporate_actions.fetch_corporate_dividends", side_effect=Exception("DB fail")):
+        assert not _check_and_notify_gdkhq("FPT", 100.0, "2026-09-21")
+
+    # 5. Test sync_corporate_actions with empty portfolio
+    with mock.patch("scripts.sync_corporate_actions.load_portfolio", return_value=[]):
+        sync_corporate_actions()
+
+    # 6. Test sync_corporate_actions with active update
+    sample_portfolio = [{"symbol": "FPT", "cost_price": 100.0}]
+    with mock.patch("scripts.sync_corporate_actions.load_portfolio", return_value=sample_portfolio):
+        with mock.patch("scripts.sync_corporate_actions._check_and_notify_gdkhq", return_value=True):
+            with mock.patch("scripts.sync_corporate_actions.save_portfolio") as mock_save:
+                sync_corporate_actions()
+                mock_save.assert_called_once_with(sample_portfolio)

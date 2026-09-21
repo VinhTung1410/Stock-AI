@@ -141,5 +141,10 @@ When writing or modifying code in this project, you MUST adhere to the following
   * **Zero Duplicate Sync/Async Orchestration:** When writing paired synchronous and asynchronous interfaces (e.g., `analyze_stock_with_smart_committee` and `async_analyze_stock_with_smart_committee`), NEVER duplicate input validation, Data Gate reconciliation, quant metrics, prompt formatting, or response dict assembly. Always extract them into shared private helpers (e.g., `_prepare_..._context`, `_build_..._response`).
   * **Preserve Domain Prompt Integrity:** NEVER truncate, delete, or butcher investment prompts, 5-expert guidelines, docstrings, or test assertions to artificially reduce line count. Eliminate code duplication through proper structural abstraction.
 * **Code Formatting & Imports Sorting (Ruff I001):**
-  * All Python imports MUST be strictly sorted and formatted according to `isort` / `ruff` standards (alphabetical order, standard library first, then third-party, then local modules).
-* **Self-Audit Before Delivery:** Trước khi báo cáo hoàn thành bất kỳ task code nào (hoặc tạo walkthrough.md), Agent BẮT BUỘC phải tự rà soát lại đoạn code vừa viết xem có vi phạm quy tắc S8572 (logging.exception), S3776 (complexity), và S1192 (chuỗi lặp) hay không. Nếu phát hiện vi phạm, phải tự động sửa ngay trước khi tương tác lại với user.
+  * All Python imports MUST be strictly sorted and formatted according to `isort` / `ruff` standards (alphabetical order, standard library first, then third-party, then local modules, exactly 2 blank lines before top-level definitions).
+  * **NEVER manually guess or reorder imports by hand.** When adding new code or fixing `I001`, the Agent MUST run `ruff check --fix <filepath>` to let Ruff automatically organize imports and line breaks.
+* **Self-Audit Before Delivery:**
+  * Before creating a commit, pushing to Git, declaring task completion, or creating/updating walkthrough.md, the Agent MUST:
+    1. Run `ruff check . --output-format=github` across the workspace and guarantee **exit code 0** (zero remaining errors or warnings).
+    2. Self-audit against SonarCloud rules: S8572 (`logging.exception`), S3776 (cognitive complexity < 15), S1192 (string literals duplicated >= 3 times), and F401 (eliminate unused imports).
+    3. If any violations exist, fix and thoroughly verify them before responding to the user.
