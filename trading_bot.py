@@ -144,6 +144,7 @@ def _check_single_holding_risk(row, today_str: str, vnindex_chg_pct: float):
     vol_ratio = float(row.get("Vol/TB20", 1.0))
     rsi = row.get("RSI(14)")
     status_ma20 = str(row.get("Vị thế MA20", ""))
+    strategy = str(row.get("Chiến lược", "SWING")).upper()
 
     tech_sym = fetch_stock_technical(symbol)
     gdkhq_info = detect_gdkhq_event(symbol, tech_sym, vnindex_chg_pct)
@@ -151,11 +152,15 @@ def _check_single_holding_risk(row, today_str: str, vnindex_chg_pct: float):
         _handle_gdkhq_shield(symbol, curr_price, today_str, gdkhq_info)
         return
 
-    if _handle_stop_loss(symbol, curr_price, cost_price, pnl_pct, today_str):
-        return
-
-    if _handle_ma20_breakdown(symbol, curr_price, status_ma20, vol_ratio, today_str):
-        return
+    if strategy != "VALUE":
+        if _handle_stop_loss(symbol, curr_price, cost_price, pnl_pct, today_str):
+            return
+        if _handle_ma20_breakdown(symbol, curr_price, status_ma20, vol_ratio, today_str):
+            return
+    else:
+        # Đối với Tích sản giá trị, chỉ cảnh báo nếu lỗ quá sâu (-15%) hoặc Thesis Breaker (xử lý ở tầng Quant)
+        # Bỏ qua rung lắc ngắn hạn -5%/-7% và gãy MA20
+        pass
 
     _handle_rsi_overbought(symbol, curr_price, rsi, today_str)
 

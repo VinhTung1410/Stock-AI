@@ -203,7 +203,7 @@ def _format_news_summary(news_items, limit: int = 8) -> str:
     return "\n".join(lines) if lines else "Không có tin tức mới."
 
 
-def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, custom_question: str = None) -> str:
+def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, vnindex_tech=None, custom_question: str = None) -> str:
     """
     🎯 BÁO CÁO TỔNG KẾT PHIÊN ATC (15:00) - AI STOCK COPILOT V2.1:
     - Triết lý: Value-First + Technical Timing.
@@ -211,18 +211,22 @@ def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, cus
     - Định lượng 100% bằng Python: Cổ phiếu LÃI kích hoạt TRAILING STOP cụ thể, TUYỆT ĐỐI KHÔNG DÙNG TỪ CẮT LỖ.
     - Chạy Sanity Check Engine kiểm toán tính nhất quán toán học trước khi render.
     """
+    from quant_engine import evaluate_market_regime
     client = get_ai_client()
 
     quant_eval_str = _build_portfolio_quant_summary(portfolio_df)
     portfolio_str = portfolio_df.to_string(index=False) if portfolio_df is not None and not portfolio_df.empty else "Chưa có dữ liệu."
     watchlist_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else ""
     news_str = _format_news_summary(news_items, limit=8)
+    
+    regime_data = evaluate_market_regime(vnindex_tech) if vnindex_tech else {"tag": "N/A", "stock_pct": "70%", "cash_pct": "30%", "max_stock_nav": 100, "bias": "Neutral"}
 
     prompt = f"""Bạn là Giám đốc Quản trị Rủi ro & Chiến lược Danh mục Đầu tư (Senior Portfolio Manager) theo trường phái Value-First + Technical Timing.
 Bây giờ là 15:00 CHIỀU - phiên giao dịch chứng khoán vừa khép lại tại ATC.
 
 === 1. TÍNH TOÁN ĐỊNH LƯỢNG TẤT ĐỊNH CỦA HỆ THỐNG PYTHON CHO DANH MỤC ===
 {quant_eval_str}
+- TỶ TRỌNG PHÂN BỔ ĐỀ XUẤT (THEO RISK BUDGET): Cổ phiếu {regime_data['stock_pct']} | Tiền mặt {regime_data['cash_pct']} (Hạn mức tối đa: {regime_data['max_stock_nav']}% NAV)
 
 === 2. BẢNG TRẠNG THÁI GIAO DỊCH THỰC TẾ ===
 {portfolio_str}
@@ -250,9 +254,12 @@ QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM (MATHEMATICAL SANITY RULES):
 
 Yêu cầu trình bày báo cáo tổng kết phiên:
 **I. TỔNG KẾT PHIÊN ATC & ĐÁNH GIÁ 5 CÂU HỎI CỐT TỬ**
-(Trả lời lần lượt, ngắn gọn, đi thẳng vào bản chất 5 câu hỏi trên)
-
-**II. CHI TIẾT DANH MỤC & HÀNH ĐỘNG QUẢN TRỊ RỦI RO**
+BẮT BUỘC sử dụng đúng định dạng danh sách dưới đây, không được bỏ sót câu nào:
+- **Câu hỏi 1 (Nguyên nhân biến động):** [Trả lời ngắn gọn]
+- **Câu hỏi 2 (Định giá & MoS):** [Trả lời ngắn gọn]
+- **Câu hỏi 3 (Chốt lời & Trailing Stop):** [Trả lời ngắn gọn]
+- **Câu hỏi 4 (Thesis Breaker):** [Trả lời ngắn gọn]
+- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** [Trả lời ngắn gọn dựa trên tỷ lệ Tiền mặt đề xuất]**II. CHI TIẾT DANH MỤC & HÀNH ĐỘNG QUẢN TRỊ RỦI RO**
 - Trình bày từng mã đang nắm giữ:
   • Cổ phiếu **[MÃ]** ([Ngành]) — [HUY HIỆU: 🟢 BẢO VỆ THÀNH QUẢ / NÂNG TRAILING STOP hoặc 🔴 THOÁT VỊ THẾ / THESIS BREAKER]:
     - **Giá vốn:** ...k | **Thị giá ATC:** ...k | **P/L:** ...%
@@ -277,7 +284,13 @@ Yêu cầu trình bày báo cáo tổng kết phiên:
     if custom_question:
         prompt += f"\n\n[CÂU HỎI BỔ SUNG CỦA NHÀ ĐẦU TƯ]: {custom_question}\nHãy trả lời chi tiết trọng tâm câu hỏi này."
 
-    return call_gemini(client, prompt)
+    result = call_gemini(client, prompt)
+    
+    # Sanity Check Hậu kiểm
+    if "Câu hỏi 5" not in result and "Câu 5" not in result:
+        result = result.replace("📌 II.", f"- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** Tỷ trọng phân bổ đề xuất hiện tại là Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']} để đảm bảo an toàn danh mục.\n\n📌 II.")
+        
+    return result
 
 
 def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: list, news_items: list, vnindex_tech: dict = None) -> str:

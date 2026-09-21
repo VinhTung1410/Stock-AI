@@ -672,6 +672,21 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
         return {}
 
 
+def fetch_corporate_dividends(symbol: str):
+    """
+    Sử dụng vnstock để lấy lịch sử/kế hoạch chia cổ tức của doanh nghiệp.
+    Trả về DataFrame chứa danh sách cổ tức.
+    """
+    try:
+        from vnstock import Vnstock
+        stock = Vnstock().stock(symbol=symbol, source='VCI')
+        df = stock.company.dividends()
+        return df
+    except Exception:
+        logging.exception(f"Lỗi lấy thông tin cổ tức cho {symbol}")
+        return None
+
+
 def detect_gdkhq_event(symbol: str, tech_dict: dict, vnindex_chg_pct: float = 0.0) -> dict:
     """
     KHIÊN CHẮN NGÀY GIAO DỊCH KHÔNG HƯỞNG QUYỀN (GDKHQ / CORPORATE ACTION SHIELD):
@@ -738,6 +753,7 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
         volume = item["volume"]
         cost_price = item["cost_price"]
         note = item.get("note", "")
+        strategy = item.get("strategy", "SWING")
 
         tech = tech_map.get(symbol) or fetch_stock_technical(symbol)
         curr_price = tech.get("current_price", cost_price)
@@ -781,6 +797,7 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
             "Tín hiệu Bẫy": trap_label,
             "RSI(14)": tech.get("rsi14", "N/A"),
             "Vol/TB20": tech.get("vol_ratio", 1.0),
+            "Chiến lược": strategy,
         })
     df = pd.DataFrame(records)
     try:
