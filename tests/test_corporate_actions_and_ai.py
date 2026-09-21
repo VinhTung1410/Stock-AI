@@ -5,6 +5,7 @@ import pandas as pd
 from ai_analyst import generate_portfolio_analysis
 from data_engine import fetch_corporate_dividends
 
+
 def test_fetch_corporate_dividends_success():
     """Test lấy cổ tức thành công, mock Vnstock."""
     with mock.patch("data_engine.Vnstock") as MockVnstock:
