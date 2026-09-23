@@ -136,11 +136,40 @@ def send_discord_message(content: str = None, embeds: list = None) -> bool:
 
 
 
+def _slice_long_content(content: str, max_chars: int = 1000) -> list[str]:
+    """Cắt chuỗi dài thành các đoạn an toàn <= max_chars ưu tiên ngắt dòng hoặc kết thúc câu."""
+    chunks = []
+    c = content.strip()
+    while len(c) > max_chars:
+        split_pos = c.rfind("\n", 0, max_chars)
+        if split_pos == -1:
+            split_pos = c.rfind(". ", 0, max_chars)
+        if split_pos == -1:
+            split_pos = max_chars
+        chunks.append(c[:split_pos].strip())
+        c = c[split_pos:].strip()
+    if c:
+        chunks.append(c)
+    return chunks
+
+
+def _append_field_chunks(fields: list, title: str, content: str, start_part: int) -> int:
+    """Tạo các embed fields từ nội dung và trả về part_count tiếp theo mà không bao giờ cắt xén ký tự."""
+    if not content.strip():
+        return start_part
+    part_idx = start_part
+    for chunk in _slice_long_content(content, max_chars=1000):
+        display_title = title if part_idx == 1 else f"{title} (Phần {part_idx})"
+        fields.append({"name": display_title[:256], "value": chunk, "inline": False})
+        part_idx += 1
+    return part_idx
+
+
 def split_ai_summary_into_fields(ai_summary: str) -> list:
     """
     Tách bài phân tích của AI thành các Field của Discord Embed (mỗi field < 1024 ký tự),
     tự động nhận diện các mục La Mã và đánh số phần chuyên nghiệp (Phần 2, Phần 3),
-    triệt tiêu 100% lỗi lặp '(tiếp theo) (tiếp theo)...'.
+    bảo toàn trọn vẹn 100% nội dung (kể cả Câu hỏi 5), không bao giờ cắt cụt chữ.
     """
     try:
         from ai_analyst import sanitize_ai_text
@@ -149,58 +178,44 @@ def split_ai_summary_into_fields(ai_summary: str) -> list:
         pass
     import re
     clean_text = ai_summary.replace("### ", "").replace("## ", "").strip()
-    paragraphs = [p.strip() for p in clean_text.split("\n\n") if p.strip()]
+    raw_lines = clean_text.split("\n")
 
     fields = []
     base_title = "🧠 Nhận định & Khuyến nghị Chiến lược"
     part_count = 1
     current_chunk = ""
 
-    # Regex nhận diện tiêu đề mục lớn & tiểu mục (hỗ trợ số La Mã I-X hoặc ký tự A-D kèm emoji đầu hoặc sau, in đậm markdown)
-    header_pattern = re.compile(r'^(?:[#*>\s]*)(?:[^\w\s]{1,3}\s*)?((?:[I|V|X]+|[A-D])\.\s+[^:\n*]+)', re.IGNORECASE)
+    # Regex nhận diện tiêu đề mục lớn & tiểu mục (hỗ trợ số La Mã I-X hoặc ký tự A-D kèm emoji đầu/sau, in đậm markdown)
+    # Hỗ trợ dấu ':' trong tiêu đề như (11:30) mà không bị cắt cụt
+    header_pattern = re.compile(r'^(?:[#*>\s]*)(?:[^\w\s]{1,3}\s*)?((?:[I|V|X]+|[A-D])\.\s+[^\n*]+)', re.IGNORECASE)
 
-    def flush_field(title, content, part_idx):
-        if not content.strip():
-            return
-        # Nếu phần > 1, gắn hậu tố (Phần X) thay vì nối (tiếp theo)
-        display_title = title if part_idx == 1 else f"{title} (Phần {part_idx})"
-        fields.append({
-            "name": display_title[:256],
-            "value": content.strip()[:1024],
-            "inline": False
-        })
+    for line in raw_lines:
+        line_s = line.strip()
+        if not line_s:
+            if current_chunk and not current_chunk.endswith("\n\n"):
+                current_chunk += "\n"
+            continue
 
-    for p in paragraphs:
-        match = header_pattern.match(p)
+        match = header_pattern.match(line_s)
         if match:
-            # Ghi nhận chunk trước đó nếu có
             if current_chunk.strip():
-                flush_field(base_title, current_chunk, part_count)
+                part_count = _append_field_chunks(fields, base_title, current_chunk, part_count)
                 current_chunk = ""
 
             matched_title = match.group(1).strip().strip("*#_")
             base_title = f"📌 {matched_title}"
             part_count = 1
-
-            # Lấy phần nội dung còn lại sau tiêu đề nếu tiêu đề nằm cùng đoạn với nội dung
-            lines = p.split("\n")
-            if len(lines) > 1:
-                content_after = "\n".join(lines[1:]).strip()
-                if content_after:
-                    current_chunk = content_after + "\n\n"
         else:
-            # Nếu thêm p vào chunk mà vượt quá 1000 ký tự thì đẩy ra field và sang phần tiếp theo
-            if len(current_chunk) + len(p) + 2 > 1000:
-                flush_field(base_title, current_chunk, part_count)
-                part_count += 1
-                current_chunk = p + "\n\n"
+            if len(current_chunk) + len(line_s) + 2 > 950:
+                part_count = _append_field_chunks(fields, base_title, current_chunk, part_count)
+                current_chunk = line_s + "\n"
             else:
-                current_chunk += p + "\n\n"
+                current_chunk += line_s + "\n"
 
     if current_chunk.strip():
-        flush_field(base_title, current_chunk, part_count)
+        _append_field_chunks(fields, base_title, current_chunk, part_count)
 
-    return fields if fields else [{"name": "🧠 Phân tích AI", "value": clean_text[:1024], "inline": False}]
+    return fields if fields else [{"name": "🧠 Phân tích AI", "value": clean_text[:1000], "inline": False}]
 
 
 def format_portfolio_embed(portfolio_df, ai_summary: str, report_type: str = "BÁO CÁO PHIÊN") -> dict:

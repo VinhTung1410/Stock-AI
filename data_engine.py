@@ -531,10 +531,15 @@ def sync_auto_watchlist(opportunities: list = None, filepath: str = "data/watchl
             # Điều kiện chất lượng: Conviction >= 60 hoặc MoS >= 15% hoặc RECOMMEND_BUY
             if conv_score >= 60.0 or mos_pct >= 15.0 or status == "RECOMMEND_BUY":
                 target_p = float(opp.get("target_price") or opp.get("current_price", 0.0))
+                from quant_valuation import get_stock_archetype_details
+                arch_details = get_stock_archetype_details(sym, sector=opp.get("sector", ""))
                 auto_candidates.append({
                     "symbol": sym,
                     "target_buy": round(target_p, 2),
-                    "note": f"[AUTO_DISCOVERY] Điểm {conv_score:.0f}/100 | MoS: {mos_pct:.1f}%",
+                    "note": f"[AUTO_DISCOVERY] [{arch_details['sector_group']}] Điểm {conv_score:.0f}/100 | MoS: {mos_pct:.1f}%",
+                    "sector": arch_details["sector_group"],
+                    "archetype": arch_details["archetype"],
+                    "strategy": arch_details["default_strategy"],
                     "is_auto": True
                 })
 
@@ -1030,6 +1035,9 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
         fair_val = val_res.get("fair_value", curr_price)
         mos_pct = val_res.get("mos_pct", 0.0)
 
+        from quant_valuation import get_stock_archetype_details
+        archetype_info = get_stock_archetype_details(symbol, sector=item.get("sector") or note)
+
         records.append({
             "Mã CP": symbol,
             "Thị giá (k)": curr_price,
@@ -1043,9 +1051,23 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
             "Tín hiệu Bẫy": trap_label,
             "RSI(14)": tech.get("rsi14", "N/A"),
             "Vol/TB20": tech.get("vol_ratio", 1.0),
+            "Cụm ngành": archetype_info["sector_group"],
+            "Archetype": archetype_info["archetype"],
+            "Chiến lược": archetype_info["strategy_label"],
+            "Mô hình định giá": archetype_info["valuation_model"],
             "Luận điểm / Ghi chú": note,
         })
     return pd.DataFrame(records)
+
+
+def group_watchlist_by_sector(df: pd.DataFrame) -> dict:
+    """Gom nhóm DataFrame Watchlist theo từng cụm ngành để hiển thị trực quan và quản trị rủi ro ngành."""
+    if df is None or df.empty or "Cụm ngành" not in df.columns:
+        return {}
+    grouped = {}
+    for sector_name, group_df in df.groupby("Cụm ngành"):
+        grouped[str(sector_name)] = group_df.reset_index(drop=True)
+    return grouped
 
 
 def fetch_macro_news(limit: int = 15, tracked_symbols: list = None) -> list:

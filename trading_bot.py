@@ -136,8 +136,24 @@ def _handle_rsi_overbought(symbol: str, curr_price: float, rsi, today_str: str):
         sent_alerts.add(alert_key)
 
 
+def _handle_value_deep_drawdown(symbol: str, curr_price: float, cost_price: float, pnl_pct: float, today_str: str) -> bool:
+    alert_key = (today_str, symbol, "VALUE_DEEP_DRAWDOWN")
+    if pnl_pct <= -15.0 and alert_key not in sent_alerts:
+        logging.warning(f"🚨 CẢNH BÁO TÍCH SẢN LỖ SÂU: {symbol} ({pnl_pct:.2f}%)")
+        reason = (
+            f"Vị thế đầu tư dài hạn/tích sản {symbol} đang lỗ {pnl_pct:+.2f}% (vượt ngưỡng an toàn -15%). "
+            f"Cần kiểm tra khẩn cấp Luận điểm đầu tư (Thesis Breaker) và BCTC quý mới nhất!"
+        )
+        send_trade_signal_alert(symbol, "CẢNH BÁO", curr_price, reason, stop_loss=cost_price * 0.85)
+        sent_alerts.add(alert_key)
+        return True
+    return False
+
+
 def _check_single_holding_risk(row, today_str: str, vnindex_chg_pct: float):
     from data_engine import detect_gdkhq_event, fetch_stock_technical
+    from quant_valuation import get_stock_archetype_details
+
     symbol = row["Mã CP"]
     curr_price = float(row["Thị giá (k)"])
     cost_price = float(row["Giá vốn (k)"])
@@ -145,7 +161,14 @@ def _check_single_holding_risk(row, today_str: str, vnindex_chg_pct: float):
     vol_ratio = float(row.get("Vol/TB20", 1.0))
     rsi = row.get("RSI(14)")
     status_ma20 = str(row.get("Vị thế MA20", ""))
-    strategy = str(row.get("Chiến lược", "SWING")).upper()
+    strategy_input = str(row.get("Chiến lược", "")).upper()
+    sector_input = str(row.get("Ngành", ""))
+
+    archetype_info = get_stock_archetype_details(symbol, sector_input)
+    is_value_investing = (
+        strategy_input in ["VALUE", "COMPOUNDER", "LONG_TERM"]
+        or archetype_info.get("holding_shield", False)
+    )
 
     tech_sym = fetch_stock_technical(symbol)
     gdkhq_info = detect_gdkhq_event(symbol, tech_sym, vnindex_chg_pct)
@@ -153,15 +176,18 @@ def _check_single_holding_risk(row, today_str: str, vnindex_chg_pct: float):
         _handle_gdkhq_shield(symbol, curr_price, today_str, gdkhq_info)
         return
 
-    if strategy != "VALUE":
+    if not is_value_investing:
+        # Cổ phiếu Lướt sóng / Chu kỳ (SWING / CYCLICAL): Kiểm soát chặt Stop Loss và gãy MA20
         if _handle_stop_loss(symbol, curr_price, cost_price, pnl_pct, today_str):
             return
         if _handle_ma20_breakdown(symbol, curr_price, status_ma20, vol_ratio, today_str):
             return
     else:
-        # Đối với Tích sản giá trị, chỉ cảnh báo nếu lỗ quá sâu (-15%) hoặc Thesis Breaker (xử lý ở tầng Quant)
-        # Bỏ qua rung lắc ngắn hạn -5%/-7% và gãy MA20
-        pass
+        # Tăng trưởng Dài hạn & Tích sản (FPT, MWG...):
+        # Bỏ qua rung lắc ngắn hạn -5%/-7% và gãy MA20 tạm thời để bảo vệ vị thế!
+        # Chỉ cảnh báo nếu lỗ quá sâu (-15%) hoặc Thesis Breaker
+        if _handle_value_deep_drawdown(symbol, curr_price, cost_price, pnl_pct, today_str):
+            return
 
     _handle_rsi_overbought(symbol, curr_price, rsi, today_str)
 

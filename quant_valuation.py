@@ -54,8 +54,11 @@ def classify_stock_archetype(symbol: str, sector: str = "") -> str:
     Returns:
         One of: 'BANK', 'CYCLICAL', 'REAL_ESTATE', 'GROWTH_COMPOUNDER'.
     """
-    sym = symbol.strip().upper()
-    sec = sector.lower()
+    if not symbol or not isinstance(symbol, str):
+        sym = ""
+    else:
+        sym = symbol.strip().upper()
+    sec = sector.lower() if isinstance(sector, str) else ""
 
     if any(b in sym for b in ["VCB", "TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "CTG", "BID", "VIB", "TPB"]) or "ngân hàng" in sec:
         return "BANK"
@@ -64,6 +67,53 @@ def classify_stock_archetype(symbol: str, sector: str = "") -> str:
     if any(s in sec for s in ["bất động sản", "địa ốc"]) or sym in ["VHM", "VIC", "VRE", "KDH", "NLG", "DXG", "DIG", "PDR", "KBC", "IDC"]:
         return "REAL_ESTATE"
     return "GROWTH_COMPOUNDER"
+
+
+def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
+    """Trả về chi tiết phân loại Archetype, Nhóm ngành và Chiến lược đầu tư phù hợp.
+    
+    Phân tách rạch ròi:
+    - GROWTH_COMPOUNDER: Doanh nghiệp tăng trưởng dài hạn (FPT, MWG...) -> Chiến lược VALUE / Tích sản.
+    - CYCLICAL: Doanh nghiệp chu kỳ hàng hóa (HPG, BSR, DGC...) -> Chiến lược CYCLICAL.
+    - BANK: Ngân hàng & Định chế tài chính (VCB, TCB...) -> Chiến lược FINANCIAL.
+    - REAL_ESTATE: Doanh nghiệp bất động sản (VHM, KDH...) -> Chiến lược PROPERTY.
+    """
+    archetype = classify_stock_archetype(symbol, sector)
+    details_map = {
+        "GROWTH_COMPOUNDER": {
+            "archetype": "GROWTH_COMPOUNDER",
+            "sector_group": "💻 Công nghệ & Tiêu dùng Tăng trưởng",
+            "default_strategy": "VALUE",
+            "strategy_label": "TÍCH SẢN DÀI HẠN",
+            "valuation_model": "Historical Median P/E",
+            "holding_shield": True
+        },
+        "CYCLICAL": {
+            "archetype": "CYCLICAL",
+            "sector_group": "🏭 Hàng hóa & Sản xuất Chu kỳ",
+            "default_strategy": "CYCLICAL",
+            "strategy_label": "GIAO DỊCH THEO CHU KỲ",
+            "valuation_model": "Normalized Mid-Cycle P/E & P/B chu kỳ",
+            "holding_shield": False
+        },
+        "BANK": {
+            "archetype": "BANK",
+            "sector_group": "🏦 Ngân hàng & Tài chính",
+            "default_strategy": "FINANCIAL",
+            "strategy_label": "TÀI CHÍNH / P/B BANDS",
+            "valuation_model": "Justified P/B & NPL/LLR Quality",
+            "holding_shield": True
+        },
+        "REAL_ESTATE": {
+            "archetype": "REAL_ESTATE",
+            "sector_group": "🏢 Bất động sản",
+            "default_strategy": "PROPERTY",
+            "strategy_label": "TÀI SẢN / RNAV",
+            "valuation_model": "RNAV & Floor P/B",
+            "holding_shield": False
+        }
+    }
+    return details_map.get(archetype, details_map["GROWTH_COMPOUNDER"])
 
 
 def calculate_fair_value_and_mos(
