@@ -71,3 +71,16 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   2. Xây dựng `sync_auto_watchlist()` tự động tìm kiếm cơ hội (F-Score cao, MoS >= 15%, không bị Data Gate chặn), bảo toàn 100% mã do người dùng tự thêm tay.
   3. Xây dựng `prune_unsuitable_watchlist()` tự động xóa các mã auto bị Quá Hot (RSI > 75 hoặc MoS < -25%) hoặc dính bẫy giá; gắn cờ cảnh báo an toàn đối với mã manual của người dùng.
 - **Hệ quả:** Watchlist luôn được làm mới liên tục với các cơ hội an toàn nhất, người dùng mở app lên luôn có danh sách cổ phiếu đạt chuẩn định lượng, loại bỏ hoàn toàn tình trạng thiếu câu hỏi cốt tử trong báo cáo.
+
+---
+
+### [ADR-006] Cho Phép Tự Động Xóa Mã Thủ Công Quá Hot & Gửi Báo Cáo Lý Do Vào Discord DM
+- **Ngày quyết định:** 2026-09-24
+- **Người tham gia:** Client (Tùng), PO, Senior Dev, QA Lead
+- **Bối cảnh & Vấn đề:** Trước đây hệ thống chỉ xóa mã tự động (`is_auto: True`) và giữ nguyên mã manual để tránh mất dữ liệu của người dùng. Tuy nhiên, Client yêu cầu: bot được phép tự động xóa cả các mã do Client nhập tay nếu chúng đã quá nóng (RSI > 75, MoS < -25%) hoặc dính bẫy giá, nhưng **bắt buộc phải gửi báo cáo nêu rõ lý do xóa vào Discord DM** của Client.
+- **Quyết định lựa chọn:**
+  1. Nâng cấp `prune_unsuitable_watchlist()` đặt `prune_manual: bool = True` làm mặc định.
+  2. Bổ sung hàm `send_watchlist_pruned_alert(pruned_items)` trong `discord_alerts.py`, format Rich Embed gửi trực tiếp vào Discord DM của Client.
+  3. Ghi rõ nguồn gốc mã trong báo cáo (`👤 Bạn đã thêm thủ công` vs `🤖 Bot phát hiện tự động`), kèm theo thị giá, chỉ số RSI, MoS và lý do chi tiết vi phạm.
+- **Hệ quả:** Giúp danh mục Watchlist của Client luôn sạch, giải phóng slot cho các cổ phiếu tiềm năng khác, đồng thời Client luôn nắm được đầy đủ lý do lượng hóa vì sao một mã bị loại bỏ.
+
