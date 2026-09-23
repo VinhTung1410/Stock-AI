@@ -320,7 +320,7 @@ def load_portfolio(filepath: str = "data/portfolio.json") -> list:
     Tự động sao lưu dự phòng sang portfolio.json và fallback khi offline.
     """
     sheet_url = os.environ.get("GOOGLE_SHEET_URL", "").strip()
-    if sheet_url:
+    if sheet_url and filepath == "data/portfolio.json":
         p_data, _ = fetch_google_sheet_data(sheet_url)
         if p_data:
             # Tự động sao lưu bản copy xuống portfolio.json
@@ -344,10 +344,10 @@ def load_portfolio(filepath: str = "data/portfolio.json") -> list:
 def load_watchlist(filepath: str = "data/watchlist.json") -> list:
     """
     Đọc danh sách cổ phiếu đang theo dõi (Watchlist).
-    Ưu tiên kéo từ Google Sheet (nếu có), fallback sang watchlist.json.
+    Ưu tiên kéo từ Google Sheet (nếu có và dùng file mặc định), fallback sang watchlist.json.
     """
     sheet_url = os.environ.get("GOOGLE_SHEET_URL", "").strip()
-    if sheet_url:
+    if sheet_url and filepath == "data/watchlist.json":
         _, w_data = fetch_google_sheet_data(sheet_url)
         if w_data:
             try:
@@ -377,6 +377,184 @@ def save_watchlist(watchlist_data: list, filepath: str = "data/watchlist.json"):
     """Lưu danh sách cổ phiếu theo dõi ra file json."""
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(watchlist_data, f, ensure_ascii=False, indent=2)
+
+
+def prune_unsuitable_watchlist(
+    watchlist: list = None,
+    filepath: str = "data/watchlist.json",
+    prune_manual: bool = False,
+    tech_map: dict = None
+) -> tuple[list, list]:
+    """
+    Thanh lọc các cổ phiếu trong Watchlist đang QUÁ HOT hoặc KHÔNG PHÙ HỢP:
+    - Tiêu chí Quá hot (Overheated / FOMO): RSI(14) > 75 hoặc MoS < -25% (bong bóng định giá).
+    - Tiêu chí Không phù hợp (Unsuitable): Dính bẫy giá (is_trap == True), hoặc bị Data Gate chặn.
+    - Với mã tự động (is_auto: True): Tự động xóa khỏi Watchlist để giải phóng slot.
+    - Với mã người dùng nhập tay: Bảo toàn mã, gắn cờ cảnh báo [⚠️ CẢNH BÁO FOMO/RỦI RO] vào note (hoặc xóa nếu prune_manual=True).
+    Returns: (retained_items, pruned_items)
+    """
+    try:
+        if watchlist is None:
+            watchlist = load_watchlist(filepath=filepath)
+
+        if not watchlist:
+            return [], []
+
+        from quant_valuation import calculate_fair_value_and_mos
+
+        retained_items = []
+        pruned_items = []
+
+        for item in watchlist:
+            sym = item.get("symbol", "").upper().strip()
+            if not sym:
+                continue
+
+            is_auto = bool(item.get("is_auto", False))
+            target_buy = float(item.get("target_buy", 0.0))
+            note = str(item.get("note", ""))
+
+            # Lấy thông số kỹ thuật (dùng cache nếu có)
+            tech = {}
+            if tech_map and sym in tech_map:
+                tech = tech_map[sym]
+            else:
+                try:
+                    tech = fetch_stock_technical(sym)
+                except Exception:
+                    tech = {}
+
+            curr_price = float(tech.get("current_price") or target_buy or 0.0)
+            rsi = tech.get("rsi14")
+            trap_info = tech.get("trap_info", {})
+            is_trap = bool(trap_info.get("is_trap", False))
+
+            # Tính toán định giá & MoS
+            mos_pct = 0.0
+            if curr_price > 0:
+                try:
+                    val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=note)
+                    mos_pct = float(val_res.get("mos_pct", 0.0))
+                except Exception:
+                    mos_pct = 0.0
+
+            # 1. Kiểm tra Quá Hot (Overheated / FOMO)
+            is_overheated = False
+            reasons = []
+            if rsi is not None and isinstance(rsi, (int, float)) and rsi > 75.0:
+                is_overheated = True
+                reasons.append(f"RSI={rsi:.1f} quá mua/FOMO")
+            if mos_pct < -25.0:
+                is_overheated = True
+                reasons.append(f"MoS={mos_pct:.1f}% đắt hơn định giá > 25%")
+
+            # 2. Kiểm tra Không phù hợp (Trap / Rủi ro)
+            is_unsuitable = False
+            if is_trap:
+                is_unsuitable = True
+                reasons.append(f"Dính bẫy giá ({trap_info.get('trap_type', 'TRAP')})")
+
+            should_prune = is_overheated or is_unsuitable
+            reason_str = "; ".join(reasons) if reasons else "Không phù hợp"
+
+            if should_prune and (is_auto or prune_manual):
+                pruned_items.append({
+                    "symbol": sym,
+                    "reason": reason_str,
+                    "is_auto": is_auto,
+                    "rsi": rsi,
+                    "mos_pct": mos_pct
+                })
+                logging.info(f"🗑️ Đã thanh lọc {sym} khỏi Watchlist: {reason_str}")
+            else:
+                # Giữ lại trong Watchlist
+                if should_prune and not is_auto:
+                    warning_tag = f"[⚠️ CẢNH BÁO: {reason_str}]"
+                    if warning_tag not in note:
+                        item["note"] = f"{note} {warning_tag}".strip()
+                retained_items.append(item)
+
+        save_watchlist(retained_items, filepath=filepath)
+        return retained_items, pruned_items
+    except Exception:
+        logging.exception("Lỗi khi thanh lọc Watchlist")
+        return watchlist or [], []
+
+
+def sync_auto_watchlist(opportunities: list = None, filepath: str = "data/watchlist.json", max_auto: int = 5) -> list:
+    """
+    Tự động chọn lọc các cơ hội đầu tư chất lượng cao đưa vào Watchlist.
+    - Thanh lọc trước các mã auto cũ đang quá hot (RSI > 75, MoS < -25%) hoặc không phù hợp.
+    - Bảo toàn 100% các mã do người dùng tự nhập tay (hoặc từ Google Sheet).
+    - Chỉ thêm các mã đạt chuẩn: không bị Data Gate loại bỏ,
+      điểm thuyết phục Conviction Score >= 60 hoặc MoS >= 15%.
+    - Capped ở mức tối đa `max_auto` mã tự động để tránh phân tán danh mục.
+    """
+    try:
+        current_watchlist = []
+        if os.path.exists(filepath):
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    current_watchlist = json.load(f)
+            except Exception:
+                current_watchlist = []
+
+        # 1. Thanh lọc trước các mã auto cũ quá hot hoặc rủi ro
+        current_watchlist, _ = prune_unsuitable_watchlist(current_watchlist, filepath=filepath, prune_manual=False)
+
+        # 2. Tách riêng các mã user nhập tay và các mã auto hợp lệ còn lại
+        manual_items = [item for item in current_watchlist if not item.get("is_auto", False)]
+        manual_symbols = {m.get("symbol", "").upper() for m in manual_items if m.get("symbol")}
+
+        # Lấy danh sách cơ hội nếu chưa truyền vào
+        if opportunities is None:
+            opportunities = scan_market_opportunities()
+
+        auto_candidates = []
+        for opp in (opportunities or []):
+            sym = opp.get("symbol", "").upper().strip()
+            if not sym or sym in manual_symbols:
+                continue
+
+            # Kiểm tra trạng thái rủi ro từ Data Gate
+            status = opp.get("status", "")
+            if status in ["CAUTION_TRAP", "DATA_CONFLICT"]:
+                continue
+
+            conv_score = float(opp.get("conviction_score", 0.0))
+            mos_pct = float(opp.get("mos_pct", 0.0))
+
+            # Loại bỏ mã đang quá hot (bong bóng định giá)
+            if mos_pct < -25.0:
+                continue
+
+            # Điều kiện chất lượng: Conviction >= 60 hoặc MoS >= 15% hoặc RECOMMEND_BUY
+            if conv_score >= 60.0 or mos_pct >= 15.0 or status == "RECOMMEND_BUY":
+                target_p = float(opp.get("target_price") or opp.get("current_price", 0.0))
+                auto_candidates.append({
+                    "symbol": sym,
+                    "target_buy": round(target_p, 2),
+                    "note": f"[AUTO_DISCOVERY] Điểm {conv_score:.0f}/100 | MoS: {mos_pct:.1f}%",
+                    "is_auto": True
+                })
+
+        new_auto_items = auto_candidates[:max_auto]
+
+        # Hợp nhất: Mã manual của user luôn được ưu tiên giữ nguyên
+        merged_watchlist = list(manual_items)
+        existing_merged_symbols = {m.get("symbol", "").upper() for m in merged_watchlist}
+
+        for auto_item in new_auto_items:
+            if auto_item["symbol"] not in existing_merged_symbols:
+                merged_watchlist.append(auto_item)
+                existing_merged_symbols.add(auto_item["symbol"])
+
+        save_watchlist(merged_watchlist, filepath=filepath)
+        logging.info(f"✅ Đã đồng bộ Watchlist tự động: {len(manual_items)} mã thủ công + {len(merged_watchlist) - len(manual_items)} mã tự động.")
+        return merged_watchlist
+    except Exception:
+        logging.exception("Lỗi khi đồng bộ Watchlist tự động")
+        return load_watchlist(filepath=filepath)
 
 
 def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:

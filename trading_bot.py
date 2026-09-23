@@ -28,6 +28,7 @@ from data_engine import (
     load_watchlist,
     record_signal_cooldown,
     scan_market_opportunities,
+    sync_auto_watchlist,
 )
 from discord_alerts import (
     format_portfolio_embed,
@@ -327,6 +328,13 @@ def trigger_scheduled_report(report_type: str, title_desc: str):
     """Tier 2: AI-driven scheduled strategy reports (ATO 08:45, Lunch 11:30, ATC 14:45)."""
     logging.info(f"🚀 Starting scheduled strategy report: {report_type} ({title_desc})")
     try:
+        # Tự động cập nhật các cơ hội mới vào Watchlist trong các khung giờ chiến lược
+        if any(tag in report_type for tag in ["08:45", "ATO", "11:30", "TRƯA"]):
+            try:
+                sync_auto_watchlist()
+            except Exception:
+                logging.exception("Không thể đồng bộ tự động Watchlist trong phiên báo cáo")
+
         portfolio = load_portfolio()
         df_eval = evaluate_portfolio(portfolio)
         watchlist = load_watchlist()
@@ -337,7 +345,8 @@ def trigger_scheduled_report(report_type: str, title_desc: str):
             opportunities = scan_market_opportunities(extra_symbols=[w["symbol"] for w in watchlist])
             ai_text = generate_morning_strategy_report(df_eval, df_wl, opportunities, news)
         else:
-            ai_text = generate_portfolio_analysis(df_eval, news, watchlist_df=df_wl)
+            session_lbl = "NOON" if any(k in report_type for k in ["11:30", "TRƯA", "SÁNG"]) else "ATC"
+            ai_text = generate_portfolio_analysis(df_eval, news, watchlist_df=df_wl, session_label=session_lbl)
 
         embed = format_portfolio_embed(df_eval, ai_text, report_type=report_type)
 

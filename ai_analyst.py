@@ -209,11 +209,18 @@ def _format_news_summary(news_items, limit: int = 8) -> str:
     return "\n".join(lines) if lines else "Không có tin tức mới."
 
 
-def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, vnindex_tech=None, custom_question: str = None) -> str:
+def generate_portfolio_analysis(
+    portfolio_df,
+    news_items,
+    watchlist_df=None,
+    vnindex_tech=None,
+    custom_question: str = None,
+    session_label: str = "ATC"
+) -> str:
     """
-    🎯 BÁO CÁO TỔNG KẾT PHIÊN ATC (15:00) - AI STOCK COPILOT V2.1:
+    🎯 BÁO CÁO TỔNG KẾT PHIÊN (TRƯA 11:30 HOẶC ATC 15:00) - AI STOCK COPILOT V2.1:
     - Triết lý: Value-First + Technical Timing.
-    - Bắt buộc trả lời 5 câu hỏi cốt tử.
+    - Bắt buộc trả lời 5 câu hỏi cốt tử (bao gồm câu 5 về tỷ trọng Tiền/Cổ phiếu).
     - Định lượng 100% bằng Python: Cổ phiếu LÃI kích hoạt TRAILING STOP cụ thể, TUYỆT ĐỐI KHÔNG DÙNG TỪ CẮT LỖ.
     - Chạy Sanity Check Engine kiểm toán tính nhất quán toán học trước khi render.
     """
@@ -227,8 +234,17 @@ def generate_portfolio_analysis(portfolio_df, news_items, watchlist_df=None, vni
     
     regime_data = evaluate_market_regime(vnindex_tech) if vnindex_tech else {"tag": "N/A", "stock_pct": "70%", "cash_pct": "30%", "max_stock_nav": 100, "bias": "Neutral"}
 
+    is_noon = any(k in str(session_label).upper() for k in ["NOON", "11:30", "TRƯA", "SÁNG"])
+    session_title = "TỔNG KẾT PHIÊN SÁNG (NGHỈ TRƯA)" if is_noon else "TỔNG KẾT PHIÊN ATC"
+    time_intro = (
+        "Bây giờ là 11:30 TRƯA - phiên giao dịch sáng vừa khép lại, thị trường đang bước vào giờ nghỉ trưa."
+        if is_noon
+        else "Bây giờ là 15:00 CHIỀU - phiên giao dịch chứng khoán vừa khép lại tại ATC."
+    )
+    price_ref_label = "thị giá chốt phiên sáng" if is_noon else "thị giá ATC"
+
     prompt = f"""Bạn là Giám đốc Quản trị Rủi ro & Chiến lược Danh mục Đầu tư (Senior Portfolio Manager) theo trường phái Value-First + Technical Timing.
-Bây giờ là 15:00 CHIỀU - phiên giao dịch chứng khoán vừa khép lại tại ATC.
+{time_intro}
 
 === 1. TÍNH TOÁN ĐỊNH LƯỢNG TẤT ĐỊNH CỦA HỆ THỐNG PYTHON CHO DANH MỤC ===
 {quant_eval_str}
@@ -249,7 +265,7 @@ Bây giờ là 15:00 CHIỀU - phiên giao dịch chứng khoán vừa khép l�
 
 QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM (MATHEMATICAL SANITY RULES):
 1. ĐỐI VỚI VỊ THẾ ĐANG CÓ LÃI (P/L > 0): TUYỆT ĐỐI KHÔNG DÙNG TỪ "CẮT LỖ". Bắt buộc gọi là "CHỐT LỜI TỪNG PHẦN / BẢO VỆ THÀNH QUẢ" và ghi rõ con số Mốc Trailing Stop do Python đã tính toán.
-2. TRAILING STOP BẮT BUỘC PHẢI NHỎ HƠN THỊ GIÁ ATC (Stop < Current Price). Không bao giờ có chuyện giá 12.80 mà chặn lãi 12.84!
+2. TRAILING STOP BẮT BUỘC PHẢI NHỎ HƠN THỊ GIÁ ({price_ref_label}) (Stop < Current Price). Không bao giờ có chuyện giá 12.80 mà chặn lãi 12.84!
 3. ĐỐI VỚI VỊ THẾ ĐẦU TƯ GIÁ TRỊ ĐANG LỖ: Đánh giá bằng "Thesis Breaker" (luận điểm doanh nghiệp có bị vỡ không), không đưa ra quyết định cắt lỗ hoảng loạn theo biến động kỹ thuật ngắn hạn.
 4. BẮT BUỘC TRẢ LỜI ĐỦ 5 CÂU HỎI CỐT TỬ CỦA NHÀ ĐẦU TƯ TRONG PHẦN TỔNG KẾT:
    - Câu hỏi 1: Danh mục hôm nay tăng/giảm do đâu? (Bóc tách dòng tiền, nhóm ngành, tin tức).
@@ -259,16 +275,18 @@ QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM (MATHEMATICAL SANITY RULES):
    - Câu hỏi 5: Tỷ trọng tiền mặt hiện tại đã an toàn chưa? Đề xuất tỷ lệ Tiền/Cổ phiếu tối ưu dựa trên Risk Budgeting.
 
 Yêu cầu trình bày báo cáo tổng kết phiên:
-**I. TỔNG KẾT PHIÊN ATC & ĐÁNH GIÁ 5 CÂU HỎI CỐT TỬ**
+**I. {session_title} & ĐÁNH GIÁ 5 CÂU HỎI CỐT TỬ**
 BẮT BUỘC sử dụng đúng định dạng danh sách dưới đây, không được bỏ sót câu nào:
 - **Câu hỏi 1 (Nguyên nhân biến động):** [Trả lời ngắn gọn]
 - **Câu hỏi 2 (Định giá & MoS):** [Trả lời ngắn gọn]
 - **Câu hỏi 3 (Chốt lời & Trailing Stop):** [Trả lời ngắn gọn]
 - **Câu hỏi 4 (Thesis Breaker):** [Trả lời ngắn gọn]
-- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** [Trả lời ngắn gọn dựa trên tỷ lệ Tiền mặt đề xuất]**II. CHI TIẾT DANH MỤC & HÀNH ĐỘNG QUẢN TRỊ RỦI RO**
+- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** [Trả lời ngắn gọn dựa trên tỷ lệ Tiền mặt đề xuất]
+
+**II. CHI TIẾT DANH MỤC & HÀNH ĐỘNG QUẢN TRỊ RỦI RO**
 - Trình bày từng mã đang nắm giữ:
   • Cổ phiếu **[MÃ]** ([Ngành]) — [HUY HIỆU: 🟢 BẢO VỆ THÀNH QUẢ / NÂNG TRAILING STOP hoặc 🔴 THOÁT VỊ THẾ / THESIS BREAKER]:
-    - **Giá vốn:** ...k | **Thị giá ATC:** ...k | **P/L:** ...%
+    - **Giá vốn:** ...k | **Thị giá:** ...k | **P/L:** ...%
     - **Hành động cụ thể:** [Chốt lời 30-50% hay tiếp tục nắm giữ]
     - **Mốc Trailing Stop bảo vệ lãi (hoặc Stop-loss):** [Ghi con số giá cụ thể do Python đã tính]
     - **Đánh giá Luận điểm cơ bản (Thesis):** [Tình trạng doanh nghiệp]
@@ -292,9 +310,20 @@ BẮT BUỘC sử dụng đúng định dạng danh sách dưới đây, không 
 
     result = call_gemini(client, prompt)
     
-    # Sanity Check Hậu kiểm
+    # Sanity Check Hậu kiểm: Bảo đảm 100% không bị sót Câu hỏi 5
     if "Câu hỏi 5" not in result and "Câu 5" not in result:
-        result = result.replace("📌 II.", f"- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** Tỷ trọng phân bổ đề xuất hiện tại là Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']} để đảm bảo an toàn danh mục.\n\n📌 II.")
+        fallback_q5 = (
+            f"- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** Tỷ trọng phân bổ đề xuất hiện tại là "
+            f"Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']} để đảm bảo an toàn danh mục.\n\n"
+        )
+        if "📌 II." in result:
+            result = result.replace("📌 II.", f"{fallback_q5}📌 II.")
+        elif "**II." in result:
+            result = result.replace("**II.", f"{fallback_q5}**II.")
+        elif "II." in result:
+            result = result.replace("II.", f"{fallback_q5}II.")
+        else:
+            result += f"\n\n{fallback_q5}"
         
     return result
 
