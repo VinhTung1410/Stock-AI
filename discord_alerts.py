@@ -366,6 +366,63 @@ def send_risk_alert(symbol: str, current_price: float, cost_price: float, trigge
         return send_discord_webhook(embeds=[embed])
 
 
+def send_watchlist_pruned_alert(pruned_items: list) -> bool:
+    """
+    Gửi báo cáo lý do thanh lọc cổ phiếu khỏi Watchlist trực tiếp vào Discord DM của người dùng.
+    Phân loại rõ ràng mã do người dùng tự nhập hay do bot quét tự động.
+    """
+    if not pruned_items:
+        return False
+
+    fields = []
+    for item in pruned_items[:10]:
+        sym = item.get("symbol", "").upper()
+        reason = item.get("reason", "Không phù hợp tiêu chí")
+        is_auto = item.get("is_auto", False)
+        curr_p = item.get("current_price", 0.0)
+        rsi = item.get("rsi")
+        mos = item.get("mos_pct")
+
+        source_label = "🤖 Bot phát hiện tự động" if is_auto else "👤 Bạn đã thêm thủ công"
+        stats = []
+        if curr_p:
+            stats.append(f"Thị giá: `{curr_p:,.2f}k`")
+        if rsi is not None and isinstance(rsi, (int, float)):
+            stats.append(f"RSI(14): `{rsi:.1f}`")
+        if mos is not None and isinstance(mos, (int, float)):
+            stats.append(f"MoS: `{mos:+.1f}%`")
+        stats_str = " | ".join(stats) if stats else "N/A"
+
+        fields.append({
+            "name": f"❌ {sym} ({source_label})",
+            "value": (
+                f"• **Lý do loại bỏ:** {reason}\n"
+                f"• **Chỉ số:** {stats_str}\n"
+                f"• **Khuyến nghị:** Tạm thời gỡ khỏi danh sách chờ mua để tránh bẫy giá hoặc FOMO đu đỉnh. "
+                f"Chờ cổ phiếu chiết khấu về vùng cân bằng an toàn."
+            ),
+            "inline": False,
+        })
+
+    embed = {
+        "title": "🧹 [DISCORD DM] BÁO CÁO THANH LỌC WATCHLIST (LOẠI BỎ CỔ PHIẾU)",
+        "description": (
+            f"Hệ thống vừa tiến hành kiểm toán và tự động gỡ bỏ **{len(pruned_items)} mã** "
+            f"khỏi Watchlist để bảo vệ bạn khỏi rủi ro quá mua, định giá ảo hoặc bẫy giá:"
+        ),
+        "color": 0xE67E22,  # Màu cam cảnh báo rủi ro
+        "fields": fields,
+        "footer": {
+            "text": "Watchlist Pruning Engine • Tự động bảo vệ danh mục theo dõi",
+        },
+    }
+
+    if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
+        return send_discord_dm(embeds=[embed])
+    else:
+        return send_discord_webhook(embeds=[embed])
+
+
 if __name__ == "__main__":
     from ai_analyst import generate_portfolio_analysis
     from data_engine import evaluate_portfolio, fetch_macro_news, load_portfolio

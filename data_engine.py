@@ -382,15 +382,17 @@ def save_watchlist(watchlist_data: list, filepath: str = "data/watchlist.json"):
 def prune_unsuitable_watchlist(
     watchlist: list = None,
     filepath: str = "data/watchlist.json",
-    prune_manual: bool = False,
-    tech_map: dict = None
+    prune_manual: bool = True,
+    tech_map: dict = None,
+    notify_discord: bool = True
 ) -> tuple[list, list]:
     """
     Thanh lọc các cổ phiếu trong Watchlist đang QUÁ HOT hoặc KHÔNG PHÙ HỢP:
     - Tiêu chí Quá hot (Overheated / FOMO): RSI(14) > 75 hoặc MoS < -25% (bong bóng định giá).
     - Tiêu chí Không phù hợp (Unsuitable): Dính bẫy giá (is_trap == True), hoặc bị Data Gate chặn.
-    - Với mã tự động (is_auto: True): Tự động xóa khỏi Watchlist để giải phóng slot.
-    - Với mã người dùng nhập tay: Bảo toàn mã, gắn cờ cảnh báo [⚠️ CẢNH BÁO FOMO/RỦI RO] vào note (hoặc xóa nếu prune_manual=True).
+    - Với cả mã tự động lẫn mã người dùng nhập tay (prune_manual=True): Tự động xóa khỏi Watchlist
+      đồng thời bắn thông báo chi tiết lý do trực tiếp vào Discord DM của người dùng.
+    - Nếu prune_manual=False: Bảo toàn mã thủ công và gắn cờ cảnh báo [⚠️ CẢNH BÁO FOMO/RỦI RO].
     Returns: (retained_items, pruned_items)
     """
     try:
@@ -462,6 +464,7 @@ def prune_unsuitable_watchlist(
                     "symbol": sym,
                     "reason": reason_str,
                     "is_auto": is_auto,
+                    "current_price": curr_price,
                     "rsi": rsi,
                     "mos_pct": mos_pct
                 })
@@ -475,17 +478,30 @@ def prune_unsuitable_watchlist(
                 retained_items.append(item)
 
         save_watchlist(retained_items, filepath=filepath)
+
+        if notify_discord and pruned_items:
+            try:
+                from discord_alerts import send_watchlist_pruned_alert
+                send_watchlist_pruned_alert(pruned_items)
+            except Exception:
+                logging.exception("Lỗi khi bắn cảnh báo thanh lọc Watchlist vào Discord")
+
         return retained_items, pruned_items
     except Exception:
         logging.exception("Lỗi khi thanh lọc Watchlist")
         return watchlist or [], []
 
 
-def sync_auto_watchlist(opportunities: list = None, filepath: str = "data/watchlist.json", max_auto: int = 5) -> list:
+def sync_auto_watchlist(
+    opportunities: list = None,
+    filepath: str = "data/watchlist.json",
+    max_auto: int = 5,
+    prune_manual: bool = False
+) -> list:
     """
     Tự động chọn lọc các cơ hội đầu tư chất lượng cao đưa vào Watchlist.
     - Thanh lọc trước các mã auto cũ đang quá hot (RSI > 75, MoS < -25%) hoặc không phù hợp.
-    - Bảo toàn 100% các mã do người dùng tự nhập tay (hoặc từ Google Sheet).
+    - Bảo toàn 100% các mã do người dùng tự nhập tay (nếu prune_manual=False).
     - Chỉ thêm các mã đạt chuẩn: không bị Data Gate loại bỏ,
       điểm thuyết phục Conviction Score >= 60 hoặc MoS >= 15%.
     - Capped ở mức tối đa `max_auto` mã tự động để tránh phân tán danh mục.
@@ -499,8 +515,10 @@ def sync_auto_watchlist(opportunities: list = None, filepath: str = "data/watchl
             except Exception:
                 current_watchlist = []
 
-        # 1. Thanh lọc trước các mã auto cũ quá hot hoặc rủi ro
-        current_watchlist, _ = prune_unsuitable_watchlist(current_watchlist, filepath=filepath, prune_manual=False)
+        # 1. Thanh lọc trước các mã quá hot hoặc rủi ro
+        current_watchlist, _ = prune_unsuitable_watchlist(
+            current_watchlist, filepath=filepath, prune_manual=prune_manual, notify_discord=True
+        )
 
         # 2. Tách riêng các mã user nhập tay và các mã auto hợp lệ còn lại
         manual_items = [item for item in current_watchlist if not item.get("is_auto", False)]
