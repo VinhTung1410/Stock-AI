@@ -242,11 +242,14 @@ def _validate_quant_gate(sym: str, tech: dict, curr_p: float) -> tuple[bool, flo
             logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Sức khỏe tài chính yếu (F-Score: {f_score_dict['score']}/9)")
             return False, dynamic_sl, f_score_dict, ""
 
-        df_hist = fetch_stock_historical(sym, time_frame="1D", limit=30)
-        if df_hist is not None and not df_hist.empty:
-            atr_val = calculate_atr(df_hist, 14)
-            if atr_val > 0:
-                dynamic_sl = round(max(curr_p * 0.93, curr_p - 1.5 * atr_val), 2)
+        atr_val = float(tech.get("atr14") or 0.0)
+        if atr_val <= 0:
+            df_hist = fetch_stock_historical(sym, time_frame="1D", limit=30)
+            if df_hist is not None and not df_hist.empty:
+                atr_val = calculate_atr(df_hist, 14)
+
+        if atr_val > 0:
+            dynamic_sl = round(max(curr_p * 0.93, curr_p - 1.5 * atr_val), 2)
     except Exception:
         logging.exception(f"Lỗi khi kiểm tra quant cho {sym}")
 

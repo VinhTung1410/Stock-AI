@@ -855,6 +855,28 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
         return {}
 
 
+def fetch_stock_historical(symbol: str, time_frame: str = "1D", limit: int = 30) -> pd.DataFrame:
+    """
+    Kéo dữ liệu lịch sử giá OHLCV của cổ phiếu từ vnstock (mặc định n phiên gần nhất).
+    Phục vụ tính toán độ biến động ATR và kiểm định lượng hóa Quant Gate.
+    """
+    sym_clean = symbol.upper().strip()
+    try:
+        from vnstock.api.quote import Quote
+        q = Quote(symbol=sym_clean, source="VCI")
+        days_back = max(int(limit * 2.5), 60)
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+        df = q.history(start=start_date, end=end_date)
+        if df is None or df.empty:
+            return pd.DataFrame()
+        df = df.sort_values("time").reset_index(drop=True)
+        return df.tail(limit).reset_index(drop=True)
+    except Exception:
+        logging.exception(f"Lỗi khi lấy dữ liệu lịch sử cho {symbol}")
+        return pd.DataFrame()
+
+
 def fetch_corporate_dividends(symbol: str):
     """
     Sử dụng vnstock để lấy lịch sử/kế hoạch chia cổ tức của doanh nghiệp.
