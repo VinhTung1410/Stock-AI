@@ -1,8 +1,8 @@
 @echo off
 chcp 65001 > nul
-title Test He Thong Canh Bao Bot Mua/Ban Discord
+title Chay Bao Cao Nguyen Ngay va Dong Bo Watchlist
 echo =====================================================================
-echo [*] DANG MO MENU KIEM THU BOT CANH BAO MUA / BAN DISCORD...
+echo [*] DANG CHAY BAO CAO NGUYEN NGAY (TRUA, CHIEU, AUDIT) VA SYNC WATCHLIST...
 echo =====================================================================
 set PYTHONUTF8=1
 cd /d "%~dp0\.."
@@ -11,5 +11,5 @@ if exist "%USERPROFILE%\.venv\Scripts\activate.bat" (
 ) else if exist ".venv\Scripts\activate.bat" (
     call ".venv\Scripts\activate.bat"
 )
-python scripts\test_bot_alerts.py
+python scripts\run_daily_reports_and_sync.py
 pause

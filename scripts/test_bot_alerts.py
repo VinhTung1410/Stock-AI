@@ -150,6 +150,12 @@ def test_morning_recommendation_report():
         print("❌ Gửi bản tin thất bại.")
 
 
+def test_full_daily_reports_and_sync():
+    """Chạy toàn bộ quy trình kiểm toán, đồng bộ/thanh lọc Watchlist và bắn báo cáo nguyên ngày (Trưa 11:30, ATC 14:45, Audit 15:15)."""
+    from scripts.run_daily_reports_and_sync import run_full_daily_workflow
+    run_full_daily_workflow()
+
+
 def main():
     print("=" * 60)
     print("🤖 MENU KIỂM THỬ HỆ THỐNG CẢNH BÁO BOT (DISCORD ALERTS)")
@@ -159,10 +165,11 @@ def main():
     print("3. [QUÉT DANH MỤC & WATCHLIST]➜ Quét giá thực tế & tín hiệu Mua/Bán")
     print("4. [BÁO CÁO TOÀN DIỆN AI]     ➜ Phân tích danh mục + tin CafeF chuyên sâu")
     print("5. [🌅 KHUYẾN NGHỊ 08:45 SÁNG]➜ Gợi ý Top Cổ phiếu Tiềm năng chuẩn CTCK")
+    print("6. [🚀 BÁO CÁO NGUYÊN NGÀY]   ➜ Chạy toàn bộ Báo cáo (Trưa, ATC, Audit) & Sync Watchlist")
     print("0. Thoát")
     print("=" * 60)
 
-    choice = input("👉 Nhập lựa chọn của bạn (1-5, hoặc 0 để thoát): ").strip()
+    choice = input("👉 Nhập lựa chọn của bạn (1-6, hoặc 0 để thoát): ").strip()
 
     if choice == "1":
         test_buy_signal()
@@ -174,6 +181,8 @@ def main():
         test_full_ai_report()
     elif choice == "5":
         test_morning_recommendation_report()
+    elif choice == "6":
+        test_full_daily_reports_and_sync()
     else:
         print("Tạm biệt!")
 

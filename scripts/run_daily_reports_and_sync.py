@@ -115,7 +115,8 @@ def run_full_daily_workflow():
     if df_wl is not None and not df_wl.empty:
         sectors_dict = group_watchlist_by_sector(df_wl)
         print("\n🏢 PHÂN BỔ WATCHLIST THEO NGÀNH:")
-        for sec, syms in sectors_dict.items():
+        for sec, group_df in sectors_dict.items():
+            syms = group_df["Mã CP"].tolist() if "Mã CP" in group_df.columns else []
             print(f"  • {sec}: {', '.join(syms)}")
 
     # 3. QUÉT TÍN HIỆU RỦI RO & MUA/BÁN
