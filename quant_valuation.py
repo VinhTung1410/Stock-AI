@@ -151,6 +151,34 @@ def calculate_fair_value_and_mos(
         justified_pb = (roe_dec - g) / (coe - g) if (coe - g) > 0 else 1.2
         target_pb = max(min(justified_pb, 2.2), 0.9)
 
+        # Chốt chặn kiểm soát tài chính: Kiểm tra P/B có nằm trong Sanity Range của ngành
+        sec_key = "bank_soe" if sym_clean in ("VCB", "CTG", "BID") else "bank_private"
+        lo, hi = (0.8, 3.0) if sec_key == "bank_soe" else (0.6, 2.5)
+        if pb and not (lo <= pb <= hi):
+            logging.warning(
+                "[DATA-INTEGRITY] %s P/B=%s ngoài ngưỡng an toàn %s-%s (%s). "
+                "Chặn xuất khuyến nghị đầu tư, chỉ xuất cảnh báo lỗi dữ liệu.",
+                sym_clean, pb, lo, hi, sec_key
+            )
+            return {
+                "fair_value": 0.0,
+                "fair_value_base": 0.0,
+                "fair_value_bear": 0.0,
+                "fair_value_bull": 0.0,
+                "price_target": None,
+                "mos_pct": 0.0,
+                "valuation_rating": "CẦN XÁC MINH THỦ CÔNG",
+                "valuation_method": f"TẠM DỪNG: P/B={pb} ngoài ngưỡng an toàn ({lo}-{hi})",
+                "confidence": "LOW",
+                "consensus_target": cons_target,
+                "consensus_source": cons_source,
+                "archetype": archetype,
+                "data_integrity_warning": (
+                    f"P/B={pb} vượt ngưỡng hợp lý ({lo}-{hi}). "
+                    "Cần xác minh BCTC hợp nhất và số lượng CP lưu hành thực tế."
+                ),
+            }
+
         if pb and pb > 0:
             bvps_est = current_price / pb
             fv_base = round(bvps_est * target_pb, 2)

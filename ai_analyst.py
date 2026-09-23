@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+from typing import Dict, Optional, Tuple
 
 try:
     from dotenv import load_dotenv
@@ -59,6 +60,11 @@ SYSTEM_LANGUAGE_RULE = """
 5. TUYỆT ĐỐI KHÔNG ĐÁNH SỐ THỨ TỰ LIÊN TỤC (1., 2., 3., 4., 5., 6., 7., 8...) CHO TỪNG DÒNG CHI TIẾT.
    - Tên mã là gạch đầu dòng cấp 1: `• Cổ phiếu **MÃ** (Ngành) — [HUY HIỆU]`
    - Các thuộc tính là gạch đầu dòng cấp 2 thụt lề `- **Thuộc tính:**`.
+6. [BẮT BUỘC - KIỂM SOÁT TÀI CHÍNH & ĐỊNH GIÁ P/B, P/E]:
+   - P/B chỉ được tính từ vốn chủ sở hữu HỢP NHẤT thuộc về cổ đông công ty mẹ, chia cho số cổ phiếu đang lưu hành THỰC TẾ tại đúng ngày lấy giá thị trường (đã điều chỉnh chia tách/thưởng/phát hành).
+   - Tự kiểm tra ngưỡng hợp lý: Ngân hàng VN thường dao động 0.6 - 3.0x, BĐS 0.6 - 3.0x. Nếu vượt ngưỡng, TUYỆT ĐỐI KHÔNG được xuất khuyến nghị Mua/Bán dựa trên số đó — thay vào đó phải ghi rõ: "Số liệu định giá cần xác minh lại, tạm không đưa ra khuyến nghị dựa trên P/B."
+   - Luôn ghi rõ kèm mỗi con số định giá: (a) kỳ báo cáo tài chính nguồn, (b) ngày lấy giá thị trường, (c) số cổ phiếu dùng để tính.
+   - Nếu không chắc chắn về tính chính xác của một chỉ số, PHẢI nói rõ "chưa xác minh được" thay vì đưa ra con số suy diễn chưa kiểm chứng.
 """
 
 
@@ -1055,9 +1061,18 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
     }
 
 
+STATE_STRONG_OPPORTUNITY = "STRONG_OPPORTUNITY"
+STATE_ATTRACTIVE = "ATTRACTIVE"
+STATE_WATCHLIST = "WATCHLIST"
+STATE_WAIT_BETTER_ENTRY = "WAIT_BETTER_ENTRY"
+STATE_HOLD_MAINTAIN = "HOLD_MAINTAIN"
+STATE_RISK_ELEVATED = "RISK_ELEVATED"
+STATE_AVOID = "AVOID"
+STATE_INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+
 VALID_PM_STATES = (
-    "STRONG_OPPORTUNITY", "ATTRACTIVE", "WATCHLIST", "WAIT_BETTER_ENTRY",
-    "HOLD_MAINTAIN", "RISK_ELEVATED", "AVOID", "INSUFFICIENT_DATA"
+    STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE, STATE_WATCHLIST, STATE_WAIT_BETTER_ENTRY,
+    STATE_HOLD_MAINTAIN, STATE_RISK_ELEVATED, STATE_AVOID, STATE_INSUFFICIENT_DATA
 )
 
 
@@ -1195,6 +1210,10 @@ Dựa trên MA20={ma20_str}, RSI={rsi_str}, Vol={vol_str}:
 3. Kịch bản rủi ro sụt giảm (downside scenario) là gì và xác suất xảy ra bao nhiêu %?
 
 === BƯỚC 5: QUYẾT ĐỊNH CUỐI CÙNG (PM DECISION) ===
+QUY TẮC TRỌNG TÀI BẮT BUỘC (ARBITRATION RULES):
+- Nếu FA BULLISH nhưng TA BEARISH (kỹ thuật suy yếu/rơi tự do) -> BẮT BUỘC chọn WAIT_BETTER_ENTRY (CẤM STRONG_OPPORTUNITY).
+- Nếu FA BEARISH nhưng TA BULLISH (kỹ thuật hưng phấn/bơm thổi) -> BẮT BUỘC chọn RISK_ELEVATED hoặc AVOID (Chống FOMO).
+- Nếu Red Team Downside > 25% -> TỐI ĐA chỉ được xếp WATCHLIST.
 BẮT BUỘC chọn chính xác 1 trong 8 trạng thái định chế chuẩn:
 [STRONG_OPPORTUNITY | ATTRACTIVE | WATCHLIST | WAIT_BETTER_ENTRY | HOLD_MAINTAIN | RISK_ELEVATED | AVOID | INSUFFICIENT_DATA]
 BẮT BUỘC mở đầu dòng phán quyết bằng cú pháp chuẩn:
@@ -1231,7 +1250,92 @@ def _extract_pm_decision(report_text: str) -> str:
                 return state
 
     # Priority 3: Fallback default
-    return "WATCHLIST"
+    return STATE_WATCHLIST
+
+
+def _extract_views(report_text: str) -> Dict[str, str]:
+    """Extract FA and TA views from 5-step report."""
+    views = {"fa_view": "NEUTRAL", "ta_view": "NEUTRAL"}
+    if not report_text:
+        return views
+
+    fa_match = re.search(r'FA\s*VIEW[:\s—\-]+(BULLISH|NEUTRAL|BEARISH)', report_text, re.IGNORECASE)
+    if fa_match:
+        views["fa_view"] = fa_match.group(1).upper()
+
+    ta_match = re.search(r'TA\s*VIEW[:\s—\-]+(BULLISH|NEUTRAL|BEARISH)', report_text, re.IGNORECASE)
+    if ta_match:
+        views["ta_view"] = ta_match.group(1).upper()
+
+    return views
+
+
+def _extract_red_team_downside(report_text: str) -> float:
+    """Extract downside risk percentage from Red Team section if specified."""
+    if not report_text:
+        return 0.0
+    match = re.search(r'(?:downside|sụt giảm|rủi ro giảm)[:\s—\-]+(\d+(?:\.\d+)?)\s*%', report_text, re.IGNORECASE)
+    if match:
+        try:
+            return float(match.group(1))
+        except (ValueError, TypeError):
+            pass
+    return 0.0
+
+
+def arbitrate_pm_decision(
+    raw_decision: str,
+    fa_view: str = "NEUTRAL",
+    ta_view: str = "NEUTRAL",
+    red_team_downside: float = 0.0,
+    f_score: Optional[int] = None,
+    z_zone: str = "Vùng an toàn",
+    recommendation_allowed: bool = True,
+    trap_warning: bool = False
+) -> Tuple[str, bool, str]:
+    """Deterministic Institutional PM Arbitration Gate.
+
+    Enforces quantitative and risk gates over LLM decision:
+    1. If Data Gate recommendation not allowed -> INSUFFICIENT_DATA
+    2. If Thesis Breaker triggered (F-Score < 4 or Z-Score Red or Trap) -> AVOID
+    3. If FA Bullish but TA Bearish and raw is STRONG_OPPORTUNITY -> WAIT_BETTER_ENTRY
+    4. If FA Bearish but TA Bullish and raw is BUY-side -> RISK_ELEVATED
+    5. If Red Team downside > 25% and raw is BUY-side -> WATCHLIST
+
+    Returns:
+        tuple of (final_decision, is_overridden, override_reason)
+    """
+    decision = raw_decision.strip().upper() if raw_decision else STATE_WATCHLIST
+    if decision not in VALID_PM_STATES:
+        decision = STATE_WATCHLIST
+
+    # Gate 1: Data Integrity
+    if not recommendation_allowed:
+        return STATE_INSUFFICIENT_DATA, True, "Data Gate từ chối khuyến nghị do dữ liệu đóng băng hoặc bất thường"
+
+    # Gate 2: Thesis Breaker (F-Score < 4 or Z-Score Red Zone or Trap)
+    is_f_distress = f_score is not None and 0 < f_score < 4
+    is_z_distress = any(k in z_zone.lower() for k in ("nguy hiểm", "báo động", "khả năng phá sản"))
+    if is_f_distress or is_z_distress or trap_warning:
+        if decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
+            return STATE_AVOID, True, "Thesis Breaker kích hoạt: Sức khỏe tài chính suy kiệt hoặc bẫy giá nguy hiểm"
+
+    # Gate 3: FA Bullish + TA Bearish (Catching falling knife)
+    if fa_view.upper() == "BULLISH" and ta_view.upper() == "BEARISH":
+        if decision == STATE_STRONG_OPPORTUNITY:
+            return STATE_WAIT_BETTER_ENTRY, True, "Trọng tài PM: Định giá rẻ nhưng kỹ thuật đang suy yếu (Cấm bắt dao rơi)"
+
+    # Gate 4: FA Bearish + TA Bullish (FOMO pump)
+    if fa_view.upper() == "BEARISH" and ta_view.upper() == "BULLISH":
+        if decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
+            return STATE_RISK_ELEVATED, True, "Trọng tài PM: Kỹ thuật hưng phấn nhưng cơ bản suy yếu (Chống FOMO bơm thổi)"
+
+    # Gate 5: Red Team Downside Stress > 25%
+    if red_team_downside > 25.0:
+        if decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
+            return STATE_WATCHLIST, True, f"Trọng tài PM: Rủi ro sụt giảm Red Team {red_team_downside:.1f}% > 25% (Hạ về Watchlist)"
+
+    return decision, False, ""
 
 
 def _prepare_smart_committee_context(
@@ -1258,7 +1362,7 @@ def _prepare_smart_committee_context(
     )
 
     # Hard Gate check: Reject if price conflict, statutory band breach, or critical quality
-    if not gate_res.get("gate_passed") or gate_res.get("price_status") == "CONFLICT":
+    if not gate_res.get("gate_passed") or gate_res.get("price_status") == "CONFLICT" or not gate_res.get("recommendation_allowed"):
         conflicts = "; ".join(gate_res.get("conflicting_data", ["Xung đột dữ liệu giá hoặc vi phạm quy chế sàn"]))
         refusal_report = (
             "======================================================\n"
@@ -1276,7 +1380,7 @@ def _prepare_smart_committee_context(
             "quality_score": gate_res.get("quality_score", 0.0),
             "gate_res": gate_res,
             "report_text": refusal_report,
-            "pm_decision": "INSUFFICIENT_DATA"
+            "pm_decision": STATE_INSUFFICIENT_DATA
         }
         return rejection_res, None, None
 
@@ -1318,7 +1422,12 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         return {
             "status": "AI_GENERATION_FAILED",
             "symbol": sym,
-            "pm_decision": "INSUFFICIENT_DATA",
+            "pm_decision": STATE_INSUFFICIENT_DATA,
+            "raw_pm_decision": STATE_INSUFFICIENT_DATA,
+            "is_overridden": False,
+            "override_reason": "",
+            "fa_view": "NEUTRAL",
+            "ta_view": "NEUTRAL",
             "data_quality": gate_res.get("data_quality", "HIGH"),
             "quality_score": gate_res.get("quality_score", 100.0),
             "gate_res": gate_res,
@@ -1329,10 +1438,32 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
             "error": str(error)
         }
 
+    raw_decision = _extract_pm_decision(report_text)
+    views = _extract_views(report_text)
+    red_downside = _extract_red_team_downside(report_text)
+
+    f_res = context_meta.get("f_score") or {}
+    z_res = context_meta.get("z_score") or {}
+
+    final_decision, is_overridden, override_reason = arbitrate_pm_decision(
+        raw_decision=raw_decision,
+        fa_view=views.get("fa_view", "NEUTRAL"),
+        ta_view=views.get("ta_view", "NEUTRAL"),
+        red_team_downside=red_downside,
+        f_score=f_res.get("score"),
+        z_zone=z_res.get("zone", "Vùng an toàn"),
+        recommendation_allowed=gate_res.get("recommendation_allowed", True)
+    )
+
     return {
         "status": "SUCCESS",
         "symbol": sym,
-        "pm_decision": _extract_pm_decision(report_text),
+        "pm_decision": final_decision,
+        "raw_pm_decision": raw_decision,
+        "is_overridden": is_overridden,
+        "override_reason": override_reason,
+        "fa_view": views.get("fa_view", "NEUTRAL"),
+        "ta_view": views.get("ta_view", "NEUTRAL"),
         "data_quality": gate_res.get("data_quality", "HIGH"),
         "quality_score": gate_res.get("quality_score", 100.0),
         "gate_res": gate_res,

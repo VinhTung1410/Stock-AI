@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
 """
-Deterministic Quantitative Engine — computes all financial metrics via Python
+Deterministic Quantitative Engine - computes all financial metrics via Python
 to eliminate LLM numerical hallucination.
 
 Capabilities:
@@ -11,6 +12,7 @@ Capabilities:
 """
 
 import logging
+from typing import Any, Dict, List
 
 import pandas as pd
 
@@ -64,6 +66,18 @@ def calculate_piotroski_f_score(fin_dict: dict) -> dict:
     Returns:
         Dict with 'score' (0-9), 'max_score', 'rating', and 'breakdown'.
     """
+    # Support precomputed f_score if breakdown fields are absent
+    if fin_dict and fin_dict.get("f_score") is not None and not any(k in fin_dict for k in ("roa", "current_ratio", "debt_equity")):
+        raw_s = int(fin_dict["f_score"])
+        rating = "XUẤT SẮC" if raw_s >= 8 else ("TỐT" if raw_s >= 6 else ("TRUNG BÌNH" if raw_s >= 4 else "YẾU / RỦI RO"))
+        return {
+            "score": raw_s,
+            "max_score": 9,
+            "rating": rating,
+            "breakdown": {"precomputed": raw_s}
+        }
+
+    fin_dict = fin_dict or {}
     score = 0
     breakdown = {}
 
@@ -148,6 +162,22 @@ def calculate_altman_z_score(fin_dict: dict) -> dict:
     Returns:
         Dict with 'z_score', 'zone' description, and 'icon' emoji.
     """
+    if not fin_dict:
+        return {"z_score": None, "zone": "Chưa đủ dữ liệu", "icon": "⚪"}
+
+    # Support precomputed z_score if breakdown fields are absent
+    if fin_dict.get("z_score") is not None and not any(k in fin_dict for k in ("roa", "debt_equity")):
+        raw_z = float(fin_dict["z_score"])
+        if raw_z >= 2.90:
+            zone = "VÙNG XANH (An toàn tài chính cao)"
+            color = "🟢"
+        elif raw_z >= 1.80:
+            zone = "VÙNG XÁM (Thận trọng / Đòn bẩy vừa)"
+            color = "🟡"
+        else:
+            zone = "VÙNG ĐỎ (Cảnh báo rủi ro kiệt quệ)"
+            color = "🔴"
+        return {"z_score": raw_z, "zone": zone, "icon": color}
     try:
         roa = (fin_dict.get("roa") or 0.0) / 100.0
         debt_equity = fin_dict.get("debt_equity") or 1.5
@@ -180,7 +210,7 @@ def calculate_altman_z_score(fin_dict: dict) -> dict:
 
 
 def check_data_gate(symbol: str, tech_dict: dict, fin_dict: dict, min_adv20_billion: float = 2.0) -> dict:
-    """Hard data quality gate — blocks recommendations for illiquid or stale-data stocks.
+    """Hard data quality gate - blocks recommendations for illiquid or stale-data stocks.
 
     Checks:
     1. Valid market price exists
@@ -269,11 +299,11 @@ def evaluate_market_regime(
     """Classify market regime and compute multi-variable risk budget.
 
     Combines 5 factors into a risk score (0-100):
-    1. Market Trend — VN-Index vs MA20/MA50
-    2. Market Breadth — % of stocks above MA20
-    3. Liquidity — volume vs 20-day average
-    4. Portfolio Drawdown — current NAV decline
-    5. Margin Exposure — leverage ratio
+    1. Market Trend - VN-Index vs MA20/MA50
+    2. Market Breadth - % of stocks above MA20
+    3. Liquidity - volume vs 20-day average
+    4. Portfolio Drawdown - current NAV decline
+    5. Margin Exposure - leverage ratio
 
     Returns:
         Dict with 'regime' (BULLISH/NEUTRAL/CORRECTION/RISK-OFF),
@@ -382,8 +412,8 @@ def calculate_weighted_entry_and_rr(
 ) -> dict:
     """Compute weighted average entry price and risk/reward ratio.
 
-    R:R is always calculated from the weighted entry — never from
-    current market price — to prevent misleading ratios.
+    R:R is always calculated from the weighted entry - never from
+    current market price - to prevent misleading ratios.
 
     Args:
         entry_prices: List of entry prices for staged buying.
@@ -729,10 +759,10 @@ def evaluate_decision_hard_gates(
     - Automatically rejects buy if MoS < 8%, R:R < 1.5, or Kelly <= 0
 
     Decision states:
-    1. 🟢 VALUE BUY — strong fundamentals + MoS >= 15% + bullish technicals
-    2. 🟢 ACCUMULATE — strong fundamentals + MoS >= 15% + base formation
-    3. 🟡 WATCH — good value but weak technicals (needs confirmation)
-    4. 🔴 REDUCE/EXIT — overvalued or thesis breaker triggered
+    1. 🟢 VALUE BUY - strong fundamentals + MoS >= 15% + bullish technicals
+    2. 🟢 ACCUMULATE - strong fundamentals + MoS >= 15% + base formation
+    3. 🟡 WATCH - good value but weak technicals (needs confirmation)
+    4. 🔴 REDUCE/EXIT - overvalued or thesis breaker triggered
 
     Returns:
         Dict with 'decision_tag', 'action_state', 'mos_pct', 'ev',
@@ -775,10 +805,11 @@ def evaluate_decision_hard_gates(
     # 3. Tỷ lệ Risk / Reward R (theo Current nếu chưa có weighted entry)
     rr = round(upside_val / downside_val, 2) if downside_val > 0 else 1.0
 
-    # 4. Kelly Criterion f*
+    # 4. Kelly Criterion f* & Half-Kelly
     p_win = p_bull + (0.5 * p_base)
     p_loss = 1.0 - p_win
     kelly_f = round(p_win - (p_loss / rr), 2) if rr > 0 else -1.0
+    half_kelly_f = round(kelly_f * 0.5, 2) if kelly_f > 0 else 0.0
 
     # 5. Phân loại Tín hiệu Kỹ thuật (Technical Signal)
     tech_signal = "NEUTRAL"
@@ -851,6 +882,10 @@ def evaluate_decision_hard_gates(
             action_state = "🟢 TÍCH LŨY"
             decision_tag = f"🟢 TÍCH LŨY THĂM DÒ (Khối ngoại xả ròng {foreign_flow.get('net_val_bil'):.1f} tỷ)"
             position_size_nav = "5% - 8% NAV"
+        elif adv20_billion > 0 and adv20_billion < 10.0:
+            action_state = "🟢 TÍCH LŨY"
+            decision_tag = f"🟢 TÍCH LŨY THĂM DÒ (Thanh khoản {adv20_billion:.1f} tỷ < 10 tỷ - Cảnh báo trượt giá)"
+            position_size_nav = "5% - 8% NAV"
         elif tech_signal == "BULLISH_CONFIRMED":
             action_state = "🟢 MUA"
             decision_tag = "🟢 VALUE BUY (Biên an toàn cao & Kỹ thuật xác nhận xu hướng bứt phá)"
@@ -884,6 +919,7 @@ def evaluate_decision_hard_gates(
         "downside_pct": round(((current_price - stop_loss) / current_price) * 100, 1) if current_price > 0 else 0.0,
         "risk_reward": rr,
         "kelly_f": kelly_f,
+        "half_kelly_f": half_kelly_f,
         "gate_mos_passed": gate_mos_passed,
         "gate_rr_passed": gate_rr_passed,
         "gate_kelly_passed": gate_kelly_passed,
@@ -895,4 +931,61 @@ def evaluate_decision_hard_gates(
         "action_state": action_state,
         "decision_tag": decision_tag,
         "position_size_nav": position_size_nav
+    }
+
+
+def check_portfolio_concentration(
+    candidates: List[Dict[str, Any]],
+    max_per_sector: int = 1
+) -> Dict[str, Any]:
+    """Audit candidate recommendations against sector concentration.
+
+    Retains the highest conviction candidate per sector in approved list,
+    and downgrades duplicate sector candidates to Watchlist with a concentration alert.
+
+    Returns:
+        dict with 'approved_candidates', 'downgraded_candidates', 'warnings'.
+    """
+    if not candidates:
+        return {"approved_candidates": [], "downgraded_candidates": [], "warnings": []}
+
+    sector_counts: Dict[str, int] = {}
+    approved = []
+    downgraded = []
+    warnings = []
+
+    def _conviction_score(c: Dict[str, Any]) -> float:
+        mos = float(c.get("mos_pct") or 0.0)
+        rr = float(c.get("risk_reward") or 1.0)
+        f_val = c.get("f_score")
+        f_score = float(f_val) if f_val is not None else 5.0
+        return mos + (rr * 5.0) + (f_score * 2.0)
+
+    sorted_candidates = sorted(candidates, key=_conviction_score, reverse=True)
+
+    for item in sorted_candidates:
+        sym = item.get("symbol", "UNKNOWN")
+        sector = (item.get("sector") or "OTHER").strip().upper()
+        current_count = sector_counts.get(sector, 0)
+
+        if current_count < max_per_sector:
+            sector_counts[sector] = current_count + 1
+            approved.append(item)
+        else:
+            downgraded_item = dict(item)
+            downgraded_item["action_state"] = "🟡 THEO DÕI"
+            downgraded_item["position_size_nav"] = "0% NAV (Dự phòng)"
+            downgraded_item["decision_tag"] = (
+                f"🟡 THEO DÕI / DỰ PHÒNG (Cảnh báo tập trung danh mục: Đã có mã ngành {sector})"
+            )
+            downgraded.append(downgraded_item)
+            warnings.append(
+                f"Tập trung ngành {sector}: Mã {sym} được chuyển sang danh mục dự phòng "
+                f"để tránh rủi ro đồng pha danh mục."
+            )
+
+    return {
+        "approved_candidates": approved,
+        "downgraded_candidates": downgraded,
+        "warnings": warnings
     }

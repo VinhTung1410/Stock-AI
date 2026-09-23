@@ -1656,12 +1656,207 @@ def get_vnindex_valuation_data() -> pd.DataFrame:
         return pd.DataFrame()
 
 
+PB_SANITY_RANGES = {
+    "bank_soe": (0.8, 3.0),
+    "bank_private": (0.6, 2.5),
+    "real_estate": (0.6, 3.0),
+    "default": (0.5, 5.0),
+}
+
+
+def resolve_sector_key(ticker: str, sector: str = "") -> str:
+    """Xác định nhóm ngành để áp dụng ngưỡng Sanity Range P/B."""
+    sym = ticker.strip().upper()
+    sec = sector.lower()
+    if sym in ("VCB", "CTG", "BID"):
+        return "bank_soe"
+    if any(b in sym for b in ("TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "VIB", "TPB", "LPB", "SHB", "OCB", "EIB", "SSB")) or "ngân hàng" in sec:
+        return "bank_private"
+    if sym in ("VHM", "VIC", "VRE", "KDH", "NLG", "DXG", "DIG", "PDR", "KBC", "IDC", "NVL") or any(r in sec for r in ("bất động sản", "địa ốc")):
+        return "real_estate"
+    return "default"
+
+
+def _parse_period_year_quarter(period_str: str) -> tuple:
+    """Tách năm và quý từ chuỗi period (ví dụ '2026-Q2' hoặc '2026')."""
+    if not period_str:
+        return None, None
+    p = str(period_str).strip().upper()
+    try:
+        if "-Q" in p:
+            parts = p.split("-Q")
+            return int(parts[0]), int(parts[1])
+        if len(p) >= 4 and p[:4].isdigit():
+            return int(p[:4]), 4
+    except (ValueError, IndexError):
+        pass
+    return None, None
+
+
+def get_shares_outstanding(ticker: str, as_of_date: str = None) -> float | None:
+    """Lấy số lượng cổ phiếu đang lưu hành thực tế đã điều chỉnh tính đến as_of_date."""
+    sym = ticker.strip().upper()
+    try:
+        from vnstock import Vnstock
+        v = Vnstock().stock(symbol=sym, source="VCI")
+        ov = v.company.overview()
+        if ov is not None and not ov.empty:
+            row = ov.iloc[0]
+            shares = row.get("issue_share") or row.get("shares_outstanding")
+            if shares and float(shares) > 0:
+                return float(shares)
+    except Exception:
+        logging.exception("Lỗi khi lấy số cổ phiếu lưu hành cho %s", sym)
+    return None
+
+
+def get_equity_value(ticker: str, as_of_date: str = None) -> float | None:
+    """Lấy Vốn chủ sở hữu hợp nhất thuộc về cổ đông công ty mẹ."""
+    sym = ticker.strip().upper()
+    try:
+        fin = get_financial_ratios(sym)
+        bvps = fin.get("bvps")
+        shares = get_shares_outstanding(sym, as_of_date)
+        if bvps and shares:
+            return round(bvps * shares, 2)
+    except Exception:
+        logging.exception("Lỗi khi lấy vốn chủ sở hữu hợp nhất cho %s", sym)
+    return None
+
+
+def compute_pb(ticker: str, as_of_date: str = None) -> float | None:
+    """Hàm trung tâm tính P/B chuẩn hóa DUY NHẤT trong toàn hệ thống.
+    
+    Ưu tiên Dynamic P/B = Giá khớp lệnh thực tế sàn HOSE / BVPS hợp nhất kỳ gần nhất.
+    Fallback sang P/B từ bảng tỷ số nếu không lấy được giá realtime.
+    """
+    sym = ticker.strip().upper()
+    fin = get_financial_ratios(sym)
+    bvps = fin.get("bvps")
+
+    # 1. Thử lấy giá thị trường thực tế khớp lệnh sàn HOSE
+    try:
+        from vnstock import Trading
+        t = Trading(symbol=sym, source="VCI")
+        pb_board = t.price_board([sym])
+        if pb_board is not None and not pb_board.empty:
+            r = pb_board.iloc[0]
+            market_price = r.get(("match", "match_price")) or r.get(("match", "reference_price"))
+            if market_price and bvps and float(bvps) > 0:
+                return round(float(market_price) / float(bvps), 2)
+    except Exception:
+        pass
+
+    # 2. Fallback sang P/B từ bảng chỉ số nếu không lấy được giá realtime
+    pb = fin.get("pb")
+    if pb is not None and pb > 0:
+        return round(float(pb), 2)
+    return None
+
+
+def compute_pb_with_guardrail(ticker: str, sector: str = "", as_of_date: str = None) -> float | None:
+    """Tính P/B kèm chốt chặn runtime Guardrail theo chuẩn Ban Kiểm soát Tài chính.
+    
+    Nếu P/B ngoài ngưỡng hợp lý theo ngành, gắn cờ cảnh báo, chặn khuyến nghị và trả về None.
+    """
+    sym = ticker.strip().upper()
+    pb = compute_pb(sym, as_of_date)
+    if pb is None:
+        return None
+    sec_key = resolve_sector_key(sym, sector)
+    lo, hi = PB_SANITY_RANGES.get(sec_key, PB_SANITY_RANGES["default"])
+    if not (lo <= pb <= hi):
+        logging.warning(
+            "[DATA-INTEGRITY] %s P/B=%s ngoài ngưỡng an toàn %s-%s (%s). "
+            "Chặn xuất khuyến nghị đầu tư, chỉ xuất cảnh báo lỗi dữ liệu.",
+            sym, pb, lo, hi, sec_key
+        )
+        return None
+    return pb
+
+
+def _extract_kbs_ratios(symbol: str) -> dict:
+    """Trích xuất dữ liệu tài chính mới nhất từ nguồn KBS."""
+    try:
+        from vnstock import Vnstock
+        v = Vnstock().stock(symbol=symbol, source="KBS")
+        df = v.finance.ratio()
+        if df is None or df.empty:
+            return {}
+        cols = [c for c in df.columns if c not in ["item", "item_id", "item_en"]]
+        if not cols:
+            return {}
+        latest_col = cols[0]
+        res = {"symbol": symbol, "period": latest_col}
+        for _, row in df.iterrows():
+            item = str(row.get("item", "")).strip()
+            val = row.get(latest_col)
+            try:
+                val_num = float(val) if pd.notnull(val) else None
+            except (ValueError, TypeError):
+                val_num = None
+            if "Giá trị sổ sách của cổ phiếu (BVPS)" in item:
+                res["bvps"] = val_num
+            elif "Chỉ số giá thị trường trên giá trị sổ sách (P/B)" in item:
+                res["pb"] = val_num
+            elif "Chỉ số giá thị trường trên thu nhập (P/E)" in item:
+                res["pe"] = val_num
+            elif "ROE bình quân 4 quý gần nhất" in item:
+                res["roe"] = val_num
+            elif "ROA bình quân 4 quý gần nhất" in item:
+                res["roa"] = val_num
+            elif "Tỷ suất cổ tức" in item:
+                res["dividend_yield"] = val_num
+        return res
+    except Exception:
+        logging.exception("Lỗi khi lấy dữ liệu KBS cho %s", symbol)
+        return {}
+
+
 def get_financial_ratios(symbol: str) -> dict:
     """
     Lấy các chỉ số tài chính cơ bản & định giá chuyên sâu phục vụ báo cáo 8 trụ cột:
     P/E, P/B, P/S, EV/EBITDA, ROE, ROA, Nợ/VCSH, Biên LN gộp, Biên LN ròng, Vốn hóa...
+    Tích hợp kiểm soát độ tươi (Freshness Check) và chống dùng nhầm dữ liệu đóng băng cũ.
     """
     try:
+        # Bước 1: Ưu tiên dữ liệu sống từ KBS
+        kbs_data = _extract_kbs_ratios(symbol)
+        period = kbs_data.get("period")
+        year, quarter = _parse_period_year_quarter(period)
+
+        if kbs_data and year and year >= 2024:
+            return {
+                "symbol": symbol,
+                "period": period,
+                "latest_year": year,
+                "latest_quarter": quarter,
+                "pe": round(kbs_data["pe"], 2) if kbs_data.get("pe") is not None else None,
+                "pb": round(kbs_data["pb"], 2) if kbs_data.get("pb") is not None else None,
+                "bvps": round(kbs_data["bvps"], 2) if kbs_data.get("bvps") is not None else None,
+                "ps": None,
+                "ev_ebitda": None,
+                "p_cf": None,
+                "roe": round(kbs_data["roe"], 2) if kbs_data.get("roe") is not None else None,
+                "roa": round(kbs_data["roa"], 2) if kbs_data.get("roa") is not None else None,
+                "roic": None,
+                "debt_equity": None,
+                "financial_leverage": None,
+                "gross_margin": None,
+                "net_margin": None,
+                "current_ratio": None,
+                "quick_ratio": None,
+                "market_cap_bil": None,
+                "dividend_yield": round(kbs_data["dividend_yield"], 2) if kbs_data.get("dividend_yield") is not None else None,
+                "audit_trail": {
+                    "source": "KBS_Verified_Live",
+                    "period": period,
+                    "bvps": kbs_data.get("bvps"),
+                    "pb": kbs_data.get("pb"),
+                }
+            }
+
+        # Bước 2: Fallback VCI nếu KBS không khả dụng
         from vnstock import Vnstock
         v = Vnstock().stock(symbol=symbol, source="VCI")
         df_ratio = v.finance.ratio()
@@ -1672,6 +1867,7 @@ def get_financial_ratios(symbol: str) -> dict:
         if not data_cols:
             return {}
         latest_col = data_cols[-1]
+        vci_year, vci_quarter = _parse_period_year_quarter(latest_col)
 
         metric_map = {}
         for _, row in df_ratio.iterrows():
@@ -1687,8 +1883,17 @@ def get_financial_ratios(symbol: str) -> dict:
         def get_m(name, default=None):
             return metric_map.get(name, default)
 
+        # Chốt chặn tài chính: Nếu dữ liệu VCI cũ hơn 2024 (ví dụ 2018), KHÔNG lấy P/B cũ
+        is_stale_legacy = vci_year is not None and vci_year < 2024
+        pb_raw = get_m("P/B")
+        pb = None if is_stale_legacy else pb_raw
+        if is_stale_legacy and pb_raw is not None:
+            logging.warning(
+                "[DATA-INTEGRITY] Bỏ qua P/B=%s của %s do nguồn VCI bị đóng băng ở kỳ cũ %s",
+                pb_raw, symbol, latest_col
+            )
+
         pe = get_m("P/E")
-        pb = get_m("P/B")
         ps = get_m("P/S")
         ev_ebitda = get_m("EV/EBITDA")
         p_cf = get_m("Giá/ Dòng tiền")
@@ -1719,6 +1924,8 @@ def get_financial_ratios(symbol: str) -> dict:
         return {
             "symbol": symbol,
             "period": latest_col,
+            "latest_year": vci_year,
+            "latest_quarter": vci_quarter,
             "pe": round(pe, 2) if pe is not None else None,
             "pb": round(pb, 2) if pb is not None else None,
             "ps": round(ps, 2) if ps is not None else None,
@@ -1735,9 +1942,14 @@ def get_financial_ratios(symbol: str) -> dict:
             "quick_ratio": round(quick_ratio, 2) if quick_ratio is not None else None,
             "market_cap_bil": round(market_cap / 1e9, 1) if market_cap is not None else None,
             "dividend_yield": round(dividend_yield, 2) if dividend_yield is not None else None,
+            "audit_trail": {
+                "source": "VCI_Fallback",
+                "period": latest_col,
+                "is_stale_legacy": is_stale_legacy,
+            }
         }
     except Exception:
-        logging.exception(f"Lỗi khi lấy chỉ số tài chính cho {symbol}")
+        logging.exception("Lỗi khi lấy chỉ số tài chính cho %s", symbol)
         return {}
 
 

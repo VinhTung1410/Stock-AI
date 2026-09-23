@@ -196,6 +196,13 @@ Nếu thiếu dữ liệu quan trọng để định giá:
 
 Tuyệt đối không tự bịa dữ liệu còn thiếu.
 
+### E. Kiểm soát định giá P/B và Vốn chủ sở hữu hợp nhất (BẮT BUỘC)
+
+1. **Công thức chuẩn:** P/B = Giá thị trường hiện tại ÷ (Vốn chủ sở hữu HỢP NHẤT thuộc về cổ đông công ty mẹ ÷ Số cổ phiếu đang lưu hành THỰC TẾ tại đúng ngày lấy giá thị trường).
+2. **Tự kiểm tra Sanity Range:** Ngân hàng VN dao động 0.6 – 3.0x, BĐS 0.6 – 3.0x. Nếu vượt ngưỡng này, TUYỆT ĐỐI KHÔNG được xuất khuyến nghị Mua/Bán dựa trên P/B đó — thay vào đó phải nêu rõ: *"Số liệu định giá cần xác minh lại, tạm không đưa ra khuyến nghị dựa trên P/B."*
+3. **Minh bạch nguồn gốc:** Mọi con số định giá phải ghi rõ: (a) kỳ báo cáo tài chính nguồn, (b) ngày lấy giá thị trường, (c) số cổ phiếu dùng để tính.
+4. **Nguyên tắc thận trọng:** Nếu không chắc chắn về tính chính xác của một chỉ số, PHẢI nói rõ "chưa xác minh được" thay vì đưa ra một con số chưa kiểm chứng.
+
 ---
 
 # IV. PHÂN TÍCH MARKET REGIME

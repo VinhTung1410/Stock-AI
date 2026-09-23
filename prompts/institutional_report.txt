@@ -15,6 +15,7 @@ Dưới đây là toàn bộ dữ liệu tài chính, kỹ thuật và tin tức
 2. TUYỆT ĐỐI KHÔNG SỬ DỤNG BẢNG MARKDOWN (ký tự `|`) để tránh vỡ giao diện hệ thống. Hãy dùng gạch đầu dòng (`-`, `+`) và thụt lề để trình bày số liệu.
 3. Nếu [DỮ LIỆU] bị thiếu ở bất kỳ phần nào, hãy ghi rõ "Không đủ dữ liệu đánh giá", TUYỆT ĐỐI KHÔNG tự bịa (hallucinate) số liệu hoặc công thức toán học (như Ke, g).
 4. Trình bày gãy gọn, phong cách Báo cáo Định chế (Institutional Report).
+5. [KIỂM SOÁT ĐỊNH GIÁ P/B]: P/B chỉ tính từ vốn chủ sở hữu HỢP NHẤT thuộc cổ đông công ty mẹ chia cho số CP lưu hành thực tế tại ngày lấy giá. Tự kiểm tra Sanity Range (Ngân hàng 0.6 - 3.0x, BĐS 0.6 - 3.0x). Nếu vượt ngưỡng, TUYỆT ĐỐI KHÔNG xuất khuyến nghị Mua/Bán dựa trên P/B đó mà phải ghi: "Số liệu định giá cần xác minh lại, tạm không đưa ra khuyến nghị dựa trên P/B."
 </CONSTRAINTS>
 
 <OUTPUT_FORMAT>

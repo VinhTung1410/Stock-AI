@@ -19,6 +19,19 @@ SOURCE_TIER_FINANCIAL_MEDIA = "TIER_3_FINANCIAL_MEDIA"        # CafeF, Vietstock
 SOURCE_TIER_GENERAL_RSS = "TIER_4_GENERAL_RSS"                # Google News RSS, general press
 SOURCE_TIER_UNVERIFIED_RUMOR = "TIER_5_UNVERIFIED_RUMOR"      # Forums, social chatter
 
+# Price & Quality Status Constants (SonarCloud S1192)
+STATUS_CLEAN = "CLEAN"
+STATUS_ADJUSTED = "ADJUSTED"
+STATUS_CONFLICT = "CONFLICT"
+
+TIER_HIGH = "HIGH"
+TIER_MEDIUM = "MEDIUM"
+TIER_LOW = "LOW"
+TIER_CRITICAL = "CRITICAL"
+
+BADGE_STALE_LOCKED = " | ⚠️ DỮ LIỆU ĐÓNG BĂNG - KHÓA KHUYẾN NGHỊ"
+BADGE_MANUAL_VERIFY = " | ⚠️ CẦN XÁC MINH THỦ CÔNG"
+
 # Exchange statutory daily price limits
 EXCHANGE_DAILY_LIMITS = {
     "HOSE": 0.07,   # +/- 7.0%
@@ -38,7 +51,7 @@ def reconcile_price(
     """
     issues = []
     if not tech_data:
-        return "CONFLICT", 0.0, ["Missing technical price data dictionary"]
+        return STATUS_CONFLICT, 0.0, ["Missing technical price data dictionary"]
 
     curr_p = float(tech_data.get("current_price", 0.0))
     close_p = float(tech_data.get("close", curr_p))
@@ -47,10 +60,10 @@ def reconcile_price(
 
     if curr_p <= 0.0 and close_p <= 0.0:
         issues.append(f"Fatal Price Error: Non-positive price detected ({curr_p}k).")
-        return "CONFLICT", 0.0, issues
+        return STATUS_CONFLICT, 0.0, issues
 
     reconciled_p = curr_p if curr_p > 0 else close_p
-    status = "CLEAN"
+    status = STATUS_CLEAN
 
     # Verify statutory exchange band limit (+/- 7% on HOSE, +/- 10% on HNX)
     max_limit = EXCHANGE_DAILY_LIMITS.get(exchange.upper(), 0.07)
@@ -60,7 +73,7 @@ def reconcile_price(
             issues.append(
                 f"Statutory Band Breach: Price change {calculated_chg*100:+.2f}% exceeds {exchange} limit ({max_limit*100}%)."
             )
-            status = "CONFLICT"
+            status = STATUS_CONFLICT
 
     # Check reported change_pct vs computed price change
     if ref_p > 0 and abs(chg_pct) > 0.01:
@@ -69,7 +82,7 @@ def reconcile_price(
             issues.append(
                 f"Price Change Mismatch: Reported {chg_pct:+.2f}% vs Computed {expected_chg:+.2f}%."
             )
-            status = "ADJUSTED"
+            status = STATUS_ADJUSTED
 
     return status, reconciled_p, issues
 
@@ -150,6 +163,20 @@ def reconcile_financial_period(
     latest_quarter = fin_data.get("latest_quarter") or fin_data.get("quarter")
     latest_year = fin_data.get("latest_year") or fin_data.get("year")
 
+    # Fallback parse from period string if latest_quarter/year not direct
+    if not (latest_quarter and latest_year) and fin_data.get("period"):
+        p_str = str(fin_data.get("period")).strip().upper()
+        if "-Q" in p_str:
+            try:
+                parts = p_str.split("-Q")
+                latest_year = int(parts[0])
+                latest_quarter = int(parts[1])
+            except (ValueError, IndexError):
+                pass
+        elif len(p_str) >= 4 and p_str[:4].isdigit():
+            latest_year = int(p_str[:4])
+            latest_quarter = 4
+
     if latest_quarter and latest_year:
         try:
             q_num = int(str(latest_quarter).replace("Q", "").replace("q", ""))
@@ -165,6 +192,40 @@ def reconcile_financial_period(
             pass
 
     return missing, stale
+
+
+GATE_PB_SANITY_RANGES = {
+    "bank_soe": (0.8, 3.0),
+    "bank_private": (0.6, 2.5),
+    "real_estate": (0.6, 3.0),
+    "default": (0.5, 5.0),
+}
+
+
+def reconcile_valuation_sanity(symbol: str, fin_data: Optional[Dict[str, Any]] = None, sector: str = "") -> List[str]:
+    """Kiểm tra P/B theo ngưỡng hợp lý (Sanity Range) ngành theo quy định Ban Kiểm soát Tài chính."""
+    if not fin_data:
+        return []
+    pb = fin_data.get("pb")
+    if pb is None or float(pb) <= 0:
+        return []
+
+    sym = symbol.strip().upper()
+    sec = sector.lower()
+    if sym in ("VCB", "CTG", "BID"):
+        sec_key = "bank_soe"
+    elif any(b in sym for b in ("TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "VIB", "TPB", "LPB", "SHB", "OCB", "EIB", "SSB")) or "ngân hàng" in sec:
+        sec_key = "bank_private"
+    elif sym in ("VHM", "VIC", "VRE", "KDH", "NLG", "DXG", "DIG", "PDR", "KBC", "IDC", "NVL") or any(r in sec for r in ("bất động sản", "địa ốc")):
+        sec_key = "real_estate"
+    else:
+        sec_key = "default"
+
+    lo, hi = GATE_PB_SANITY_RANGES[sec_key]
+    pb_val = float(pb)
+    if not (lo <= pb_val <= hi):
+        return [f"P/B={pb_val} ngoài ngưỡng an toàn ngành [{lo}, {hi}]. CẦN XÁC MINH THỦ CÔNG."]
+    return []
 
 
 def _classify_source_tier(source: str, tag: str) -> str:
@@ -234,6 +295,64 @@ def reconcile_news_freshness(
     return reconciled, []
 
 
+def reconcile_price_freshness(tech_data: Optional[Dict[str, Any]] = None) -> List[str]:
+    """Check if market price data timestamp is fresh within 7 calendar days (~5 trading days)."""
+    if not tech_data:
+        return []
+    date_val = tech_data.get("as_of_date") or tech_data.get("trade_date") or tech_data.get("date")
+    if not date_val:
+        return []
+    try:
+        trade_date = datetime.strptime(str(date_val)[:10], "%Y-%m-%d").date()
+        days_gap = (datetime.now().date() - trade_date).days
+        if days_gap > 7:
+            return [f"Market Price Stale ({trade_date} is {days_gap} days old > 5 trading days)"]
+    except Exception:
+        pass
+    return []
+
+
+def reconcile_market_cap_consistency(
+    reconciled_price: float,
+    fin_data: Optional[Dict[str, Any]] = None,
+    tech_data: Optional[Dict[str, Any]] = None
+) -> List[str]:
+    """Cross-validate price against market cap and shares outstanding.
+
+    Formula: Implied Price = Market Cap / Shares Outstanding.
+    Flags conflict if discrepancy > 15%.
+    """
+    if reconciled_price <= 0:
+        return []
+
+    combined = {**(tech_data or {}), **(fin_data or {})}
+    cap_bil = combined.get("market_cap_bil") or combined.get("market_cap_billion")
+    cap_vnd = None
+    if cap_bil and float(cap_bil) > 0:
+        cap_vnd = float(cap_bil) * 1e9
+    elif combined.get("market_cap") and float(combined.get("market_cap")) > 0:
+        raw_cap = float(combined.get("market_cap"))
+        cap_vnd = raw_cap * 1e9 if raw_cap < 1e9 else raw_cap
+
+    shares = combined.get("shares_outstanding") or combined.get("issue_share") or combined.get("shares")
+    if not (cap_vnd and shares and float(shares) > 0):
+        return []
+
+    shares_val = float(shares)
+    implied_price_k = (cap_vnd / shares_val) / 1000.0
+
+    if implied_price_k <= 0:
+        return []
+
+    discrepancy_pct = abs(reconciled_price - implied_price_k) / reconciled_price
+    if discrepancy_pct > 0.15:
+        return [
+            f"Cross-Validation Mismatch: Market Cap / Shares implies {implied_price_k:.1f}k VND "
+            f"vs Market Price {reconciled_price:.1f}k VND ({discrepancy_pct*100:.1f}% discrepancy > 15%)."
+        ]
+    return []
+
+
 def _calculate_quality_score(
     price_status: str,
     reconciled_price: float,
@@ -241,14 +360,17 @@ def _calculate_quality_score(
     fin_data: Optional[Dict[str, Any]],
     fin_missing: List[str],
     fin_stale: List[str],
-    news: Optional[List[Dict[str, Any]]]
+    news: Optional[List[Dict[str, Any]]],
+    val_issues: Optional[List[str]] = None,
+    price_stale: Optional[List[str]] = None,
+    cap_conflicts: Optional[List[str]] = None,
 ) -> Tuple[float, str]:
     """Compute 100-point data quality score and assign quality tier."""
     quality_score = 100.0
 
-    if price_status == "CONFLICT":
+    if price_status == STATUS_CONFLICT:
         quality_score -= 65.0 if reconciled_price <= 0.0 else 45.0
-    elif price_status == "ADJUSTED":
+    elif price_status == STATUS_ADJUSTED:
         quality_score -= 10.0
 
     if not tech_data:
@@ -260,7 +382,16 @@ def _calculate_quality_score(
         quality_score -= min(len(fin_missing) * 6.0, 30.0)
 
     if fin_stale:
-        quality_score -= 15.0
+        quality_score -= 20.0
+
+    if price_stale:
+        quality_score -= 20.0
+
+    if val_issues:
+        quality_score -= 40.0
+
+    if cap_conflicts:
+        quality_score -= 35.0
 
     if not news:
         quality_score -= 5.0
@@ -268,13 +399,13 @@ def _calculate_quality_score(
     final_score = max(0.0, min(100.0, round(quality_score, 1)))
 
     if final_score >= 85.0:
-        tier = "HIGH"
+        tier = TIER_HIGH
     elif final_score >= 65.0:
-        tier = "MEDIUM"
+        tier = TIER_MEDIUM
     elif final_score >= 40.0:
-        tier = "LOW"
+        tier = TIER_LOW
     else:
-        tier = "CRITICAL"
+        tier = TIER_CRITICAL
 
     return final_score, tier
 
@@ -293,8 +424,9 @@ def reconcile_data(
     1. Price Consistency & Exchange Limits
     2. Corporate Actions & GDKHQ Status
     3. Financial Statement Completeness & Freshness
-    4. News Catalysts & Source Tiers
-    5. Overall Data Quality Score (0-100) & Quality Tier (HIGH / MEDIUM / LOW / CRITICAL)
+    4. Valuation Multiple Sanity (P/B Sector Guardrail)
+    5. News Catalysts & Source Tiers
+    6. Overall Data Quality Score (0-100) & Quality Tier (HIGH / MEDIUM / LOW / CRITICAL)
 
     Returns:
         Structured audit dictionary with verified facts, warnings, and gate decision.
@@ -306,23 +438,38 @@ def reconcile_data(
 
     # 1. Price Reconciliation
     price_status, reconciled_price, price_issues = reconcile_price(tech_data, exchange=exchange)
-    if price_status == "CONFLICT":
+    if price_status == STATUS_CONFLICT:
         conflicting_data.extend(price_issues)
-    elif price_status == "ADJUSTED":
+    elif price_status == STATUS_ADJUSTED:
         stale_data.extend(price_issues)
+
+    # Price freshness check
+    price_stale_issues = reconcile_price_freshness(tech_data)
+    stale_data.extend(price_stale_issues)
 
     # 2. Corporate Actions
     tagged_actions, is_ex_dividend = reconcile_corporate_actions(tech_data, corporate_actions)
 
-    # 3. Financial Statements
+    # 3. Financial Statements & Freshness
     fin_missing, fin_stale = reconcile_financial_period(fin_data)
     missing_data.extend(fin_missing)
     stale_data.extend(fin_stale)
 
-    # 4. News Catalysts
+    # 4. Valuation Sanity Guardrail (Financial Control Rule 1.2)
+    sec_str = (tech_data or {}).get("sector", "") or (fin_data or {}).get("sector", "")
+    val_issues = reconcile_valuation_sanity(sym, fin_data, sec_str)
+    if val_issues:
+        conflicting_data.extend(val_issues)
+
+    # Cross-validation: Market Cap / Shares vs Price
+    cap_issues = reconcile_market_cap_consistency(reconciled_price, fin_data, tech_data)
+    if cap_issues:
+        conflicting_data.extend(cap_issues)
+
+    # 5. News Catalysts
     reconciled_news, _ = reconcile_news_freshness(news)
 
-    # 5. Compute Data Quality Score (100-point scale)
+    # 6. Compute Data Quality Score (100-point scale)
     quality_score, quality_tier = _calculate_quality_score(
         price_status=price_status,
         reconciled_price=reconciled_price,
@@ -330,12 +477,22 @@ def reconcile_data(
         fin_data=fin_data,
         fin_missing=fin_missing,
         fin_stale=fin_stale,
-        news=news
+        news=news,
+        val_issues=val_issues,
+        price_stale=price_stale_issues,
+        cap_conflicts=cap_issues
     )
 
-    # Determine Gate Status
-    gate_passed = quality_tier in ("HIGH", "MEDIUM") and price_status != "CONFLICT"
-    recommendation_allowed = gate_passed and quality_tier != "LOW"
+    # Determine Gate Status: Hard lock if stale data or conflicts
+    is_stale_data = bool(fin_stale) or bool(price_stale_issues)
+    has_conflict = bool(val_issues) or bool(cap_issues) or price_status == STATUS_CONFLICT
+
+    gate_passed = (
+        quality_tier in (TIER_HIGH, TIER_MEDIUM)
+        and not has_conflict
+        and not is_stale_data
+    )
+    recommendation_allowed = gate_passed and quality_tier != TIER_LOW and not has_conflict and not is_stale_data
 
     # Source Tiers Summary
     source_tiers = {
@@ -346,6 +503,10 @@ def reconcile_data(
 
     # Badge string for UI / Discord
     badge = f"📊 DATA QUALITY: {quality_tier} ({quality_score:.0f}/100)"
+    if is_stale_data:
+        badge += BADGE_STALE_LOCKED
+    elif has_conflict:
+        badge += BADGE_MANUAL_VERIFY
 
     return {
         "symbol": sym,
@@ -354,6 +515,7 @@ def reconcile_data(
         "badge": badge,
         "gate_passed": gate_passed,
         "recommendation_allowed": recommendation_allowed,
+        "is_stale": is_stale_data,
         "price_status": price_status,
         "reconciled_price": reconciled_price,
         "is_ex_dividend": is_ex_dividend,

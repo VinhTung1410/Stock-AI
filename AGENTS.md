@@ -148,3 +148,19 @@ When writing or modifying code in this project, you MUST adhere to the following
     1. Run `ruff check . --output-format=github` across the workspace and guarantee **exit code 0** (zero remaining errors or warnings).
     2. Self-audit against SonarCloud rules: S8572 (`logging.exception`), S3776 (cognitive complexity < 15), S1192 (string literals duplicated >= 3 times), and F401 (eliminate unused imports).
     3. If any violations exist, fix and thoroughly verify them before responding to the user.
+
+### 9. Operational Hardening & Validation Gates (Important)
+
+To prevent severe analytical errors (e.g., stale data, extreme valuation multiples, or excessive risk exposure), the following operational gates and quantitative constraints MUST be strictly enforced in the system architecture:
+
+* **Data Freshness (Staleness Checks):**
+  * Do not rely solely on range checks (e.g., P/E > 0). Always verify the `period` or freshness of the fundamental data.
+  * Stale data must trigger a hard stop (`recommendation_allowed = False`) in the Data Gate (`data_gate.py`) to prevent cascading hallucination in the LLM analysis.
+* **Triangle Cross-Checks:**
+  * When verifying fundamental anomalies (like P/B or ROE), cross-reference multiple fields (e.g., Total Equity, Market Cap, Outstanding Shares) to isolate the root cause (e.g., denominator vs. numerator errors).
+* **PM Arbitration (Gatekeeper Pattern):**
+  * The system must implement deterministic overrides (e.g., `arbitrate_pm_decision` in `ai_analyst.py`) to intercept and correct AI committee decisions when quantitative thresholds are breached (e.g., Thesis Breaker, Falling Knife, FOMO Protection).
+* **Quantitative Risk Constraints (Quant Engine):**
+  * **Liquidity:** Enforce ADV20 (Average Daily Volume 20-day) liquidity tiering constraints before any position sizing.
+  * **Position Sizing:** Utilize Half-Kelly criteria to prevent over-allocation and optimize risk-adjusted returns.
+  * **Sector Concentration:** Enforce sector exposure limits to manage systemic portfolio risk.
