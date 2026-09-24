@@ -71,11 +71,12 @@ def test_trading_bot_value_strategy_skips_stoploss():
             mock_gdkhq.return_value = {"is_gdkhq": False}
             with mock.patch("trading_bot._handle_stop_loss") as mock_sl:
                 with mock.patch("trading_bot._handle_ma20_breakdown") as mock_ma20:
-                    _check_single_holding_risk(row, "2026-09-21", -1.0)
-                    
-                    # Cả 2 hàm cắt lỗ và MA20 đều KHÔNG được gọi vì chiến lược là VALUE
-                    mock_sl.assert_not_called()
-                    mock_ma20.assert_not_called()
+                    with mock.patch("trading_bot.send_trade_signal_alert"):
+                        _check_single_holding_risk(row, "2026-09-21", -1.0)
+                        
+                        # Cả 2 hàm cắt lỗ và MA20 đều KHÔNG được gọi vì chiến lược là VALUE
+                        mock_sl.assert_not_called()
+                        mock_ma20.assert_not_called()
 
 
 def test_sync_corporate_actions():

@@ -231,7 +231,7 @@ def test_prune_unsuitable_watchlist_removes_overheated_auto(tmp_path):
 
         mock_val.side_effect = val_side_effect
 
-        retained, pruned = prune_unsuitable_watchlist(filepath=str(wl_file), tech_map=mock_tech)
+        retained, pruned = prune_unsuitable_watchlist(filepath=str(wl_file), tech_map=mock_tech, notify_discord=False)
 
         retained_syms = [x["symbol"] for x in retained]
         pruned_syms = [x["symbol"] for x in pruned]
@@ -258,7 +258,7 @@ def test_prune_unsuitable_watchlist_removes_trap_auto(tmp_path):
         "GOOD1": {"current_price": 40.0, "rsi14": 52.0, "trap_info": {"is_trap": False}}
     }
 
-    retained, pruned = prune_unsuitable_watchlist(filepath=str(wl_file), tech_map=mock_tech)
+    retained, pruned = prune_unsuitable_watchlist(filepath=str(wl_file), tech_map=mock_tech, notify_discord=False)
 
     assert len(retained) == 1
     assert retained[0]["symbol"] == "GOOD1"

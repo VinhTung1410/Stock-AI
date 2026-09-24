@@ -54,6 +54,7 @@ VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 # Key: (ngày, mã, loại cảnh báo)
 sent_alerts = set()
 sent_scheduled_reports = set()
+last_ato_pruned_date: str = ""
 
 
 def get_vn_time() -> datetime:
@@ -357,12 +358,16 @@ def trigger_scheduled_report(report_type: str, title_desc: str):
     """Tier 2: AI-driven scheduled strategy reports (ATO 08:45, Lunch 11:30, ATC 14:45)."""
     logging.info(f"🚀 Starting scheduled strategy report: {report_type} ({title_desc})")
     try:
-        # Tự động cập nhật các cơ hội mới vào Watchlist trong các khung giờ chiến lược
-        if any(tag in report_type for tag in ["08:45", "ATO", "11:30", "TRƯA"]):
+        # Tự động cập nhật & thanh lọc Watchlist DUY NHẤT 1 LẦN trước phiên ATO (08:45)
+        global last_ato_pruned_date
+        today_str = get_vn_time().strftime("%Y-%m-%d")
+        if any(tag in report_type for tag in ["08:45", "ATO"]) and last_ato_pruned_date != today_str:
             try:
-                sync_auto_watchlist()
+                sync_auto_watchlist(prune_manual=True)
+                last_ato_pruned_date = today_str
+                logging.info(f"✅ Đã hoàn tất thanh lọc Watchlist trước ATO cho ngày {today_str}")
             except Exception:
-                logging.exception("Không thể đồng bộ tự động Watchlist trong phiên báo cáo")
+                logging.exception("Không thể đồng bộ tự động Watchlist trước ATO")
 
         portfolio = load_portfolio()
         df_eval = evaluate_portfolio(portfolio)

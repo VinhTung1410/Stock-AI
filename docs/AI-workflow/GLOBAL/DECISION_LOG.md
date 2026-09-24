@@ -96,4 +96,19 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   3. Xây dựng `paper_trading.py` đo lường Implementation Shortfall (bps) trên snapshot bất biến và theo dõi 2 nhánh Ablation (Quant Only vs Quant + LLM).
 - **Hệ quả:** Cung cấp bằng chứng thực nghiệm minh bạch, loại bỏ hoàn toàn look-ahead bias và cho phép đo lường chính xác giá trị thặng dư (Alpha) thực tế của AI.
 
+---
+
+### [ADR-008] Nối dây Tín hiệu Web AI sang Discord DM, Khung giờ Thanh lọc Watchlist ATO & Cách ly Kiểm thử Tuyệt đối
+- **Ngày quyết định:** 2026-09-24
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Reviewer
+- **Bối cảnh & Vấn đề:** 
+  1. Khi phân tích cổ phiếu trên Web Tab 5 đạt điều kiện MUA (như case TCB ID 37), hệ thống chỉ ghi Supabase mà không thông báo đến Discord DM của Client.
+  2. Việc chạy unit test tự động làm rò rỉ mã ảo (`HOT1`, `TRAP1`, synthetic `FPT -20%`) vào Discord DM thật của Client do thiếu mock các hàm `send_*_alert`.
+  3. Tính năng thanh lọc Watchlist bị kích hoạt nhiều lần trong ngày, gây loãng thông tin.
+- **Quyết định lựa chọn:**
+  1. Bổ sung Web-to-Discord hook trong `ai_analyst.py`: Tự động gửi Rich Embed khi tín hiệu là `MUA` / `BUY` kèm đầy đủ thông số Target, Stop-loss, MoS và F-Score.
+  2. Bổ sung chốt chặn `last_ato_pruned_date` trong `trading_bot.py`: Đảm bảo thanh lọc Watchlist chỉ diễn ra đúng 1 lần/ngày trước phiên ATO (08:45).
+  3. Chuẩn hóa quy định kiểm thử: 100% unit tests phải mock toàn bộ kênh mạng gửi Discord (`send_trade_signal_alert`, `send_watchlist_pruned_alert`, `send_discord_dm`, `send_discord_webhook`).
+- **Hệ quả:** Kênh Discord DM của Client nhận trọn vẹn mọi tín hiệu MUA tức thì từ Web, được bảo vệ tuyệt đối khỏi dữ liệu test rác, và không bị spam thông báo dọn dẹp danh mục trong phiên.
+
 

@@ -1077,8 +1077,26 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
                 "status_ma20": tech_data.get("status_ma20")
             }
         )
-    except Exception as db_err:
-        logging.warning(f"Không thể lưu snapshot tín hiệu vào Supabase: {db_err}")
+    except Exception:
+        logging.exception("Không thể lưu snapshot tín hiệu vào Supabase")
+
+    # TỰ ĐỘNG PHÁT CẢNH BÁO MUA VÀO DISCORD DM CỦA CLIENT (WEB-TO-DISCORD HOOK)
+    action_state = str(hard_gates.get("action_state", "")).upper()
+    if "MUA" in action_state or "BUY" in action_state:
+        try:
+            from discord_alerts import send_trade_signal_alert
+            trigger_reason = f"[WEB AI ANALYST] {hard_gates.get('decision_tag', '')} | MoS: {hard_gates.get('mos_pct', 0.0):+.2f}% | F-Score: {f_score_res.get('score', 0)}/9"
+            send_trade_signal_alert(
+                symbol=symbol,
+                action="MUA",
+                current_price=curr_price,
+                trigger_reason=trigger_reason,
+                target_price=hard_gates.get("price_target"),
+                stop_loss=hard_gates.get("stop_loss"),
+            )
+            logging.info(f"🚀 Đã bắn thông báo MUA Web của {symbol} vào Discord DM!")
+        except Exception:
+            logging.exception("Lỗi khi bắn cảnh báo MUA từ Web vào Discord DM")
 
     return {
         "status": "SUCCESS",
