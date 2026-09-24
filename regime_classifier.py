@@ -117,3 +117,29 @@ def classify_market_regime(
     except Exception:
         logging.exception("Failed to classify market regime for given index data.")
         return pd.Series(REGIME_SIDEWAYS, index=df_index.index)
+
+
+def is_macro_circuit_breaker_active(
+    df_index: pd.DataFrame,
+    method: str = METHOD_MA200_SLOPE,
+) -> tuple[bool, str]:
+    """Check if Macro Circuit Breaker is active to enforce Cash Mode.
+
+    Returns:
+        tuple (is_active, reason):
+        - (True, "VN-INDEX_DOWNTREND_CIRCUIT_BREAKER") if market is in DOWNTREND.
+        - (False, "MARKET_HEALTHY_OR_SIDEWAYS") otherwise.
+    """
+    if df_index.empty or "close" not in df_index.columns:
+        return False, "INDEX_DATA_UNAVAILABLE"
+
+    regimes = classify_market_regime(df_index, method=method)
+    if regimes.empty:
+        return False, "REGIME_SERIES_EMPTY"
+
+    latest_regime = regimes.iloc[-1]
+    if latest_regime == REGIME_DOWNTREND:
+        return True, "VN-INDEX_DOWNTREND_CIRCUIT_BREAKER"
+
+    return False, "MARKET_HEALTHY_OR_SIDEWAYS"
+

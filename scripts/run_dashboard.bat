@@ -12,5 +12,5 @@ if exist "%USERPROFILE%\.venv\Scripts\activate.bat" (
 ) else if exist ".venv\Scripts\activate.bat" (
     call ".venv\Scripts\activate.bat"
 )
-streamlit run app.py
+python -m streamlit run app.py
 pause

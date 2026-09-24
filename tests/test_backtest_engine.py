@@ -5,14 +5,16 @@ from __future__ import annotations
 import pandas as pd
 
 from backtest_engine import (
+    REGIME_FULL,
     RegimeBacktestEngine,
     TradeRecord,
+    breakdown_by_regime,
     calculate_performance_metrics,
     calculate_slippage_price,
     can_execute_t_plus_2,
     check_hose_ceiling_unfilled,
 )
-from regime_classifier import REGIME_SIDEWAYS, REGIME_UPTREND
+from regime_classifier import REGIME_DOWNTREND, REGIME_SIDEWAYS, REGIME_UPTREND
 
 
 def test_hose_ceiling_unfilled():
@@ -240,4 +242,38 @@ def test_stop_loss_trigger():
     assert len(filled) == 1
     assert filled[0].exit_reason == "STOP_LOSS"
     assert filled[0].net_pnl < 0
+
+
+def test_breakdown_by_regime_with_unaligned_benchmark_and_regimes():
+    """Verify breakdown_by_regime handles mismatched index lengths without IndexingError."""
+    dates_stock = pd.date_range("2024-01-01", periods=20, freq="B")
+    dates_bench = pd.date_range("2023-10-01", periods=60, freq="B")  # Different length and start
+
+    equity_curve = pd.Series([100_000_000.0 * (1.0 + 0.001 * i) for i in range(20)], index=dates_stock)
+    bench_returns = pd.Series([0.002] * 60, index=dates_bench)
+    regimes = pd.Series([REGIME_UPTREND] * 10 + [REGIME_SIDEWAYS] * 10, index=dates_stock)
+
+    trades = [
+        TradeRecord(
+            symbol="HPG",
+            entry_date=dates_stock[1],
+            entry_price=25.0,
+            exit_price=27.0,
+            exit_date=dates_stock[8],
+            shares=1000,
+            net_pnl=2000.0,
+            pnl_pct=8.0,
+            regime=REGIME_UPTREND,
+            is_filled=True,
+        )
+    ]
+
+    breakdown = breakdown_by_regime(trades, equity_curve, bench_returns, regimes)
+
+    assert REGIME_FULL in breakdown
+    assert REGIME_UPTREND in breakdown
+    assert REGIME_DOWNTREND in breakdown
+    assert REGIME_SIDEWAYS in breakdown
+    assert breakdown[REGIME_UPTREND]["total_trades"] == 1
+    assert breakdown[REGIME_DOWNTREND]["total_trades"] == 0
 

@@ -61,15 +61,15 @@ SYSTEM_LANGUAGE_RULE = """
 ### 2.2. Tier 2: Deterministic Python Sanitizer (`sanitize_ai_text`)
 Even if probabilistic LLM sampling exhibits variance, `sanitize_ai_text()` guarantees safety at the Python execution layer:
 1. **Financial Token Translation Dictionary:**
-   - `证券公司` ➔ `Công ty Chứng khoán`
-   - `证券` ➔ `Chứng khoán`
-   - `股票` ➔ `Cổ phiếu`
-   - `银行` ➔ `Ngân hàng`
-   - `变动` ➔ `Biến động`
-   - `风险` ➔ `Rủi ro`
-   - `投资` ➔ `Đầu tư`
-   - `买入` ➔ `Mua`
-   - `卖出` ➔ `Bán`
+   - `证券公司` ➔ `Công ty Chứng khoán` *(Securities Corporation)*
+   - `证券` ➔ `Chứng khoán` *(Securities)*
+   - `股票` ➔ `Cổ phiếu` *(Stock / Shares)*
+   - `银行` ➔ `Ngân hàng` *(Bank)*
+   - `变动` ➔ `Biến động` *(Price Fluctuation)*
+   - `风险` ➔ `Rủi ro` *(Risk)*
+   - `投资` ➔ `Đầu tư` *(Investment)*
+   - `买入` ➔ `Mua` *(Buy)*
+   - `卖出` ➔ `Bán` *(Sell)*
 2. **CJK Regex Elimination Gate:** `re.sub(r'[\u4e00-\u9fff]+', '', text)` removes any remaining glyphs.
 
 ---
@@ -157,36 +157,36 @@ For real-time market supervision (`trading_bot.py`):
 
 ### 5.2. Standardized Action Badges
 Every formal outlook or recommendation must include an official visual badge:
-- 🟢 **`[MUA MỚI]`** / 🟢 **`[MUA GOM]`**: Capital confluence + technical breakout confirmed.
-- 🔵 **`[NẮM GIỮ]`** / 🔵 **`[GỒNG LÃI]`**: Trading above MA20, strong institutional accumulation.
-- 🟡 **`[THEO DÕI]`** / 🟡 **`[CHỜ ĐIỀU CHỈNH]`**: Healthy base formation, awaiting confirmation.
-- 🟠 **`[CHỐT LỜI]`** / 🟠 **`[HẠ TỶ TRỌNG]`**: Target reached, RSI overbought, taking partial profit.
-- 🔴 **`[CẮT LỖ]`** / 🔴 **`[BÁN DỨT KHOÁT]`**: Stop-loss breached (-5%, -7%, or heavy-volume breakdown).
-- ⛔ **`[ĐỨNG NGOÀI / TRÁNH BẪY]`**: Deceptive positive news with broken technicals — strictly avoid catching falling knives.
+- 🟢 **`[BUY / MUA MỚI]`** / 🟢 **`[ACCUMULATE / MUA GOM]`**: Capital confluence + technical breakout confirmed.
+- 🔵 **`[HOLD / NẮM GIỮ]`** / 🔵 **`[RIDE PROFIT / GỒNG LÃI]`**: Trading above MA20, strong institutional accumulation.
+- 🟡 **`[WATCH / THEO DÕI]`** / 🟡 **`[AWAIT PULLBACK / CHỜ ĐIỀU CHỈNH]`**: Healthy base formation, awaiting confirmation.
+- 🟠 **`[TAKE PROFIT / CHỐT LỜI]`** / 🟠 **`[TRIM / HẠ TỶ TRỌNG]`**: Target reached, RSI overbought, taking partial profit.
+- 🔴 **`[STOP LOSS / CẮT LỖ]`** / 🔴 **`[EXIT / BÁN DỨT KHOÁT]`**: Stop-loss breached (-5%, -7%, or heavy-volume breakdown).
+- ⛔ **`[STAND ASIDE / ĐỨNG NGOÀI]`**: Deceptive positive news with broken technicals — strictly avoid catching falling knives.
 
 ### 5.3. Hierarchy & Anti-Numbering Protocol
 - **PROHIBITED:** Continuous sequential numbering like `1. Stock A`, `2. Catalyst`, `3. Entry Zone`, `4. Target`, `5. Stop Loss`, `6. Technicals`... which breaks visual hierarchy.
 - **MANDATORY TWO-LEVEL INDENTATION:**
   - **Level 1 (Ticker Header):** Bullet `• ` with bold ticker and badge:
-    `• Cổ phiếu **SSI** (Chứng khoán) — 🟢 **[MUA GOM]**`
+    `• Stock **SSI** (Securities) — 🟢 **[BUY / MUA GOM]**`
   - **Level 2 (Attributes):** Two-space indent with hyphen `- `:
-    `  - **Xúc tác:** Thu hút dòng tiền đón sóng thanh khoản.`  
-    `  - **Vùng gom:** 20.1 - 20.5k (Hiện tại: **20.3k**)`  
-    `  - **Mục tiêu:** 22.33k | **Dừng lỗ:** 19.55k | **R:R:** 2.7`  
-    `  - **Kỹ thuật:** Vận động tích lũy trên MA20, RSI đạt 60.2.`  
+    `  - **Catalyst / Xúc tác:** Inflow momentum riding liquidity expansion wave.`  
+    `  - **Accumulation Zone / Vùng gom:** 20.1 - 20.5k (Current: **20.3k**)`  
+    `  - **Target / Mục tiêu:** 22.33k | **Stop-loss / Dừng lỗ:** 19.55k | **R:R:** 2.7`  
+    `  - **Technicals / Kỹ thuật:** Base consolidation above MA20, RSI at 60.2.`  
 
 ### 5.4. Bifurcated Trading Styles (T+ Breakout vs. Position Accumulation)
 To ensure clarity and prevent mathematical distortion of the Risk/Reward ($R:R$) ratio, signals must explicitly declare one of two operational styles:
 
 1. ⚡ **Style 1: T+ SWING / BREAKOUT SNIPER**
    - **Focus:** Momentum breakouts backed by institutional volume spikes.
-   - **Badges:** ⚡ **`[LƯỚT SÓNG T+]`** or 🚀 **`[BREAKOUT MUA MỚI]`**.
+   - **Badges:** ⚡ **`[T+ SWING / LƯỚT SÓNG T+]`** or 🚀 **`[NEW BREAKOUT / BREAKOUT MUA MỚI]`**.
    - **Entry Tolerance:** Tight entry band $\le 3$ price ticks (max $\pm 0.3\% - 0.5\%$). Single lump-sum execution. Chasing prices above the ceiling is strictly blocked.
    - **R:R Calculation:** Must use the upper bound of the entry range to reflect worst-case entry risk.
 
 2. 💎 **Style 2: POSITION ACCUMULATION / VALUE MEDIUM-TERM**
    - **Focus:** High-quality fundamental bluechips (**FPT**, **HPG**, **MWG**, **VHM**...).
-   - **Badges:** 💎 **`[GOM HÀNG VỊ THẾ]`** or 🟢 **`[MUA GOM TÍCH LŨY]`**.
+   - **Badges:** 💎 **`[POSITION ENTRY / GOM HÀNG VỊ THẾ]`** or 🟢 **`[ACCUMULATE / MUA GOM TÍCH LŨY]`**.
    - **Accumulation Zone:** Allowed spread of $1.5\% - 2.5\%$.
    - **Mandatory 3-Step Tranche Execution:**
      - *Tranche 1 (30% Scout):* Entry at upper edge of accumulation band.

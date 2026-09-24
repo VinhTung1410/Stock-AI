@@ -315,16 +315,18 @@ def breakdown_by_regime(
     for reg in (REGIME_UPTREND, REGIME_DOWNTREND, REGIME_SIDEWAYS):
         sub_trades = [t for t in trades if t.regime == reg]
         if regimes is not None and not equity_curve.empty:
-            reg_mask = (regimes == reg)
+            aligned_regimes = regimes.reindex(equity_curve.index).ffill().bfill()
+            mask_np = (aligned_regimes == reg).to_numpy(dtype=bool)
             daily_ret = equity_curve.pct_change().fillna(0.0)
             reg_daily_ret = daily_ret.copy()
-            reg_daily_ret[~reg_mask] = 0.0
+            reg_daily_ret.iloc[~mask_np] = 0.0
             sub_equity = (1.0 + reg_daily_ret).cumprod() * (equity_curve.iloc[0] if not equity_curve.empty else 1.0)
 
             sub_bench = None
             if benchmark_returns is not None and not benchmark_returns.empty:
-                sub_bench = benchmark_returns.copy()
-                sub_bench[~reg_mask] = 0.0
+                aligned_bench = benchmark_returns.reindex(equity_curve.index).fillna(0.0)
+                aligned_bench.iloc[~mask_np] = 0.0
+                sub_bench = aligned_bench
 
             breakdown[reg] = calculate_performance_metrics(sub_trades, sub_equity, sub_bench)
         else:
@@ -406,6 +408,8 @@ def _generate_quant_core_signals(
     f_score: int = 7,
     mos_pct: float = 20.0,
     z_score: float = 2.5,
+    regimes: pd.Series | None = None,
+    enforce_regime_gate: bool = False,
 ) -> pd.Series:
     """Generate Quant Core Strategy signals based on FA health, MoS, and TA momentum."""
     close = df_price["close"].astype(float)
@@ -428,6 +432,12 @@ def _generate_quant_core_signals(
 
     # Buy: Upward trend, reasonable RSI (not overbought FOMO)
     buy_cond = (close >= ma20) & (ma20 >= ma50 * 0.98) & (rsi < 70) & (rsi >= 40)
+
+    # Macro Regime Gate (Cash Mode): Block buys during Downtrend
+    if enforce_regime_gate and regimes is not None:
+        aligned_regimes = regimes.reindex(close.index).fillna(REGIME_SIDEWAYS)
+        buy_cond = buy_cond & (aligned_regimes != REGIME_DOWNTREND)
+
     buy_prev = buy_cond.shift(1).fillna(False).astype(bool)
     buy_trigger = buy_cond & (~buy_prev)
 
@@ -447,6 +457,8 @@ def generate_signals_by_strategy(
     f_score: int = 7,
     mos_pct: float = 20.0,
     z_score: float = 2.5,
+    regimes: pd.Series | None = None,
+    enforce_regime_gate: bool = False,
 ) -> pd.Series:
     """Generate sequential trade signals according to selected investment strategy."""
     if df_price.empty or "close" not in df_price.columns:
@@ -457,7 +469,15 @@ def generate_signals_by_strategy(
         return _generate_ma_crossover_signals(close)
     if strategy == STRATEGY_RSI_REVERSION:
         return _generate_rsi_reversion_signals(close)
-    return _generate_quant_core_signals(df_price, f_score=f_score, mos_pct=mos_pct, z_score=z_score)
+    return _generate_quant_core_signals(
+        df_price,
+        f_score=f_score,
+        mos_pct=mos_pct,
+        z_score=z_score,
+        regimes=regimes,
+        enforce_regime_gate=enforce_regime_gate,
+    )
+
 
 
 
@@ -584,6 +604,7 @@ class RegimeBacktestEngine:
         adv20: pd.Series | None = None,
         benchmark_returns: pd.Series | None = None,
         symbol: str = "TEST",
+        enforce_regime_gate: bool = False,
     ) -> BacktestResult:
         """Run sequential backtest honoring HOSE ceiling, T+2.5, stop-loss, and liquidation rules."""
         if df_price.empty or "close" not in df_price.columns:
@@ -607,6 +628,10 @@ class RegimeBacktestEngine:
             curr_regime = regimes.iloc[i] if (regimes is not None and i < len(regimes)) else REGIME_SIDEWAYS
             curr_sig = signals.iloc[i] if i < len(signals) else 0
 
+            # Macro Circuit Breaker (Cash Mode): Suppress buy signals during Downtrend
+            if enforce_regime_gate and curr_regime == REGIME_DOWNTREND and curr_sig == 1:
+                curr_sig = 0
+
             if active_trade is not None:
                 active_trade, cash = self._process_exit(
                     active_trade, curr_date, curr_close, curr_sig, entry_idx, i, total_bars, cash, trades
@@ -618,6 +643,7 @@ class RegimeBacktestEngine:
                 if new_trade is not None:
                     active_trade = new_trade
                     entry_idx = new_idx
+
 
             curr_pos_val = (active_trade.shares * curr_close) if active_trade else 0.0
             equity.append(cash + curr_pos_val)

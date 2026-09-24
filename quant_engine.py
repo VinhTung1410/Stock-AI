@@ -1001,3 +1001,96 @@ def check_portfolio_concentration(
         "downgraded_candidates": downgraded,
         "warnings": warnings
     }
+
+
+def calculate_drawdown_controlled_sizing(
+    half_kelly_f: float,
+    consecutive_losses: int = 0,
+    current_drawdown_pct: float = 0.0,
+    max_cap_pct: float = 0.20,
+) -> tuple[float, str]:
+    """Calculate adaptive position size based on Half-Kelly, losing streaks, and drawdown.
+
+    Rules:
+    - If consecutive_losses >= 2 or current_drawdown_pct >= 5.0%:
+      Reduce position size by 50% (Half-Size Defense) to prevent revenge trading.
+    - Caps position sizing at max_cap_pct (default: 20%).
+    """
+    if half_kelly_f <= 0:
+        return 0.0, "KELLY_NON_POSITIVE"
+
+    base_size = min(half_kelly_f, max_cap_pct)
+
+    if consecutive_losses >= 2 or current_drawdown_pct >= 5.0:
+        defensive_size = round(base_size * 0.5, 4)
+        return defensive_size, "DRAWDOWN_DEFENSE_HALF_SIZE"
+
+    return round(base_size, 4), "STANDARD_HALF_KELLY"
+
+
+def check_adv20_liquidity_absorption(
+    order_val_vnd: float,
+    adv20_vnd: float,
+    max_absorption_pct: float = 0.10,
+) -> tuple[bool, float, str]:
+    """Verify that order size does not exceed maximum ADV20 liquidity absorption limit.
+
+    Args:
+        order_val_vnd: Target order value in VND.
+        adv20_vnd: Average daily trading value over 20 days in VND.
+        max_absorption_pct: Maximum allowed absorption percentage (default: 10%).
+
+    Returns:
+        tuple (is_passed, allowed_order_val_vnd, reason)
+    """
+    if adv20_vnd <= 0:
+        return False, 0.0, "ADV20_ZERO_OR_NEGATIVE"
+
+    max_allowed = adv20_vnd * max_absorption_pct
+    if order_val_vnd > max_allowed:
+        return False, round(max_allowed, 2), "EXCEEDS_MAX_ADV20_ABSORPTION"
+
+    return True, round(order_val_vnd, 2), "LIQUIDITY_ABSORPTION_OK"
+
+
+def evaluate_smart_money_flow(
+    foreign_flow: dict | None = None,
+    prop_flow: dict | None = None,
+    heavy_sell_threshold_bil: float = -20.0,
+    accumulation_threshold_bil: float = 15.0,
+) -> dict:
+    """Evaluate institutional smart money flow from Foreign and Proprietary trading.
+
+    Returns:
+        dict containing institutional status, flags, and recommendation guidance.
+    """
+    net_foreign = float(foreign_flow.get("net_val_bil", 0.0)) if foreign_flow else 0.0
+    net_prop = float(prop_flow.get("net_val_bil", 0.0)) if prop_flow else 0.0
+    total_net = net_foreign + net_prop
+
+    heavy_selling = (net_foreign < heavy_sell_threshold_bil) or (total_net < heavy_sell_threshold_bil)
+    strong_accumulation = (net_foreign > accumulation_threshold_bil) or (total_net > accumulation_threshold_bil)
+
+    if heavy_selling:
+        status = "INSTITUTIONAL_HEAVY_DISTRIBUTION"
+        buy_allowed = False
+        reason = "Khối ngoại / Tự doanh đang bán ròng quy mô lớn (> 20 tỷ VNĐ)."
+    elif strong_accumulation:
+        status = "INSTITUTIONAL_STRONG_ACCUMULATION"
+        buy_allowed = True
+        reason = "Dòng tiền tổ chức mua ròng mạnh mẽ, hỗ trợ đà tăng giá."
+    else:
+        status = "INSTITUTIONAL_NEUTRAL"
+        buy_allowed = True
+        reason = "Dòng tiền tổ chức ở mức cân bằng, không có áp lực bán đột biến."
+
+    return {
+        "status": status,
+        "net_foreign_bil": round(net_foreign, 2),
+        "net_prop_bil": round(net_prop, 2),
+        "total_net_bil": round(total_net, 2),
+        "heavy_selling": heavy_selling,
+        "buy_allowed": buy_allowed,
+        "reason": reason,
+    }
+

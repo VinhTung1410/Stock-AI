@@ -20,7 +20,11 @@
    - Soát lại các interface đồng bộ và bất đồng bộ (Sync/Async). Nếu phát hiện copy-paste logic xác thực hoặc dựng prompt, yêu cầu Senior Dev trừu tượng hóa thành hàm helper chung ngay lập tức.
 4. **Kiểm toán An ninh & Bí mật (Security & Secret Leak Audit):**
    - Rà soát toàn bộ `git diff` để đảm bảo không có bất kỳ API key, token bí mật (Vnstock, Discord, Supabase, Gemini), hay đường dẫn local nhạy cảm nào bị lọt vào commit.
-5. **Ký duyệt Đóng dấu LGTM (Looks Good To Me):**
+5. **Kiểm tra File YAML & Cấu hình CI/CD (YAML & Workflow Audit):**
+   - **Cú pháp YAML & GitHub Actions Schema:** Kiểm tra cấu trúc thụt lề (indentation), tính hợp lệ của các file trong `.github/workflows/*.yml`.
+   - **Đồng bộ Kiểm thử & Coverage:** Đảm bảo khi có module định lượng mới hoặc chiến lược mới, lệnh `pytest` trong `ci.yml` phải có đầy đủ cờ `--cov=<module_name>` để báo cáo coverage lên SonarCloud. Tuyệt đối không cho phép dùng `--ignore` để né tránh test.
+   - **An toàn Bảo mật Pipeline:** Tuyệt đối không hardcode secret/token trong file YAML; các dependencies và GitHub Actions phải được pin phiên bản rõ ràng (Pinned Version).
+6. **Ký duyệt Đóng dấu LGTM (Looks Good To Me):**
    - Khi toàn bộ các tiêu chí đều xanh, Reviewer phát hành thông điệp xác nhận LGTM chính thức trong `TASK-xxxx.md` và cho phép tiến hành báo cáo Client nghiệm thu.
 
 ---
@@ -32,7 +36,9 @@ Reviewer CÓ QUYỀN VÀ TRÁCH NHIỆM BÁC BỎ (REJECT) pull request/task n�
 - [ ] Xuất hiện `logging.error` bên trong khối bắt ngoại lệ `except Exception`.
 - [ ] Tỷ lệ code trùng lặp mới vượt quá 3.0%.
 - [ ] QA Lead chưa nộp đầy đủ file unit test hoặc độ phủ kiểm thử < 80%.
-- [ ] Xuất hiện hardcoded secret trong code.
+- [ ] File `.github/workflows/*.yml` sai cú pháp, thiếu khai báo `--cov` cho module mới, hoặc hardcode secrets.
+- [ ] Xuất hiện hardcoded secret trong code hoặc cấu hình.
+
 
 ---
 

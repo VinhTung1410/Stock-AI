@@ -137,17 +137,17 @@ flowchart TD
     ConvictionCalc --> ScoreCheck{Conviction Score}
     
     ScoreCheck -->|< 55 pts| Reject[⛔ CAUTION / REJECT]
-    ScoreCheck -->|55 - 69 pts| Watch[🟡 WATCH_CONFIRMATION<br/>Radar Lướt sóng T+ / Chờ nền]
+    ScoreCheck -->|55 - 69 pts| Watch[🟡 WATCH_CONFIRMATION<br/>T+ Swing Radar / Base Building]
     ScoreCheck -->|≥ 70 pts| CooldownCheck{In 5-Day Cooldown?}
     
-    CooldownCheck -->|Yes| CooldownDowngrade[⏳ WATCH_CONFIRMATION<br/>Đang Cooldown 5 ngày]
+    CooldownCheck -->|Yes| CooldownDowngrade[⏳ WATCH_CONFIRMATION<br/>Active 5-Day Cooldown]
     CooldownCheck -->|No| PortGuard{Active Positions < 8?}
     
-    PortGuard -->|Full ≥ 8| PortDowngrade[🛡️ WATCH_CONFIRMATION<br/>Chờ thu hồi vốn]
+    PortGuard -->|Full ≥ 8| PortDowngrade[🛡️ WATCH_CONFIRMATION<br/>Awaiting Capital Recycling]
     PortGuard -->|Available| BudgetCap{Daily Signal Budget<br/>Max 2 BUY / day}
     
-    BudgetCap -->|Top 1-2| ApprovedBUY[🟢 RECOMMEND_BUY<br/>Ghi nhận Cooldown 5 ngày]
-    BudgetCap -->|Rank 3+| OverflowWatch[🎯 WATCH_CONFIRMATION<br/>Vượt hạn mức ngân sách]
+    BudgetCap -->|Top 1-2| ApprovedBUY[🟢 RECOMMEND_BUY<br/>Initiate 5-Day Cooldown]
+    BudgetCap -->|Rank 3+| OverflowWatch[🎯 WATCH_CONFIRMATION<br/>Exceeds Daily Budget]
 ```
 
 ### 1. 4-Pillar Conviction Scoring Matrix (100 Points)
@@ -192,7 +192,7 @@ graph TD
     Tab2 --- T2_Desc["Lightweight Charts, MACD/RSI Overlays, Historical P/E & P/B Bands"]
     Tab3 --- T3_Desc["Real-time CafeF RSS parsing & Catalyst Tagging Engine"]
     Tab4 --- T4_Desc["Deterministic Python Gates + Gemini 2.1 Narrative"]
-    Tab5 --- T5_Desc["Post-Market Audit (15:15), Win Rate, Profit Factor, MFE/MAE"]
+    Tab5 --- T5_Desc["Regime Backtest v4.0, Paper Trading Shortfall, Post-Market Audit (15:15), MFE/MAE"]
 ```
 
 | Tab / Module | Business Function (Technical BA Scope) | Quant & Analytical Value |
@@ -201,7 +201,7 @@ graph TD
 | **Tab 2: Technical & Valuation Charts** | Embedded 60 FPS TradingView charts with 8 timeframes + Apache ECharts P/E & P/B historical valuation bands. | Confluence analysis: bridges technical timing with multi-year valuation percentile anchoring. |
 | **Tab 3: Macro Intelligence** | Automated real-time RSS ingestion with NLP keyword extraction for sector drivers and insider transactions. | Supplies catalyst signals for the 4-pillar conviction scoring engine. |
 | **Tab 4: AI Quantamental Analyst** | 2-Pass CFA-grade investment report generation with anti-hallucination sanitization. | Delivers institutional reports separating Fair Value (Intrinsic) from Price Target (Expected horizon). |
-| **Tab 5: Alpha Tracker (Audit Trail)** | Immutable audit dashboard backed by Supabase PostgreSQL for signal performance verification. | Computes cumulative Alpha vs VN-Index benchmark, Win Rate, Profit Factor, and MFE/MAE price excursions. |
+| **Tab 5: Alpha Tracker & Backtest** | Immutable audit dashboard (Supabase) + Regime Backtest v4.0 (HOSE T+2.5, slippage, VN-Index benchmark) + Paper Trading shortfall tracker. | Computes cumulative Alpha vs VN-Index, Sharpe/Calmar, Win Rate, Profit Factor, Implementation Shortfall (bps), and MFE/MAE excursions. |
 
 > 🌐 **Note for International Recruiters:** The application consumes live market feeds from the Vietnam Stock Exchange (HOSE/HNX). While stock data and market narratives are localized to the Vietnamese market, the entire data engineering pipeline, valuation formulas (DCF, DDM, SOTP), risk management gates (Piotroski, Altman Z, Kelly, Cooldown), and test architecture adhere strictly to international CFA & Wall Street standards.
 
@@ -213,12 +213,12 @@ graph TD
 |---|---|
 | **Frontend** | Streamlit · TradingView Lightweight Charts · Apache ECharts |
 | **AI** | Google Gemini API (`gemini-3.5-flash-lite`) |
-| **Quantitative** | Python · pandas · numpy |
+| **Quantitative & Backtest** | Python · pandas · numpy · Regime Classification · Shortfall Framework |
 | **Database** | Supabase (PostgreSQL) — signal lifecycle & audit |
 | **Data Source** | vnstock (VCI) · Google News RSS |
 | **Alerts** | Discord Bot + Webhook (Rich Embed) |
 | **Deployment** | Render.com (Web Service + Background Worker) |
-| **Testing & CI/CD** | pytest · pytest-cov · ruff · SonarQube Cloud · pip-audit |
+| **Testing & CI/CD** | pytest (83%+ cov) · ruff · SonarQube Cloud (0 Code Smells) · pip-audit |
 
 ---
 
@@ -230,8 +230,8 @@ Every code change pushed to `main` is subjected to a 5-stage automated enterpris
 graph LR
     Push[git push] --> Lint[1. Ruff Linter]
     Push --> SecAudit[2. pip-audit CVE Scan]
-    Lint --> Test[3. Pytest 35 Unit Tests]
-    Test --> Coverage[Generate coverage.xml]
+    Lint --> Test[3. Pytest 35+ Unit Tests]
+    Test --> Coverage[Generate coverage.xml 83%+]
     Coverage --> Sonar[4. SonarQube Scan]
     SecAudit --> Sonar
     Sonar --> Gate{Quality Gate Passed?}
@@ -239,13 +239,13 @@ graph LR
     Gate -->|No| Reject[❌ Block Deployment]
 ```
 
-1. **Code Style & Linting (`ruff`)**: Strict PEP 8 enforcement, zero unused imports, clean formatting.
+1. **Code Style & Linting (`ruff`)**: Strict PEP 8 enforcement, sorted imports (I001), zero unused imports, clean formatting.
 2. **Supply Chain Security (`pip-audit`)**: Continuous scanning of pinned dependencies against known CVE databases.
-3. **Quant Gates & Offline Tests (`pytest`)**: 35 deterministic unit tests covering Piotroski F-Score (0-9), Altman Z-Score, ATR stop clamping, Margin of Safety, Kelly fractions, GDKHQ dividend gap protection, and anti-chasing filters.
+3. **Quant Gates & Offline Tests (`pytest`)**: 35+ deterministic unit tests covering Piotroski F-Score (0-9), Altman Z-Score, ATR stop clamping, Margin of Safety, Kelly fractions, GDKHQ dividend gap protection, and anti-chasing filters (**83%+ test coverage**).
 4. **Code Quality & Security (`SonarQube Cloud`)**:
    - **Security**: Grade A (0 Vulnerabilities, deterministic dependency locking)
    - **Reliability**: Grade A (0 Bugs, linear non-backtracking parsing)
-   - **Maintainability**: Grade A (Clean cognitive complexity, no duplicate branches)
+   - **Maintainability**: Grade A (0 Code Smells, Cognitive Complexity < 15, zero string duplication)
    - **Coverage Integration**: Automatic ingestion of `coverage.xml` test report.
 5. **Production Quality Gate (`Render.com`)**: Webhook deployment is only triggered after all previous gates pass with 100% green status.
 
@@ -253,13 +253,23 @@ graph LR
 
 ## Quick Start
 
-### 1. Clone & install
+### 1. Clone & Environment Setup
 
+**Windows (PowerShell):**
+```powershell
+git clone https://github.com/VinhTung1410/Stock-AI.git
+cd Stock-AI
+python -m venv $HOME\.venv
+& "$HOME\.venv\Scripts\Activate.ps1"
+pip install -r requirements.txt
+```
+
+**macOS / Linux (Bash):**
 ```bash
 git clone https://github.com/VinhTung1410/Stock-AI.git
 cd Stock-AI
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python3 -m venv ~/.venv
+source ~/.venv/bin/activate
 pip install -r requirements.txt
 ```
 
@@ -272,16 +282,20 @@ cp .env.example .env
 
 ### 3. Run the dashboard
 
-```bash
-streamlit run app.py
-# Opens at http://localhost:8501
-```
+- **Option A — 1-Click Launch (Windows):** Double-click [`scripts/run_dashboard.bat`](scripts/run_dashboard.bat) *(automatically sets UTF-8 and launches via Python engine)*.
+- **Option B — Command Line:**
+  ```powershell
+  python -m streamlit run app.py
+  # Opens at http://localhost:8501
+  ```
+  *(Note: Running via `python -m streamlit` avoids Windows Application Control / SmartScreen policy blocks on standalone `.exe` binaries).*
 
-### 4. Run tests
+### 4. Run tests & quality audit
 
 ```bash
 pytest tests/ -m offline -v     # Unit tests (no API needed)
 pytest tests/ -v                # All tests (requires .env keys)
+ruff check .                    # Linter check (zero errors/warnings)
 ```
 
 ---
@@ -303,6 +317,8 @@ pytest tests/ -v                # All tests (requires .env keys)
 ```
 Stock-AI/
 ├── app.py                  # Streamlit entrypoint & UI orchestration
+├── backtest_engine.py      # Regime-based backtest engine (HOSE T+2.5, slippage, VN-Index benchmark)
+├── paper_trading.py        # Forward testing & implementation shortfall framework (bps)
 ├── data_engine.py          # Data layer: vnstock, indicators, news, portfolio I/O
 ├── quant_engine.py         # Deterministic quant: F-Score, Z-Score, ATR, Kelly, Hard Gates
 ├── quant_valuation.py      # Fair value models: 4 archetypes + consensus anchoring
@@ -313,8 +329,8 @@ Stock-AI/
 ├── db_manager.py           # Supabase client: signal lifecycle & audit tracking
 ├── run_cloud.py            # Dual-process runner for cloud deployment
 ├── components/             # TradingView & ECharts visualization components
-├── tabs/                   # 5 Streamlit feature tabs
-├── tests/                  # pytest test suites (offline + integration)
+├── tabs/                   # 5 Streamlit feature tabs (Overview, Charts, Macro, AI, Alpha Tracker)
+├── tests/                  # pytest test suites (35+ tests, offline + integration)
 ├── data/                   # Portfolio & watchlist JSON data
 ├── prompts/                # AI prompt templates
 ├── docs/                   # Architecture docs & system rules

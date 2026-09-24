@@ -129,5 +129,24 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   5. Đấu nối Paper Trading với bảng `quant_signals` từ Supabase và format số tiền nhập liệu trực quan (`100,000,000 VND`).
 - **Hệ quả:** Kết quả kiểm định phản ánh trung thực năng lực định lượng của hệ thống Stock-AI, loại bỏ hoàn toàn các sai số phương pháp luận và cung cấp thước đo rủi ro chuẩn mực cho nhà đầu tư chuyên nghiệp.
 
+---
+
+### [ADR-010] Kiến Trúc Regime-First, Chốt Chặn Vĩ Mô Né Sập (Cash Mode), Quản Trị Rủi Ro Drawdown & Smart Money Flow
+- **Ngày quyết định:** 2026-09-24
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Reviewer
+- **Bối cảnh & Vấn đề:** 
+  1. Tư duy kiểm thử ban đầu bị định kiến vào con số PnL tĩnh thay vì năng lực nương theo pha thị trường (Regime Alignment). Bot phát tín hiệu breakout giả trong downtrend khốc liệt làm danh mục chịu tổn thất lớn.
+  2. Báo cáo và tin tức mua mới của quỹ đầu tư có độ trễ lớn (T+30 đến T+45) và quỹ mở bị ràng buộc nắm giữ 80-95% cổ phiếu nên không giúp nhà đầu tư né sập.
+  3. Thiếu cơ chế kiểm soát rủi ro tâm lý khi gặp chuỗi thua lỗ liên tiếp (Revenge Trading) và rủi ro trượt giá do vượt trần thanh khoản ADV20.
+- **Quyết định lựa chọn:**
+  1. Đảo ngược pipeline thực thi theo chuẩn Quản lý Quỹ: `Macro Regime Gate -> Smart Money Watchlist -> Quant Trigger -> Drawdown Sizing -> Execution`.
+  2. Bổ sung `is_macro_circuit_breaker_active()` trong `regime_classifier.py` và cờ `enforce_regime_gate=True` trong `backtest_engine.py`: Tự động khóa toàn bộ lệnh Mua khi VN-Index Downtrend (*Cash Mode*), bảo vệ 100% tài sản qua các đợt sập lịch sử.
+  3. Xây dựng hàm `evaluate_smart_money_flow()` trong `quant_engine.py`: Đánh giá dòng tiền mua/bán ròng EOD của Khối ngoại & Tự doanh, chặn mua khi bị tổ chức bán ròng quy mô lớn (> 20 tỷ VNĐ).
+  4. Hiện thực hóa `calculate_drawdown_controlled_sizing()`: Tự động giảm 50% quy mô vị thế khi có chuỗi 2 lệnh thua liên tiếp hoặc drawdown >= 5%.
+  5. Hiện thực hóa `check_adv20_liquidity_absorption()`: Giới hạn quy mô lệnh không vượt quá 10% ADV20 để chống trượt giá và bẫy thanh khoản.
+  6. Tích hợp checkbox "🛡️ Kích hoạt Chốt chặn Vĩ mô Né sập" trực tiếp trên giao diện Backtest của Tab Alpha Tracker.
+- **Hệ quả:** Hệ thống đạt chuẩn quản lý quỹ quốc tế (Institutional Grade), tự động kích hoạt chế độ phòng thủ bảo toàn vốn khi thị trường sụp đổ và phân bổ vốn kỷ luật, loại bỏ triệt để sai lầm cảm xúc của nhà đầu tư cá nhân.
+
+
 
 

@@ -309,7 +309,7 @@ def _prepare_backtest_data(sym_input: str, limit_days: int, method: str) -> tupl
     if not df_vni.empty:
         df_vni = _normalize_price_index(df_vni)
         vni_close = df_vni["close"].astype(float)
-        vni_returns = vni_close.pct_change().dropna()
+        vni_returns = vni_close.pct_change().dropna().reindex(df_p.index).fillna(0.0)
         raw_regimes = classify_market_regime(df_vni, method=method)
         regimes = raw_regimes.reindex(df_p.index).ffill().bfill()
     else:
@@ -417,6 +417,12 @@ def _render_regime_backtest_subtab():
     with c_method:
         method = st.selectbox("Phương pháp phân loại Regime VN-Index", ["MA200_SLOPE", "MOMENTUM_VOLATILITY"])
 
+    enforce_cash_mode = st.checkbox(
+        "🛡️ Kích hoạt Chốt chặn Vĩ mô Né sập (Macro Circuit Breaker / Cash Mode khi VN-Index Downtrend)",
+        value=True,
+        help="Tự động khóa toàn bộ lệnh MUA mới khi chỉ số VN-Index rơi vào pha Downtrend để bảo toàn 100% vốn trước các đợt sập.",
+    )
+
     if st.button("⚡ Chạy Backtest Theo Regime", type="primary", width="stretch"):
         with st.spinner(f"Đang kéo dữ liệu {sym_input} & VN-Index để mô phỏng giao dịch định lượng..."):
             from backtest_engine import (
@@ -438,7 +444,12 @@ def _render_regime_backtest_subtab():
             elif "RSI" in strategy_label:
                 strat_code = STRATEGY_RSI_REVERSION
 
-            signals = generate_signals_by_strategy(df_p, strategy=strat_code)
+            signals = generate_signals_by_strategy(
+                df_p,
+                strategy=strat_code,
+                regimes=regimes,
+                enforce_regime_gate=enforce_cash_mode,
+            )
             engine = RegimeBacktestEngine(initial_capital=float(initial_cap))
             result = engine.run_backtest(
                 df_price=df_p,
@@ -446,7 +457,9 @@ def _render_regime_backtest_subtab():
                 regimes=regimes,
                 benchmark_returns=vni_returns,
                 symbol=sym_input,
+                enforce_regime_gate=enforce_cash_mode,
             )
+
 
             st.success(f"✅ Hoàn tất Backtest {sym_input} ({len(df_p)} phiên)! Tổng số lệnh: {len(result.trades)}")
             _render_regime_kpi_table(result.regime_metrics)
