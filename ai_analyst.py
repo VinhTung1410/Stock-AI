@@ -20,6 +20,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 MODEL_NAME = "gemini-3.5-flash-lite"  # Model tối ưu tốc độ, token và ổn định quota cao của Gemini
+ZONE_SAFE = "Vùng an toàn"
 
 # ==============================================================================
 # BỘ QUY TẮC & BỘ LỌC TẤT ĐỊNH TRIỆT TIÊU 100% CHỮ HÁN / TIẾNG TRUNG
@@ -209,6 +210,33 @@ def _format_news_summary(news_items, limit: int = 8) -> str:
     return "\n".join(lines) if lines else "Không có tin tức mới."
 
 
+def _build_session_timing_meta(session_label: str) -> tuple[str, str, str]:
+    """Determine session title, intro greeting, and reference price label."""
+    is_noon = any(k in str(session_label).upper() for k in ["NOON", "11:30", "TRƯA", "SÁNG"])
+    session_title = "TỔNG KẾT PHIÊN SÁNG (NGHỈ TRƯA)" if is_noon else "TỔNG KẾT PHIÊN ATC"
+    time_intro = (
+        "Bây giờ là 11:30 TRƯA - phiên giao dịch sáng vừa khép lại, thị trường đang bước vào giờ nghỉ trưa."
+        if is_noon
+        else "Bây giờ là 15:00 CHIỀU - phiên giao dịch chứng khoán vừa khép lại tại ATC."
+    )
+    price_ref_label = "thị giá chốt phiên sáng" if is_noon else "thị giá ATC"
+    return session_title, time_intro, price_ref_label
+
+
+def _ensure_question_5_in_result(result: str, regime_data: dict) -> str:
+    """Ensure Question 5 regarding cash/stock allocation is present in the final output."""
+    if "Câu hỏi 5" in result or "Câu 5" in result:
+        return result
+    fallback_q5 = (
+        f"- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** Tỷ trọng phân bổ đề xuất hiện tại là "
+        f"Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']} để đảm bảo an toàn danh mục.\n\n"
+    )
+    for marker in ("📌 II.", "**II.", "II."):
+        if marker in result:
+            return result.replace(marker, f"{fallback_q5}{marker}")
+    return f"{result}\n\n{fallback_q5}"
+
+
 def generate_portfolio_analysis(
     portfolio_df,
     news_items,
@@ -233,15 +261,7 @@ def generate_portfolio_analysis(
     news_str = _format_news_summary(news_items, limit=8)
     
     regime_data = evaluate_market_regime(vnindex_tech) if vnindex_tech else {"tag": "N/A", "stock_pct": "70%", "cash_pct": "30%", "max_stock_nav": 100, "bias": "Neutral"}
-
-    is_noon = any(k in str(session_label).upper() for k in ["NOON", "11:30", "TRƯA", "SÁNG"])
-    session_title = "TỔNG KẾT PHIÊN SÁNG (NGHỈ TRƯA)" if is_noon else "TỔNG KẾT PHIÊN ATC"
-    time_intro = (
-        "Bây giờ là 11:30 TRƯA - phiên giao dịch sáng vừa khép lại, thị trường đang bước vào giờ nghỉ trưa."
-        if is_noon
-        else "Bây giờ là 15:00 CHIỀU - phiên giao dịch chứng khoán vừa khép lại tại ATC."
-    )
-    price_ref_label = "thị giá chốt phiên sáng" if is_noon else "thị giá ATC"
+    session_title, time_intro, price_ref_label = _build_session_timing_meta(session_label)
 
     prompt = f"""Bạn là Giám đốc Quản trị Rủi ro & Chiến lược Danh mục Đầu tư (Senior Portfolio Manager) theo trường phái Value-First + Technical Timing.
 {time_intro}
@@ -309,23 +329,7 @@ BẮT BUỘC sử dụng đúng định dạng danh sách dưới đây, không 
         prompt += f"\n\n[CÂU HỎI BỔ SUNG CỦA NHÀ ĐẦU TƯ]: {custom_question}\nHãy trả lời chi tiết trọng tâm câu hỏi này."
 
     result = call_gemini(client, prompt)
-    
-    # Sanity Check Hậu kiểm: Bảo đảm 100% không bị sót Câu hỏi 5
-    if "Câu hỏi 5" not in result and "Câu 5" not in result:
-        fallback_q5 = (
-            f"- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** Tỷ trọng phân bổ đề xuất hiện tại là "
-            f"Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']} để đảm bảo an toàn danh mục.\n\n"
-        )
-        if "📌 II." in result:
-            result = result.replace("📌 II.", f"{fallback_q5}📌 II.")
-        elif "**II." in result:
-            result = result.replace("**II.", f"{fallback_q5}**II.")
-        elif "II." in result:
-            result = result.replace("II.", f"{fallback_q5}II.")
-        else:
-            result += f"\n\n{fallback_q5}"
-        
-    return result
+    return _ensure_question_5_in_result(result, regime_data)
 
 
 def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: list, news_items: list, vnindex_tech: dict = None) -> str:
@@ -806,6 +810,58 @@ Hãy lập Báo cáo Phân tích Toàn diện cho cổ phiếu **{symbol}** theo
 
     return call_gemini(client, prompt)
 
+def _check_data_gate_or_refuse(symbol: str, tech_data: dict, fin_data: dict) -> tuple[dict | None, dict]:
+    """Run Data Gate check, returning (rejection_dict, gate_dict)."""
+    from quant_engine import check_data_gate
+
+    gate = check_data_gate(symbol, tech_data, fin_data, min_adv20_billion=2.0)
+    if gate["passed"]:
+        return None, gate
+
+    reason_str = " | ".join(gate["reasons"])
+    refusal_report = (
+        f"======================================================\n"
+        f"⛔ **TỪ CHỐI KHUYẾN NGHỊ: DỮ LIỆU KHÔNG ĐẠT CHUẨN AN TOÀN QUỸ**\n"
+        f"======================================================\n\n"
+        f"• **Mã cổ phiếu:** {symbol}\n"
+        f"• **Giá trị giao dịch trung bình phiên:** {gate.get('daily_value_billion', 0)} tỷ VND\n"
+        f"• **Lý do từ chối:** {reason_str}\n\n"
+        f"⚠️ **Khuyến cáo:** Hệ thống Lượng hóa Định chế từ chối đưa ra khuyến nghị đối với cổ phiếu cạn thanh khoản hoặc thiếu BCTC kiểm toán để bảo vệ vốn nhà đầu tư!"
+    )
+    return {
+        "status": "DATA_GATE_REJECTED",
+        "report_text": refusal_report,
+        "hard_gates": {},
+        "f_score": {},
+        "z_score": {},
+    }, gate
+
+
+def _parse_pass1_probabilities(raw_text: str) -> tuple[float, float, float, dict]:
+    """Parse scenario probabilities (bull, base, bear) and rationales from Pass 1 LLM response."""
+    try:
+        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+        prob_dict = json.loads(json_match.group(0)) if json_match else json.loads(raw_text)
+
+        p_bull = float(prob_dict.get("P_bull", 0.25))
+        p_base = float(prob_dict.get("P_base", 0.50))
+        p_bear = float(prob_dict.get("P_bear", 0.25))
+        total_p = p_bull + p_base + p_bear
+        if total_p > 0:
+            p_bull /= total_p
+            p_base /= total_p
+            p_bear /= total_p
+        return p_bull, p_base, p_bear, prob_dict
+    except Exception as e:
+        logging.warning(f"Fallback xác suất Lượt 1 do lỗi parse JSON: {e}")
+        fallback_dict = {
+            "rationale_bull": "Tăng trưởng doanh thu và mở rộng thị phần tích cực.",
+            "rationale_base": "Duy trì nhịp vận động kinh doanh và định giá ổn định.",
+            "rationale_bear": "Áp lực điều chỉnh theo thị trường chung hoặc chi phí vốn tăng.",
+        }
+        return 0.25, 0.50, 0.25, fallback_dict
+
+
 def generate_quantamental_2pass_report(symbol: str) -> dict:
     """
     QUY TRÌNH PHÂN TÍCH LƯỢNG HÓA HAI LƯỢT (QUANTAMENTAL 2-PASS PIPELINE):
@@ -821,7 +877,6 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
         calculate_altman_z_score,
         calculate_piotroski_f_score,
         calculate_valuation_triangle,
-        check_data_gate,
         evaluate_decision_hard_gates,
     )
 
@@ -830,32 +885,10 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     fin_data = get_financial_ratios(symbol)
     news_items = fetch_macro_news(limit=10, tracked_symbols=[symbol])
 
-    # -------------------------------------------------------------
-    # BƯỚC 1: CỔNG KIỂM TRA DỮ LIỆU CỨNG (DATA GATE)
-    # -------------------------------------------------------------
-    gate = check_data_gate(symbol, tech_data, fin_data, min_adv20_billion=2.0)
-    if not gate["passed"]:
-        reason_str = " | ".join(gate["reasons"])
-        refusal_report = (
-            f"======================================================\n"
-            f"⛔ **TỪ CHỐI KHUYẾN NGHỊ: DỮ LIỆU KHÔNG ĐẠT CHUẨN AN TOÀN QUỸ**\n"
-            f"======================================================\n\n"
-            f"• **Mã cổ phiếu:** {symbol}\n"
-            f"• **Giá trị giao dịch trung bình phiên:** {gate.get('daily_value_billion', 0)} tỷ VND\n"
-            f"• **Lý do từ chối:** {reason_str}\n\n"
-            f"⚠️ **Khuyến cáo:** Hệ thống Lượng hóa Định chế từ chối đưa ra khuyến nghị đối với cổ phiếu cạn thanh khoản hoặc thiếu BCTC kiểm toán để bảo vệ vốn nhà đầu tư!"
-        )
-        return {
-            "status": "DATA_GATE_REJECTED",
-            "report_text": refusal_report,
-            "hard_gates": {},
-            "f_score": {},
-            "z_score": {}
-        }
+    refusal, gate = _check_data_gate_or_refuse(symbol, tech_data, fin_data)
+    if refusal:
+        return refusal
 
-    # -------------------------------------------------------------
-    # BƯỚC 2: PYTHON QUANT ENGINE TÍNH TOÁN TRƯỚC
-    # -------------------------------------------------------------
     curr_price = tech_data.get("current_price", 0.0)
     pe = fin_data.get("pe")
     pb = fin_data.get("pb")
@@ -872,9 +905,6 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
 
     news_brief = "\n".join([f"- [{n.get('tag', n.get('keyword', 'TIN')).upper()}] {n.get('title', '')}" for n in (news_items or [])[:5]]) if news_items else "Không có tin tức đột biến."
 
-    # -------------------------------------------------------------
-    # BƯỚC 3: LƯỢT 1 (LLM GÁN XÁC SUẤT KỊCH BẢN DẠNG JSON)
-    # -------------------------------------------------------------
     pass1_prompt = f"""Bạn là Quản lý Quỹ Lượng hóa (Quantamental Portfolio Manager).
 Hãy đọc các dữ liệu thị trường và tin tức sau của mã **{symbol}**:
 - Thị giá: {curr_price}k | Vị thế MA20: {tech_data.get('status_ma20')} | RSI(14): {tech_data.get('rsi14')} | Vol/SMA20: {tech_data.get('vol_ratio')}x
@@ -904,33 +934,8 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
 }}
 ```"""
 
-    try:
-        pass1_resp = client.models.generate_content(model=MODEL_NAME, contents=pass1_prompt)
-        raw_text = pass1_resp.text.strip()
-        # Trích xuất JSON từ markdown block nếu có
-        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-        if json_match:
-            prob_dict = json.loads(json_match.group(0))
-        else:
-            prob_dict = json.loads(raw_text)
-
-        p_bull = float(prob_dict.get("P_bull", 0.25))
-        p_base = float(prob_dict.get("P_base", 0.50))
-        p_bear = float(prob_dict.get("P_bear", 0.25))
-        # Chuẩn hóa tổng xác suất = 1.0
-        total_p = p_bull + p_base + p_bear
-        if total_p > 0:
-            p_bull /= total_p
-            p_base /= total_p
-            p_bear /= total_p
-    except Exception as e:
-        logging.warning(f"Fallback xác suất Lượt 1 do lỗi parse JSON: {e}")
-        p_bull, p_base, p_bear = 0.25, 0.50, 0.25
-        prob_dict = {
-            "rationale_bull": "Tăng trưởng doanh thu và mở rộng thị phần tích cực.",
-            "rationale_base": "Duy trì nhịp vận động kinh doanh và định giá ổn định.",
-            "rationale_bear": "Áp lực điều chỉnh theo thị trường chung hoặc chi phí vốn tăng."
-        }
+    pass1_resp = client.models.generate_content(model=MODEL_NAME, contents=pass1_prompt)
+    p_bull, p_base, p_bear, prob_dict = _parse_pass1_probabilities(pass1_resp.text.strip())
 
     # -------------------------------------------------------------
     # BƯỚC 4: PYTHON TÍNH TOÁN HÀNG RÀO QUYẾT ĐỊNH ĐỊNH LƯỢNG
@@ -1213,7 +1218,7 @@ def _format_committee_prompt_context(
         f_eval = "N/A"
 
     z_raw = z_score_res.get("z_score")
-    z_eval, z_val_str = _format_z_score(z_raw, z_score_res.get("zone", "Vùng an toàn"))
+    z_eval, z_val_str = _format_z_score(z_raw, z_score_res.get("zone", ZONE_SAFE))
 
     return f"""Bạn là Investment Committee (Hội đồng Đầu tư Định chế) gồm 5 vai trò chuyên môn:
 1. Chuyên gia Phân tích Cơ bản (FA Analyst)
@@ -1330,13 +1335,35 @@ def _extract_red_team_downside(report_text: str) -> float:
     return 0.0
 
 
+def _check_thesis_breaker(f_score: Optional[int], z_zone: str, trap_warning: bool) -> bool:
+    """Check if financial distress or price trap conditions invalidate the thesis."""
+    is_f_distress = f_score is not None and 0 < f_score < 4
+    is_z_distress = any(k in z_zone.lower() for k in ("nguy hiểm", "báo động", "khả năng phá sản"))
+    return is_f_distress or is_z_distress or trap_warning
+
+
+def _check_view_and_risk_arbitration(
+    decision: str, fa_view: str, ta_view: str, red_team_downside: float
+) -> Tuple[str, bool, str] | None:
+    """Arbitrate conflicting fundamental, technical, and red team perspectives."""
+    fa_u = fa_view.upper()
+    ta_u = ta_view.upper()
+    if fa_u == "BULLISH" and ta_u == "BEARISH" and decision == STATE_STRONG_OPPORTUNITY:
+        return STATE_WAIT_BETTER_ENTRY, True, "Trọng tài PM: Định giá rẻ nhưng kỹ thuật đang suy yếu (Cấm bắt dao rơi)"
+    if fa_u == "BEARISH" and ta_u == "BULLISH" and decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
+        return STATE_RISK_ELEVATED, True, "Trọng tài PM: Kỹ thuật hưng phấn nhưng cơ bản suy yếu (Chống FOMO bơm thổi)"
+    if red_team_downside > 25.0 and decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
+        return STATE_WATCHLIST, True, f"Trọng tài PM: Rủi ro sụt giảm Red Team {red_team_downside:.1f}% > 25% (Hạ về Watchlist)"
+    return None
+
+
 def arbitrate_pm_decision(
     raw_decision: str,
     fa_view: str = "NEUTRAL",
     ta_view: str = "NEUTRAL",
     red_team_downside: float = 0.0,
     f_score: Optional[int] = None,
-    z_zone: str = "Vùng an toàn",
+    z_zone: str = ZONE_SAFE,
     recommendation_allowed: bool = True,
     trap_warning: bool = False
 ) -> Tuple[str, bool, str]:
@@ -1356,31 +1383,15 @@ def arbitrate_pm_decision(
     if decision not in VALID_PM_STATES:
         decision = STATE_WATCHLIST
 
-    # Gate 1: Data Integrity
     if not recommendation_allowed:
         return STATE_INSUFFICIENT_DATA, True, "Data Gate từ chối khuyến nghị do dữ liệu đóng băng hoặc bất thường"
 
-    # Gate 2: Thesis Breaker (F-Score < 4 or Z-Score Red Zone or Trap)
-    is_f_distress = f_score is not None and 0 < f_score < 4
-    is_z_distress = any(k in z_zone.lower() for k in ("nguy hiểm", "báo động", "khả năng phá sản"))
-    if is_f_distress or is_z_distress or trap_warning:
-        if decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
-            return STATE_AVOID, True, "Thesis Breaker kích hoạt: Sức khỏe tài chính suy kiệt hoặc bẫy giá nguy hiểm"
+    if _check_thesis_breaker(f_score, z_zone, trap_warning) and decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
+        return STATE_AVOID, True, "Thesis Breaker kích hoạt: Sức khỏe tài chính suy kiệt hoặc bẫy giá nguy hiểm"
 
-    # Gate 3: FA Bullish + TA Bearish (Catching falling knife)
-    if fa_view.upper() == "BULLISH" and ta_view.upper() == "BEARISH":
-        if decision == STATE_STRONG_OPPORTUNITY:
-            return STATE_WAIT_BETTER_ENTRY, True, "Trọng tài PM: Định giá rẻ nhưng kỹ thuật đang suy yếu (Cấm bắt dao rơi)"
-
-    # Gate 4: FA Bearish + TA Bullish (FOMO pump)
-    if fa_view.upper() == "BEARISH" and ta_view.upper() == "BULLISH":
-        if decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
-            return STATE_RISK_ELEVATED, True, "Trọng tài PM: Kỹ thuật hưng phấn nhưng cơ bản suy yếu (Chống FOMO bơm thổi)"
-
-    # Gate 5: Red Team Downside Stress > 25%
-    if red_team_downside > 25.0:
-        if decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
-            return STATE_WATCHLIST, True, f"Trọng tài PM: Rủi ro sụt giảm Red Team {red_team_downside:.1f}% > 25% (Hạ về Watchlist)"
+    rule_override = _check_view_and_risk_arbitration(decision, fa_view, ta_view, red_team_downside)
+    if rule_override:
+        return rule_override
 
     return decision, False, ""
 
@@ -1498,7 +1509,7 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         ta_view=views.get("ta_view", "NEUTRAL"),
         red_team_downside=red_downside,
         f_score=f_res.get("score"),
-        z_zone=z_res.get("zone", "Vùng an toàn"),
+        z_zone=z_res.get("zone", ZONE_SAFE),
         recommendation_allowed=gate_res.get("recommendation_allowed", True)
     )
 

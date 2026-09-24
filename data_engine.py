@@ -12,6 +12,7 @@ import logging
 import re
 import urllib.request
 from datetime import datetime, timedelta
+from typing import Any
 
 import feedparser
 import pandas as pd
@@ -32,6 +33,10 @@ TAG_MACRO = "VĨ MÔ"
 TAG_INSIDER = "NỘI BỘ"
 TAG_EARNINGS = "KQKD"
 TAG_DIVIDEND = "CỔ TỨC"
+
+PATH_PORTFOLIO_JSON = "data/portfolio.json"
+PATH_WATCHLIST_JSON = "data/watchlist.json"
+KEY_SECTOR_CLUSTER = "Cụm ngành"
 
 
 # Cache bộ nhớ tạm để tránh spam request Google Sheets liên tục
@@ -313,24 +318,22 @@ def update_google_sheet_watchlist(watchlist_data: list) -> tuple:
         return False, str(e)
 
 
-def load_portfolio(filepath: str = "data/portfolio.json") -> list:
+def load_portfolio(filepath: str = PATH_PORTFOLIO_JSON) -> list:
     """
     Đọc thông tin danh mục cổ phiếu.
     Ưu tiên kéo từ Google Sheet (nếu cấu hình GOOGLE_SHEET_URL).
     Tự động sao lưu dự phòng sang portfolio.json và fallback khi offline.
     """
     sheet_url = os.environ.get("GOOGLE_SHEET_URL", "").strip()
-    if sheet_url and filepath == "data/portfolio.json":
+    if sheet_url and filepath == PATH_PORTFOLIO_JSON:
         p_data, _ = fetch_google_sheet_data(sheet_url)
         if p_data:
-            # Tự động sao lưu bản copy xuống portfolio.json
             try:
                 save_portfolio(p_data, filepath)
             except Exception:
                 pass
             return p_data
 
-    # Fallback file json cục bộ
     if not os.path.exists(filepath):
         return []
     try:
@@ -341,13 +344,13 @@ def load_portfolio(filepath: str = "data/portfolio.json") -> list:
         return []
 
 
-def load_watchlist(filepath: str = "data/watchlist.json") -> list:
+def load_watchlist(filepath: str = PATH_WATCHLIST_JSON) -> list:
     """
     Đọc danh sách cổ phiếu đang theo dõi (Watchlist).
     Ưu tiên kéo từ Google Sheet (nếu có và dùng file mặc định), fallback sang watchlist.json.
     """
     sheet_url = os.environ.get("GOOGLE_SHEET_URL", "").strip()
-    if sheet_url and filepath == "data/watchlist.json":
+    if sheet_url and filepath == PATH_WATCHLIST_JSON:
         _, w_data = fetch_google_sheet_data(sheet_url)
         if w_data:
             try:
@@ -367,21 +370,83 @@ def load_watchlist(filepath: str = "data/watchlist.json") -> list:
         return []
 
 
-def save_portfolio(portfolio_data: list, filepath: str = "data/portfolio.json"):
+def save_portfolio(portfolio_data: list, filepath: str = PATH_PORTFOLIO_JSON):
     """Lưu danh mục cổ phiếu ra file json."""
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(portfolio_data, f, ensure_ascii=False, indent=2)
 
 
-def save_watchlist(watchlist_data: list, filepath: str = "data/watchlist.json"):
+def save_watchlist(watchlist_data: list, filepath: str = PATH_WATCHLIST_JSON):
     """Lưu danh sách cổ phiếu theo dõi ra file json."""
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(watchlist_data, f, ensure_ascii=False, indent=2)
 
 
+def _evaluate_watchlist_item_suitability(
+    item: dict, tech_map: dict | None, prune_manual: bool
+) -> tuple[dict | None, dict | None]:
+    """Evaluate whether a single watchlist item should be pruned or retained."""
+    sym = item.get("symbol", "").upper().strip()
+    if not sym:
+        return None, None
+
+    is_auto = bool(item.get("is_auto", False))
+    target_buy = float(item.get("target_buy", 0.0))
+    note = str(item.get("note", ""))
+
+    tech = tech_map.get(sym, {}) if (tech_map and sym in tech_map) else {}
+    if not tech:
+        try:
+            tech = fetch_stock_technical(sym)
+        except Exception:
+            tech = {}
+
+    curr_price = float(tech.get("current_price") or target_buy or 0.0)
+    rsi = tech.get("rsi14")
+    trap_info = tech.get("trap_info", {})
+    is_trap = bool(trap_info.get("is_trap", False))
+
+    mos_pct = 0.0
+    if curr_price > 0:
+        try:
+            from quant_valuation import calculate_fair_value_and_mos
+            val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=note)
+            mos_pct = float(val_res.get("mos_pct", 0.0))
+        except Exception:
+            mos_pct = 0.0
+
+    reasons = []
+    if rsi is not None and isinstance(rsi, (int, float)) and rsi > 75.0:
+        reasons.append(f"RSI={rsi:.1f} quá mua/FOMO")
+    if mos_pct < -25.0:
+        reasons.append(f"MoS={mos_pct:.1f}% đắt hơn định giá > 25%")
+    if is_trap:
+        reasons.append(f"Dính bẫy giá ({trap_info.get('trap_type', 'TRAP')})")
+
+    should_prune = len(reasons) > 0
+    reason_str = "; ".join(reasons) if reasons else "Không phù hợp"
+
+    if should_prune and (is_auto or prune_manual):
+        pruned_dict = {
+            "symbol": sym,
+            "reason": reason_str,
+            "is_auto": is_auto,
+            "current_price": curr_price,
+            "rsi": rsi,
+            "mos_pct": mos_pct,
+        }
+        return None, pruned_dict
+
+    if should_prune and not is_auto:
+        warning_tag = f"[⚠️ CẢNH BÁO: {reason_str}]"
+        if warning_tag not in note:
+            item["note"] = f"{note} {warning_tag}".strip()
+    return item, None
+
+
 def prune_unsuitable_watchlist(
     watchlist: list = None,
-    filepath: str = "data/watchlist.json",
+    filepath: str = PATH_WATCHLIST_JSON,
     prune_manual: bool = True,
     tech_map: dict = None,
     notify_discord: bool = True
@@ -390,10 +455,6 @@ def prune_unsuitable_watchlist(
     Thanh lọc các cổ phiếu trong Watchlist đang QUÁ HOT hoặc KHÔNG PHÙ HỢP:
     - Tiêu chí Quá hot (Overheated / FOMO): RSI(14) > 75 hoặc MoS < -25% (bong bóng định giá).
     - Tiêu chí Không phù hợp (Unsuitable): Dính bẫy giá (is_trap == True), hoặc bị Data Gate chặn.
-    - Với cả mã tự động lẫn mã người dùng nhập tay (prune_manual=True): Tự động xóa khỏi Watchlist
-      đồng thời bắn thông báo chi tiết lý do trực tiếp vào Discord DM của người dùng.
-    - Nếu prune_manual=False: Bảo toàn mã thủ công và gắn cờ cảnh báo [⚠️ CẢNH BÁO FOMO/RỦI RO].
-    Returns: (retained_items, pruned_items)
     """
     try:
         if watchlist is None:
@@ -402,80 +463,16 @@ def prune_unsuitable_watchlist(
         if not watchlist:
             return [], []
 
-        from quant_valuation import calculate_fair_value_and_mos
-
         retained_items = []
         pruned_items = []
 
         for item in watchlist:
-            sym = item.get("symbol", "").upper().strip()
-            if not sym:
-                continue
-
-            is_auto = bool(item.get("is_auto", False))
-            target_buy = float(item.get("target_buy", 0.0))
-            note = str(item.get("note", ""))
-
-            # Lấy thông số kỹ thuật (dùng cache nếu có)
-            tech = {}
-            if tech_map and sym in tech_map:
-                tech = tech_map[sym]
-            else:
-                try:
-                    tech = fetch_stock_technical(sym)
-                except Exception:
-                    tech = {}
-
-            curr_price = float(tech.get("current_price") or target_buy or 0.0)
-            rsi = tech.get("rsi14")
-            trap_info = tech.get("trap_info", {})
-            is_trap = bool(trap_info.get("is_trap", False))
-
-            # Tính toán định giá & MoS
-            mos_pct = 0.0
-            if curr_price > 0:
-                try:
-                    val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=note)
-                    mos_pct = float(val_res.get("mos_pct", 0.0))
-                except Exception:
-                    mos_pct = 0.0
-
-            # 1. Kiểm tra Quá Hot (Overheated / FOMO)
-            is_overheated = False
-            reasons = []
-            if rsi is not None and isinstance(rsi, (int, float)) and rsi > 75.0:
-                is_overheated = True
-                reasons.append(f"RSI={rsi:.1f} quá mua/FOMO")
-            if mos_pct < -25.0:
-                is_overheated = True
-                reasons.append(f"MoS={mos_pct:.1f}% đắt hơn định giá > 25%")
-
-            # 2. Kiểm tra Không phù hợp (Trap / Rủi ro)
-            is_unsuitable = False
-            if is_trap:
-                is_unsuitable = True
-                reasons.append(f"Dính bẫy giá ({trap_info.get('trap_type', 'TRAP')})")
-
-            should_prune = is_overheated or is_unsuitable
-            reason_str = "; ".join(reasons) if reasons else "Không phù hợp"
-
-            if should_prune and (is_auto or prune_manual):
-                pruned_items.append({
-                    "symbol": sym,
-                    "reason": reason_str,
-                    "is_auto": is_auto,
-                    "current_price": curr_price,
-                    "rsi": rsi,
-                    "mos_pct": mos_pct
-                })
-                logging.info(f"🗑️ Đã thanh lọc {sym} khỏi Watchlist: {reason_str}")
-            else:
-                # Giữ lại trong Watchlist
-                if should_prune and not is_auto:
-                    warning_tag = f"[⚠️ CẢNH BÁO: {reason_str}]"
-                    if warning_tag not in note:
-                        item["note"] = f"{note} {warning_tag}".strip()
-                retained_items.append(item)
+            retained, pruned = _evaluate_watchlist_item_suitability(item, tech_map, prune_manual)
+            if pruned:
+                pruned_items.append(pruned)
+                logging.info(f"🗑️ Đã thanh lọc {pruned['symbol']} khỏi Watchlist: {pruned['reason']}")
+            elif retained:
+                retained_items.append(retained)
 
         save_watchlist(retained_items, filepath=filepath)
 
@@ -492,19 +489,46 @@ def prune_unsuitable_watchlist(
         return watchlist or [], []
 
 
+def _build_auto_watchlist_candidate(opp: dict, manual_symbols: set) -> dict | None:
+    """Build candidate dict for auto watchlist if quality gates and conviction pass."""
+    sym = opp.get("symbol", "").upper().strip()
+    if not sym or sym in manual_symbols:
+        return None
+
+    status = opp.get("status", "")
+    if status in ["CAUTION_TRAP", "DATA_CONFLICT"]:
+        return None
+
+    conv_score = float(opp.get("conviction_score", 0.0))
+    mos_pct = float(opp.get("mos_pct", 0.0))
+
+    if mos_pct < -25.0:
+        return None
+
+    if conv_score >= 60.0 or mos_pct >= 15.0 or status == "RECOMMEND_BUY":
+        target_p = float(opp.get("target_price") or opp.get("current_price", 0.0))
+        from quant_valuation import get_stock_archetype_details
+        arch_details = get_stock_archetype_details(sym, sector=opp.get("sector", ""))
+        return {
+            "symbol": sym,
+            "target_buy": round(target_p, 2),
+            "note": f"[AUTO_DISCOVERY] [{arch_details['sector_group']}] Điểm {conv_score:.0f}/100 | MoS: {mos_pct:.1f}%",
+            "sector": arch_details["sector_group"],
+            "archetype": arch_details["archetype"],
+            "strategy": arch_details["default_strategy"],
+            "is_auto": True,
+        }
+    return None
+
+
 def sync_auto_watchlist(
     opportunities: list = None,
-    filepath: str = "data/watchlist.json",
+    filepath: str = PATH_WATCHLIST_JSON,
     max_auto: int = 5,
     prune_manual: bool = False
 ) -> list:
     """
     Tự động chọn lọc các cơ hội đầu tư chất lượng cao đưa vào Watchlist.
-    - Thanh lọc trước các mã auto cũ đang quá hot (RSI > 75, MoS < -25%) hoặc không phù hợp.
-    - Bảo toàn 100% các mã do người dùng tự nhập tay (nếu prune_manual=False).
-    - Chỉ thêm các mã đạt chuẩn: không bị Data Gate loại bỏ,
-      điểm thuyết phục Conviction Score >= 60 hoặc MoS >= 15%.
-    - Capped ở mức tối đa `max_auto` mã tự động để tránh phân tán danh mục.
     """
     try:
         current_watchlist = []
@@ -515,55 +539,23 @@ def sync_auto_watchlist(
             except Exception:
                 current_watchlist = []
 
-        # 1. Thanh lọc trước các mã quá hot hoặc rủi ro
         current_watchlist, _ = prune_unsuitable_watchlist(
             current_watchlist, filepath=filepath, prune_manual=prune_manual, notify_discord=True
         )
 
-        # 2. Tách riêng các mã user nhập tay và các mã auto hợp lệ còn lại
         manual_items = [item for item in current_watchlist if not item.get("is_auto", False)]
         manual_symbols = {m.get("symbol", "").upper() for m in manual_items if m.get("symbol")}
 
-        # Lấy danh sách cơ hội nếu chưa truyền vào
         if opportunities is None:
             opportunities = scan_market_opportunities()
 
         auto_candidates = []
         for opp in (opportunities or []):
-            sym = opp.get("symbol", "").upper().strip()
-            if not sym or sym in manual_symbols:
-                continue
-
-            # Kiểm tra trạng thái rủi ro từ Data Gate
-            status = opp.get("status", "")
-            if status in ["CAUTION_TRAP", "DATA_CONFLICT"]:
-                continue
-
-            conv_score = float(opp.get("conviction_score", 0.0))
-            mos_pct = float(opp.get("mos_pct", 0.0))
-
-            # Loại bỏ mã đang quá hot (bong bóng định giá)
-            if mos_pct < -25.0:
-                continue
-
-            # Điều kiện chất lượng: Conviction >= 60 hoặc MoS >= 15% hoặc RECOMMEND_BUY
-            if conv_score >= 60.0 or mos_pct >= 15.0 or status == "RECOMMEND_BUY":
-                target_p = float(opp.get("target_price") or opp.get("current_price", 0.0))
-                from quant_valuation import get_stock_archetype_details
-                arch_details = get_stock_archetype_details(sym, sector=opp.get("sector", ""))
-                auto_candidates.append({
-                    "symbol": sym,
-                    "target_buy": round(target_p, 2),
-                    "note": f"[AUTO_DISCOVERY] [{arch_details['sector_group']}] Điểm {conv_score:.0f}/100 | MoS: {mos_pct:.1f}%",
-                    "sector": arch_details["sector_group"],
-                    "archetype": arch_details["archetype"],
-                    "strategy": arch_details["default_strategy"],
-                    "is_auto": True
-                })
+            cand = _build_auto_watchlist_candidate(opp, manual_symbols)
+            if cand:
+                auto_candidates.append(cand)
 
         new_auto_items = auto_candidates[:max_auto]
-
-        # Hợp nhất: Mã manual của user luôn được ưu tiên giữ nguyên
         merged_watchlist = list(manual_items)
         existing_merged_symbols = {m.get("symbol", "").upper() for m in merged_watchlist}
 
@@ -885,7 +877,7 @@ def fetch_stock_historical(symbol: str, time_frame: str = "1D", limit: int = 30)
         days_back = max(int(limit * 2.5), 60)
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-        df = q.history(start=start_date, end=end_date)
+        df = q.history(start=start_date, end=end_date, interval=time_frame)
         if df is None or df.empty:
             return pd.DataFrame()
         df = df.sort_values("time").reset_index(drop=True)
@@ -1099,7 +1091,7 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
             "Tín hiệu Bẫy": trap_label,
             "RSI(14)": tech.get("rsi14", "N/A"),
             "Vol/TB20": tech.get("vol_ratio", 1.0),
-            "Cụm ngành": archetype_info["sector_group"],
+            KEY_SECTOR_CLUSTER: archetype_info["sector_group"],
             "Archetype": archetype_info["archetype"],
             "Chiến lược": archetype_info["strategy_label"],
             "Mô hình định giá": archetype_info["valuation_model"],
@@ -1110,10 +1102,10 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
 
 def group_watchlist_by_sector(df: pd.DataFrame) -> dict:
     """Gom nhóm DataFrame Watchlist theo từng cụm ngành để hiển thị trực quan và quản trị rủi ro ngành."""
-    if df is None or df.empty or "Cụm ngành" not in df.columns:
+    if df is None or df.empty or KEY_SECTOR_CLUSTER not in df.columns:
         return {}
     grouped = {}
-    for sector_name, group_df in df.groupby("Cụm ngành"):
+    for sector_name, group_df in df.groupby(KEY_SECTOR_CLUSTER):
         grouped[str(sector_name)] = group_df.reset_index(drop=True)
     return grouped
 
@@ -1943,6 +1935,7 @@ def _parse_period_year_quarter(period_str: str) -> tuple:
 
 def get_shares_outstanding(ticker: str, as_of_date: str = None) -> float | None:
     """Lấy số lượng cổ phiếu đang lưu hành thực tế đã điều chỉnh tính đến as_of_date."""
+    _ = as_of_date
     sym = ticker.strip().upper()
     try:
         from vnstock import Vnstock
@@ -1978,6 +1971,7 @@ def compute_pb(ticker: str, as_of_date: str = None) -> float | None:
     Ưu tiên Dynamic P/B = Giá khớp lệnh thực tế sàn HOSE / BVPS hợp nhất kỳ gần nhất.
     Fallback sang P/B từ bảng tỷ số nếu không lấy được giá realtime.
     """
+    _ = as_of_date
     sym = ticker.strip().upper()
     fin = get_financial_ratios(sym)
     bvps = fin.get("bvps")
@@ -2023,6 +2017,28 @@ def compute_pb_with_guardrail(ticker: str, sector: str = "", as_of_date: str = N
     return pb
 
 
+KBS_RATIO_MAPPING = {
+    "Giá trị sổ sách của cổ phiếu (BVPS)": "bvps",
+    "Chỉ số giá thị trường trên giá trị sổ sách (P/B)": "pb",
+    "Chỉ số giá thị trường trên thu nhập (P/E)": "pe",
+    "ROE bình quân 4 quý gần nhất": "roe",
+    "ROA bình quân 4 quý gần nhất": "roa",
+    "Tỷ suất cổ tức": "dividend_yield",
+}
+
+
+def _parse_kbs_ratio_row(item: str, val: Any) -> tuple[str, float | None] | None:
+    """Match item row against KBS ratio patterns and return (key, numeric_val)."""
+    for pattern, key in KBS_RATIO_MAPPING.items():
+        if pattern in item:
+            try:
+                val_num = float(val) if pd.notnull(val) else None
+            except (ValueError, TypeError):
+                val_num = None
+            return key, val_num
+    return None
+
+
 def _extract_kbs_ratios(symbol: str) -> dict:
     """Trích xuất dữ liệu tài chính mới nhất từ nguồn KBS."""
     try:
@@ -2039,22 +2055,9 @@ def _extract_kbs_ratios(symbol: str) -> dict:
         for _, row in df.iterrows():
             item = str(row.get("item", "")).strip()
             val = row.get(latest_col)
-            try:
-                val_num = float(val) if pd.notnull(val) else None
-            except (ValueError, TypeError):
-                val_num = None
-            if "Giá trị sổ sách của cổ phiếu (BVPS)" in item:
-                res["bvps"] = val_num
-            elif "Chỉ số giá thị trường trên giá trị sổ sách (P/B)" in item:
-                res["pb"] = val_num
-            elif "Chỉ số giá thị trường trên thu nhập (P/E)" in item:
-                res["pe"] = val_num
-            elif "ROE bình quân 4 quý gần nhất" in item:
-                res["roe"] = val_num
-            elif "ROA bình quân 4 quý gần nhất" in item:
-                res["roa"] = val_num
-            elif "Tỷ suất cổ tức" in item:
-                res["dividend_yield"] = val_num
+            parsed = _parse_kbs_ratio_row(item, val)
+            if parsed:
+                res[parsed[0]] = parsed[1]
         return res
     except Exception:
         logging.exception("Lỗi khi lấy dữ liệu KBS cho %s", symbol)

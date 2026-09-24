@@ -51,6 +51,20 @@ def calculate_atr(df_history: pd.DataFrame, period: int = 14) -> float:
         return 0.0
 
 
+ACTION_ACCUMULATE = "🟢 TÍCH LŨY"
+
+
+def _get_f_score_rating(score: int) -> str:
+    """Return institutional qualitative rating based on Piotroski F-Score."""
+    if score >= 8:
+        return "XUẤT SẮC"
+    if score >= 6:
+        return "TỐT"
+    if score >= 4:
+        return "TRUNG BÌNH"
+    return "YẾU / RỦI RO"
+
+
 def calculate_piotroski_f_score(fin_dict: dict) -> dict:
     """Score financial health using Piotroski F-Score model (0-9 scale).
 
@@ -69,11 +83,10 @@ def calculate_piotroski_f_score(fin_dict: dict) -> dict:
     # Support precomputed f_score if breakdown fields are absent
     if fin_dict and fin_dict.get("f_score") is not None and not any(k in fin_dict for k in ("roa", "current_ratio", "debt_equity")):
         raw_s = int(fin_dict["f_score"])
-        rating = "XUẤT SẮC" if raw_s >= 8 else ("TỐT" if raw_s >= 6 else ("TRUNG BÌNH" if raw_s >= 4 else "YẾU / RỦI RO"))
         return {
             "score": raw_s,
             "max_score": 9,
-            "rating": rating,
+            "rating": _get_f_score_rating(raw_s),
             "breakdown": {"precomputed": raw_s}
         }
 
@@ -139,11 +152,10 @@ def calculate_piotroski_f_score(fin_dict: dict) -> dict:
     score += f9
     breakdown["ROIC_tren_8pct"] = f9
 
-    rating = "XUẤT SẮC" if score >= 8 else ("TỐT" if score >= 6 else ("TRUNG BÌNH" if score >= 4 else "YẾU / RỦI RO"))
     return {
         "score": score,
         "max_score": 9,
-        "rating": rating,
+        "rating": _get_f_score_rating(score),
         "breakdown": breakdown
     }
 
@@ -879,11 +891,11 @@ def evaluate_decision_hard_gates(
     elif mos_pct >= 15.0 and gate_rr_passed and gate_kelly_passed:
         can_buy = True
         if is_heavy_foreign_sell:
-            action_state = "🟢 TÍCH LŨY"
+            action_state = ACTION_ACCUMULATE
             decision_tag = f"🟢 TÍCH LŨY THĂM DÒ (Khối ngoại xả ròng {foreign_flow.get('net_val_bil'):.1f} tỷ)"
             position_size_nav = "5% - 8% NAV"
         elif adv20_billion > 0 and adv20_billion < 10.0:
-            action_state = "🟢 TÍCH LŨY"
+            action_state = ACTION_ACCUMULATE
             decision_tag = f"🟢 TÍCH LŨY THĂM DÒ (Thanh khoản {adv20_billion:.1f} tỷ < 10 tỷ - Cảnh báo trượt giá)"
             position_size_nav = "5% - 8% NAV"
         elif tech_signal == "BULLISH_CONFIRMED":
@@ -891,7 +903,7 @@ def evaluate_decision_hard_gates(
             decision_tag = "🟢 VALUE BUY (Biên an toàn cao & Kỹ thuật xác nhận xu hướng bứt phá)"
             position_size_nav = "15% - 20% NAV"
         else:
-            action_state = "🟢 TÍCH LŨY"
+            action_state = ACTION_ACCUMULATE
             decision_tag = "🟢 ACCUMULATE (Định giá rẻ, gom nhặt trong vùng nền chờ xác nhận)"
             position_size_nav = "10% - 12% NAV"
 

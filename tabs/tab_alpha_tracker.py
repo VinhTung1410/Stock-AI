@@ -1,9 +1,13 @@
 import textwrap
+from typing import Any, Final
 
 import pandas as pd
 import streamlit as st
 
 from db_manager import get_signal_audit_metrics, update_daily_tracking
+
+COL_SIGNAL_DATE: Final[str] = "Ngày phát"
+COL_ACTION: Final[str] = "Hành động"
 
 
 def _safe_pct(val, default="Đang chạy (N/A)"):
@@ -24,56 +28,8 @@ def _safe_num(val, precision=1, prefix="", suffix="", default="N/A"):
     return default
 
 
-def render_tab_alpha_tracker():
-    """
-    🎯 TAB 6: HỆ THỐNG KIỂM TOÁN HIỆU QUẢ TÍN HIỆU & BACKTEST / PAPER TRADING
-    - Subtab 1: Kiểm toán Tín hiệu (Alpha Ledger)
-    - Subtab 2: Backtest Lõi Định Lượng Theo Regime
-    - Subtab 3: Forward Testing (Paper Trading)
-    """
-    st.markdown("""
-    <div style="margin-bottom: 20px;">
-        <h2 style="font-size: 24px; font-weight: 800; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
-            🎯 KIỂM TOÁN TÍN HIỆU & ENGINE BACKTEST / PAPER TRADING
-        </h2>
-        <p style="font-size: 13.5px; color: #64748b; margin: 0; font-family: 'Inter', -apple-system, sans-serif;">
-            Hệ thống đối soát độc lập: Kiểm toán Alpha thực tế, Backtest 3 Regime HOSE, và Forward Testing đo lường Implementation Shortfall.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    subtab1, subtab2, subtab3 = st.tabs([
-        "🎯 Kiểm Toán Tín Hiệu (Alpha Ledger)",
-        "🚀 Backtest Lõi Định Lượng Theo Regime",
-        "📝 Forward Testing (Paper Trading)",
-    ])
-
-    with subtab1:
-        _render_alpha_audit_subtab()
-
-    with subtab2:
-        _render_regime_backtest_subtab()
-
-    with subtab3:
-        _render_paper_trading_subtab()
-
-
-def _render_alpha_audit_subtab():
-    """Subtab 1: Original Alpha Audit and Post-market verification."""
-    # 1. NÚT ĐIỀU KHIỂN & LÀM MỚI
-    col_ctrl1, col_ctrl2 = st.columns([3, 1])
-    with col_ctrl2:
-        if st.button("⚡ Kích hoạt Kiểm toán Ngay", width="stretch", type="primary"):
-            with st.spinner("Đang chạy kiểm toán đối soát sau phiên..."):
-                audit_res = update_daily_tracking()
-                if audit_res.get("status") == "PENDING_DATA":
-                    st.warning("⚠️ Thị trường chưa chốt phiên hoặc dữ liệu chưa sẵn sàng (PENDING_DATA). Đã hoãn đối soát giả định.")
-                else:
-                    st.success(f"✅ Hoàn tất kiểm toán! Đã cập nhật {audit_res.get('updated', 0)} tín hiệu.")
-                    st.rerun()
-
-    # 2. TRUY VẤN DỮ LIỆU TỪ SUPABASE
-    metrics = get_signal_audit_metrics()
+def _render_alpha_hero_cards(metrics: dict) -> None:
+    """Render top hero KPI cards for alpha audit."""
     total_signals = metrics.get("total_signals", 0)
     resolved_count = metrics.get("resolved_signals", 0)
     open_count = metrics.get("open_signals", 0)
@@ -82,9 +38,7 @@ def _render_alpha_audit_subtab():
     alpha_vni = float(metrics.get("alpha_vs_vnindex") or 0.0)
     avg_win = float(metrics.get("avg_win") or 0.0)
     avg_loss = float(metrics.get("avg_loss") or 0.0)
-    df_signals = metrics.get("signals_df", pd.DataFrame())
 
-    # 3. KHỐI KPI THỐNG KÊ TOÀN DIỆN (HERO CARDS)
     win_color = "#15803d" if win_rate >= 50.0 else ("#b45309" if win_rate > 0 else "#64748b")
     pf_color = "#15803d" if profit_factor >= 1.5 else ("#b45309" if profit_factor > 0 else "#64748b")
     alpha_color = "#15803d" if alpha_vni >= 0 else "#dc2626"
@@ -129,148 +83,288 @@ def _render_alpha_audit_subtab():
     """)
     st.markdown(hero_html, unsafe_allow_html=True)
 
-    if df_signals.empty:
-        st.info("💡 **Chưa có dữ liệu kiểm toán trên Supabase.** Khi Trading Bot quét thị trường hoặc bạn bấm phân tích mã trên Tab 5, các khuyến nghị sẽ tự động được ghi nhận và lưu vết tại đây.")
-        return
 
-    # 4. BỘ LỌC TÍN HIỆU
+def _filter_and_render_signals_table(df_signals: pd.DataFrame) -> pd.DataFrame:
+    """Render filters and signal table, returning filtered DataFrame."""
     st.markdown("### 📋 Danh Sách Khuyến Nghị & Lịch Sử Đối Soát")
-    col_f1, col_f2, col_f3 = st.columns([2, 2, 2])
+    col_f1, col_f2, _ = st.columns([2, 2, 2])
     with col_f1:
-        filter_status = st.selectbox("Lọc theo trạng thái:", ["Tất cả", "Đang mở (OPEN)", "Chốt lời (TARGET_HIT)", "Cắt lỗ (STOP_LOSS)", "Hết hạn (EXPIRED)"])
+        filter_status = st.selectbox(
+            "Lọc theo trạng thái:",
+            ["Tất cả", "Đang mở (OPEN)", "Chốt lời (TARGET_HIT)", "Cắt lỗ (STOP_LOSS)", "Hết hạn (EXPIRED)"]
+        )
     with col_f2:
         all_syms = ["Tất cả"] + sorted(df_signals["Mã"].dropna().astype(str).unique().tolist())
         filter_sym = st.selectbox("Lọc theo mã CP:", all_syms)
-    with col_f3:
-        st.write("")
 
+    status_map = {
+        "Đang mở (OPEN)": "OPEN",
+        "Chốt lời (TARGET_HIT)": "TARGET_HIT",
+        "Cắt lỗ (STOP_LOSS)": "STOP_LOSS",
+        "Hết hạn (EXPIRED)": "EXPIRED",
+    }
     filtered_df = df_signals.copy()
-    if filter_status == "Đang mở (OPEN)":
-        filtered_df = filtered_df[filtered_df["Trạng thái"] == "OPEN"]
-    elif filter_status == "Chốt lời (TARGET_HIT)":
-        filtered_df = filtered_df[filtered_df["Trạng thái"] == "TARGET_HIT"]
-    elif filter_status == "Cắt lỗ (STOP_LOSS)":
-        filtered_df = filtered_df[filtered_df["Trạng thái"] == "STOP_LOSS"]
-    elif filter_status == "Hết hạn (EXPIRED)":
-        filtered_df = filtered_df[filtered_df["Trạng thái"] == "EXPIRED"]
-
+    if filter_status in status_map:
+        filtered_df = filtered_df[filtered_df["Trạng thái"] == status_map[filter_status]]
     if filter_sym != "Tất cả":
         filtered_df = filtered_df[filtered_df["Mã"] == filter_sym]
 
-    # Hiển thị bảng tổng hợp
     display_cols = [
-        "ID", "Mã", "Ngày phát", "Hành động", "Giá vào", "Giá Target", "Stop-Loss",
+        "ID", "Mã", COL_SIGNAL_DATE, COL_ACTION, "Giá vào", "Giá Target", "Stop-Loss",
         "Trạng thái", "PnL Thực tế (%)", "Alpha vs VNI (%)", "Đỉnh MFE", "Đáy MAE",
         "MoS (%)", "F-Score", "Nguyên nhân nếu lỗ"
     ]
     avail_cols = [c for c in display_cols if c in filtered_df.columns]
-    st.dataframe(
-        filtered_df[avail_cols],
-        width="stretch",
-        hide_index=True
-    )
+    st.dataframe(filtered_df[avail_cols], width="stretch", hide_index=True)
+    return filtered_df
 
-    if filtered_df.empty:
-        st.info("ℹ️ Không tìm thấy khuyến nghị nào phù hợp với bộ lọc hiện tại.")
-        return
 
-    # 5. BÓC TÁCH CHI TIẾT SNAPSHOT (INSPECTOR: BOT NHÌN THẤY GÌ LÚC ĐÓ?)
+def _render_signal_detail_inspector(filtered_df: pd.DataFrame, df_signals: pd.DataFrame) -> None:
+    """Render inspector card for selected signal snapshot."""
     st.divider()
     st.markdown("### 🔍 Hộp Đen Kiểm Toán: 'Tại thời điểm phát tín hiệu, Bot thực sự nhìn thấy gì?'")
 
-    def _format_signal_label(x):
+    def _format_label(x):
         matches = filtered_df[filtered_df["ID"] == x]
         if matches.empty:
             return f"Signal #{x}"
         row = matches.iloc[0]
-        sym = row.get("Mã", "")
-        dt = row.get("Ngày phát", "")
-        stt = row.get("Trạng thái", "OPEN")
-        return f"Signal #{x} - {sym} ({dt} | Trạng thái: {stt})"
+        return f"Signal #{x} - {row.get('Mã', '')} ({row.get(COL_SIGNAL_DATE, '')} | Trạng thái: {row.get('Trạng thái', 'OPEN')})"
 
     selected_id = st.selectbox(
         "Chọn một tín hiệu để mở hộp đen dữ liệu gốc:",
         options=filtered_df["ID"].tolist(),
-        format_func=_format_signal_label
+        format_func=_format_label
     )
+    if not selected_id:
+        return
 
-    if selected_id:
-        target_rows = df_signals[df_signals["ID"] == selected_id]
-        if not target_rows.empty:
-            target_row = target_rows.iloc[0]
+    target_rows = df_signals[df_signals["ID"] == selected_id]
+    if target_rows.empty:
+        return
 
-            # Format an toàn các trường số
-            entry_txt = _safe_num(target_row.get('Giá vào'), 1, suffix="k")
-            target_txt = _safe_num(target_row.get('Giá Target'), 1, suffix="k")
-            sl_txt = _safe_num(target_row.get('Stop-Loss'), 1, suffix="k")
+    target_row = target_rows.iloc[0]
+    entry_txt = _safe_num(target_row.get('Giá vào'), 1, suffix="k")
+    target_txt = _safe_num(target_row.get('Giá Target'), 1, suffix="k")
+    sl_txt = _safe_num(target_row.get('Stop-Loss'), 1, suffix="k")
 
-            mos_val = target_row.get('MoS (%)')
-            mos_prefix = "+" if (mos_val is not None and pd.notnull(mos_val) and float(mos_val or 0) > 0) else ""
-            mos_txt = _safe_num(mos_val, 1, prefix=mos_prefix, suffix="%")
+    mos_val = target_row.get('MoS (%)')
+    mos_prefix = "+" if (mos_val is not None and pd.notnull(mos_val) and float(mos_val or 0) > 0) else ""
+    mos_txt = _safe_num(mos_val, 1, prefix=mos_prefix, suffix="%")
 
-            f_score_val = target_row.get('F-Score')
-            f_score_txt = f"{int(float(f_score_val))}/9" if (f_score_val is not None and pd.notnull(f_score_val)) else "N/A"
-            z_score_txt = _safe_num(target_row.get('Z-Score'), 2)
-            kelly_val = target_row.get('Kelly f*')
-            kelly_txt = _safe_num(kelly_val, 2, default=str(kelly_val if kelly_val is not None else "N/A"))
+    f_score_val = target_row.get('F-Score')
+    f_score_txt = f"{int(float(f_score_val))}/9" if (f_score_val is not None and pd.notnull(f_score_val)) else "N/A"
+    z_score_txt = _safe_num(target_row.get('Z-Score'), 2)
+    kelly_val = target_row.get('Kelly f*')
+    kelly_txt = _safe_num(kelly_val, 2, default=str(kelly_val if kelly_val is not None else "N/A"))
 
-            pnl_txt = _safe_pct(target_row.get('PnL Thực tế (%)'), default="Đang chạy (N/A)")
-            alpha_txt = _safe_pct(target_row.get('Alpha vs VNI (%)'), default="Đang chạy (N/A)")
-            mfe_txt = _safe_num(target_row.get('Đỉnh MFE'), 1, suffix="k")
-            mae_txt = _safe_num(target_row.get('Đáy MAE'), 1, suffix="k")
-            t1_txt = _safe_num(target_row.get('Giá T+1'), 1, suffix="k", default="Chưa đạt")
-            t5_txt = _safe_num(target_row.get('Giá T+5'), 1, suffix="k", default="Chưa đạt")
-            t20_txt = _safe_num(target_row.get('Giá T+20'), 1, suffix="k", default="Chưa đạt")
+    pnl_txt = _safe_pct(target_row.get('PnL Thực tế (%)'), default="Đang chạy (N/A)")
+    alpha_txt = _safe_pct(target_row.get('Alpha vs VNI (%)'), default="Đang chạy (N/A)")
+    mfe_txt = _safe_num(target_row.get('Đỉnh MFE'), 1, suffix="k")
+    mae_txt = _safe_num(target_row.get('Đáy MAE'), 1, suffix="k")
+    t1_txt = _safe_num(target_row.get('Giá T+1'), 1, suffix="k", default="Chưa đạt")
+    t5_txt = _safe_num(target_row.get('Giá T+5'), 1, suffix="k", default="Chưa đạt")
+    t20_txt = _safe_num(target_row.get('Giá T+20'), 1, suffix="k", default="Chưa đạt")
 
-            col_d1, col_d2, col_d3 = st.columns(3)
-            with col_d1:
-                st.markdown(f"""
-                **1. Thông tin Vị thế & Giá:**
-                - Mã: **{target_row.get('Mã', 'N/A')}** ({target_row.get('Hành động', 'N/A')})
-                - Ngày phát: `{target_row.get('Ngày phát', 'N/A')}`
-                - Giá vào (Entry): `{entry_txt}`
-                - Mục tiêu (Target): `{target_txt}`
-                - Ngưỡng cắt lỗ: `{sl_txt}`
-                """)
+    col_d1, col_d2, col_d3 = st.columns(3)
+    with col_d1:
+        st.markdown(f"""
+        **1. Thông tin Vị thế & Giá:**
+        - Mã: **{target_row.get('Mã', 'N/A')}** ({target_row.get(COL_ACTION, 'N/A')})
+        - Ngày phát: `{target_row.get(COL_SIGNAL_DATE, 'N/A')}`
+        - Giá vào (Entry): `{entry_txt}`
+        - Mục tiêu (Target): `{target_txt}`
+        - Ngưỡng cắt lỗ: `{sl_txt}`
+        """)
 
-            with col_d2:
-                st.markdown(f"""
-                **2. Chỉ số Định lượng (Quant Core):**
-                - Biên an toàn (MoS): **{mos_txt}**
-                - Điểm Piotroski F-Score: **{f_score_txt}**
-                - Điểm Altman Z-Score: **{z_score_txt}**
-                - Phân bổ Kelly f*: `{kelly_txt}`
-                """)
+    with col_d2:
+        st.markdown(f"""
+        **2. Chỉ số Định lượng (Quant Core):**
+        - Biên an toàn (MoS): **{mos_txt}**
+        - Điểm Piotroski F-Score: **{f_score_txt}**
+        - Điểm Altman Z-Score: **{z_score_txt}**
+        - Phân bổ Kelly f*: `{kelly_txt}`
+        """)
 
-            with col_d3:
-                st.markdown(f"""
-                **3. Kết quả Thực tế sau T+:**
-                - Trạng thái hiện tại: **{target_row.get('Trạng thái', 'OPEN')}**
-                - P/L Thực tế: **{pnl_txt}**
-                - Alpha vs VN-Index: **{alpha_txt}**
-                - Đỉnh MFE: `{mfe_txt}` | Đáy MAE: `{mae_txt}`
-                - Giá T+1: `{t1_txt}` | T+5: `{t5_txt}` | T+20: `{t20_txt}`
-                """)
+    with col_d3:
+        st.markdown(f"""
+        **3. Kết quả Thực tế sau T+:**
+        - Trạng thái hiện tại: **{target_row.get('Trạng thái', 'OPEN')}**
+        - P/L Thực tế: **{pnl_txt}**
+        - Alpha vs VN-Index: **{alpha_txt}**
+        - Đỉnh MFE: `{mfe_txt}` | Đáy MAE: `{mae_txt}`
+        - Giá T+1: `{t1_txt}` | T+5: `{t5_txt}` | T+20: `{t20_txt}`
+        """)
 
-            # Hiển thị AI Thesis & Input Snapshot
-            thesis = target_row.get("AI Thesis") or "Không có ghi chú luận điểm."
-            st.markdown(f"**Luận điểm AI (Pass 1 & Pass 2):** {thesis}")
-            if target_row.get("Nguyên nhân nếu lỗ"):
-                st.error(f"⚠️ **Nguyên nhân thất bại (Loss Attribution):** `{target_row['Nguyên nhân nếu lỗ']}`")
+    thesis = target_row.get("AI Thesis") or "Không có ghi chú luận điểm."
+    st.markdown(f"**Luận điểm AI (Pass 1 & Pass 2):** {thesis}")
+    if target_row.get("Nguyên nhân nếu lỗ"):
+        st.error(f"⚠️ **Nguyên nhân thất bại (Loss Attribution):** `{target_row['Nguyên nhân nếu lỗ']}`")
 
-            snapshot = target_row.get("Input Snapshot")
-            if snapshot:
-                with st.expander("📦 Xem Raw JSON Input Snapshot (Toàn bộ dữ liệu BCTC & Chỉ báo nạp vào AI lúc đó)"):
-                    st.json(snapshot)
+    snapshot = target_row.get("Input Snapshot")
+    if snapshot:
+        with st.expander("📦 Xem Raw JSON Input Snapshot (Toàn bộ dữ liệu BCTC & Chỉ báo nạp vào AI lúc đó)"):
+            st.json(snapshot)
 
-    # 6. PHÂN TÍCH NGUYÊN NHÂN THẤT BẠI (POST-MORTEM ATTRIBUTION)
-    loss_reasons = metrics.get("loss_reasons", {})
-    if loss_reasons:
-        st.divider()
-        st.markdown("### 📊 Phân Tích Nguyên Nhân Thất Bại (Loss Attribution)")
-        st.caption("Thống kê xem các lệnh thua là do thị trường chung gãy, do doanh nghiệp xấu đi hay do AI lạc quan tếu:")
-        loss_df = pd.DataFrame(list(loss_reasons.items()), columns=["Nguyên nhân", "Số lệnh"])
-        st.bar_chart(loss_df.set_index("Nguyên nhân"), color="#dc2626", width="stretch")
+
+def _render_loss_attribution(loss_reasons: dict) -> None:
+    """Render loss attribution bar chart if loss reasons exist."""
+    if not loss_reasons:
+        return
+    st.divider()
+    st.markdown("### 📊 Phân Tích Nguyên Nhân Thất Bại (Loss Attribution)")
+    st.caption("Thống kê xem các lệnh thua là do thị trường chung gãy, do doanh nghiệp xấu đi hay do AI lạc quan tếu:")
+    loss_df = pd.DataFrame(list(loss_reasons.items()), columns=["Nguyên nhân", "Số lệnh"])
+    st.bar_chart(loss_df.set_index("Nguyên nhân"), color="#dc2626", width="stretch")
+
+
+def render_tab_alpha_tracker():
+    """
+    🎯 TAB 6: HỆ THỐNG KIỂM TOÁN HIỆU QUẢ TÍN HIỆU & BACKTEST / PAPER TRADING
+    - Subtab 1: Kiểm toán Tín hiệu (Alpha Ledger)
+    - Subtab 2: Backtest Lõi Định Lượng Theo Regime
+    - Subtab 3: Forward Testing (Paper Trading)
+    """
+    st.markdown("""
+    <div style="margin-bottom: 20px;">
+        <h2 style="font-size: 24px; font-weight: 800; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+            🎯 KIỂM TOÁN TÍN HIỆU & ENGINE BACKTEST / PAPER TRADING
+        </h2>
+        <p style="font-size: 13.5px; color: #64748b; margin: 0; font-family: 'Inter', -apple-system, sans-serif;">
+            Hệ thống đối soát độc lập: Kiểm toán Alpha thực tế, Backtest 3 Regime HOSE, và Forward Testing đo lường Implementation Shortfall.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    subtab1, subtab2, subtab3 = st.tabs([
+        "🎯 Kiểm Toán Tín Hiệu (Alpha Ledger)",
+        "🚀 Backtest Lõi Định Lượng Theo Regime",
+        "📝 Forward Testing (Paper Trading)",
+    ])
+
+    with subtab1:
+        _render_alpha_audit_subtab()
+
+    with subtab2:
+        _render_regime_backtest_subtab()
+
+    with subtab3:
+        _render_paper_trading_subtab()
+
+
+def _render_alpha_audit_subtab():
+    """Subtab 1: Original Alpha Audit and Post-market verification."""
+    col_ctrl1, col_ctrl2 = st.columns([3, 1])
+    with col_ctrl2:
+        if st.button("⚡ Kích hoạt Kiểm toán Ngay", width="stretch", type="primary"):
+            with st.spinner("Đang chạy kiểm toán đối soát sau phiên..."):
+                audit_res = update_daily_tracking()
+                if audit_res.get("status") == "PENDING_DATA":
+                    st.warning("⚠️ Thị trường chưa chốt phiên hoặc dữ liệu chưa sẵn sàng (PENDING_DATA). Đã hoãn đối soát giả định.")
+                else:
+                    st.success(f"✅ Hoàn tất kiểm toán! Đã cập nhật {audit_res.get('updated', 0)} tín hiệu.")
+                    st.rerun()
+
+    metrics = get_signal_audit_metrics()
+    _render_alpha_hero_cards(metrics)
+
+    df_signals = metrics.get("signals_df", pd.DataFrame())
+    if df_signals.empty:
+        st.info("💡 **Chưa có dữ liệu kiểm toán trên Supabase.** Khi Trading Bot quét thị trường hoặc bạn bấm phân tích mã trên Tab 5, các khuyến nghị sẽ tự động được ghi nhận và lưu vết tại đây.")
+        return
+
+    filtered_df = _filter_and_render_signals_table(df_signals)
+    if filtered_df.empty:
+        st.info("ℹ️ Không tìm thấy khuyến nghị nào phù hợp với bộ lọc hiện tại.")
+        return
+
+    _render_signal_detail_inspector(filtered_df, df_signals)
+    _render_loss_attribution(metrics.get("loss_reasons", {}))
+
+
+def _normalize_price_index(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure price DataFrame has normalized DatetimeIndex."""
+    df_out = df.copy()
+    if "time" in df_out.columns:
+        df_out["time"] = pd.to_datetime(df_out["time"]).dt.normalize()
+        df_out = df_out.set_index("time")
+    else:
+        df_out.index = pd.to_datetime(df_out.index).normalize()
+    return df_out
+
+
+def _prepare_backtest_data(sym_input: str, limit_days: int, method: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series | None, pd.Series]:
+    """Fetch and align stock price, VN-Index benchmark, returns, and regime series."""
+    from data_engine import fetch_index_historical, fetch_stock_historical
+    from regime_classifier import classify_market_regime
+
+    df_p = fetch_stock_historical(sym_input, limit=limit_days)
+    df_vni = fetch_index_historical("VNINDEX", limit=max(limit_days + 150, 300))
+
+    if df_p.empty or len(df_p) < 20:
+        return pd.DataFrame(), pd.DataFrame(), None, pd.Series()
+
+    df_p = _normalize_price_index(df_p)
+    vni_returns = None
+    if not df_vni.empty:
+        df_vni = _normalize_price_index(df_vni)
+        vni_close = df_vni["close"].astype(float)
+        vni_returns = vni_close.pct_change().dropna()
+        raw_regimes = classify_market_regime(df_vni, method=method)
+        regimes = raw_regimes.reindex(df_p.index).ffill().bfill()
+    else:
+        regimes = classify_market_regime(df_p, method=method)
+
+    return df_p, df_vni, vni_returns, regimes
+
+
+def _render_regime_kpi_table(reg_data: dict) -> None:
+    """Render 4-column regime breakdown KPI table."""
+    table_rows = []
+    metric_keys = [
+        ("Tổng số lệnh", "total_trades"),
+        ("Lệnh không khớp (Trần HOSE)", "unfilled_trades"),
+        ("Tỷ lệ thắng (Win Rate %)", "win_rate_pct"),
+        ("Profit Factor", "profit_factor"),
+        ("Kỳ vọng mỗi lệnh (Expectancy)", "expectancy"),
+        ("Lợi nhuận gộp CAGR (%)", "cagr_pct"),
+        ("Sụt giảm tối đa MDD (%)", "max_drawdown_pct"),
+        ("Thời gian hồi phục (Ngày)", "recovery_days"),
+        ("Sharpe Ratio (Rf=4.5%)", "sharpe_ratio"),
+        ("Sortino Ratio", "sortino_ratio"),
+        ("Alpha vs VN-Index (%)", "alpha_pct"),
+        ("Beta", "beta"),
+    ]
+    for label, key in metric_keys:
+        table_rows.append({
+            "Chỉ Số Định Lượng": label,
+            "Toàn Kỳ (FULL)": reg_data.get("FULL", {}).get(key, "N/A"),
+            "Uptrend (Tăng)": reg_data.get("UPTREND", {}).get(key, "N/A"),
+            "Downtrend (Giảm)": reg_data.get("DOWNTREND", {}).get(key, "N/A"),
+            "Sideways (Đi Ngang)": reg_data.get("SIDEWAYS", {}).get(key, "N/A"),
+        })
+
+    st.markdown("#### 📊 Bảng Chỉ Số Bóc Tách Theo 3 Chế Độ Thị Trường")
+    st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
+
+
+def _render_equity_charts(result: Any, df_p: pd.DataFrame, df_vni: pd.DataFrame, initial_cap: float) -> None:
+    """Render equity comparison line charts against buy-and-hold and benchmark."""
+    if result.equity_curve.empty:
+        return
+    from backtest_engine import calculate_buy_and_hold_equity, calculate_normalized_benchmark_equity
+
+    st.markdown("#### 📈 Biểu Đồ So Sánh Đường Vốn Tài Sản (Equity Curves - VND)")
+    bh_equity = calculate_buy_and_hold_equity(df_p, initial_capital=initial_cap)
+    chart_data = {
+        "Chiến Lược (Strategy)": result.equity_curve,
+        "Nắm Giữ Thụ Động (Buy & Hold)": bh_equity,
+    }
+    if not df_vni.empty:
+        vni_equity = calculate_normalized_benchmark_equity(df_vni, df_p.index, initial_capital=initial_cap)
+        chart_data["VN-Index Benchmark"] = vni_equity
+
+    st.line_chart(pd.DataFrame(chart_data))
 
 
 def _render_regime_backtest_subtab():
@@ -300,25 +394,14 @@ def _render_regime_backtest_subtab():
             format="%d",
         )
 
-    # Nút bấm chọn nhanh mức vốn ban đầu
     st.caption("Chọn nhanh quy mô vốn:")
-    q_col1, q_col2, q_col3, q_col4 = st.columns(4)
-    with q_col1:
-        if st.button("💵 50 Triệu", width="stretch"):
-            st.session_state["backtest_initial_cap"] = 50_000_000
-            st.rerun()
-    with q_col2:
-        if st.button("💵 100 Triệu", width="stretch"):
-            st.session_state["backtest_initial_cap"] = 100_000_000
-            st.rerun()
-    with q_col3:
-        if st.button("💵 500 Triệu", width="stretch"):
-            st.session_state["backtest_initial_cap"] = 500_000_000
-            st.rerun()
-    with q_col4:
-        if st.button("💎 1 Tỷ", width="stretch"):
-            st.session_state["backtest_initial_cap"] = 1_000_000_000
-            st.rerun()
+    preset_cols = st.columns(4)
+    presets = [("💵 50 Triệu", 50_000_000), ("💵 100 Triệu", 100_000_000), ("💵 500 Triệu", 500_000_000), ("💎 1 Tỷ", 1_000_000_000)]
+    for col, (label, cap) in zip(preset_cols, presets):
+        with col:
+            if st.button(label, width="stretch"):
+                st.session_state["backtest_initial_cap"] = cap
+                st.rerun()
 
     c_strat, c_method = st.columns(2)
     with c_strat:
@@ -341,43 +424,14 @@ def _render_regime_backtest_subtab():
                 STRATEGY_QUANT_CORE,
                 STRATEGY_RSI_REVERSION,
                 RegimeBacktestEngine,
-                calculate_buy_and_hold_equity,
-                calculate_normalized_benchmark_equity,
                 generate_signals_by_strategy,
             )
-            from data_engine import fetch_index_historical, fetch_stock_historical
-            from regime_classifier import classify_market_regime
 
-            df_p = fetch_stock_historical(sym_input, limit=limit_days)
-            df_vni = fetch_index_historical("VNINDEX", limit=max(limit_days + 150, 300))
-
+            df_p, df_vni, vni_returns, regimes = _prepare_backtest_data(sym_input, limit_days, method)
             if df_p.empty or len(df_p) < 20:
                 st.error(f"Không thể tải đủ dữ liệu lịch sử cho {sym_input}. Vui lòng thử lại hoặc chọn mã khác.")
                 return
 
-            # Chuẩn hóa datetime index
-            if "time" in df_p.columns:
-                df_p["time"] = pd.to_datetime(df_p["time"]).dt.normalize()
-                df_p = df_p.set_index("time")
-            else:
-                df_p.index = pd.to_datetime(df_p.index).normalize()
-
-            vni_returns = None
-            if not df_vni.empty:
-                if "time" in df_vni.columns:
-                    df_vni["time"] = pd.to_datetime(df_vni["time"]).dt.normalize()
-                    df_vni = df_vni.set_index("time")
-                else:
-                    df_vni.index = pd.to_datetime(df_vni.index).normalize()
-                vni_close = df_vni["close"].astype(float)
-                vni_returns = vni_close.pct_change().dropna()
-                # Phân loại Regime dựa trên nến chỉ số VN-Index (tránh Regime Tautology)
-                raw_regimes = classify_market_regime(df_vni, method=method)
-                regimes = raw_regimes.reindex(df_p.index).ffill().bfill()
-            else:
-                regimes = classify_market_regime(df_p, method=method)
-
-            # Lựa chọn chiến lược
             strat_code = STRATEGY_QUANT_CORE
             if "MA Crossover" in strategy_label:
                 strat_code = STRATEGY_MA_CROSSOVER
@@ -385,7 +439,6 @@ def _render_regime_backtest_subtab():
                 strat_code = STRATEGY_RSI_REVERSION
 
             signals = generate_signals_by_strategy(df_p, strategy=strat_code)
-
             engine = RegimeBacktestEngine(initial_capital=float(initial_cap))
             result = engine.run_backtest(
                 df_price=df_p,
@@ -396,51 +449,9 @@ def _render_regime_backtest_subtab():
             )
 
             st.success(f"✅ Hoàn tất Backtest {sym_input} ({len(df_p)} phiên)! Tổng số lệnh: {len(result.trades)}")
+            _render_regime_kpi_table(result.regime_metrics)
+            _render_equity_charts(result, df_p, df_vni, float(initial_cap))
 
-            # Hiển thị bảng số liệu 4 cột
-            reg_data = result.regime_metrics
-            table_rows = []
-            metric_keys = [
-                ("Tổng số lệnh", "total_trades"),
-                ("Lệnh không khớp (Trần HOSE)", "unfilled_trades"),
-                ("Tỷ lệ thắng (Win Rate %)", "win_rate_pct"),
-                ("Profit Factor", "profit_factor"),
-                ("Kỳ vọng mỗi lệnh (Expectancy)", "expectancy"),
-                ("Lợi nhuận gộp CAGR (%)", "cagr_pct"),
-                ("Sụt giảm tối đa MDD (%)", "max_drawdown_pct"),
-                ("Thời gian hồi phục (Ngày)", "recovery_days"),
-                ("Sharpe Ratio (Rf=4.5%)", "sharpe_ratio"),
-                ("Sortino Ratio", "sortino_ratio"),
-                ("Alpha vs VN-Index (%)", "alpha_pct"),
-                ("Beta", "beta"),
-            ]
-            for label, key in metric_keys:
-                table_rows.append({
-                    "Chỉ Số Định Lượng": label,
-                    "Toàn Kỳ (FULL)": reg_data.get("FULL", {}).get(key, "N/A"),
-                    "Uptrend (Tăng)": reg_data.get("UPTREND", {}).get(key, "N/A"),
-                    "Downtrend (Giảm)": reg_data.get("DOWNTREND", {}).get(key, "N/A"),
-                    "Sideways (Đi Ngang)": reg_data.get("SIDEWAYS", {}).get(key, "N/A"),
-                })
-
-            st.markdown("#### 📊 Bảng Chỉ Số Bóc Tách Theo 3 Chế Độ Thị Trường")
-            st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
-
-            if not result.equity_curve.empty:
-                st.markdown("#### 📈 Biểu Đồ So Sánh Đường Vốn Tài Sản (Equity Curves - VND)")
-                bh_equity = calculate_buy_and_hold_equity(df_p, initial_capital=float(initial_cap))
-                chart_data = {
-                    "Chiến Lược (Strategy)": result.equity_curve,
-                    "Nắm Giữ Thụ Động (Buy & Hold)": bh_equity,
-                }
-                if not df_vni.empty:
-                    vni_equity = calculate_normalized_benchmark_equity(df_vni, df_p.index, initial_capital=float(initial_cap))
-                    chart_data["VN-Index Benchmark"] = vni_equity
-
-                df_chart = pd.DataFrame(chart_data)
-                st.line_chart(df_chart)
-
-            # Banner cảnh báo chuẩn CFA
             st.markdown("""
             <div style="background: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 4px; margin-top: 20px;">
                 <span style="font-size: 13px; color: #475569;">

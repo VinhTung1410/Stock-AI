@@ -136,7 +136,12 @@ def calculate_performance_metrics(
 
     gross_profit = sum(t.net_pnl for t in wins)
     gross_loss = abs(sum(t.net_pnl for t in losses))
-    profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (99.0 if gross_profit > 0 else 0.0)
+    if gross_loss > 0:
+        profit_factor = gross_profit / gross_loss
+    elif gross_profit > 0:
+        profit_factor = 99.0
+    else:
+        profit_factor = 0.0
 
     avg_win = (gross_profit / len(wins)) if wins else 0.0
     avg_loss = (gross_loss / len(losses)) if losses else 0.0
@@ -473,6 +478,104 @@ class RegimeBacktestEngine:
         self.slippage_bps = slippage_bps
         self.max_position_adv_pct = max_position_adv_pct
 
+    def _process_exit(
+        self,
+        active_trade: TradeRecord,
+        curr_date: Any,
+        curr_close: float,
+        curr_sig: int,
+        entry_idx: int,
+        i: int,
+        total_bars: int,
+        cash: float,
+        trades: list[TradeRecord],
+    ) -> tuple[TradeRecord | None, float]:
+        """Evaluate T+2.5 exit conditions and update active trade."""
+        pnl_from_entry = ((curr_close - active_trade.entry_price) / active_trade.entry_price) * 100.0
+        active_trade.mfe_pct = max(active_trade.mfe_pct, pnl_from_entry)
+        active_trade.mae_pct = min(active_trade.mae_pct, pnl_from_entry)
+
+        stop_loss_hit = (pnl_from_entry <= -7.0)
+        is_exit = (curr_sig == -1) or stop_loss_hit or (i == total_bars - 1)
+
+        if not (can_execute_t_plus_2(entry_idx, i) and is_exit):
+            return active_trade, cash
+
+        fill_exit = calculate_slippage_price(curr_close, is_buy=False, slippage_bps=self.slippage_bps)
+        net_pnl, pnl_pct, _, exit_fee, exit_tax = _calculate_trade_pnl(
+            active_trade.entry_price, fill_exit, active_trade.shares, self.fee_rate, self.tax_rate
+        )
+        active_trade.exit_date = curr_date
+        active_trade.exit_price = fill_exit
+        active_trade.exit_fee = exit_fee
+        active_trade.exit_tax = exit_tax
+        active_trade.net_pnl = net_pnl
+        active_trade.pnl_pct = pnl_pct
+        active_trade.holding_days = i - entry_idx
+        if stop_loss_hit:
+            active_trade.exit_reason = "STOP_LOSS"
+        elif curr_sig == -1:
+            active_trade.exit_reason = "SIGNAL"
+        else:
+            active_trade.exit_reason = "END_OF_DATA"
+
+        cash += (fill_exit * active_trade.shares) - exit_fee - exit_tax
+        trades.append(active_trade)
+        return None, cash
+
+    def _process_entry(
+        self,
+        curr_date: Any,
+        curr_open: float,
+        prev_close: float,
+        curr_regime: str,
+        i: int,
+        cash: float,
+        adv20: pd.Series | None,
+        symbol: str,
+        trades: list[TradeRecord],
+    ) -> tuple[TradeRecord | None, float, int]:
+        """Evaluate order execution, HOSE ceiling restrictions, and ADV20 limits."""
+        if check_hose_ceiling_unfilled(curr_open, prev_close):
+            unfilled_record = TradeRecord(
+                symbol=symbol,
+                entry_date=curr_date,
+                entry_price=curr_open,
+                shares=0,
+                is_filled=False,
+                exit_reason="UNFILLED_CEILING",
+                regime=curr_regime,
+            )
+            trades.append(unfilled_record)
+            return None, cash, -1
+
+        fill_entry = calculate_slippage_price(curr_open, is_buy=True, slippage_bps=self.slippage_bps)
+        allocation_capital = cash * 0.95
+        shares = int(allocation_capital // fill_entry)
+
+        if adv20 is not None and i < len(adv20):
+            max_shares_adv = int(adv20.iloc[i] * self.max_position_adv_pct)
+            if max_shares_adv > 0:
+                shares = min(shares, max_shares_adv)
+
+        if shares <= 0:
+            return None, cash, -1
+
+        entry_val = fill_entry * shares
+        entry_fee = entry_val * self.fee_rate
+        cash -= (entry_val + entry_fee)
+
+        active_trade = TradeRecord(
+            symbol=symbol,
+            entry_date=curr_date,
+            entry_price=fill_entry,
+            shares=shares,
+            entry_fee=entry_fee,
+            regime=curr_regime,
+            is_filled=True,
+        )
+        return active_trade, cash, i
+
     def run_backtest(
         self,
         df_price: pd.DataFrame,
@@ -494,8 +597,9 @@ class RegimeBacktestEngine:
 
         close = df_price["close"].astype(float)
         open_p = df_price["open"].astype(float) if "open" in df_price.columns else close
+        total_bars = len(df_price)
 
-        for i in range(len(df_price)):
+        for i in range(total_bars):
             curr_date = df_price.index[i]
             curr_close = close.iloc[i]
             curr_open = open_p.iloc[i]
@@ -503,83 +607,18 @@ class RegimeBacktestEngine:
             curr_regime = regimes.iloc[i] if (regimes is not None and i < len(regimes)) else REGIME_SIDEWAYS
             curr_sig = signals.iloc[i] if i < len(signals) else 0
 
-            # 1. Check existing position exit (Only allowed starting afternoon of T+2)
             if active_trade is not None:
-                pnl_from_entry = ((curr_close - active_trade.entry_price) / active_trade.entry_price) * 100.0
-                active_trade.mfe_pct = max(active_trade.mfe_pct, pnl_from_entry)
-                active_trade.mae_pct = min(active_trade.mae_pct, pnl_from_entry)
-
-                # Check T+2.5 condition and exit triggers (Signal, -7% Stop-Loss, or End of Data)
-                stop_loss_hit = (pnl_from_entry <= -7.0)
-                is_exit = (curr_sig == -1) or stop_loss_hit or (i == len(df_price) - 1)
-
-                if can_execute_t_plus_2(entry_idx, i) and is_exit:
-                    fill_exit = calculate_slippage_price(curr_close, is_buy=False, slippage_bps=self.slippage_bps)
-                    net_pnl, pnl_pct, _, exit_fee, exit_tax = _calculate_trade_pnl(
-                        active_trade.entry_price, fill_exit, active_trade.shares, self.fee_rate, self.tax_rate
-                    )
-                    active_trade.exit_date = curr_date
-                    active_trade.exit_price = fill_exit
-                    active_trade.exit_fee = exit_fee
-                    active_trade.exit_tax = exit_tax
-                    active_trade.net_pnl = net_pnl
-                    active_trade.pnl_pct = pnl_pct
-                    active_trade.holding_days = i - entry_idx
-                    if stop_loss_hit:
-                        active_trade.exit_reason = "STOP_LOSS"
-                    elif curr_sig == -1:
-                        active_trade.exit_reason = "SIGNAL"
-                    else:
-                        active_trade.exit_reason = "END_OF_DATA"
-
-                    cash += (fill_exit * active_trade.shares) - exit_fee - exit_tax
-                    trades.append(active_trade)
-                    active_trade = None
-
-            # 2. Check buy signal if no active position
+                active_trade, cash = self._process_exit(
+                    active_trade, curr_date, curr_close, curr_sig, entry_idx, i, total_bars, cash, trades
+                )
             elif curr_sig == 1 and cash > 0:
-                # Check HOSE ceiling limit
-                if check_hose_ceiling_unfilled(curr_open, prev_close):
-                    # Cannot buy if kịch trần
-                    unfilled_record = TradeRecord(
-                        symbol=symbol,
-                        entry_date=curr_date,
-                        entry_price=curr_open,
-                        shares=0,
-                        is_filled=False,
-                        exit_reason="UNFILLED_CEILING",
-                        regime=curr_regime,
-                    )
-                    trades.append(unfilled_record)
-                else:
-                    # Execute buy
-                    fill_entry = calculate_slippage_price(curr_open, is_buy=True, slippage_bps=self.slippage_bps)
-                    allocation_capital = cash * 0.95  # 95% allocated
-                    shares = int(allocation_capital // fill_entry)
+                new_trade, cash, new_idx = self._process_entry(
+                    curr_date, curr_open, prev_close, curr_regime, i, cash, adv20, symbol, trades
+                )
+                if new_trade is not None:
+                    active_trade = new_trade
+                    entry_idx = new_idx
 
-                    # Check ADV20 cap if provided
-                    if adv20 is not None and i < len(adv20):
-                        max_shares_adv = int(adv20.iloc[i] * self.max_position_adv_pct)
-                        if max_shares_adv > 0:
-                            shares = min(shares, max_shares_adv)
-
-                    if shares > 0:
-                        entry_val = fill_entry * shares
-                        entry_fee = entry_val * self.fee_rate
-                        cash -= (entry_val + entry_fee)
-
-                        active_trade = TradeRecord(
-                            symbol=symbol,
-                            entry_date=curr_date,
-                            entry_price=fill_entry,
-                            shares=shares,
-                            entry_fee=entry_fee,
-                            regime=curr_regime,
-                            is_filled=True,
-                        )
-                        entry_idx = i
-
-            # Update daily portfolio equity
             curr_pos_val = (active_trade.shares * curr_close) if active_trade else 0.0
             equity.append(cash + curr_pos_val)
 

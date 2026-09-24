@@ -87,6 +87,26 @@ def reconcile_price(
     return status, reconciled_p, issues
 
 
+def _evaluate_single_corporate_action(ca: Dict[str, Any], today: Any) -> Optional[Dict[str, Any]]:
+    """Evaluate if a corporate action is on or near today's date."""
+    ex_date_str = ca.get("ex_date") or ca.get("ngay_gdkhq")
+    if not ex_date_str:
+        return None
+    try:
+        ex_date = datetime.strptime(str(ex_date_str)[:10], "%Y-%m-%d").date()
+        if abs((today - ex_date).days) <= 1:
+            ca_type = ca.get("action_type", "DIVIDEND").upper()
+            return {
+                "type": ca_type,
+                "impact": "MECHANICAL_PRICE_DROP",
+                "ex_date": str(ex_date),
+                "description": ca.get("description", f"Sự kiện quyền {ca_type} ngày {ex_date}")
+            }
+    except Exception:
+        pass
+    return None
+
+
 def reconcile_corporate_actions(
     tech_data: Optional[Dict[str, Any]] = None,
     corporate_actions: Optional[List[Dict[str, Any]]] = None
@@ -104,8 +124,6 @@ def reconcile_corporate_actions(
     is_ex_date = False
     today = datetime.now().date()
 
-    actions = corporate_actions or []
-    # Check if tech_data already includes ex_dividend indicator
     if tech_data and tech_data.get("is_gdkhq"):
         is_ex_date = True
         tagged.append({
@@ -114,25 +132,51 @@ def reconcile_corporate_actions(
             "description": "Ngày Giao dịch Không hưởng quyền — Giá điều chỉnh kỹ thuật tự động."
         })
 
-    for ca in actions:
-        ex_date_str = ca.get("ex_date") or ca.get("ngay_gdkhq")
-        if not ex_date_str:
-            continue
-        try:
-            ex_date = datetime.strptime(str(ex_date_str)[:10], "%Y-%m-%d").date()
-            if abs((today - ex_date).days) <= 1:
-                is_ex_date = True
-                ca_type = ca.get("action_type", "DIVIDEND").upper()
-                tagged.append({
-                    "type": ca_type,
-                    "impact": "MECHANICAL_PRICE_DROP",
-                    "ex_date": str(ex_date),
-                    "description": ca.get("description", f"Sự kiện quyền {ca_type} ngày {ex_date}")
-                })
-        except Exception:
-            continue
+    for ca in (corporate_actions or []):
+        ca_result = _evaluate_single_corporate_action(ca, today)
+        if ca_result:
+            is_ex_date = True
+            tagged.append(ca_result)
 
     return tagged, is_ex_date
+
+
+def _parse_period_year_quarter(fin_data: Dict[str, Any]) -> Tuple[Optional[int], Optional[int]]:
+    """Extract and parse (year, quarter) from fin_data dictionary or period string."""
+    latest_quarter = fin_data.get("latest_quarter") or fin_data.get("quarter")
+    latest_year = fin_data.get("latest_year") or fin_data.get("year")
+    if latest_quarter and latest_year:
+        try:
+            return int(latest_year), int(str(latest_quarter).replace("Q", "").replace("q", ""))
+        except (ValueError, TypeError):
+            pass
+
+    period_str = str(fin_data.get("period") or "").strip().upper()
+    if "-Q" in period_str:
+        try:
+            parts = period_str.split("-Q")
+            return int(parts[0]), int(parts[1])
+        except (ValueError, IndexError):
+            pass
+    elif len(period_str) >= 4 and period_str[:4].isdigit():
+        return int(period_str[:4]), 4
+
+    return None, None
+
+
+def _check_financial_freshness(latest_year: Optional[int], latest_quarter: Optional[int]) -> List[str]:
+    """Check if financial statement quarter is more than 2 quarters old."""
+    if not (latest_year and latest_quarter):
+        return []
+    try:
+        now = datetime.now()
+        current_quarter = (now.month - 1) // 3 + 1
+        quarters_diff = (now.year - latest_year) * 4 + (current_quarter - latest_quarter)
+        if quarters_diff > 2:
+            return [f"Financial Statements (Q{latest_quarter}/{latest_year} is {quarters_diff} quarters old)"]
+    except Exception:
+        pass
+    return []
 
 
 def reconcile_financial_period(
@@ -147,49 +191,15 @@ def reconcile_financial_period(
     Returns:
         tuple of (missing_fields: list[str], stale_fields: list[str])
     """
-    missing = []
-    stale = []
-
     if not fin_data:
         return ["fin_data_dict"], []
 
     # Essential ratios needed for quantitative scoring
     required_keys = ["roe", "f_score", "z_score", "pb", "pe"]
-    for k in required_keys:
-        if k not in fin_data or fin_data[k] is None:
-            missing.append(k)
+    missing = [k for k in required_keys if fin_data.get(k) is None]
 
-    # Check statement quarter freshness
-    latest_quarter = fin_data.get("latest_quarter") or fin_data.get("quarter")
-    latest_year = fin_data.get("latest_year") or fin_data.get("year")
-
-    # Fallback parse from period string if latest_quarter/year not direct
-    if not (latest_quarter and latest_year) and fin_data.get("period"):
-        p_str = str(fin_data.get("period")).strip().upper()
-        if "-Q" in p_str:
-            try:
-                parts = p_str.split("-Q")
-                latest_year = int(parts[0])
-                latest_quarter = int(parts[1])
-            except (ValueError, IndexError):
-                pass
-        elif len(p_str) >= 4 and p_str[:4].isdigit():
-            latest_year = int(p_str[:4])
-            latest_quarter = 4
-
-    if latest_quarter and latest_year:
-        try:
-            q_num = int(str(latest_quarter).replace("Q", "").replace("q", ""))
-            y_num = int(latest_year)
-            now = datetime.now()
-            current_quarter = (now.month - 1) // 3 + 1
-            current_year = now.year
-
-            quarters_diff = (current_year - y_num) * 4 + (current_quarter - q_num)
-            if quarters_diff > 2:
-                stale.append(f"Financial Statements (Q{q_num}/{y_num} is {quarters_diff} quarters old)")
-        except Exception:
-            pass
+    latest_year, latest_quarter = _parse_period_year_quarter(fin_data)
+    stale = _check_financial_freshness(latest_year, latest_quarter)
 
     return missing, stale
 
@@ -353,6 +363,58 @@ def reconcile_market_cap_consistency(
     return []
 
 
+def _compute_quality_deductions(
+    price_status: str,
+    reconciled_price: float,
+    tech_data: Optional[Dict[str, Any]],
+    fin_data: Optional[Dict[str, Any]],
+    fin_missing: List[str],
+    fin_stale: List[str],
+    news: Optional[List[Dict[str, Any]]],
+    val_issues: Optional[List[str]],
+    price_stale: Optional[List[str]],
+    cap_conflicts: Optional[List[str]],
+) -> float:
+    """Calculate total score deductions based on data anomalies."""
+    deductions = 0.0
+    if price_status == STATUS_CONFLICT:
+        deductions += 65.0 if reconciled_price <= 0.0 else 45.0
+    elif price_status == STATUS_ADJUSTED:
+        deductions += 10.0
+
+    if not tech_data:
+        deductions += 35.0
+
+    if not fin_data:
+        deductions += 30.0
+    elif fin_missing:
+        deductions += min(len(fin_missing) * 6.0, 30.0)
+
+    if fin_stale:
+        deductions += 20.0
+    if price_stale:
+        deductions += 20.0
+    if val_issues:
+        deductions += 40.0
+    if cap_conflicts:
+        deductions += 35.0
+    if not news:
+        deductions += 5.0
+
+    return deductions
+
+
+def _assign_quality_tier(score: float) -> str:
+    """Determine data quality tier based on final score."""
+    if score >= 85.0:
+        return TIER_HIGH
+    if score >= 65.0:
+        return TIER_MEDIUM
+    if score >= 40.0:
+        return TIER_LOW
+    return TIER_CRITICAL
+
+
 def _calculate_quality_score(
     price_status: str,
     reconciled_price: float,
@@ -366,48 +428,36 @@ def _calculate_quality_score(
     cap_conflicts: Optional[List[str]] = None,
 ) -> Tuple[float, str]:
     """Compute 100-point data quality score and assign quality tier."""
-    quality_score = 100.0
-
-    if price_status == STATUS_CONFLICT:
-        quality_score -= 65.0 if reconciled_price <= 0.0 else 45.0
-    elif price_status == STATUS_ADJUSTED:
-        quality_score -= 10.0
-
-    if not tech_data:
-        quality_score -= 35.0
-
-    if not fin_data:
-        quality_score -= 30.0
-    elif fin_missing:
-        quality_score -= min(len(fin_missing) * 6.0, 30.0)
-
-    if fin_stale:
-        quality_score -= 20.0
-
-    if price_stale:
-        quality_score -= 20.0
-
-    if val_issues:
-        quality_score -= 40.0
-
-    if cap_conflicts:
-        quality_score -= 35.0
-
-    if not news:
-        quality_score -= 5.0
-
-    final_score = max(0.0, min(100.0, round(quality_score, 1)))
-
-    if final_score >= 85.0:
-        tier = TIER_HIGH
-    elif final_score >= 65.0:
-        tier = TIER_MEDIUM
-    elif final_score >= 40.0:
-        tier = TIER_LOW
-    else:
-        tier = TIER_CRITICAL
-
+    deductions = _compute_quality_deductions(
+        price_status, reconciled_price, tech_data, fin_data,
+        fin_missing, fin_stale, news, val_issues, price_stale, cap_conflicts
+    )
+    final_score = max(0.0, min(100.0, round(100.0 - deductions, 1)))
+    tier = _assign_quality_tier(final_score)
     return final_score, tier
+
+
+def _evaluate_gate_decision(
+    quality_tier: str,
+    has_conflict: bool,
+    is_stale_data: bool,
+    quality_score: float,
+) -> Tuple[bool, bool, str]:
+    """Determine gate passed status, recommendation allowed, and formatted badge string."""
+    gate_passed = (
+        quality_tier in (TIER_HIGH, TIER_MEDIUM)
+        and not has_conflict
+        and not is_stale_data
+    )
+    recommendation_allowed = gate_passed and quality_tier != TIER_LOW and not has_conflict and not is_stale_data
+
+    badge = f"📊 DATA QUALITY: {quality_tier} ({quality_score:.0f}/100)"
+    if is_stale_data:
+        badge += BADGE_STALE_LOCKED
+    elif has_conflict:
+        badge += BADGE_MANUAL_VERIFY
+
+    return gate_passed, recommendation_allowed, badge
 
 
 def reconcile_data(
@@ -487,12 +537,9 @@ def reconcile_data(
     is_stale_data = bool(fin_stale) or bool(price_stale_issues)
     has_conflict = bool(val_issues) or bool(cap_issues) or price_status == STATUS_CONFLICT
 
-    gate_passed = (
-        quality_tier in (TIER_HIGH, TIER_MEDIUM)
-        and not has_conflict
-        and not is_stale_data
+    gate_passed, recommendation_allowed, badge = _evaluate_gate_decision(
+        quality_tier, has_conflict, is_stale_data, quality_score
     )
-    recommendation_allowed = gate_passed and quality_tier != TIER_LOW and not has_conflict and not is_stale_data
 
     # Source Tiers Summary
     source_tiers = {
@@ -500,13 +547,6 @@ def reconcile_data(
         "financial_source": "Audited_Quarterly_Reports" if fin_data else "None",
         "news_source": reconciled_news[0]["tier"] if reconciled_news else "None"
     }
-
-    # Badge string for UI / Discord
-    badge = f"📊 DATA QUALITY: {quality_tier} ({quality_score:.0f}/100)"
-    if is_stale_data:
-        badge += BADGE_STALE_LOCKED
-    elif has_conflict:
-        badge += BADGE_MANUAL_VERIFY
 
     return {
         "symbol": sym,

@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+from typing import Any
 
 import requests
 
@@ -187,7 +188,7 @@ def split_ai_summary_into_fields(ai_summary: str) -> list:
 
     # Regex nhận diện tiêu đề mục lớn & tiểu mục (hỗ trợ số La Mã I-X hoặc ký tự A-D kèm emoji đầu/sau, in đậm markdown)
     # Hỗ trợ dấu ':' trong tiêu đề như (11:30) mà không bị cắt cụt
-    header_pattern = re.compile(r'^(?:[#*>\s]*)(?:[^\w\s]{1,3}\s*)?((?:[I|V|X]+|[A-D])\.\s+[^\n*]+)', re.IGNORECASE)
+    header_pattern = re.compile(r'^(?:[#*>\s]*)(?:[^\w\s]{1,3}\s*)?(([IVX]+|[A-D])\.\s+[^\n*]+)', re.IGNORECASE)
 
     for line in raw_lines:
         line_s = line.strip()
@@ -366,6 +367,41 @@ def send_risk_alert(symbol: str, current_price: float, cost_price: float, trigge
         return send_discord_webhook(embeds=[embed])
 
 
+def _format_pruned_item_stats(curr_p: float, rsi: Any, mos: Any) -> str:
+    """Format price, RSI, and MoS metrics string for pruned item."""
+    stats = []
+    if curr_p:
+        stats.append(f"Thị giá: `{curr_p:,.2f}k`")
+    if rsi is not None and isinstance(rsi, (int, float)):
+        stats.append(f"RSI(14): `{rsi:.1f}`")
+    if mos is not None and isinstance(mos, (int, float)):
+        stats.append(f"MoS: `{mos:+.1f}%`")
+    return " | ".join(stats) if stats else "N/A"
+
+
+def _build_pruned_item_field(item: dict) -> dict:
+    """Build a single Discord embed field representing a pruned watchlist ticker."""
+    sym = item.get("symbol", "").upper()
+    reason = item.get("reason", "Không phù hợp tiêu chí")
+    is_auto = item.get("is_auto", False)
+    source_label = "🤖 Bot phát hiện tự động" if is_auto else "👤 Bạn đã thêm thủ công"
+    stats_str = _format_pruned_item_stats(
+        item.get("current_price", 0.0),
+        item.get("rsi"),
+        item.get("mos_pct"),
+    )
+    return {
+        "name": f"❌ {sym} ({source_label})",
+        "value": (
+            f"• **Lý do loại bỏ:** {reason}\n"
+            f"• **Chỉ số:** {stats_str}\n"
+            f"• **Khuyến nghị:** Tạm thời gỡ khỏi danh sách chờ mua để tránh bẫy giá hoặc FOMO đu đỉnh. "
+            f"Chờ cổ phiếu chiết khấu về vùng cân bằng an toàn."
+        ),
+        "inline": False,
+    }
+
+
 def send_watchlist_pruned_alert(pruned_items: list) -> bool:
     """
     Gửi báo cáo lý do thanh lọc cổ phiếu khỏi Watchlist trực tiếp vào Discord DM của người dùng.
@@ -374,35 +410,7 @@ def send_watchlist_pruned_alert(pruned_items: list) -> bool:
     if not pruned_items:
         return False
 
-    fields = []
-    for item in pruned_items[:10]:
-        sym = item.get("symbol", "").upper()
-        reason = item.get("reason", "Không phù hợp tiêu chí")
-        is_auto = item.get("is_auto", False)
-        curr_p = item.get("current_price", 0.0)
-        rsi = item.get("rsi")
-        mos = item.get("mos_pct")
-
-        source_label = "🤖 Bot phát hiện tự động" if is_auto else "👤 Bạn đã thêm thủ công"
-        stats = []
-        if curr_p:
-            stats.append(f"Thị giá: `{curr_p:,.2f}k`")
-        if rsi is not None and isinstance(rsi, (int, float)):
-            stats.append(f"RSI(14): `{rsi:.1f}`")
-        if mos is not None and isinstance(mos, (int, float)):
-            stats.append(f"MoS: `{mos:+.1f}%`")
-        stats_str = " | ".join(stats) if stats else "N/A"
-
-        fields.append({
-            "name": f"❌ {sym} ({source_label})",
-            "value": (
-                f"• **Lý do loại bỏ:** {reason}\n"
-                f"• **Chỉ số:** {stats_str}\n"
-                f"• **Khuyến nghị:** Tạm thời gỡ khỏi danh sách chờ mua để tránh bẫy giá hoặc FOMO đu đỉnh. "
-                f"Chờ cổ phiếu chiết khấu về vùng cân bằng an toàn."
-            ),
-            "inline": False,
-        })
+    fields = [_build_pruned_item_field(item) for item in pruned_items[:10]]
 
     embed = {
         "title": "🧹 [DISCORD DM] BÁO CÁO THANH LỌC WATCHLIST (LOẠI BỎ CỔ PHIẾU)",
