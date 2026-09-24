@@ -84,3 +84,16 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   3. Ghi rõ nguồn gốc mã trong báo cáo (`👤 Bạn đã thêm thủ công` vs `🤖 Bot phát hiện tự động`), kèm theo thị giá, chỉ số RSI, MoS và lý do chi tiết vi phạm.
 - **Hệ quả:** Giúp danh mục Watchlist của Client luôn sạch, giải phóng slot cho các cổ phiếu tiềm năng khác, đồng thời Client luôn nắm được đầy đủ lý do lượng hóa vì sao một mã bị loại bỏ.
 
+---
+
+### [ADR-007] Kiến trúc Engine Backtest theo Regime & Framework Forward Testing Đo lường Implementation Shortfall
+- **Ngày quyết định:** 2026-09-24
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Reviewer
+- **Bối cảnh & Vấn đề:** Hệ thống thiếu số liệu định lượng về tỷ lệ sinh lời sau chi phí thực tế (Sharpe, MDD, Expectancy) và các tham số cứng (70 điểm, 40/25/20/15, 2 BUY/ngày) chưa được kiểm chứng độ nhạy. Ngoài ra, LLM trong quá khứ bị rò rỉ thông tin huấn luyện (look-ahead bias) và chưa có công cụ đo trượt giá (Implementation Shortfall).
+- **Quyết định lựa chọn:**
+  1. Tách bạch hoàn toàn: **Chỉ backtest phần lõi định lượng xác định** (`regime_classifier.py`, `backtest_engine.py`), tuyệt đối không backtest LLM.
+  2. Mô phỏng trung thực quy chế HOSE: biên độ trần ±7% (kịch trần không khớp mua), thanh toán T+2.5 (chỉ bán từ chiều T+2), phí 2 chiều + thuế bán 0.1%, và trần hấp thụ thanh khoản theo 5% ADV20.
+  3. Xây dựng `paper_trading.py` đo lường Implementation Shortfall (bps) trên snapshot bất biến và theo dõi 2 nhánh Ablation (Quant Only vs Quant + LLM).
+- **Hệ quả:** Cung cấp bằng chứng thực nghiệm minh bạch, loại bỏ hoàn toàn look-ahead bias và cho phép đo lường chính xác giá trị thặng dư (Alpha) thực tế của AI.
+
+
