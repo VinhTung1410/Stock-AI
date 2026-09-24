@@ -895,6 +895,14 @@ def fetch_stock_historical(symbol: str, time_frame: str = "1D", limit: int = 30)
         return pd.DataFrame()
 
 
+def fetch_index_historical(symbol: str = "VNINDEX", limit: int = 300) -> pd.DataFrame:
+    """
+    Kéo dữ liệu lịch sử giá chỉ số thị trường (mặc định VNINDEX) từ vnstock.
+    Phục vụ làm Benchmark so sánh Alpha/Beta và phân loại Regime thị trường chung.
+    """
+    return fetch_stock_historical(symbol=symbol, time_frame="1D", limit=limit)
+
+
 def fetch_corporate_dividends(symbol: str):
     """
     Sử dụng vnstock để lấy lịch sử/kế hoạch chia cổ tức của doanh nghiệp.

@@ -23,6 +23,11 @@ DEFAULT_TAX_RATE: Final[float] = 0.0010  # 0.10% sell tax
 DEFAULT_SLIPPAGE_BPS: Final[float] = 15.0  # 15 basis points
 RISK_FREE_RATE_ANNUAL: Final[float] = 0.045  # 4.5% annual rate
 
+# Strategy Constants (S1192)
+STRATEGY_QUANT_CORE: Final[str] = "QUANT_CORE"
+STRATEGY_MA_CROSSOVER: Final[str] = "MA_CROSSOVER"
+STRATEGY_RSI_REVERSION: Final[str] = "RSI_REVERSION"
+
 
 @dataclass
 class TradeRecord:
@@ -258,19 +263,27 @@ def _calculate_alpha_beta(
     risk_free_rate: float,
 ) -> tuple[float, float]:
     """Calculate Jensen's Alpha and Beta against the market benchmark."""
-    if benchmark_returns is None or benchmark_returns.empty:
+    if benchmark_returns is None or benchmark_returns.empty or returns.empty:
         return 0.0, 1.0
 
-    aligned = pd.concat([returns, benchmark_returns], axis=1, join="inner").dropna()
-    if len(aligned) < 20:
+    ret_s = returns.copy()
+    ret_b = benchmark_returns.copy()
+    try:
+        ret_s.index = pd.to_datetime(ret_s.index).normalize()
+        ret_b.index = pd.to_datetime(ret_b.index).normalize()
+    except Exception:
+        pass
+
+    aligned = pd.concat([ret_s, ret_b], axis=1, join="inner").dropna()
+    if len(aligned) < 5:
         return 0.0, 1.0
 
-    ret_strat = aligned.iloc[:, 0]
-    ret_bench = aligned.iloc[:, 1]
+    ret_strat = aligned.iloc[:, 0].astype(float)
+    ret_bench = aligned.iloc[:, 1].astype(float)
 
     cov_matrix = np.cov(ret_strat, ret_bench)
     bench_var = cov_matrix[1, 1]
-    if bench_var == 0:
+    if bench_var == 0 or np.isnan(bench_var):
         return 0.0, 1.0
 
     beta = float(cov_matrix[0, 1] / bench_var)
@@ -285,6 +298,7 @@ def breakdown_by_regime(
     trades: list[TradeRecord],
     equity_curve: pd.Series,
     benchmark_returns: pd.Series | None = None,
+    regimes: pd.Series | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Partition performance metrics across market regimes: Full, Uptrend, Downtrend, Sideways."""
     breakdown: dict[str, dict[str, Any]] = {}
@@ -295,10 +309,151 @@ def breakdown_by_regime(
     # 2. Per-regime trade subsets
     for reg in (REGIME_UPTREND, REGIME_DOWNTREND, REGIME_SIDEWAYS):
         sub_trades = [t for t in trades if t.regime == reg]
-        breakdown[reg] = calculate_performance_metrics(sub_trades, pd.Series([1.0, 1.0]))
-        # Note: Equity curve per regime is isolated to trade metrics
+        if regimes is not None and not equity_curve.empty:
+            reg_mask = (regimes == reg)
+            daily_ret = equity_curve.pct_change().fillna(0.0)
+            reg_daily_ret = daily_ret.copy()
+            reg_daily_ret[~reg_mask] = 0.0
+            sub_equity = (1.0 + reg_daily_ret).cumprod() * (equity_curve.iloc[0] if not equity_curve.empty else 1.0)
+
+            sub_bench = None
+            if benchmark_returns is not None and not benchmark_returns.empty:
+                sub_bench = benchmark_returns.copy()
+                sub_bench[~reg_mask] = 0.0
+
+            breakdown[reg] = calculate_performance_metrics(sub_trades, sub_equity, sub_bench)
+        else:
+            breakdown[reg] = calculate_performance_metrics(sub_trades, pd.Series([1.0, 1.0]))
 
     return breakdown
+
+
+def calculate_buy_and_hold_equity(
+    df_price: pd.DataFrame,
+    initial_capital: float = 100_000_000.0,
+) -> pd.Series:
+    """Calculate Buy & Hold equity curve starting with initial capital."""
+    if df_price.empty or "close" not in df_price.columns:
+        return pd.Series(dtype=float)
+    close = df_price["close"].astype(float)
+    start_p = close.iloc[0]
+    if start_p <= 0:
+        return pd.Series(initial_capital, index=df_price.index)
+    return (close / start_p) * initial_capital
+
+
+def calculate_normalized_benchmark_equity(
+    df_benchmark: pd.DataFrame,
+    target_index: pd.Index,
+    initial_capital: float = 100_000_000.0,
+) -> pd.Series:
+    """Normalize benchmark index (e.g. VNINDEX) to align with target dates and initial capital."""
+    if df_benchmark.empty or "close" not in df_benchmark.columns:
+        return pd.Series(initial_capital, index=target_index)
+
+    bench = df_benchmark.copy()
+    if "time" in bench.columns:
+        bench["time"] = pd.to_datetime(bench["time"]).dt.normalize()
+        bench = bench.set_index("time")
+    else:
+        bench.index = pd.to_datetime(bench.index).normalize()
+
+    tgt_norm = pd.to_datetime(target_index).normalize()
+    close_bench = bench["close"].astype(float)
+    aligned = close_bench.reindex(tgt_norm).ffill().bfill()
+    start_p = aligned.iloc[0] if not aligned.empty else 0.0
+    if start_p <= 0:
+        return pd.Series(initial_capital, index=target_index)
+
+    res = (aligned / start_p) * initial_capital
+    res.index = target_index
+    return res
+
+
+def _generate_ma_crossover_signals(close: pd.Series) -> pd.Series:
+    """Generate MA20 / MA50 crossover signals."""
+    ma20 = close.rolling(20, min_periods=10).mean()
+    ma50 = close.rolling(50, min_periods=20).mean()
+    signals = pd.Series(0, index=close.index)
+    bullish = (ma20 > ma50) & (ma20.shift(1) <= ma50.shift(1))
+    bearish = (ma20 < ma50) & (ma20.shift(1) >= ma50.shift(1))
+    signals[bullish] = 1
+    signals[bearish] = -1
+    return signals
+
+
+def _generate_rsi_reversion_signals(close: pd.Series) -> pd.Series:
+    """Generate RSI Mean Reversion signals."""
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0.0).rolling(14, min_periods=7).mean()
+    loss = (-delta.where(delta < 0, 0.0)).rolling(14, min_periods=7).mean()
+    rs = gain / loss.replace(0, np.nan)
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+
+    signals = pd.Series(0, index=close.index)
+    signals[(rsi < 35) & (rsi.shift(1) >= 35)] = 1
+    signals[(rsi > 65) & (rsi.shift(1) <= 65)] = -1
+    return signals
+
+
+def _generate_quant_core_signals(
+    df_price: pd.DataFrame,
+    f_score: int = 7,
+    mos_pct: float = 20.0,
+    z_score: float = 2.5,
+) -> pd.Series:
+    """Generate Quant Core Strategy signals based on FA health, MoS, and TA momentum."""
+    close = df_price["close"].astype(float)
+    signals = pd.Series(0, index=close.index)
+
+    # Fundamental Gate validation
+    fa_passed = (f_score >= 6) and (mos_pct >= 15.0) and (z_score > 1.8)
+    if not fa_passed:
+        return signals
+
+    # Technical timing & risk triggers
+    ma20 = close.rolling(20, min_periods=10).mean()
+    ma50 = close.rolling(50, min_periods=20).mean()
+
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0.0).rolling(14, min_periods=7).mean()
+    loss = (-delta.where(delta < 0, 0.0)).rolling(14, min_periods=7).mean()
+    rs = gain / loss.replace(0, np.nan)
+    rsi = 100.0 - (100.0 / (1.0 + rs)).fillna(50.0)
+
+    # Buy: Upward trend, reasonable RSI (not overbought FOMO)
+    buy_cond = (close >= ma20) & (ma20 >= ma50 * 0.98) & (rsi < 70) & (rsi >= 40)
+    buy_prev = buy_cond.shift(1).fillna(False).astype(bool)
+    buy_trigger = buy_cond & (~buy_prev)
+
+    # Sell: Overbought climax or breakdown below MA20 * 0.95
+    sell_cond = (rsi >= 75) | (close < ma20 * 0.95)
+    sell_prev = sell_cond.shift(1).fillna(False).astype(bool)
+    sell_trigger = sell_cond & (~sell_prev)
+
+    signals[buy_trigger] = 1
+    signals[sell_trigger] = -1
+    return signals
+
+
+def generate_signals_by_strategy(
+    df_price: pd.DataFrame,
+    strategy: str = STRATEGY_QUANT_CORE,
+    f_score: int = 7,
+    mos_pct: float = 20.0,
+    z_score: float = 2.5,
+) -> pd.Series:
+    """Generate sequential trade signals according to selected investment strategy."""
+    if df_price.empty or "close" not in df_price.columns:
+        return pd.Series(dtype=int)
+
+    close = df_price["close"].astype(float)
+    if strategy == STRATEGY_MA_CROSSOVER:
+        return _generate_ma_crossover_signals(close)
+    if strategy == STRATEGY_RSI_REVERSION:
+        return _generate_rsi_reversion_signals(close)
+    return _generate_quant_core_signals(df_price, f_score=f_score, mos_pct=mos_pct, z_score=z_score)
+
 
 
 class RegimeBacktestEngine:
@@ -324,8 +479,10 @@ class RegimeBacktestEngine:
         signals: pd.Series,
         regimes: pd.Series | None = None,
         adv20: pd.Series | None = None,
+        benchmark_returns: pd.Series | None = None,
+        symbol: str = "TEST",
     ) -> BacktestResult:
-        """Run sequential backtest honoring HOSE ceiling, T+2.5, and liquidation rules."""
+        """Run sequential backtest honoring HOSE ceiling, T+2.5, stop-loss, and liquidation rules."""
         if df_price.empty or "close" not in df_price.columns:
             return BacktestResult()
 
@@ -348,12 +505,15 @@ class RegimeBacktestEngine:
 
             # 1. Check existing position exit (Only allowed starting afternoon of T+2)
             if active_trade is not None:
-                active_trade.mfe_pct = max(active_trade.mfe_pct, ((curr_close - active_trade.entry_price) / active_trade.entry_price) * 100.0)
-                active_trade.mae_pct = min(active_trade.mae_pct, ((curr_close - active_trade.entry_price) / active_trade.entry_price) * 100.0)
+                pnl_from_entry = ((curr_close - active_trade.entry_price) / active_trade.entry_price) * 100.0
+                active_trade.mfe_pct = max(active_trade.mfe_pct, pnl_from_entry)
+                active_trade.mae_pct = min(active_trade.mae_pct, pnl_from_entry)
 
-                # Check T+2.5 condition
-                if can_execute_t_plus_2(entry_idx, i) and (curr_sig == -1 or i == len(df_price) - 1):
-                    # Execute sell
+                # Check T+2.5 condition and exit triggers (Signal, -7% Stop-Loss, or End of Data)
+                stop_loss_hit = (pnl_from_entry <= -7.0)
+                is_exit = (curr_sig == -1) or stop_loss_hit or (i == len(df_price) - 1)
+
+                if can_execute_t_plus_2(entry_idx, i) and is_exit:
                     fill_exit = calculate_slippage_price(curr_close, is_buy=False, slippage_bps=self.slippage_bps)
                     net_pnl, pnl_pct, _, exit_fee, exit_tax = _calculate_trade_pnl(
                         active_trade.entry_price, fill_exit, active_trade.shares, self.fee_rate, self.tax_rate
@@ -365,7 +525,12 @@ class RegimeBacktestEngine:
                     active_trade.net_pnl = net_pnl
                     active_trade.pnl_pct = pnl_pct
                     active_trade.holding_days = i - entry_idx
-                    active_trade.exit_reason = "SIGNAL" if curr_sig == -1 else "END_OF_DATA"
+                    if stop_loss_hit:
+                        active_trade.exit_reason = "STOP_LOSS"
+                    elif curr_sig == -1:
+                        active_trade.exit_reason = "SIGNAL"
+                    else:
+                        active_trade.exit_reason = "END_OF_DATA"
 
                     cash += (fill_exit * active_trade.shares) - exit_fee - exit_tax
                     trades.append(active_trade)
@@ -377,7 +542,7 @@ class RegimeBacktestEngine:
                 if check_hose_ceiling_unfilled(curr_open, prev_close):
                     # Cannot buy if kịch trần
                     unfilled_record = TradeRecord(
-                        symbol="TEST",
+                        symbol=symbol,
                         entry_date=curr_date,
                         entry_price=curr_open,
                         shares=0,
@@ -404,7 +569,7 @@ class RegimeBacktestEngine:
                         cash -= (entry_val + entry_fee)
 
                         active_trade = TradeRecord(
-                            symbol="TEST",
+                            symbol=symbol,
                             entry_date=curr_date,
                             entry_price=fill_entry,
                             shares=shares,
@@ -419,8 +584,8 @@ class RegimeBacktestEngine:
             equity.append(cash + curr_pos_val)
 
         equity_curve = pd.Series(equity[1:], index=df_price.index)
-        summary = calculate_performance_metrics(trades, equity_curve)
-        regime_break = breakdown_by_regime(trades, equity_curve)
+        summary = calculate_performance_metrics(trades, equity_curve, benchmark_returns)
+        regime_break = breakdown_by_regime(trades, equity_curve, benchmark_returns, regimes)
 
         return BacktestResult(
             trades=trades,

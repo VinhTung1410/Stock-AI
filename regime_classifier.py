@@ -39,20 +39,23 @@ def classify_regime_ma200_slope(
     """Classify regime using Index relative to MA200 and MA200 slope.
 
     Rules:
-    - UPTREND: Price >= MA200 and Slope(MA200) > -0.5%
-    - DOWNTREND: Price < MA200 and Slope(MA200) < 0.5%
+    - UPTREND: Price >= MA and Slope(MA) > -0.5%
+    - DOWNTREND: Price < MA and Slope(MA) < 0.5%
     - SIDEWAYS: Disagreements between price position and slope
     """
-    if "close" not in df_index.columns or len(df_index) < ma_window:
+    if "close" not in df_index.columns or len(df_index) < slope_window:
         return pd.Series(REGIME_SIDEWAYS, index=df_index.index)
 
     close = df_index["close"].astype(float)
-    ma200 = close.rolling(window=ma_window, min_periods=ma_window // 2).mean()
-    slope = _calculate_slope(ma200, window=slope_window)
+    # Adaptive window if data length is less than ma_window
+    effective_window = ma_window if len(df_index) >= ma_window else max(20, len(df_index) // 2)
+    min_p = max(10, effective_window // 4)
+    ma_series = close.rolling(window=effective_window, min_periods=min_p).mean()
+    slope = _calculate_slope(ma_series, window=slope_window)
 
-    above_ma = close >= ma200
+    above_ma = close >= ma_series
     slope_pos = slope >= -0.5
-    below_ma = close < ma200
+    below_ma = close < ma_series
     slope_neg = slope <= slope_threshold
 
     regimes = pd.Series(REGIME_SIDEWAYS, index=df_index.index)
@@ -76,11 +79,13 @@ def classify_regime_momentum_volatility(
     - DOWNTREND: Rolling return < -5.0%
     - SIDEWAYS: Between -5.0% and +5.0%
     """
-    if "close" not in df_index.columns or len(df_index) < return_window:
+    if "close" not in df_index.columns or len(df_index) < vol_window:
         return pd.Series(REGIME_SIDEWAYS, index=df_index.index)
 
+    eff_ret_window = return_window if len(df_index) >= return_window else max(10, len(df_index) // 2)
     close = df_index["close"].astype(float)
-    rolling_ret = ((close - close.shift(return_window)) / close.shift(return_window)) * 100.0
+    shifted = close.shift(eff_ret_window)
+    rolling_ret = ((close - shifted) / shifted.replace(0, np.nan)) * 100.0
 
     regimes = pd.Series(REGIME_SIDEWAYS, index=df_index.index)
     regimes[rolling_ret > up_threshold] = REGIME_UPTREND

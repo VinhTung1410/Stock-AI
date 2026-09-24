@@ -279,50 +279,121 @@ def _render_regime_backtest_subtab():
     <div style="margin-bottom: 16px;">
         <h3 style="margin: 0; color: #0f172a; font-weight: 700;">🚀 Engine Backtest Định Lượng Theo Regime Thị Trường</h3>
         <p style="color: #64748b; font-size: 13.5px; margin-top: 4px;">
-            Mô phỏng chân thực quy chế HOSE: <b>Chặn mua trần (+6.9%+)</b>, <b>Chu kỳ T+2.5</b>, <b>Trượt giá bps</b>, và <b>Phí/Thuế thực tế</b>.
+            Mô phỏng chân thực quy chế HOSE: <b>Chặn mua trần (+6.9%+)</b>, <b>Chu kỳ T+2.5</b>, <b>Trượt giá 15 bps</b>, <b>Benchmark VN-Index</b> và <b>Phí/Thuế thực tế</b>.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3, col4 = st.columns([1.5, 1.2, 1.5, 1.8])
+    if "backtest_initial_cap" not in st.session_state:
+        st.session_state["backtest_initial_cap"] = 100_000_000
+
+    col1, col2, col3 = st.columns([1.5, 1.2, 2.0])
     with col1:
         sym_input = st.text_input("Mã Cổ phiếu", value="HPG").upper().strip()
     with col2:
-        limit_days = st.selectbox("Số phiên nến ngày", [60, 120, 200, 300], index=2)
+        limit_days = st.selectbox("Số phiên nến ngày", [60, 120, 200, 300, 500], index=2)
     with col3:
-        initial_cap = st.number_input("Vốn ban đầu (VND)", value=100_000_000, step=10_000_000)
-    with col4:
-        method = st.selectbox("Phương pháp phân loại Regime", ["MA200_SLOPE", "MOMENTUM_VOLATILITY"])
+        initial_cap = st.number_input(
+            f"Vốn ban đầu: {st.session_state['backtest_initial_cap']:,.0f} VND",
+            value=int(st.session_state["backtest_initial_cap"]),
+            step=10_000_000,
+            format="%d",
+        )
+
+    # Nút bấm chọn nhanh mức vốn ban đầu
+    st.caption("Chọn nhanh quy mô vốn:")
+    q_col1, q_col2, q_col3, q_col4 = st.columns(4)
+    with q_col1:
+        if st.button("💵 50 Triệu", width="stretch"):
+            st.session_state["backtest_initial_cap"] = 50_000_000
+            st.rerun()
+    with q_col2:
+        if st.button("💵 100 Triệu", width="stretch"):
+            st.session_state["backtest_initial_cap"] = 100_000_000
+            st.rerun()
+    with q_col3:
+        if st.button("💵 500 Triệu", width="stretch"):
+            st.session_state["backtest_initial_cap"] = 500_000_000
+            st.rerun()
+    with q_col4:
+        if st.button("💎 1 Tỷ", width="stretch"):
+            st.session_state["backtest_initial_cap"] = 1_000_000_000
+            st.rerun()
+
+    c_strat, c_method = st.columns(2)
+    with c_strat:
+        strategy_label = st.selectbox(
+            "Chiến lược kiểm định",
+            [
+                "Quant Core (FA Health + MoS + Z-Score + RSI - Khuyến nghị)",
+                "MA Crossover (MA20/MA50 Trend Following)",
+                "RSI Mean Reversion (Bắt đáy điều chỉnh)",
+            ],
+            index=0,
+        )
+    with c_method:
+        method = st.selectbox("Phương pháp phân loại Regime VN-Index", ["MA200_SLOPE", "MOMENTUM_VOLATILITY"])
 
     if st.button("⚡ Chạy Backtest Theo Regime", type="primary", width="stretch"):
-        with st.spinner(f"Đang kéo dữ liệu {sym_input} và mô phỏng giao dịch lịch sử..."):
-            from backtest_engine import RegimeBacktestEngine
-            from data_engine import fetch_stock_historical
+        with st.spinner(f"Đang kéo dữ liệu {sym_input} & VN-Index để mô phỏng giao dịch định lượng..."):
+            from backtest_engine import (
+                STRATEGY_MA_CROSSOVER,
+                STRATEGY_QUANT_CORE,
+                STRATEGY_RSI_REVERSION,
+                RegimeBacktestEngine,
+                calculate_buy_and_hold_equity,
+                calculate_normalized_benchmark_equity,
+                generate_signals_by_strategy,
+            )
+            from data_engine import fetch_index_historical, fetch_stock_historical
             from regime_classifier import classify_market_regime
 
             df_p = fetch_stock_historical(sym_input, limit=limit_days)
-            if df_p.empty or len(df_p) < 30:
+            df_vni = fetch_index_historical("VNINDEX", limit=max(limit_days + 150, 300))
+
+            if df_p.empty or len(df_p) < 20:
                 st.error(f"Không thể tải đủ dữ liệu lịch sử cho {sym_input}. Vui lòng thử lại hoặc chọn mã khác.")
                 return
 
-            # Chuẩn hóa chỉ mục ngày tháng và tạo tín hiệu MA crossover
+            # Chuẩn hóa datetime index
             if "time" in df_p.columns:
-                df_p["time"] = pd.to_datetime(df_p["time"])
+                df_p["time"] = pd.to_datetime(df_p["time"]).dt.normalize()
                 df_p = df_p.set_index("time")
+            else:
+                df_p.index = pd.to_datetime(df_p.index).normalize()
 
-            close = df_p["close"].astype(float)
-            ma20 = close.rolling(20, min_periods=10).mean()
-            ma50 = close.rolling(50, min_periods=20).mean()
+            vni_returns = None
+            if not df_vni.empty:
+                if "time" in df_vni.columns:
+                    df_vni["time"] = pd.to_datetime(df_vni["time"]).dt.normalize()
+                    df_vni = df_vni.set_index("time")
+                else:
+                    df_vni.index = pd.to_datetime(df_vni.index).normalize()
+                vni_close = df_vni["close"].astype(float)
+                vni_returns = vni_close.pct_change().dropna()
+                # Phân loại Regime dựa trên nến chỉ số VN-Index (tránh Regime Tautology)
+                raw_regimes = classify_market_regime(df_vni, method=method)
+                regimes = raw_regimes.reindex(df_p.index).ffill().bfill()
+            else:
+                regimes = classify_market_regime(df_p, method=method)
 
-            signals = pd.Series(0, index=df_p.index)
-            bullish = (ma20 > ma50) & (ma20.shift(1) <= ma50.shift(1))
-            bearish = (ma20 < ma50) & (ma20.shift(1) >= ma50.shift(1))
-            signals[bullish] = 1
-            signals[bearish] = -1
+            # Lựa chọn chiến lược
+            strat_code = STRATEGY_QUANT_CORE
+            if "MA Crossover" in strategy_label:
+                strat_code = STRATEGY_MA_CROSSOVER
+            elif "RSI" in strategy_label:
+                strat_code = STRATEGY_RSI_REVERSION
 
-            regimes = classify_market_regime(df_p, method=method)
+            signals = generate_signals_by_strategy(df_p, strategy=strat_code)
+
             engine = RegimeBacktestEngine(initial_capital=float(initial_cap))
-            result = engine.run_backtest(df_p, signals, regimes)
+            result = engine.run_backtest(
+                df_price=df_p,
+                signals=signals,
+                regimes=regimes,
+                benchmark_returns=vni_returns,
+                symbol=sym_input,
+            )
 
             st.success(f"✅ Hoàn tất Backtest {sym_input} ({len(df_p)} phiên)! Tổng số lệnh: {len(result.trades)}")
 
@@ -356,8 +427,27 @@ def _render_regime_backtest_subtab():
             st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
 
             if not result.equity_curve.empty:
-                st.markdown("#### 📈 Biểu Đồ Đường Vốn Tài Sản (Equity Curve - VND)")
-                st.line_chart(result.equity_curve)
+                st.markdown("#### 📈 Biểu Đồ So Sánh Đường Vốn Tài Sản (Equity Curves - VND)")
+                bh_equity = calculate_buy_and_hold_equity(df_p, initial_capital=float(initial_cap))
+                chart_data = {
+                    "Chiến Lược (Strategy)": result.equity_curve,
+                    "Nắm Giữ Thụ Động (Buy & Hold)": bh_equity,
+                }
+                if not df_vni.empty:
+                    vni_equity = calculate_normalized_benchmark_equity(df_vni, df_p.index, initial_capital=float(initial_cap))
+                    chart_data["VN-Index Benchmark"] = vni_equity
+
+                df_chart = pd.DataFrame(chart_data)
+                st.line_chart(df_chart)
+
+            # Banner cảnh báo chuẩn CFA
+            st.markdown("""
+            <div style="background: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 4px; margin-top: 20px;">
+                <span style="font-size: 13px; color: #475569;">
+                    ⚠️ <b>Khuyến cáo chuẩn mực CFA:</b> Hiệu suất quá khứ không đảm bảo kết quả tương lai. Backtest đã mô phỏng phí 0.15%, thuế bán 0.1%, trượt giá 15 bps, chu kỳ thanh toán T+2.5 và quy chế trần/sàn HOSE. Không phản ánh tác động thị trường (Market Impact) của quy mô vốn lớn.
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 def _render_paper_trading_subtab():
@@ -378,6 +468,30 @@ def _render_paper_trading_subtab():
         st.metric("Hạn mức tín hiệu", "2 BUY / ngày", "Daily Signal Budget")
     with c3:
         st.metric("Thời gian kiểm chứng", "3 - 6 Tháng", "Bậc 0: Zero Real Capital")
+
+    # Đấu nối dữ liệu lệnh ảo thực từ Supabase
+    metrics = get_signal_audit_metrics()
+    df_signals = metrics.get("signals_df", pd.DataFrame())
+    if not df_signals.empty:
+        st.markdown("#### 📋 Nhật Ký Lệnh Ảo Đang Theo Dõi (Forward Testing Ledger)")
+        display_paper = []
+        from paper_trading import calculate_implementation_shortfall
+        for _, row in df_signals.head(10).iterrows():
+            entry_p = float(row.get("Giá vào") or 0.0)
+            t1_p = float(row.get("Giá T+1") or entry_p)
+            shortfall = calculate_implementation_shortfall(entry_p, t1_p, is_buy=True)
+            display_paper.append({
+                "Mã": row.get("Mã"),
+                "Ngày phát": row.get("Ngày phát"),
+                "Hành động": row.get("Hành động"),
+                "Giá đề xuất (k)": f"{entry_p:.1f}",
+                "Giá thực tế T+1 (k)": f"{t1_p:.1f}" if t1_p > 0 else "Chờ khớp",
+                "Trượt giá (bps)": f"{shortfall:+.1f}",
+                "Trạng thái": row.get("Trạng thái"),
+            })
+        st.dataframe(pd.DataFrame(display_paper), width="stretch", hide_index=True)
+    else:
+        st.info("💡 **Chưa có lệnh ảo nào được ghi nhận.** Khi Trading Bot quét cơ hội hoặc phân tích mã trên Web, các lệnh ảo sẽ tự động lưu và đối soát trượt giá tại đây.")
 
     st.divider()
     st.markdown("#### 🎯 Bộ Đo Lường Implementation Shortfall (Thử Nghiệm Độ Lệch Giá)")

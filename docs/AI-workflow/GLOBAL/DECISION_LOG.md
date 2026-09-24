@@ -111,4 +111,23 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   3. Chuẩn hóa quy định kiểm thử: 100% unit tests phải mock toàn bộ kênh mạng gửi Discord (`send_trade_signal_alert`, `send_watchlist_pruned_alert`, `send_discord_dm`, `send_discord_webhook`).
 - **Hệ quả:** Kênh Discord DM của Client nhận trọn vẹn mọi tín hiệu MUA tức thì từ Web, được bảo vệ tuyệt đối khỏi dữ liệu test rác, và không bị spam thông báo dọn dẹp danh mục trong phiên.
 
+---
+
+### [ADR-009] Chuẩn Hóa Thước Đo Alpha/Beta, Phân Loại Regime Theo VN-Index & Chiến Lược Lõi Quant Core
+- **Ngày quyết định:** 2026-09-24
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Reviewer
+- **Bối cảnh & Vấn đề:** 
+  1. Kiểm tra thực tế mã VIC tăng +67% nhưng Backtest báo lỗ -30% do dùng duy nhất chiến lược MA20/MA50 crossover thô sơ dẫn đến bẫy whipsaw ở cổ phiếu High-Beta.
+  2. Hệ thống chưa truyền chuỗi lợi suất VN-Index vào `run_backtest()`, dẫn đến Beta luôn bằng 1.0 và Alpha luôn bằng 0%, làm tê liệt thước đo rủi ro.
+  3. Phân loại Regime dùng nến của chính cổ phiếu đang test (Regime Tautology) và thuật toán MA200 cần >= 200 nến làm bảng kết quả cột Uptrend/Downtrend bị rỗng.
+  4. Thiếu đường vốn đối chiếu Buy & Hold và Paper Trading Subtab 3 chưa nối dây tín hiệu thực từ Supabase.
+- **Quyết định lựa chọn:**
+  1. Nạp chuỗi lịch sử `VNINDEX` qua `fetch_index_historical()` làm Benchmark chuẩn, truyền vào `run_backtest()` để tính Beta thực và Alpha Jensen.
+  2. Phân loại Regime thị trường dựa trên nến chỉ số VN-Index; xử lý linh hoạt độ dài nến để hiển thị đầy đủ 4 cột Uptrend, Downtrend, Sideways, Full.
+  3. Xây dựng Chiến lược kiểm thử lõi "Quant Core Strategy" kết hợp Piotroski F-Score >= 6, MoS >= 15%, Z-Score > 1.8, RSI < 70, Hard Gates và Stop-loss biến động ATR.
+  4. Trực quan hóa đồng thời 3 đường vốn trên biểu đồ Equity Curve: Chiến Lược, Buy & Hold và VN-Index chuẩn hóa.
+  5. Đấu nối Paper Trading với bảng `quant_signals` từ Supabase và format số tiền nhập liệu trực quan (`100,000,000 VND`).
+- **Hệ quả:** Kết quả kiểm định phản ánh trung thực năng lực định lượng của hệ thống Stock-AI, loại bỏ hoàn toàn các sai số phương pháp luận và cung cấp thước đo rủi ro chuẩn mực cho nhà đầu tư chuyên nghiệp.
+
+
 

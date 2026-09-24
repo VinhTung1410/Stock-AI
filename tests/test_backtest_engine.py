@@ -138,3 +138,106 @@ def test_full_backtest_flow_with_ceiling_and_t2():
     assert len(filled) == 1
     assert filled[0].net_pnl > 0  # Bought at ~52, sold at ~56
     assert filled[0].holding_days >= 2  # Ensured T+2 holding
+
+
+def test_alpha_beta_with_benchmark():
+    """Verify Alpha and Beta calculations when benchmark returns are provided."""
+    dates = pd.date_range("2024-01-01", periods=30, freq="B")
+    strat_prices = [100.0 + i * 2.0 for i in range(30)]  # +2% per day
+    bench_prices = [100.0 + i * 1.0 for i in range(30)]  # +1% per day
+
+    equity_curve = pd.Series(strat_prices, index=dates)
+    bench_curve = pd.Series(bench_prices, index=dates)
+    bench_returns = bench_curve.pct_change().dropna()
+
+    trades = [
+        TradeRecord(
+            symbol="VIC",
+            entry_date=dates[0],
+            entry_price=100.0,
+            exit_price=150.0,
+            exit_date=dates[-1],
+            shares=100,
+            net_pnl=5000.0,
+            pnl_pct=50.0,
+            is_filled=True,
+        )
+    ]
+
+    metrics = calculate_performance_metrics(trades, equity_curve, benchmark_returns=bench_returns)
+    assert "beta" in metrics
+    assert "alpha_pct" in metrics
+    # Beta should be calculated and non-zero
+    assert metrics["beta"] > 0.0
+
+
+def test_buy_and_hold_and_benchmark_equity():
+    """Verify Buy & Hold equity and normalized benchmark equity helper functions."""
+    from backtest_engine import (
+        calculate_buy_and_hold_equity,
+        calculate_normalized_benchmark_equity,
+    )
+
+    dates = pd.date_range("2024-01-01", periods=10, freq="B")
+    df_price = pd.DataFrame({"close": [10.0 + i for i in range(10)]}, index=dates)
+
+    bh = calculate_buy_and_hold_equity(df_price, initial_capital=100_000_000.0)
+    assert len(bh) == 10
+    assert bh.iloc[0] == 100_000_000.0
+    assert bh.iloc[-1] == 190_000_000.0  # 19.0 / 10.0 * 100M
+
+    df_bench = pd.DataFrame({"close": [1000.0 + i * 10 for i in range(10)]}, index=dates)
+    norm_bench = calculate_normalized_benchmark_equity(df_bench, dates, initial_capital=100_000_000.0)
+    assert len(norm_bench) == 10
+    assert norm_bench.iloc[0] == 100_000_000.0
+
+
+def test_generate_signals_by_strategy():
+    """Verify signal generation across strategies."""
+    from backtest_engine import (
+        STRATEGY_MA_CROSSOVER,
+        STRATEGY_QUANT_CORE,
+        STRATEGY_RSI_REVERSION,
+        generate_signals_by_strategy,
+    )
+
+    dates = pd.date_range("2024-01-01", periods=60, freq="B")
+    prices = [20.0 + (i * 0.5) for i in range(60)]
+    df_p = pd.DataFrame({"close": prices, "open": prices}, index=dates)
+
+    # 1. MA Crossover
+    sig_ma = generate_signals_by_strategy(df_p, strategy=STRATEGY_MA_CROSSOVER)
+    assert len(sig_ma) == 60
+
+    # 2. RSI Reversion
+    sig_rsi = generate_signals_by_strategy(df_p, strategy=STRATEGY_RSI_REVERSION)
+    assert len(sig_rsi) == 60
+
+    # 3. Quant Core (FA pass)
+    sig_core = generate_signals_by_strategy(df_p, strategy=STRATEGY_QUANT_CORE, f_score=8, mos_pct=25.0, z_score=3.0)
+    assert len(sig_core) == 60
+
+    # 4. Quant Core (FA fail -> zero signals)
+    sig_fail = generate_signals_by_strategy(df_p, strategy=STRATEGY_QUANT_CORE, f_score=4, mos_pct=5.0, z_score=1.2)
+    assert (sig_fail == 0).all()
+
+
+def test_stop_loss_trigger():
+    """Verify that a drop beyond -7% triggers STOP_LOSS exit reason upon T+2."""
+    dates = pd.date_range("2024-01-01", periods=10, freq="B")
+    # Price plummets from 50 to 40 (-20%)
+    prices = [50.0, 50.0, 48.0, 42.0, 40.0, 39.0, 38.0, 38.0, 38.0, 38.0]
+    df_price = pd.DataFrame({"close": prices, "open": prices}, index=dates)
+
+    signals = pd.Series(0, index=dates)
+    signals.iloc[1] = 1  # Buy on day 1 (price 50)
+    # No sell signal, stop loss should trigger automatically on day 3 or 4
+
+    engine = RegimeBacktestEngine(initial_capital=100_000_000.0)
+    result = engine.run_backtest(df_price, signals, symbol="VIC")
+
+    filled = [t for t in result.trades if t.is_filled]
+    assert len(filled) == 1
+    assert filled[0].exit_reason == "STOP_LOSS"
+    assert filled[0].net_pnl < 0
+
