@@ -14,16 +14,24 @@ from quant_valuation import calculate_fair_value_and_mos
 
 def test_pb_vcb_sept_2026():
     """Kiểm tra P/B của VCB nằm trong ngưỡng hợp lý (1.5 - 2.8x) theo Vietcap/HSC/BSC/TCBS."""
-    result = compute_pb("VCB", as_of_date="2026-09-23")
-    assert result is not None, "P/B của VCB không được là None"
-    assert 1.5 <= result <= 2.8, f"P/B={result} vượt ngưỡng hợp lý đã biết của VCB"
+    mock_fin = {"bvps": 25.0, "pb": 2.33, "period": "2026-Q2"}
+    mock_board = pd.DataFrame({("match", "match_price"): [58.25]})
+    with patch("data_engine.get_financial_ratios", return_value=mock_fin), \
+         patch("vnstock.Trading.price_board", return_value=mock_board):
+        result = compute_pb("VCB", as_of_date="2026-09-23")
+        assert result is not None, "P/B của VCB không được là None"
+        assert 1.5 <= result <= 2.8, f"P/B={result} vượt ngưỡng hợp lý đã biết của VCB"
 
 
 def test_pb_tcb_sept_2026():
     """Kiểm tra P/B của TCB nằm trong ngưỡng hợp lý (0.7 - 2.0x) theo TCBS/Vietcap."""
-    result = compute_pb("TCB", as_of_date="2026-09-23")
-    assert result is not None, "P/B của TCB không được là None"
-    assert 0.7 <= result <= 2.0, f"P/B={result} vượt ngưỡng hợp lý đã biết của TCB"
+    mock_fin = {"bvps": 24.5, "pb": 1.12, "period": "2026-Q2"}
+    mock_board = pd.DataFrame({("match", "match_price"): [27.44]})
+    with patch("data_engine.get_financial_ratios", return_value=mock_fin), \
+         patch("vnstock.Trading.price_board", return_value=mock_board):
+        result = compute_pb("TCB", as_of_date="2026-09-23")
+        assert result is not None, "P/B của TCB không được là None"
+        assert 0.7 <= result <= 2.0, f"P/B={result} vượt ngưỡng hợp lý đã biết của TCB"
 
 
 def test_pb_guardrail_blocks_abnormal_valuation():
