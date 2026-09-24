@@ -622,20 +622,17 @@ class RegimeBacktestEngine:
         self,
         i: int,
         curr_date: Any,
-        curr_close: float,
-        curr_open: float,
-        prev_close: float,
-        curr_sig: int,
-        curr_regime: str,
+        bar_ctx: tuple[float, float, float, str, int],
+        pos_state: tuple[TradeRecord | None, float, int],
         total_bars: int,
-        cash: float,
-        active_trade: TradeRecord | None,
-        entry_idx: int,
         adv20: pd.Series | None,
         symbol: str,
         trades: list[TradeRecord],
     ) -> tuple[TradeRecord | None, float, int]:
         """Process exit or entry for active/new position at the current bar."""
+        curr_close, curr_open, prev_close, curr_regime, curr_sig = bar_ctx
+        active_trade, cash, entry_idx = pos_state
+
         if active_trade is not None:
             active_trade, cash = self._process_exit(
                 active_trade, curr_date, curr_close, curr_sig, entry_idx, i, total_bars, cash, trades
@@ -677,15 +674,16 @@ class RegimeBacktestEngine:
 
         for i in range(total_bars):
             curr_date = df_price.index[i]
-            curr_close, curr_open, prev_close, curr_regime, curr_sig = self._resolve_bar_context(
+            bar_ctx = self._resolve_bar_context(
                 i, close, open_p, signals, regimes, enforce_regime_gate
             )
 
             active_trade, cash, entry_idx = self._execute_bar_transition(
-                i, curr_date, curr_close, curr_open, prev_close, curr_sig, curr_regime,
-                total_bars, cash, active_trade, entry_idx, adv20, symbol, trades
+                i, curr_date, bar_ctx, (active_trade, cash, entry_idx),
+                total_bars, adv20, symbol, trades
             )
 
+            curr_close = bar_ctx[0]
             curr_pos_val = (active_trade.shares * curr_close) if active_trade else 0.0
             equity.append(cash + curr_pos_val)
 

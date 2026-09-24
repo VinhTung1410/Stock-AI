@@ -18,12 +18,14 @@
    - **Cognitive Complexity (S3776):** Giữ độ phức tạp nhận thức của từng hàm **< 15**. Mọi vòng lặp mô phỏng backtest, hàm đánh giá thanh lọc watchlist, hoặc luồng phân loại nhiều điều kiện lồng nhau PHẢI được tách nhỏ thành các helper chức năng riêng biệt (ví dụ: `_resolve_bar_context`, `_execute_bar_transition`, `_collect_watchlist_reasons`). Dùng early return để giảm độ sâu nesting.
    - **Logging Ngoại lệ (S8572):** Dùng `logging.exception("...")` trong mọi block `except Exception as e:` thay vì `logging.error(f"... {e}")`.
    - **Hằng số hóa Chuỗi & Nhãn UI (S1192):** Đưa các chuỗi ký tự lặp lại từ 3 lần thành CONSTANT (`Final[str]`) ở đầu file/class. Đặc biệt chú ý các nhãn cột hiển thị, dropdown filter tiếng Việt (ví dụ: `"Tất cả"`, `"Trạng thái"`, `"Ngày phát"`, `"Hành động"`), key trong dict trả về hoặc log metadata.
+   - **Giới hạn Số lượng Tham số Hàm (S107):** Mỗi hàm/method KHÔNG ĐƯỢC vượt quá 7 tham số (trần kỹ thuật Sonar cho phép là 13). Khi một hàm cần xử lý nhiều biến trạng thái (giá, regime, tín hiệu, danh mục, cấu hình), BẮT BUỘC phải gom nhóm thành tuple, dataclass hoặc dict ngữ cảnh (ví dụ: `bar_ctx`, `pos_state`) thay vì truyền rời rạc hàng chục tham số.
    - **Tối ưu Biểu thức Chính quy (S6395, S5843):**
      - Không bọc nhóm không bắt giữ thừa `(?:...)` quanh tập ký tự đơn hoặc token đã có lượng từ (ví dụ: dùng `[#*>\s]*` thay vì `(?:[#*>\s]*)`).
      - Luôn dùng non-capturing group `(?:...)` thay vì capturing group `(...)` nếu không sử dụng lại giá trị nhóm đó trong code.
-   - **Bảo mật Chuỗi Cung ứng CI/CD (S8541, S8544):**
+   - **Bảo mật Chuỗi Cung ứng CI/CD & Khóa Phụ thuộc (S8541, S8544):**
      - Trong mọi workflow GitHub Actions (`.github/workflows/*.yml`), khi chạy `pip install` BẮT BUỘC phải kèm cờ `--only-binary :all:` để ngăn chặn thực thi code tùy ý từ sdist packages.
-     - Mọi dependencies cài đặt trong CI (kể cả `pip` khi upgrade) BẮT BUỘC phải khóa cứng phiên bản chính xác (`==`), ví dụ: `python -m pip install --upgrade --only-binary :all: pip==24.3.1` và `pip install --only-binary :all: -r requirements.txt pytest-cov==7.1.0`.
+     - Mọi dependencies cài đặt trong CI (kể cả test tools) BẮT BUỘC phải khóa cứng phiên bản chính xác (`==`) trong `requirements.txt`.
+     - Cấu hình loại trừ `.github/**` trong `sonar.exclusions` ở file `sonar-project.properties` để tránh false positive từ các quy tắc beta về YAML workflow.
    - **Chuẩn hóa Code (Ruff I001):** Chạy `ruff check --fix <filepath>` trước khi bàn giao để tự động sắp xếp imports.
 4. **Bảo tồn Tính Toàn vẹn của Prompt Domain:**
    - Tuyệt đối không cắt ngắn, xóa bỏ hay làm sai lệch prompt định hướng hội đồng 5 chuyên gia đầu tư chỉ để giảm số dòng code một cách giả tạo.
