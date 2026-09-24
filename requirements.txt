@@ -1,5 +1,6 @@
-vnstock @ git+https://github.com/thinh-vu/vnstock.git
-vnai==2.5.9
+# vnstock & vnai are temporarily quarantined on PyPI; stubbed via .github/ci_stubs in CI
+# vnstock @ git+https://github.com/thinh-vu/vnstock.git
+# vnai==2.5.9
 google-genai==2.23.0
 feedparser==6.0.14
 requests==2.34.2
