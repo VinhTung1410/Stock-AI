@@ -382,6 +382,42 @@ def save_watchlist(watchlist_data: list, filepath: str = PATH_WATCHLIST_JSON):
         json.dump(watchlist_data, f, ensure_ascii=False, indent=2)
 
 
+def _resolve_item_tech(sym: str, tech_map: dict | None) -> dict:
+    """Fetch or resolve cached technical indicator dictionary for a symbol."""
+    if tech_map and sym in tech_map:
+        return tech_map[sym] or {}
+    try:
+        return fetch_stock_technical(sym) or {}
+    except Exception:
+        return {}
+
+
+def _calculate_item_mos(sym: str, curr_price: float, note: str) -> float:
+    """Calculate Margin of Safety percentage for a watchlist item."""
+    if curr_price <= 0:
+        return 0.0
+    try:
+        from quant_valuation import calculate_fair_value_and_mos
+        val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=note)
+        return float(val_res.get("mos_pct", 0.0))
+    except Exception:
+        return 0.0
+
+
+def _collect_watchlist_reasons(tech: dict, mos_pct: float) -> list[str]:
+    """Identify reasons why a watchlist ticker is unsuitable (RSI fomo, overvalued, or trap)."""
+    reasons = []
+    rsi = tech.get("rsi14")
+    if rsi is not None and isinstance(rsi, (int, float)) and rsi > 75.0:
+        reasons.append(f"RSI={rsi:.1f} quá mua/FOMO")
+    if mos_pct < -25.0:
+        reasons.append(f"MoS={mos_pct:.1f}% đắt hơn định giá > 25%")
+    trap_info = tech.get("trap_info", {})
+    if trap_info.get("is_trap"):
+        reasons.append(f"Dính bẫy giá ({trap_info.get('trap_type', 'TRAP')})")
+    return reasons
+
+
 def _evaluate_watchlist_item_suitability(
     item: dict, tech_map: dict | None, prune_manual: bool
 ) -> tuple[dict | None, dict | None]:
@@ -394,53 +430,29 @@ def _evaluate_watchlist_item_suitability(
     target_buy = float(item.get("target_buy", 0.0))
     note = str(item.get("note", ""))
 
-    tech = tech_map.get(sym, {}) if (tech_map and sym in tech_map) else {}
-    if not tech:
-        try:
-            tech = fetch_stock_technical(sym)
-        except Exception:
-            tech = {}
-
+    tech = _resolve_item_tech(sym, tech_map)
     curr_price = float(tech.get("current_price") or target_buy or 0.0)
-    rsi = tech.get("rsi14")
-    trap_info = tech.get("trap_info", {})
-    is_trap = bool(trap_info.get("is_trap", False))
+    mos_pct = _calculate_item_mos(sym, curr_price, note)
+    reasons = _collect_watchlist_reasons(tech, mos_pct)
 
-    mos_pct = 0.0
-    if curr_price > 0:
-        try:
-            from quant_valuation import calculate_fair_value_and_mos
-            val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=note)
-            mos_pct = float(val_res.get("mos_pct", 0.0))
-        except Exception:
-            mos_pct = 0.0
+    if not reasons:
+        return item, None
 
-    reasons = []
-    if rsi is not None and isinstance(rsi, (int, float)) and rsi > 75.0:
-        reasons.append(f"RSI={rsi:.1f} quá mua/FOMO")
-    if mos_pct < -25.0:
-        reasons.append(f"MoS={mos_pct:.1f}% đắt hơn định giá > 25%")
-    if is_trap:
-        reasons.append(f"Dính bẫy giá ({trap_info.get('trap_type', 'TRAP')})")
-
-    should_prune = len(reasons) > 0
-    reason_str = "; ".join(reasons) if reasons else "Không phù hợp"
-
-    if should_prune and (is_auto or prune_manual):
+    reason_str = "; ".join(reasons)
+    if is_auto or prune_manual:
         pruned_dict = {
             "symbol": sym,
             "reason": reason_str,
             "is_auto": is_auto,
             "current_price": curr_price,
-            "rsi": rsi,
+            "rsi": tech.get("rsi14"),
             "mos_pct": mos_pct,
         }
         return None, pruned_dict
 
-    if should_prune and not is_auto:
-        warning_tag = f"[⚠️ CẢNH BÁO: {reason_str}]"
-        if warning_tag not in note:
-            item["note"] = f"{note} {warning_tag}".strip()
+    warning_tag = f"[⚠️ CẢNH BÁO: {reason_str}]"
+    if warning_tag not in note:
+        item["note"] = f"{note} {warning_tag}".strip()
     return item, None
 
 

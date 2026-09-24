@@ -3,7 +3,7 @@
 **Tên dự án:** Stock-AI / AI Trading Bot  
 **Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-24  
 **Người yêu cầu (Client):** Tùng  
-**Phiên bản yêu cầu:** v4.1 — Chuẩn hóa Thước đo Backtest, Lõi Chiến lược Regime-First Alignment, Quản trị Rủi ro & Tích hợp Smart Money Flow Tracking  
+**Phiên bản yêu cầu:** v4.5 — Chuẩn hóa Thước đo Backtest, Lõi Chiến lược Regime-First Alignment, Quản trị Rủi ro & Tích hợp Smart Money Flow Tracking  
 
 ---
 

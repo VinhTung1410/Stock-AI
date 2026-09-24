@@ -596,6 +596,61 @@ class RegimeBacktestEngine:
         )
         return active_trade, cash, i
 
+    def _resolve_bar_context(
+        self,
+        i: int,
+        close: pd.Series,
+        open_p: pd.Series,
+        signals: pd.Series,
+        regimes: pd.Series | None,
+        enforce_regime_gate: bool,
+    ) -> tuple[float, float, float, str, int]:
+        """Resolve pricing, market regime, and gated signal for the current simulation bar."""
+        curr_close = close.iloc[i]
+        curr_open = open_p.iloc[i]
+        prev_close = close.iloc[i - 1] if i > 0 else curr_open
+        curr_regime = regimes.iloc[i] if (regimes is not None and i < len(regimes)) else REGIME_SIDEWAYS
+        curr_sig = signals.iloc[i] if i < len(signals) else 0
+
+        # Macro Circuit Breaker (Cash Mode): Suppress buy signals during Downtrend
+        if enforce_regime_gate and curr_regime == REGIME_DOWNTREND and curr_sig == 1:
+            curr_sig = 0
+
+        return curr_close, curr_open, prev_close, curr_regime, curr_sig
+
+    def _execute_bar_transition(
+        self,
+        i: int,
+        curr_date: Any,
+        curr_close: float,
+        curr_open: float,
+        prev_close: float,
+        curr_sig: int,
+        curr_regime: str,
+        total_bars: int,
+        cash: float,
+        active_trade: TradeRecord | None,
+        entry_idx: int,
+        adv20: pd.Series | None,
+        symbol: str,
+        trades: list[TradeRecord],
+    ) -> tuple[TradeRecord | None, float, int]:
+        """Process exit or entry for active/new position at the current bar."""
+        if active_trade is not None:
+            active_trade, cash = self._process_exit(
+                active_trade, curr_date, curr_close, curr_sig, entry_idx, i, total_bars, cash, trades
+            )
+            return active_trade, cash, entry_idx
+
+        if curr_sig == 1 and cash > 0:
+            new_trade, cash, new_idx = self._process_entry(
+                curr_date, curr_open, prev_close, curr_regime, i, cash, adv20, symbol, trades
+            )
+            if new_trade is not None:
+                return new_trade, cash, new_idx
+
+        return None, cash, entry_idx
+
     def run_backtest(
         self,
         df_price: pd.DataFrame,
@@ -622,28 +677,14 @@ class RegimeBacktestEngine:
 
         for i in range(total_bars):
             curr_date = df_price.index[i]
-            curr_close = close.iloc[i]
-            curr_open = open_p.iloc[i]
-            prev_close = close.iloc[i - 1] if i > 0 else curr_open
-            curr_regime = regimes.iloc[i] if (regimes is not None and i < len(regimes)) else REGIME_SIDEWAYS
-            curr_sig = signals.iloc[i] if i < len(signals) else 0
+            curr_close, curr_open, prev_close, curr_regime, curr_sig = self._resolve_bar_context(
+                i, close, open_p, signals, regimes, enforce_regime_gate
+            )
 
-            # Macro Circuit Breaker (Cash Mode): Suppress buy signals during Downtrend
-            if enforce_regime_gate and curr_regime == REGIME_DOWNTREND and curr_sig == 1:
-                curr_sig = 0
-
-            if active_trade is not None:
-                active_trade, cash = self._process_exit(
-                    active_trade, curr_date, curr_close, curr_sig, entry_idx, i, total_bars, cash, trades
-                )
-            elif curr_sig == 1 and cash > 0:
-                new_trade, cash, new_idx = self._process_entry(
-                    curr_date, curr_open, prev_close, curr_regime, i, cash, adv20, symbol, trades
-                )
-                if new_trade is not None:
-                    active_trade = new_trade
-                    entry_idx = new_idx
-
+            active_trade, cash, entry_idx = self._execute_bar_transition(
+                i, curr_date, curr_close, curr_open, prev_close, curr_sig, curr_regime,
+                total_bars, cash, active_trade, entry_idx, adv20, symbol, trades
+            )
 
             curr_pos_val = (active_trade.shares * curr_close) if active_trade else 0.0
             equity.append(cash + curr_pos_val)

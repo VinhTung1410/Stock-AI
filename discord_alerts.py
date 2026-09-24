@@ -188,7 +188,7 @@ def split_ai_summary_into_fields(ai_summary: str) -> list:
 
     # Regex nhận diện tiêu đề mục lớn & tiểu mục (hỗ trợ số La Mã I-X hoặc ký tự A-D kèm emoji đầu/sau, in đậm markdown)
     # Hỗ trợ dấu ':' trong tiêu đề như (11:30) mà không bị cắt cụt
-    header_pattern = re.compile(r'^(?:[#*>\s]*)(?:[^\w\s]{1,3}\s*)?(([IVX]+|[A-D])\.\s+[^\n*]+)', re.IGNORECASE)
+    header_pattern = re.compile(r'^[#*>\s]*(?:[^\w\s]{1,3}\s*)?((?:[IVX]+|[A-D])\.\s+[^\n*]+)', re.IGNORECASE)
 
     for line in raw_lines:
         line_s = line.strip()

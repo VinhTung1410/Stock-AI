@@ -66,17 +66,8 @@ def _check_portfolio_status() -> None:
         print("  ⚠️ Không có dữ liệu đánh giá danh mục.")
 
 
-def _process_watchlist_sync() -> None:
-    """Prune unsuitable tickers, sync auto watchlist opportunities, and display groupings."""
-    print("\n" + "-" * 60)
-    print("📋 2. KIỂM TOÁN & CẬP NHẬT WATCHLIST (LỌC BỎ & THÊM MỚI)")
-    print("-" * 60)
-    wl_before = load_watchlist()
-    symbols_before = {item["symbol"] for item in wl_before}
-    print(f"📌 Watchlist ban đầu ({len(symbols_before)} mã): {sorted(symbols_before)}")
-
-    print("\n🧹 Đang quét thanh lọc (prune_unsuitable_watchlist)...")
-    _, pruned_tickers = prune_unsuitable_watchlist()
+def _print_pruned_watchlist_report(pruned_tickers: list[dict]) -> None:
+    """Print results of watchlist pruning."""
     if pruned_tickers:
         print(f"  ❌ ĐÃ LOẠI BỎ {len(pruned_tickers)} CỔ PHIẾU KHỎI WATCHLIST:")
         for pt in pruned_tickers:
@@ -84,12 +75,9 @@ def _process_watchlist_sync() -> None:
     else:
         print("  ✅ Không có mã nào vi phạm tiêu chí quá nóng (RSI > 75) hay bẫy giá cần loại bỏ.")
 
-    print("\n🔄 Đang quét bổ sung cổ phiếu tiềm năng (sync_auto_watchlist)...")
-    sync_auto_watchlist()
-    wl_after = load_watchlist()
-    symbols_after = {item["symbol"] for item in wl_after}
-    added_tickers = symbols_after - symbols_before
 
+def _print_added_watchlist_report(added_tickers: set[str], wl_after: list[dict]) -> None:
+    """Print results of newly discovered and added watchlist tickers."""
     if added_tickers:
         print(f"  ➕ ĐÃ BỔ SUNG {len(added_tickers)} CỔ PHIẾU MỚI VÀO WATCHLIST:")
         for sym in sorted(added_tickers):
@@ -102,15 +90,43 @@ def _process_watchlist_sync() -> None:
     else:
         print("  ℹ️ Watchlist đã đồng bộ đầy đủ các mã tiềm năng hiện tại.")
 
-    print(f"\n📌 Watchlist sau khi tối ưu ({len(symbols_after)} mã): {sorted(symbols_after)}")
 
-    df_wl = evaluate_watchlist(wl_after) if wl_after else None
-    if df_wl is not None and not df_wl.empty:
-        sectors_dict = group_watchlist_by_sector(df_wl)
-        print("\n🏢 PHÂN BỔ WATCHLIST THEO NGÀNH:")
-        for sec, group_df in sectors_dict.items():
-            syms = group_df[COL_MA_CP].tolist() if COL_MA_CP in group_df.columns else []
-            print(f"  • {sec}: {', '.join(syms)}")
+def _print_watchlist_sectors_report(wl_after: list[dict]) -> None:
+    """Evaluate and print sector breakdown of watchlist."""
+    if not wl_after:
+        return
+    df_wl = evaluate_watchlist(wl_after)
+    if df_wl is None or df_wl.empty:
+        return
+    sectors_dict = group_watchlist_by_sector(df_wl)
+    print("\n🏢 PHÂN BỔ WATCHLIST THEO NGÀNH:")
+    for sec, group_df in sectors_dict.items():
+        syms = group_df[COL_MA_CP].tolist() if COL_MA_CP in group_df.columns else []
+        print(f"  • {sec}: {', '.join(syms)}")
+
+
+def _process_watchlist_sync() -> None:
+    """Prune unsuitable tickers, sync auto watchlist opportunities, and display groupings."""
+    print("\n" + "-" * 60)
+    print("📋 2. KIỂM TOÁN & CẬP NHẬT WATCHLIST (LỌC BỎ & THÊM MỚI)")
+    print("-" * 60)
+    wl_before = load_watchlist()
+    symbols_before = {item["symbol"] for item in wl_before}
+    print(f"📌 Watchlist ban đầu ({len(symbols_before)} mã): {sorted(symbols_before)}")
+
+    print("\n🧹 Đang quét thanh lọc (prune_unsuitable_watchlist)...")
+    _, pruned_tickers = prune_unsuitable_watchlist()
+    _print_pruned_watchlist_report(pruned_tickers)
+
+    print("\n🔄 Đang quét bổ sung cổ phiếu tiềm năng (sync_auto_watchlist)...")
+    sync_auto_watchlist()
+    wl_after = load_watchlist()
+    symbols_after = {item["symbol"] for item in wl_after}
+    added_tickers = symbols_after - symbols_before
+    _print_added_watchlist_report(added_tickers, wl_after)
+
+    print(f"\n📌 Watchlist sau khi tối ưu ({len(symbols_after)} mã): {sorted(symbols_after)}")
+    _print_watchlist_sectors_report(wl_after)
 
 
 def _scan_signals(today_str: str) -> None:

@@ -8,6 +8,8 @@ from db_manager import get_signal_audit_metrics, update_daily_tracking
 
 COL_SIGNAL_DATE: Final[str] = "Ngày phát"
 COL_ACTION: Final[str] = "Hành động"
+COL_STATUS: Final[str] = "Trạng thái"
+FILTER_ALL: Final[str] = "Tất cả"
 
 
 def _safe_pct(val, default="Đang chạy (N/A)"):
@@ -91,10 +93,10 @@ def _filter_and_render_signals_table(df_signals: pd.DataFrame) -> pd.DataFrame:
     with col_f1:
         filter_status = st.selectbox(
             "Lọc theo trạng thái:",
-            ["Tất cả", "Đang mở (OPEN)", "Chốt lời (TARGET_HIT)", "Cắt lỗ (STOP_LOSS)", "Hết hạn (EXPIRED)"]
+            [FILTER_ALL, "Đang mở (OPEN)", "Chốt lời (TARGET_HIT)", "Cắt lỗ (STOP_LOSS)", "Hết hạn (EXPIRED)"]
         )
     with col_f2:
-        all_syms = ["Tất cả"] + sorted(df_signals["Mã"].dropna().astype(str).unique().tolist())
+        all_syms = [FILTER_ALL] + sorted(df_signals["Mã"].dropna().astype(str).unique().tolist())
         filter_sym = st.selectbox("Lọc theo mã CP:", all_syms)
 
     status_map = {
@@ -105,13 +107,13 @@ def _filter_and_render_signals_table(df_signals: pd.DataFrame) -> pd.DataFrame:
     }
     filtered_df = df_signals.copy()
     if filter_status in status_map:
-        filtered_df = filtered_df[filtered_df["Trạng thái"] == status_map[filter_status]]
-    if filter_sym != "Tất cả":
+        filtered_df = filtered_df[filtered_df[COL_STATUS] == status_map[filter_status]]
+    if filter_sym != FILTER_ALL:
         filtered_df = filtered_df[filtered_df["Mã"] == filter_sym]
 
     display_cols = [
         "ID", "Mã", COL_SIGNAL_DATE, COL_ACTION, "Giá vào", "Giá Target", "Stop-Loss",
-        "Trạng thái", "PnL Thực tế (%)", "Alpha vs VNI (%)", "Đỉnh MFE", "Đáy MAE",
+        COL_STATUS, "PnL Thực tế (%)", "Alpha vs VNI (%)", "Đỉnh MFE", "Đáy MAE",
         "MoS (%)", "F-Score", "Nguyên nhân nếu lỗ"
     ]
     avail_cols = [c for c in display_cols if c in filtered_df.columns]
@@ -129,7 +131,7 @@ def _render_signal_detail_inspector(filtered_df: pd.DataFrame, df_signals: pd.Da
         if matches.empty:
             return f"Signal #{x}"
         row = matches.iloc[0]
-        return f"Signal #{x} - {row.get('Mã', '')} ({row.get(COL_SIGNAL_DATE, '')} | Trạng thái: {row.get('Trạng thái', 'OPEN')})"
+        return f"Signal #{x} - {row.get('Mã', '')} ({row.get(COL_SIGNAL_DATE, '')} | Trạng thái: {row.get(COL_STATUS, 'OPEN')})"
 
     selected_id = st.selectbox(
         "Chọn một tín hiệu để mở hộp đen dữ liệu gốc:",
@@ -189,7 +191,7 @@ def _render_signal_detail_inspector(filtered_df: pd.DataFrame, df_signals: pd.Da
     with col_d3:
         st.markdown(f"""
         **3. Kết quả Thực tế sau T+:**
-        - Trạng thái hiện tại: **{target_row.get('Trạng thái', 'OPEN')}**
+        - Trạng thái hiện tại: **{target_row.get(COL_STATUS, 'OPEN')}**
         - P/L Thực tế: **{pnl_txt}**
         - Alpha vs VN-Index: **{alpha_txt}**
         - Đỉnh MFE: `{mfe_txt}` | Đáy MAE: `{mae_txt}`
@@ -506,12 +508,12 @@ def _render_paper_trading_subtab():
             shortfall = calculate_implementation_shortfall(entry_p, t1_p, is_buy=True)
             display_paper.append({
                 "Mã": row.get("Mã"),
-                "Ngày phát": row.get("Ngày phát"),
-                "Hành động": row.get("Hành động"),
+                COL_SIGNAL_DATE: row.get(COL_SIGNAL_DATE),
+                COL_ACTION: row.get(COL_ACTION),
                 "Giá đề xuất (k)": f"{entry_p:.1f}",
                 "Giá thực tế T+1 (k)": f"{t1_p:.1f}" if t1_p > 0 else "Chờ khớp",
                 "Trượt giá (bps)": f"{shortfall:+.1f}",
-                "Trạng thái": row.get("Trạng thái"),
+                COL_STATUS: row.get(COL_STATUS),
             })
         st.dataframe(pd.DataFrame(display_paper), width="stretch", hide_index=True)
     else:
