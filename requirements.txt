@@ -1,4 +1,4 @@
-vnstock==4.0.7
+vnstock @ git+https://github.com/thinh-vu/vnstock.git
 vnai==2.5.9
 google-genai==2.23.0
 feedparser==6.0.14
