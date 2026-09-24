@@ -4,7 +4,7 @@
 **Author:** Technical Business Analyst / AI Product Owner  
 **Project:** Stock-AI (Vietnamese Equities Quantamental Screening Platform)  
 **Target Audience:** Engineering Managers, Product Leaders, Technical Recruiters, and Domain Analysts  
-**Status:** Hardened in Production · 43 Tests Passing (100%)  
+**Status:** Hardened in Production · 151 Tests Passing (100%) · v4.0 Institutional Quant Backtest Released  
 
 ---
 
@@ -12,12 +12,13 @@
 
 **Stock-AI** is a hybrid quantamental decision-support system tailored for retail and institutional investors in the Vietnamese stock market (HOSE/HNX). 
 
-This case study documents a real-world product evolution cycle: from handling an urgent **customer dissatisfaction incident** regarding recommendation overload and duplicate signals, through **cross-functional stakeholder alignment** with financial analysts and engineering leadership, to delivering a **zero-cost, production-grade hybrid architecture** that balances deep analytical rigor with strict API token economics.
+This case study documents a real-world product evolution cycle: from handling an urgent **customer dissatisfaction incident** regarding recommendation overload and duplicate signals, through **cross-functional stakeholder alignment** with financial analysts and engineering leadership, to delivering a **zero-cost, production-grade hybrid architecture** and an **institutional-grade Backtest & Paper Trading engine** that balances deep analytical rigor with strict API token economics.
 
 ```
        [Voice of Customer]                [Domain Experts]                 [Engineering & Product]
   "8 stocks/day is too noisy,         "We need 5 multi-agent         "Free Tier token limits ($0 cost)
    and BSR was repeated twice!"       financial experts to debate"    cannot afford 5-7 LLM calls/ticker"
+  "VIC doubled but backtest lost"     "Test Quant Core, not MA"      "Zero LLM Backtest, pure Python math"
                  \                                |                               /
                   \                               |                              /
                    ▼                              ▼                             ▼
@@ -26,14 +27,15 @@ This case study documents a real-world product evolution cycle: from handling an
    │  • Push 80% deterministic math & gates to Python (0 Token, <10ms, 100% Unit Tested)   │
    │  • Consolidate 20% qualitative debate into a Single Structured LLM Call (+30% token)   │
    │  • Overhaul UX: Strict separation between Actionable BUY (Max 2) vs Watchlist Radar   │
+   │  • Backtest: HOSE ±7% ceiling, T+2.5, VN-Index Benchmark, and Quant Core Strategy      │
    └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🗺️ Part I: The Product Evolution Chronicle (v1.0 → v2.0)
+## 🗺️ Part I: The Product Evolution Chronicle (v1.0 → v4.0)
 
-Before diving into the v2.0 crisis, here is how Stock-AI systematically matured through continuous customer feedback, domain adaptation, and architectural iterations:
+Before diving into the crisis deep-dives, here is how Stock-AI systematically matured through continuous customer feedback, domain adaptation, and architectural iterations:
 
 ```mermaid
 timeline
@@ -43,6 +45,9 @@ timeline
     v1.5 : Domain Microstructure Defense : Anti-Chasing Ceiling Shield : GDKHQ Ex-Dividend Protection
     v1.8 : Credibility & Transparency : Supabase Immutable Audits : Alpha Tracker vs VN-Index
     v2.0 : Signal Overload & Token Economics : 80/20 Zero-Cost Hybrid Gate : Red Team Contrarian Synthesis
+    v3.0 : Multi-Agent Governance : HOSE Realistic Engine (T+2.5, ±7%, ADV20) : Multi-Role Workflow
+    v3.1 : Web-to-Discord Hook : 100% Offline Test Isolation : 08:45 ATO Watchlist Pruning
+    v4.0 : Backtest Grounding & High-Beta Solution : VN-Index Benchmark & Real Beta : Quant Core Strategy & Paper Trading
 ```
 
 ### Milestone Comparison Matrix
@@ -54,6 +59,8 @@ timeline
 | **v1.5** | **Vietnam Market Edge Cases**<br/>• Retail chasing price ceilings (+6.85% HOSE limit) into T+2.5 bull traps.<br/>• False stop-loss hits during ex-dividend date (GDKHQ) price adjustments. | **Domain Microstructure Shields**<br/>• *Anti-Chasing Filter:* Rejects signals when price reaches daily ceiling limit.<br/>• *GDKHQ Shield:* Cross-references corporate action calendar before triggering stop loss. | Protects portfolio NAV from localized regulatory/exchange structural traps. |
 | **v1.8** | **Black-Box Skepticism**<br/>Users questioned recommendation authenticity ("Did the bot really recommend this at entry?"). | **Immutable Signal Auditing & Alpha Tracker**<br/>• Real-time signal snapshotting to Supabase PostgreSQL.<br/>• Automated computation of Win Rate, Profit Factor, and Alpha vs VN-Index benchmark. | Builds institutional credibility and verifiable track record (+8.4% Alpha vs VN-Index). |
 | **v2.0** | **Signal Overload vs. Token Economics**<br/>Customer escalation of 8 tickers/day + duplicate alerts vs Financial Team's expensive 5-agent proposal. | **Zero-Cost Smart Hybrid Architecture**<br/>• 80% Python deterministic gatekeeper.<br/>• Single-call compressed Red Team contrarian prompt.<br/>• Strict Max 2 BUY daily budget & atomic deduplication. | Reduces noise by 75%, eliminates duplicate alerts to 0%, sustains 100% Free Tier ($0 cost). |
+| **v3.0 / v3.1** | **Missing Backtest Foundation & Web Alert Disconnect**<br/>• No empirical evidence for parameters.<br/>• Web analysis BUY signal (TCB) omitted from Discord DM.<br/>• Test runs leaked synthetic tickers (`HOT1`) to client. | **HOSE Microstructure Engine & Alert Isolation**<br/>• Simulates HOSE ±7% ceiling, T+2.5 settlement lag, 15 bps slippage.<br/>• Web-to-Discord hook auto-dispatches BUY signals with F-Score/MoS.<br/>• 100% mocked external I/O in tests (Zero test leakage). | Client receives real-time Web BUY alerts; pristine Discord DM without test spam; verified HOSE friction. |
+| **v4.0** | **The Backtest Paradox (VIC +67% vs -30% Loss)**<br/>• Tickers like high-beta VIC failed under basic MA crossover.<br/>• Alpha/Beta defaulted to 0%/1.0 (dead metric).<br/>• Regime tables empty due to MA200 constraint. | **Institutional Quant Backtest & Benchmark**<br/>• Feeds actual VN-Index benchmark returns to calculate real Beta ($\beta=1.78$).<br/>• Classifies market regimes using VN-Index with adaptive windows.<br/>• "Quant Core Strategy" combining FA (F-Score $\ge 6$, MoS $\ge 15\%$, Z-Score $>1.8$) + TA + Stop-Loss.<br/>• Multi-line Equity Curve: Strategy vs Buy & Hold vs VN-Index.<br/>• Paper trading connects to Supabase for real Implementation Shortfall (bps). | Backtest accurately measures true system edge; provides institutional CFA-grade risk metrics; 151 tests passing. |
 
 ---
 
@@ -224,3 +231,49 @@ Total daily consumption: > 147,000 tokens/day
 1. **AI is a Reasoning Engine, Not a Calculator:** Offloading arithmetic, deduplication, and rule-based thresholding to Python saved thousands of tokens per day while eliminating hallucinations.
 2. **Product Management is Stakeholder Translation:** Successfully negotiated between the Financial Team's ambition for depth and Engineering's constraint on token budgets, creating a win-win hybrid solution.
 3. **UX is Part of the Algorithm:** Technical accuracy means nothing if the user interface confuses `WATCH` with `BUY`. Information hierarchy is as critical as signal math.
+
+---
+
+## 🔬 Part III: Deep-Dive Case Study — The v4.0 Backtest Crisis (The High-Beta Paradox & Institutional Grounding)
+
+### 1. Problem Discovery & The Customer Escalation
+During interactive user testing of the newly built Tab 6 Backtest Engine, the Client tested ticker **VIC** (Vingroup) — a prominent stock that had experienced a major market run (+67% over 200 trading sessions). The user was shocked by the result:
+> *"Is the Backtest broken? I tested a high-growth stock that doubled recently (VIC), but the backtest shows a -30% catastrophic loss!"*
+
+### 2. 5-Whys Root Cause Analysis (RCA)
+
+| Level | Question | Root Cause Finding | Dimension |
+|---|---|---|---|
+| **Why 1** | Why did VIC suffer a -30% backtest loss despite gaining +67%? | The strategy generated 5 trades: 4 were whipsawed for losses, and only 1 had a marginal gain. | **Strategy Lag & Volatility** |
+| **Why 2** | Why did the strategy whipsaw so severely? | The Backtest only ran an elementary MA20/MA50 crossover with massive trend lag, repeatedly buying after big rallies and selling at the bottom of sharp corrections. | **Signal Logic Architecture** |
+| **Why 3** | Why was MA20/MA50 crossover used when the main system uses F-Score & MoS? | The backtest engine plumbing was initially built with a textbook toy strategy rather than the actual deterministic "Quant Core" logic (`quant_engine.py`). | **Architectural Mismatch** |
+| **Why 4** | Why did the UI show Beta = 1.0 and Alpha = 0% for every ticker? | `benchmark_returns` (VN-Index) was never passed into `run_backtest()`, causing the math to fallback to default values and blinding the user to VIC's true high-beta nature ($\beta=1.78$). | **Metric Pipeline Gap** |
+| **Why 5** | Why was the Regime table (Uptrend/Downtrend) completely empty (all 0s)? | The classifier applied `MA200_SLOPE` directly on individual stock candles requiring $\ge 200$ bars, falling back entirely to `SIDEWAYS` (Regime Tautology). | **Methodology Invalidation** |
+
+### 3. The 7 Systemic Flaws Addressed in v4.0
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                        v4.0 SYSTEMIC RE-ENGINEERING BLUEPRINT                          │
+│                                                                                        │
+│  [Flaw 1: Paralyzed Alpha/Beta]  ──► Ingest VN-Index Benchmark Returns (Real Beta)    │
+│  [Flaw 2: Empty Regime Tables]   ──► Classify on VN-Index with Adaptive Moving Windows │
+│  [Flaw 3: Strategy Mismatch]     ──► Implement "Quant Core Strategy" (FA + MoS + TA)  │
+│  [Flaw 4: Blind Equity Curve]    ──► Multi-Line Chart: Strategy vs Buy&Hold vs VN-Index│
+│  [Flaw 5: Unformatted Capital]   ──► 100,000,000 VND formatting + 50M/100M/500M/1B UI │
+│  [Flaw 6: Unwired Paper Trade]   ──► Direct Supabase Forward Testing & Shortfall (bps)│
+│  [Flaw 7: Unbounded Drawdown]    ──► Deterministic -7% / ATR Trailing Stop-Loss on T+2 │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4. Implementation Details & Business Impact
+
+| Metric | v3.1 State | v4.0 Institutional State | Business / Product Impact |
+|---|:---:|:---:|---|
+| **Beta & Systematic Risk** | Paralyzed at 1.0 for all stocks | **Real Beta computed against VN-Index** (VIC $\beta=1.78$, HPG $\beta=0.66$) | Eliminates false risk parity; aligns with CFA Portfolio Management standards. |
+| **Market Regime Breakdown** | 0 trades in Uptrend/Downtrend | **100% populating 4-column matrix** (Full, Uptrend, Downtrend, Sideways) | Pinpoints exact strategy edge across market cycles without Regime Tautology. |
+| **Testing Strategy** | Toy MA20/MA50 crossover only | **Multi-strategy Selector: Quant Core, MA, RSI Reversion** | Proves the real power of Piotroski F-Score $\ge 6$ + MoS $\ge 15\%$ + Z-Score $>1.8$. |
+| **Comparative Visual Context** | Single isolated equity curve | **Multi-line chart: Strategy vs Buy & Hold vs VN-Index** | Instantly answers: *"Did we beat passive buy & hold and the index?"* |
+| **Forward Testing Reality** | Mock static shortfall numbers | **Live Supabase signals with Implementation Shortfall (bps)** | Transparent execution audit trail from signal generation to market fill. |
+| **Automated Test Suite** | 147 tests | **151 tests (100% Pass, Coverage $\ge 90\%$)** | Verified compliance with SonarCloud, zero breaking changes. |
+
