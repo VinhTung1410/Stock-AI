@@ -33,9 +33,10 @@ Quy trình phát triển phần mềm và tối ưu hóa hệ thống định l�
     │   Audit Disclaimer pháp lý trên 100% cảnh báo, kiểm toán Git Staging (No Local Files)
     ▼
 [Phase 7: Client Review, Release & Local Workspace Hygiene]
-        Bàn giao báo cáo nghiệm thu (Walkthrough) -> Client duyệt ->
-        Cập nhật DECISION_LOG.md -> Kiểm tra .gitignore -> Commit & Push an toàn
+        Bàn giao báo cáo nghiệm thu (Walkthrough) -> Client duyệt / Yêu cầu Push ->
+        Cập nhật DECISION_LOG.md -> Kiểm tra .gitignore -> Commit (English Only) & Push an toàn
 ```
+
 
 ---
 
@@ -154,13 +155,16 @@ Nếu ở bất kỳ giai đoạn nào tiêu chuẩn không đạt, task sẽ k�
 - **Actor:** Client + Hệ thống.
 - **Hành động:**
   1. Trình diễn báo cáo nghiệm thu tóm tắt (Walkthrough) cho Client.
-  2. Client bấm duyệt nghiệm thu.
+  2. Client bấm duyệt nghiệm thu hoặc ra lệnh *"push lên cho tôi"*.
   3. Ghi lại các quyết định kỹ thuật/nghiệp vụ quan trọng vào `docs/AI-workflow/GLOBAL/DECISION_LOG.md`.
   4. **Bảo vệ Tài liệu Nội bộ Local (Local Workspace Hygiene Rule):**
      - Các file nghiên cứu cá nhân, chiến lược phác thảo, tài liệu đánh giá của Client (ví dụ: `danh_gia_he_thong_quy_fund.md`, `stock_ai_roadmap.md`, `idea.md`...) được định danh là **TÀI NGUYÊN NỘI BỘ (LOCAL ONLY)**.
      - Bắt buộc khai báo các file này trong `.gitignore`.
      - Tuyệt đối không đưa vào `git add`, không tạo commit chứa các file này, và không push lên remote repository.
-  5. Thực hiện `git commit` và `git push` mã nguồn chính thức lên GitHub an toàn.
+  5. **Quy chuẩn Git Commit Message & Push (BẮT BUỘC TIẾNG ANH - 100% ENGLISH ONLY):**
+     - Khi Client yêu cầu push lên Git, **mọi Git Commit Message (Title + Description) và Release Notes BẮT BUỘC PHẢI VIẾT BẰNG TIẾNG ANH 100% (ENGLISH ONLY)** theo chuẩn Conventional Commits (ví dụ: `feat(quant): ...`, `fix(security): ...`, `chore(docs): ...`).
+     - Tuyệt đối **KHÔNG** viết Git commit message bằng tiếng Việt để bảo đảm tính chuyên nghiệp, dễ theo dõi trong CI/CD, và đáp ứng chuẩn mực mã nguồn quốc tế trên GitHub.
+  6. Thực hiện `git commit` và `git push` mã nguồn chính thức lên GitHub an toàn.
 - **Cổng chuyển tiếp:** Chuyển trạng thái task sang `DONE`.
 
 ---
@@ -183,3 +187,5 @@ Nếu ở bất kỳ giai đoạn nào tiêu chuẩn không đạt, task sẽ k�
 1. **Nếu Kỹ thuật mâu thuẫn với Nghiệp vụ Tài chính:** Ý kiến của Finance Lead và Data Gate có quyền ưu tiên cao hơn để bảo toàn an toàn vốn cho nhà đầu tư.
 2. **Nếu Tiến độ mâu thuẫn với Tiêu chuẩn An toàn (Phase 0 & SonarCloud):** Tuyệt đối không tắt tường lửa disclaimer, không bỏ qua kiểm tra Prompt Injection, và không hạ thấp chuẩn SonarCloud/Coverage. Nếu cần gấp, PO phải cắt giảm Scope tính năng thay vì cắt giảm chốt chặn an toàn.
 3. **Nếu có nguy cơ rò rỉ file Local:** Mọi hành động `git push` phải bị dừng ngay lập tức cho đến khi toàn bộ file thuộc danh mục Local Private Docs được gỡ hoàn toàn khỏi Git staging và đưa vào `.gitignore`.
+4. **Nếu Commit Message không phải Tiếng Anh (English):** AI Agent và Reviewer phải chặn việc commit/push bằng tiếng Việt và bắt buộc chuẩn hóa 100% Git Commit Message sang tiếng Anh chuẩn trước khi thực thi lệnh push.
+
