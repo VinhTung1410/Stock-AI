@@ -238,10 +238,11 @@ def render_tab_alpha_tracker():
     </div>
     """, unsafe_allow_html=True)
 
-    subtab1, subtab2, subtab3 = st.tabs([
+    subtab1, subtab2, subtab3, subtab4 = st.tabs([
         "🎯 Kiểm Toán Tín Hiệu (Alpha Ledger)",
         "🚀 Backtest Lõi Định Lượng Theo Regime",
         "📝 Forward Testing (Paper Trading)",
+        "🌪️ Kiểm Tra Áp Lực & Rủi Ro Đuôi (Stress Test)",
     ])
 
     with subtab1:
@@ -252,6 +253,9 @@ def render_tab_alpha_tracker():
 
     with subtab3:
         _render_paper_trading_subtab()
+
+    with subtab4:
+        _render_stress_test_subtab()
 
 
 def _render_alpha_audit_subtab():
@@ -544,4 +548,174 @@ def _render_paper_trading_subtab():
         </span>
     </div>
     """, unsafe_allow_html=True)
+
+
+def _build_crisis_stress_table(stress_summary: dict) -> pd.DataFrame:
+    """Build formatted DataFrame from crisis stress summary."""
+    rows = []
+    for _, data in stress_summary.items():
+        m_drop = data.get("market_drop_pct", 0.0)
+        s_ret = data.get("strategy_return_pct", 0.0)
+        mdd = data.get("max_drawdown_pct", 0.0)
+        wr = data.get("win_rate_pct", 0.0)
+        trades = data.get("total_trades", 0)
+
+        rows.append({
+            "Sự Kiện Khủng Hoảng Lịch Sử": data.get("name", "N/A"),
+            "Bắt Đầu": data.get("start_date", "N/A"),
+            "Kết Thúc": data.get("end_date", "N/A"),
+            "VN-Index Giảm (%)": f"{m_drop:+.1f}%",
+            "Chiến Lược Lãi/Lỗ (%)": f"{s_ret:+.2f}%",
+            "Max Drawdown (MDD)": f"{mdd:.1f}%",
+            "Số Lệnh": trades,
+            "Tỷ Lệ Thắng (%)": f"{wr:.1f}%",
+        })
+    return pd.DataFrame(rows)
+
+
+def _run_and_display_crisis_matrix(sym_input: str, enforce_cash_mode: bool) -> list[float]:
+    """Fetch history, run 11-crisis stress matrix and display interactive table."""
+    from backtest_engine import (
+        STRATEGY_QUANT_CORE,
+        RegimeBacktestEngine,
+        generate_signals_by_strategy,
+        run_crisis_stress_matrix,
+    )
+    from data_engine import fetch_index_historical, fetch_stock_historical
+    from regime_classifier import classify_market_regime
+
+    with st.spinner(f"Đang kiểm tra áp lực 11 khủng hoảng lịch sử cho {sym_input} (2018–2024)..."):
+        df_p = fetch_stock_historical(sym_input, start_date="2018-01-01")
+        df_vni = fetch_index_historical("VNINDEX", start_date="2018-01-01")
+
+        if df_p.empty or len(df_p) < 50:
+            st.error(f"Không thể tải đủ dữ liệu lịch sử từ 2018 cho {sym_input}.")
+            return []
+
+        df_p = _normalize_price_index(df_p)
+        df_vni = _normalize_price_index(df_vni)
+        vni_returns = df_vni["close"].astype(float).pct_change().reindex(df_p.index).fillna(0.0)
+        regimes = classify_market_regime(df_vni).reindex(df_p.index).ffill().bfill()
+
+        signals = generate_signals_by_strategy(
+            df_p,
+            strategy=STRATEGY_QUANT_CORE,
+            regimes=regimes,
+            enforce_regime_gate=enforce_cash_mode,
+        )
+
+        engine = RegimeBacktestEngine(initial_capital=100_000_000.0)
+        res = run_crisis_stress_matrix(
+            engine=engine,
+            df_price=df_p,
+            signals=signals,
+            regimes=regimes,
+            benchmark_returns=vni_returns,
+            symbol=sym_input,
+            enforce_regime_gate=enforce_cash_mode,
+        )
+
+        df_summary = _build_crisis_stress_table(res.get("stress_summary", {}))
+        st.dataframe(df_summary, width="stretch", hide_index=True)
+
+        full_bt = engine.run_backtest(
+            df_price=df_p,
+            signals=signals,
+            regimes=regimes,
+            benchmark_returns=vni_returns,
+            symbol=sym_input,
+            enforce_regime_gate=enforce_cash_mode,
+        )
+        return [t.pnl_pct for t in full_bt.trades] if full_bt.trades else []
+
+
+def _render_flash_crash_scanner(df_vni: pd.DataFrame) -> None:
+    """Render historical flash crashes detected on VN-Index."""
+    from backtest_engine import scan_market_stress_events
+
+    stress_events = scan_market_stress_events(df_vni)
+    drop_50 = stress_events.get("drop_50pts_days", [])
+    drop_4pct = stress_events.get("drop_4pct_days", [])
+
+    st.markdown("#### ⚡ Nhật Ký Các Phiên Sập Chớp Nhoáng (Flash Crashes)")
+    st.caption("Các phiên VN-Index giảm ≥ 50 điểm hoặc rơi tự do ≥ 4% trong ngày:")
+    col_fc1, col_fc2 = st.columns(2)
+    with col_fc1:
+        st.write(f"**Phiên giảm ≥ 50 điểm:** `{len(drop_50)} phiên`")
+        if drop_50:
+            st.dataframe(pd.DataFrame(drop_50), width="stretch", hide_index=True)
+    with col_fc2:
+        st.write(f"**Phiên giảm ≥ 4.0%:** `{len(drop_4pct)} phiên`")
+        if drop_4pct:
+            st.dataframe(pd.DataFrame(drop_4pct), width="stretch", hide_index=True)
+
+
+def _render_monte_carlo_tail_risk_ui(extracted_pnls: list[float]) -> None:
+    """Render Monte Carlo tail risk simulation cards and metrics."""
+    from quant_engine import simulate_monte_carlo_drawdown
+
+    st.divider()
+    st.markdown("### 🎲 Mô Phỏng Rủi Ro Đuôi Monte Carlo (Tail Risk 2,000 Kịch Bản - Phase 5a)")
+    st.caption("Tráo đổi ngẫu nhiên thứ tự các lệnh để lượng hóa rủi ro tài khoản khi gặp chuỗi đen đủi liên tiếp:")
+
+    default_pnls = extracted_pnls if extracted_pnls else [4.5, -2.1, 7.2, -5.0, 12.0, -6.5, 3.2, -4.0, 8.5, -3.2, 5.1, -7.0]
+    col_mc1, col_mc2 = st.columns([3, 1])
+    with col_mc1:
+        pnl_str = st.text_input(
+            "Chuỗi PnL lệnh (%) phân cách bằng dấu phẩy:",
+            value=", ".join(str(round(p, 1)) for p in default_pnls[:15]),
+        )
+    with col_mc2:
+        n_sim = st.selectbox("Số kịch bản giả lập", [1000, 2000, 5000], index=1)
+
+    if st.button("🎲 Chạy Mô Phỏng Rủi Ro Đuôi Monte Carlo", width="stretch", type="secondary"):
+        try:
+            parsed_pnls = [float(x.strip()) for x in pnl_str.split(",") if x.strip()]
+        except ValueError:
+            st.error("Chuỗi PnL không hợp lệ. Vui lòng nhập số thực phân cách bằng dấu phẩy.")
+            return
+
+        with st.spinner(f"Đang chạy tái mẫu Bootstrap {n_sim:,} lần..."):
+            res_mc = simulate_monte_carlo_drawdown(parsed_pnls, n_simulations=int(n_sim))
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Max Drawdown Trung Vị", f"{res_mc['median_drawdown_pct']:.2f}%", "Median DD")
+        c2.metric("Rủi Ro Đuôi P95", f"{res_mc['p95_drawdown_pct']:.2f}%", "95% Worst DD", delta_color="inverse")
+        c3.metric("Rủi Ro Đuôi P99 (Khủng Hoảng)", f"{res_mc['p99_drawdown_pct']:.2f}%", "99% Catastrophic", delta_color="inverse")
+        c4.metric("Xác Suất Lỗ Quá 15%", f"{res_mc['prob_drawdown_over_15pct']:.1f}%", f"Max {res_mc['max_consecutive_losses']} lệnh lỗ liên tiếp", delta_color="inverse")
+
+
+def _render_stress_test_subtab():
+    """Render Subtab 4: Crisis Stress Matrix & Monte Carlo Tail Risk."""
+    st.markdown("""
+    <div style="margin-bottom: 16px;">
+        <h3 style="margin: 0; color: #0f172a; font-weight: 700;">🌪️ Kiểm Tra Áp Lực Khủng Hoảng & Mô Phỏng Rủi Ro Đuôi (Stress Test)</h3>
+        <p style="color: #64748b; font-size: 13.5px; margin-top: 4px;">
+            Kiểm tra sức chịu đựng của chiến lược qua <b>11 cuộc khủng hoảng lịch sử lớn nhất VN-Index (2018–2024)</b> và <b>Mô phỏng rủi ro đuôi Monte Carlo 2,000 kịch bản</b>.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2 = st.columns([2, 2])
+    with col1:
+        sym_input = st.text_input("Mã Cổ phiếu Cần Stress Test", value="HPG", key="stress_sym").upper().strip()
+    with col2:
+        enforce_cash_mode = st.checkbox(
+            "🛡️ Kích hoạt Macro Cash Mode (Khóa mua khi VN-Index Downtrend)",
+            value=True,
+            key="stress_cash_mode",
+            help="Bảo toàn vốn tối đa trước các đợt sập lịch sử lớn.",
+        )
+
+    trade_pnls = []
+    if st.button("⚡ Chạy Ma Trận 11 Khủng Hoảng Lịch Sử (2018–2024)", type="primary", width="stretch"):
+        trade_pnls = _run_and_display_crisis_matrix(sym_input, enforce_cash_mode)
+
+    from data_engine import fetch_index_historical
+    df_vni = fetch_index_historical("VNINDEX", start_date="2018-01-01")
+    if not df_vni.empty:
+        _render_flash_crash_scanner(_normalize_price_index(df_vni))
+
+    _render_monte_carlo_tail_risk_ui(trade_pnls)
+
 
