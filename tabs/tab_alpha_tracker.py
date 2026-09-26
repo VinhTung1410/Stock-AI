@@ -585,8 +585,8 @@ def _run_and_display_crisis_matrix(sym_input: str, enforce_cash_mode: bool) -> l
     from regime_classifier import classify_market_regime
 
     with st.spinner(f"Đang kiểm tra áp lực 11 khủng hoảng lịch sử cho {sym_input} (2018–2024)..."):
-        df_p = fetch_stock_historical(sym_input, limit=1800, start_date="2018-01-01")
-        df_vni = fetch_index_historical("VNINDEX", limit=1800, start_date="2018-01-01")
+        df_p = fetch_stock_historical(sym_input, limit=1800)
+        df_vni = fetch_index_historical("VNINDEX", limit=1800)
 
         if df_p.empty or len(df_p) < 50:
             st.error(f"Không thể tải đủ dữ liệu lịch sử từ 2018 cho {sym_input}.")
@@ -712,7 +712,7 @@ def _render_stress_test_subtab():
         trade_pnls = _run_and_display_crisis_matrix(sym_input, enforce_cash_mode)
 
     from data_engine import fetch_index_historical
-    df_vni = fetch_index_historical("VNINDEX", limit=1800, start_date="2018-01-01")
+    df_vni = fetch_index_historical("VNINDEX", limit=1800)
     if not df_vni.empty:
         _render_flash_crash_scanner(_normalize_price_index(df_vni))
 
