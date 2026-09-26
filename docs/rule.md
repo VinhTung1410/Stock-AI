@@ -202,3 +202,114 @@ To ensure clarity and prevent mathematical distortion of the Risk/Reward ($R:R$)
    - Continued fields must use clean sequential labels like `(Part 2)`, `(Part 3)` rather than redundant chained strings.
 2. **Streamlit UI Layout:**
    - Render structured KPI cards with color-coded badges matching status definitions (Emerald Green: Buy, Amber: Watch/Hold, Crimson: Sell/Stop).
+
+---
+
+## 6. Legal Compliance Firewall & Security Integrity
+
+To ensure full compliance with the Vietnamese legal framework and protect user assets:
+
+### 6.1. Vietnamese Securities Law Compliance (Articles 10 & 82)
+- All public Discord notifications and private direct messages (DMs) must append the mandatory statutory disclaimer (`SIGNAL_DISCLAIMER`):
+  > *"Tuyên bố miễn trừ trách nhiệm: Hệ thống cung cấp thông tin phân tích định lượng và nghiên cứu thị trường, không phải là lời mời chào hay khuyến nghị đầu tư tài chính ủy thác. Nhà đầu tư tự chịu trách nhiệm về quyết định phân bổ vốn theo Điều 10 & 82 Luật Chứng khoán 2019."*
+- Prohibits automated execution of real-money broker orders without human-in-the-loop (HITL) authorization.
+
+### 6.2. News Vector Sanitization Against Prompt Injection (`sanitize_news_for_llm`)
+- Raw text ingested from CafeF, Google News, or social RSS feeds must never be passed directly into LLM prompts.
+- All titles are capped at 120 characters and summaries at 400 characters.
+- A deterministic regex blocklist strips prompt injection triggers (e.g., `ignore previous instructions`, `system prompt`, `you are now`, `drop table`, `admin override`).
+
+### 6.3. Daily Pre-ATO Heartbeat
+- The background daemon dispatches an automated system heartbeat at **08:30 UTC+7** daily, verifying database connectivity, feed latencies, and alerting operators if market data pipelines are degraded prior to the ATO open.
+
+---
+
+## 7. Quantitative Portfolio Risk Constraints & Allocation Rules
+
+To prevent catastrophic drawdown and fat-tail risk exposure:
+
+### 7.1. Strict Sector Concentration Guard (`check_sector_concentration`)
+- **Max Sector Exposure:** No more than **3 active positions** or **$\le 25\%$ total portfolio NAV** may be allocated to any single economic sector (e.g., Banking, Real Estate, Steel, Securities).
+- If a proposed trade breaches this limit, the system triggers a hard stop veto: `recommendation_allowed = False`.
+
+### 7.2. Position Sizing via Half-Kelly & Liquidity Tiering
+- Full Kelly criterion ($f^*$) is strictly banned to prevent over-allocation. The engine caps position sizing at **Half-Kelly** ($f^* / 2$).
+- **ADV20 Liquidity Tiering:** Order size must not exceed $2\%$ of the 20-day Average Daily Volume (ADV20) to prevent market impact.
+
+### 7.3. Risk Parity / Equal Risk Contribution Allocation (`optimize_portfolio_risk_parity`)
+- Capital is allocated inversely proportional to asset volatility:
+  $$w_i \propto \frac{1}{\sigma_i}$$
+- **Single-Stock Ceiling:** Capped at a hard maximum of **$25\%$** of total capital.
+- **Budget Redistribution:** Excess capital from capped high-conviction assets is iteratively redistributed across uncapped holdings according to their inverse volatility weight.
+
+---
+
+## 8. Execution Microstructure & Dynamic Slippage Simulation
+
+### 8.1. Dynamic Slippage Bounds (`calculate_dynamic_slippage_bps`)
+Backtests and simulations must abandon static slippage assumptions in favor of market-regime-sensitive dynamic slippage ranging from **15 bps to 200 bps**:
+- **Baseline Friction:** 15 bps (0.15% fee + 0.10% tax).
+- **Ceiling Limit Buy (+6.85% to +7.0%):** $4.0\times$ penalty ($60\text{ bps}$) reflecting queue congestion.
+- **Floor Limit Sell (-6.85% to -7.0%):** $5.0\times$ penalty ($75\text{ bps}$) reflecting illiquid bid vacuums.
+- **Volume Ratio Penalty:** Multiplier scales up when intraday volume is thin (`vol_ratio < 0.5`).
+- **Hard Ceiling:** Strictly capped at $200\text{ bps}$.
+
+### 8.2. Partial Profit Lock & Breakeven Stop Protocol (`evaluate_partial_profit_lock`)
+- **Stage 1 (Target 1 Hit at $+12\%$):**
+  - Lock in **$50\%$ position profits** immediately.
+  - Automatically ratchet the Stop-Loss of the remaining $50\%$ position to **Breakeven $+ 0.3\%$** (covering transaction fees and taxes). The trade is mathematically immune to loss.
+- **Stage 2 (Trend Continuation $> +15\%$):**
+  - Shift remaining position to an automated **$5\%$ Trailing Stop** anchored to the highest recorded price.
+
+---
+
+## 9. Scientific Model Validation & Overfitting Prevention
+
+### 9.1. Walk-Forward Partitioning & Parameter Freeze
+- Full-sample backtesting without out-of-sample partitioning is strictly forbidden.
+- The backtest suite must segment history into 3 chronological blocks:
+  1. *Training Stage (2018–2020):* Feature extraction.
+  2. *Validation Stage (2020–2022):* Hyperparameter selection.
+  3. *Out-of-Sample OOS (2022–2024):* Blind execution with parameters locked by **ADR-0001**.
+
+### 9.2. Crisis Stress Matrix Testing (`run_crisis_stress_matrix`)
+Every strategy must run through 11 benchmark historical crisis stress windows:
+1. *Trade War 2018* (03/2018 – 12/2018)
+2. *Trump Tariff Escalation 2019* (05/2019 – 08/2019)
+3. *COVID-19 Panic 2020* (01/2020 – 03/2020)
+4. *Delta Lockdown 2021* (07/2021 – 08/2021)
+5. *Post-COVID Bull Run 2021* (01/2021 – 11/2021)
+6. *FLC & Tan Hoang Minh Bond Scandals 2022* (04/2022 – 05/2022)
+7. *SBV Rate Hikes 2022* (09/2022 – 10/2022)
+8. *Van Thinh Phat Crisis 2022* (10/2022 – 11/2022)
+9. *SBV Treasury Bill Absorption 2023* (09/2023 – 10/2023)
+10. *DXY Pressure & FX Intervention 2024* (04/2024 – 05/2024)
+11. *Liquidity Dry-Up 2024* (07/2024 – 08/2024)
+
+### 9.3. Bootstrap Sharpe Confidence Intervals (`bootstrap_sharpe_ci`)
+- Point-estimate Sharpe ratios with small sample sizes ($N < 30$) are invalid for decision-making.
+- The engine computes **10,000 bootstrap resamples** to derive:
+  - 95% Confidence Interval bounds (`ci_lower`, `ci_upper`);
+  - Empirical $p$-value for $H_0: \text{Sharpe} \le 0$;
+  - Effective Sample Size (ESS) adjusted for first-order autocorrelation ($\rho_1$).
+- If `ci_lower <= 0`, the strategy emits an explicit warning regarding statistical insignificance.
+
+---
+
+## 10. AI Governance, Reliability Calibration & Rate Limiting
+
+### 10.1. Gemini API Rate Limiting Circuit Breaker (`check_and_track_gemini_call`)
+- Enforces a 60-second sliding-window tracker with a conservative **12/15 RPM buffer** on Google Gemini API.
+- If request count $\ge 12$, subsequent batch calls are deferred with automated cooldown to prevent HTTP 429 quota exhaustion.
+
+### 10.2. Dual-Arm A/B Validation Engine (`compare_quant_vs_ai_arms`)
+- All live recommendations and backtest runs must maintain parallel tracking of:
+  - **Arm A (`ARM_QUANT_ONLY`):** Pure deterministic rules (F-Score, MoS, Z-Score, TA).
+  - **Arm B (`ARM_QUANT_AI`):** Deterministic gates + Gemini qualitative reasoning.
+- Classifies empirical AI contribution as `POSITIVE_AI_ALPHA`, `NEUTRAL_REPORTING_ONLY`, or `NEGATIVE_AI_DRAG`.
+
+### 10.3. AI Confidence Calibration & Safety Breaker (`check_ai_calibration`)
+- AI confidence scores are binned into 5 probability intervals (`50-60%`, `60-70%`, `70-80%`, `80-90%`, `90-100%`).
+- Computes empirical Calibration Gap and Brier Score against realized trade win rates.
+- **Safety Circuit Breaker:** If the calibration gap exceeds **$0.15$** or high-confidence buckets yield actual win rates $< 60\%$, the system automatically severs LLM confidence from Kelly sizing, falling back to pure quantitative allocation.
+

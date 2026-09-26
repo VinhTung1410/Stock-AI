@@ -17,6 +17,9 @@ import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+COL_GIA_VON_K = "Giá vốn (k)"
+COL_THI_GIA_K = "Thị giá (k)"
+
 
 def validate_holding_position(pos: dict) -> tuple[bool, list[str], dict]:
     """Audit a holding position against mathematical and label consistency rules.
@@ -188,27 +191,27 @@ def run_full_portfolio_sanity_check(df_portfolio: pd.DataFrame) -> tuple[bool, l
 
     for idx, row in df_clean.iterrows():
         sym = str(row.get("Mã CP", row.get("symbol", "")))
-        entry_p = float(row.get("Giá vốn (k)", row.get("avg_price", row.get("cost_price", 0.0))))
-        curr_p = float(row.get("Thị giá (k)", row.get("market_price", row.get("current_price", entry_p))))
+        entry_p = float(row.get(COL_GIA_VON_K, row.get("avg_price", row.get("cost_price", 0.0))))
+        curr_p = float(row.get(COL_THI_GIA_K, row.get("market_price", row.get("current_price", entry_p))))
 
         # Operational Gate: Chống lệch scale giá (VND vs k VND, lỗi nhân 100x hoặc 1000x)
         if entry_p >= 10000.0:
             entry_p /= 1000.0
-            if "Giá vốn (k)" in df_clean.columns:
-                df_clean.at[idx, "Giá vốn (k)"] = round(entry_p, 2)
+            if COL_GIA_VON_K in df_clean.columns:
+                df_clean.at[idx, COL_GIA_VON_K] = round(entry_p, 2)
         elif 1000.0 <= entry_p < 10000.0:
             entry_p /= 100.0
-            if "Giá vốn (k)" in df_clean.columns:
-                df_clean.at[idx, "Giá vốn (k)"] = round(entry_p, 2)
+            if COL_GIA_VON_K in df_clean.columns:
+                df_clean.at[idx, COL_GIA_VON_K] = round(entry_p, 2)
 
         if curr_p >= 10000.0:
             curr_p /= 1000.0
-            if "Thị giá (k)" in df_clean.columns:
-                df_clean.at[idx, "Thị giá (k)"] = round(curr_p, 2)
+            if COL_THI_GIA_K in df_clean.columns:
+                df_clean.at[idx, COL_THI_GIA_K] = round(curr_p, 2)
         elif 1000.0 <= curr_p < 10000.0:
             curr_p /= 100.0
-            if "Thị giá (k)" in df_clean.columns:
-                df_clean.at[idx, "Thị giá (k)"] = round(curr_p, 2)
+            if COL_THI_GIA_K in df_clean.columns:
+                df_clean.at[idx, COL_THI_GIA_K] = round(curr_p, 2)
 
         pnl_pct = float(row.get("Lãi/Lỗ (%)", row.get("pl_pct", 0.0)))
         def_target = row.get("Chặn lãi/Cắt lỗ (k)", row.get("trailing_stop", row.get("stop_loss")))

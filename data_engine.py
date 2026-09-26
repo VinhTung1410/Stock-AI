@@ -72,47 +72,48 @@ def _clean_numeric_string(s: str) -> str:
     return s
 
 
+def _rescale_price(res: float) -> float:
+    """Normalize raw stock price from VND to k VND scale."""
+    if res >= 10000.0:
+        return round(res / 1000.0, 2)
+    if res >= 1000.0:
+        return round(res / 100.0, 2)
+    return round(res, 2)
+
+
+def _parse_int_str(s: str, default: int) -> int:
+    s = re.sub(r"\.0{1,2}$", "", s).replace(",", "").replace(".", "")
+    try:
+        return int(float(s))
+    except (ValueError, TypeError):
+        return int(default)
+
+
 def _parse_numeric(val, default=0.0, is_int: bool = False):
     """Safely parse numeric values from sheet strings supporting VN and US formats.
 
     Guards against 100x and 1000x scaling anomalies for stock prices in (k VND).
     """
+    default_val = int(default) if is_int else float(default)
     if val is None:
-        return int(default) if is_int else float(default)
+        return default_val
+
     if isinstance(val, (int, float)):
         import math
         if math.isnan(val) or math.isinf(val):
-            return int(default) if is_int else float(default)
-        if is_int:
-            return int(val)
-        res = float(val)
-        if res >= 10000.0:
-            res /= 1000.0
-        elif 1000.0 <= res < 10000.0:
-            res /= 100.0
-        return round(res, 2)
+            return default_val
+        return int(val) if is_int else _rescale_price(float(val))
 
     s = str(val).strip()
     if not s or s.lower() in ("nan", "none", "null", ""):
-        return int(default) if is_int else float(default)
+        return default_val
 
     if is_int:
-        # Strip trailing .0 / .00 from excel string floats, e.g. '220.0' -> '220'
-        s = re.sub(r"\.0{1,2}$", "", s)
-        s = s.replace(",", "").replace(".", "")
-        try:
-            return int(float(s))
-        except (ValueError, TypeError):
-            return int(default)
+        return _parse_int_str(s, int(default))
 
     s = _clean_numeric_string(s)
     try:
-        res = float(s)
-        if res >= 10000.0:
-            res /= 1000.0
-        elif 1000.0 <= res < 10000.0:
-            res /= 100.0
-        return round(res, 2)
+        return _rescale_price(float(s))
     except (ValueError, TypeError):
         return float(default)
 

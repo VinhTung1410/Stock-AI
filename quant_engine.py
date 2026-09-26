@@ -1109,6 +1109,43 @@ LOCKED_QUANT_THRESHOLDS = {
 RISK_FREE_HURDLE_RATE_PCT = 4.5  # Sàn lãi suất tiền gửi rủi ro thấp theo năm
 
 
+def _extract_pnl_and_r_multiples(trades: list[dict]) -> tuple[list[float], list[float]]:
+    pnl_list = []
+    r_multiples = []
+    for t in trades:
+        pnl = float(t.get("pnl_pct", 0.0))
+        pnl_list.append(pnl)
+
+        entry_p = float(t.get("entry_price", 0.0))
+        init_stop = float(t.get("initial_stop_price", 0.0))
+
+        if entry_p > init_stop > 0:
+            initial_risk_pct = ((entry_p - init_stop) / entry_p) * 100.0
+            r_m = pnl / initial_risk_pct if initial_risk_pct > 0 else 0.0
+        else:
+            r_m = float(t.get("r_multiple", 0.0))
+        r_multiples.append(r_m)
+    return pnl_list, r_multiples
+
+
+def _compute_effective_sample_size(pnl_list: list[float]) -> float:
+    n_trades = len(pnl_list)
+    if n_trades < 4:
+        return float(n_trades)
+    s_pnl = pd.Series(pnl_list)
+    rho_1 = s_pnl.autocorr(lag=1)
+    if pd.notnull(rho_1) and -0.99 <= rho_1 <= 0.99:
+        ess_calc = n_trades * ((1.0 - rho_1) / (1.0 + rho_1))
+        return round(max(1.0, min(float(n_trades), ess_calc)), 1)
+    return float(n_trades)
+
+
+def _compute_profit_factor(sum_wins: float, sum_losses: float) -> float:
+    if sum_losses > 0:
+        return round(sum_wins / sum_losses, 2)
+    return 99.0 if sum_wins > 0 else 0.0
+
+
 def calculate_signal_performance_metrics(
     trades: list[dict],
     cagr_pct: float = 0.0,
@@ -1133,23 +1170,7 @@ def calculate_signal_performance_metrics(
             "warning": "Không có dữ liệu giao dịch để kiểm định.",
         }
 
-    pnl_list = []
-    r_multiples = []
-
-    for t in trades:
-        pnl = float(t.get("pnl_pct", 0.0))
-        pnl_list.append(pnl)
-
-        entry_p = float(t.get("entry_price", 0.0))
-        init_stop = float(t.get("initial_stop_price", 0.0))
-
-        if entry_p > 0 and init_stop > 0 and entry_p > init_stop:
-            initial_risk_pct = ((entry_p - init_stop) / entry_p) * 100.0
-            r_m = pnl / initial_risk_pct if initial_risk_pct > 0 else 0.0
-        else:
-            r_m = float(t.get("r_multiple", 0.0))
-        r_multiples.append(r_m)
-
+    pnl_list, r_multiples = _extract_pnl_and_r_multiples(trades)
     n_trades = len(pnl_list)
     wins = [p for p in pnl_list if p > 0]
     losses = [p for p in pnl_list if p <= 0]
@@ -1164,26 +1185,9 @@ def calculate_signal_performance_metrics(
 
     # Expectancy: (WinRate * AvgWin) - (LossRate * |AvgLoss|)
     expectancy = round(((win_rate / 100.0) * avg_win) - ((loss_rate / 100.0) * avg_loss), 3)
-
-    sum_wins = sum(wins)
-    sum_losses = abs(sum(losses))
-    if sum_losses > 0:
-        profit_factor = round(sum_wins / sum_losses, 2)
-    elif sum_wins > 0:
-        profit_factor = 99.0
-    else:
-        profit_factor = 0.0
-
+    profit_factor = _compute_profit_factor(sum(wins), abs(sum(losses)))
     avg_r = round(float(pd.Series(r_multiples).mean()), 2) if r_multiples else 0.0
-
-    # Effective Sample Size (ESS) qua lag-1 autocorrelation
-    effective_n = float(n_trades)
-    if n_trades >= 4:
-        s_pnl = pd.Series(pnl_list)
-        rho_1 = s_pnl.autocorr(lag=1)
-        if pd.notnull(rho_1) and -0.99 <= rho_1 <= 0.99:
-            ess_calc = n_trades * ((1.0 - rho_1) / (1.0 + rho_1))
-            effective_n = round(max(1.0, min(float(n_trades), ess_calc)), 1)
+    effective_n = _compute_effective_sample_size(pnl_list)
 
     meets_hurdle = cagr_pct >= RISK_FREE_HURDLE_RATE_PCT
     acceptable_sharpe = sharpe_ratio >= 0.5
@@ -1202,6 +1206,7 @@ def calculate_signal_performance_metrics(
         "acceptable_sharpe": acceptable_sharpe,
         "statistically_reliable": statistically_reliable,
     }
+
 
 
 MAX_POSITIONS_PER_SECTOR: int = 3
@@ -1354,6 +1359,78 @@ CALIBRATION_BUCKET_NAMES: Final[list[str]] = [
 ]
 
 
+def _extract_trade_confidence(row: dict[str, Any]) -> tuple[float, int] | None:
+    if not isinstance(row, dict):
+        return None
+    raw_conf = row.get("ai_confidence", row.get("confidence"))
+    if raw_conf is None:
+        return None
+    try:
+        conf = float(raw_conf)
+        if 0.0 <= conf <= 1.0:
+            conf *= 100.0
+    except (ValueError, TypeError):
+        return None
+    pnl = float(row.get("pnl_pct", row.get("pnl", 0.0)))
+    win = 1 if pnl > 0 else 0
+    return conf, win
+
+
+def _assign_confidence_bucket(conf: float) -> str | None:
+    """Assign confidence value (50.0 to 100.0) to corresponding bucket."""
+    if conf < 50.0 or conf > 100.0:
+        return None
+    if conf >= 90.0:
+        return "90-100"
+    if conf >= 80.0:
+        return "80-90"
+    if conf >= 70.0:
+        return "70-80"
+    if conf >= 60.0:
+        return "60-70"
+    return "50-60"
+
+
+def _evaluate_calibration_bucket(
+    b_name: str, wins: list[int], min_obs: int, max_gap: float
+) -> tuple[dict[str, Any], bool, bool]:
+    lo_val = float(b_name.split("-")[0])
+    midpoint = (lo_val + 5.0) / 100.0
+    n = len(wins)
+    actual_wr = round(sum(wins) / n, 3)
+    gap = round(abs(actual_wr - midpoint), 3)
+
+    is_bucket_calibrated = True
+    evaluated = n >= min_obs
+    if evaluated and (gap > max_gap or (midpoint >= 0.75 and actual_wr < 0.60)):
+        is_bucket_calibrated = False
+
+    res = {
+        "n": n,
+        "claimed_midpoint": midpoint,
+        "actual_win_rate": actual_wr,
+        "calibration_gap": gap,
+        "evaluated": evaluated,
+        "is_calibrated": is_bucket_calibrated,
+    }
+    return res, evaluated, (evaluated and not is_bucket_calibrated)
+
+
+def _build_calibration_warning(
+    evaluated_buckets: int, uncalibrated_buckets: int, min_obs: int
+) -> tuple[bool, bool, str]:
+    if evaluated_buckets == 0:
+        return False, False, f"Chưa có bucket nào đủ tối thiểu {min_obs} lệnh để kết luận độ chuẩn định."
+    if uncalibrated_buckets > 0:
+        return (
+            False,
+            False,
+            "⚠️ AI Confidence bị lệch chuẩn (Uncalibrated): Tỷ lệ thắng thực tế sai lệch đáng kể "
+            "so với độ tin cậy AI phát biểu. CẤM đưa ai_confidence vào công thức Half-Kelly position sizing.",
+        )
+    return True, True, ""
+
+
 def check_ai_calibration(
     trades: list[dict[str, Any]],
     min_observations_per_bucket: int = 3,
@@ -1379,79 +1456,39 @@ def check_ai_calibration(
     win_vals: list[int] = []
 
     for row in trades:
-        if not isinstance(row, dict):
+        extracted = _extract_trade_confidence(row)
+        if extracted is None:
             continue
-        raw_conf = row.get("ai_confidence", row.get("confidence", None))
-        if raw_conf is None:
-            continue
-        try:
-            conf = float(raw_conf)
-            if 0.0 <= conf <= 1.0:
-                conf *= 100.0
-        except (ValueError, TypeError):
-            continue
-
-        pnl = float(row.get("pnl_pct", row.get("pnl", 0.0)))
-        win = 1 if pnl > 0 else 0
-
-        for b_name in CALIBRATION_BUCKET_NAMES:
-            lo_s, hi_s = b_name.split("-")
-            lo, hi = float(lo_s), float(hi_s)
-            if (lo <= conf < hi) or (hi == 100.0 and conf == 100.0):
-                buckets[b_name].append(win)
-                conf_vals.append(conf / 100.0)
-                win_vals.append(win)
-                break
+        conf, win = extracted
+        b_name = _assign_confidence_bucket(conf)
+        if b_name:
+            buckets[b_name].append(win)
+            conf_vals.append(conf / 100.0)
+            win_vals.append(win)
 
     bucket_results: dict[str, Any] = {}
     evaluated_buckets = 0
     uncalibrated_buckets = 0
 
     for b_name, wins in buckets.items():
-        lo_val = float(b_name.split("-")[0])
-        midpoint = (lo_val + 5.0) / 100.0
-        n = len(wins)
-        if n == 0:
+        if not wins:
             continue
-
-        actual_wr = round(sum(wins) / n, 3)
-        gap = round(abs(actual_wr - midpoint), 3)
-
-        is_bucket_calibrated = True
-        if n >= min_observations_per_bucket:
+        res, is_eval, is_uncal = _evaluate_calibration_bucket(
+            b_name, wins, min_observations_per_bucket, max_acceptable_gap
+        )
+        bucket_results[b_name] = res
+        if is_eval:
             evaluated_buckets += 1
-            if gap > max_acceptable_gap or (midpoint >= 0.75 and actual_wr < 0.60):
-                is_bucket_calibrated = False
-                uncalibrated_buckets += 1
-
-        bucket_results[b_name] = {
-            "n": n,
-            "claimed_midpoint": midpoint,
-            "actual_win_rate": actual_wr,
-            "calibration_gap": gap,
-            "evaluated": n >= min_observations_per_bucket,
-            "is_calibrated": is_bucket_calibrated,
-        }
+        if is_uncal:
+            uncalibrated_buckets += 1
 
     brier_score = None
     if conf_vals and win_vals:
         brier_score = round(float(np.mean([(c - w) ** 2 for c, w in zip(conf_vals, win_vals)])), 4)
 
-    if evaluated_buckets == 0:
-        is_calibrated = False
-        allow_kelly = False
-        warn = f"Chưa có bucket nào đủ tối thiểu {min_observations_per_bucket} lệnh để kết luận độ chuẩn định."
-    elif uncalibrated_buckets > 0:
-        is_calibrated = False
-        allow_kelly = False
-        warn = (
-            "⚠️ AI Confidence bị lệch chuẩn (Uncalibrated): Tỷ lệ thắng thực tế sai lệch đáng kể "
-            "so với độ tin cậy AI phát biểu. CẤM đưa ai_confidence vào công thức Half-Kelly position sizing."
-        )
-    else:
-        is_calibrated = True
-        allow_kelly = True
-        warn = ""
+    is_calibrated, allow_kelly, warn = _build_calibration_warning(
+        evaluated_buckets, uncalibrated_buckets, min_observations_per_bucket
+    )
 
     return {
         "buckets": bucket_results,
@@ -1586,6 +1623,50 @@ def simulate_monte_carlo_drawdown(
     }
 
 
+def _redistribute_uncapped_weights(
+    remaining_keys: set[str],
+    fixed_weights: dict[str, float],
+    inv_vols: dict[str, float],
+    weights: dict[str, float],
+) -> None:
+    rem_weight_budget = 1.0 - sum(fixed_weights.values())
+    rem_inv_sum = sum(inv_vols[k] for k in remaining_keys)
+    if rem_inv_sum > 0:
+        for k in remaining_keys:
+            weights[k] = rem_weight_budget * (inv_vols[k] / rem_inv_sum)
+    else:
+        eq_share = rem_weight_budget / len(remaining_keys)
+        for k in remaining_keys:
+            weights[k] = eq_share
+
+
+def _cap_and_redistribute_weights(
+    clean_vols: dict[str, float],
+    inv_vols: dict[str, float],
+    weights: dict[str, float],
+    effective_cap: float,
+) -> dict[str, float]:
+    fixed_weights: dict[str, float] = {}
+    remaining_keys = set(clean_vols.keys())
+
+    for _ in range(len(clean_vols)):
+        exceeded = [k for k in remaining_keys if weights[k] > effective_cap + 1e-6]
+        if not exceeded:
+            break
+        for k in exceeded:
+            fixed_weights[k] = effective_cap
+            remaining_keys.remove(k)
+
+        if not remaining_keys:
+            break
+
+        _redistribute_uncapped_weights(remaining_keys, fixed_weights, inv_vols, weights)
+
+    for k, fw in fixed_weights.items():
+        weights[k] = fw
+    return weights
+
+
 def optimize_portfolio_risk_parity(
     volatilities: dict[str, float],
     max_weight: float = 0.25,
@@ -1601,39 +1682,12 @@ def optimize_portfolio_risk_parity(
     if not clean_vols:
         return {}
 
-    n_assets = len(clean_vols)
-    effective_cap = max(max_weight, 1.0 / n_assets)
-
+    effective_cap = max(max_weight, 1.0 / len(clean_vols))
     inv_vols = {k: 1.0 / v for k, v in clean_vols.items()}
     sum_inv = sum(inv_vols.values())
     weights = {k: v / sum_inv for k, v in inv_vols.items()}
 
-    fixed_weights: dict[str, float] = {}
-    remaining_keys = set(clean_vols.keys())
-
-    for _ in range(n_assets):
-        exceeded = [k for k in remaining_keys if weights[k] > effective_cap + 1e-6]
-        if not exceeded:
-            break
-        for k in exceeded:
-            fixed_weights[k] = effective_cap
-            remaining_keys.remove(k)
-
-        if not remaining_keys:
-            break
-
-        rem_weight_budget = 1.0 - sum(fixed_weights.values())
-        rem_inv_sum = sum(inv_vols[k] for k in remaining_keys)
-        if rem_inv_sum > 0:
-            for k in remaining_keys:
-                weights[k] = rem_weight_budget * (inv_vols[k] / rem_inv_sum)
-        else:
-            eq_share = rem_weight_budget / len(remaining_keys)
-            for k in remaining_keys:
-                weights[k] = eq_share
-
-    for k, fw in fixed_weights.items():
-        weights[k] = fw
+    weights = _cap_and_redistribute_weights(clean_vols, inv_vols, weights, effective_cap)
 
     # Final normalization & hard cap verification
     tot = sum(weights.values())
