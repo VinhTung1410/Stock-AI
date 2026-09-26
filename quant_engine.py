@@ -12,7 +12,7 @@ Capabilities:
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, Final, List
 
 import numpy as np
 import pandas as pd
@@ -1343,3 +1343,172 @@ def bootstrap_sharpe_ci(
         "effective_n": effective_n,
         "warning": warning_msg,
     }
+
+
+# Phase 4: A/B Testing Arms and AI Calibration
+ARM_QUANT_ONLY: Final[str] = "QUANT_ONLY"
+ARM_QUANT_AI: Final[str] = "QUANT_AI"
+
+CALIBRATION_BUCKET_NAMES: Final[list[str]] = [
+    "50-60", "60-70", "70-80", "80-90", "90-100"
+]
+
+
+def check_ai_calibration(
+    trades: list[dict[str, Any]],
+    min_observations_per_bucket: int = 3,
+    max_acceptable_gap: float = 0.15,
+) -> dict[str, Any]:
+    """Kiểm tra độ chuẩn định (Calibration) của AI Confidence (Phase 4b).
+
+    Bóc tách tỷ lệ thắng thực tế so với độ tin cậy được AI công bố.
+    Nếu uncalibrated (lệch chuẩn > 15%), Hard Block không đưa ai_confidence vào Kelly sizing.
+    """
+    if not trades:
+        return {
+            "buckets": {},
+            "is_calibrated": False,
+            "allow_kelly_sizing": False,
+            "brier_score": None,
+            "total_evaluated_trades": 0,
+            "warning": "Không có dữ liệu giao dịch để kiểm định độ chuẩn định của AI.",
+        }
+
+    buckets: dict[str, list[int]] = {b: [] for b in CALIBRATION_BUCKET_NAMES}
+    conf_vals: list[float] = []
+    win_vals: list[int] = []
+
+    for row in trades:
+        if not isinstance(row, dict):
+            continue
+        raw_conf = row.get("ai_confidence", row.get("confidence", None))
+        if raw_conf is None:
+            continue
+        try:
+            conf = float(raw_conf)
+            if 0.0 <= conf <= 1.0:
+                conf *= 100.0
+        except (ValueError, TypeError):
+            continue
+
+        pnl = float(row.get("pnl_pct", row.get("pnl", 0.0)))
+        win = 1 if pnl > 0 else 0
+
+        for b_name in CALIBRATION_BUCKET_NAMES:
+            lo_s, hi_s = b_name.split("-")
+            lo, hi = float(lo_s), float(hi_s)
+            if (lo <= conf < hi) or (hi == 100.0 and conf == 100.0):
+                buckets[b_name].append(win)
+                conf_vals.append(conf / 100.0)
+                win_vals.append(win)
+                break
+
+    bucket_results: dict[str, Any] = {}
+    evaluated_buckets = 0
+    uncalibrated_buckets = 0
+
+    for b_name, wins in buckets.items():
+        lo_val = float(b_name.split("-")[0])
+        midpoint = (lo_val + 5.0) / 100.0
+        n = len(wins)
+        if n == 0:
+            continue
+
+        actual_wr = round(sum(wins) / n, 3)
+        gap = round(abs(actual_wr - midpoint), 3)
+
+        is_bucket_calibrated = True
+        if n >= min_observations_per_bucket:
+            evaluated_buckets += 1
+            if gap > max_acceptable_gap or (midpoint >= 0.75 and actual_wr < 0.60):
+                is_bucket_calibrated = False
+                uncalibrated_buckets += 1
+
+        bucket_results[b_name] = {
+            "n": n,
+            "claimed_midpoint": midpoint,
+            "actual_win_rate": actual_wr,
+            "calibration_gap": gap,
+            "evaluated": n >= min_observations_per_bucket,
+            "is_calibrated": is_bucket_calibrated,
+        }
+
+    brier_score = None
+    if conf_vals and win_vals:
+        brier_score = round(float(np.mean([(c - w) ** 2 for c, w in zip(conf_vals, win_vals)])), 4)
+
+    if evaluated_buckets == 0:
+        is_calibrated = False
+        allow_kelly = False
+        warn = f"Chưa có bucket nào đủ tối thiểu {min_observations_per_bucket} lệnh để kết luận độ chuẩn định."
+    elif uncalibrated_buckets > 0:
+        is_calibrated = False
+        allow_kelly = False
+        warn = (
+            "⚠️ AI Confidence bị lệch chuẩn (Uncalibrated): Tỷ lệ thắng thực tế sai lệch đáng kể "
+            "so với độ tin cậy AI phát biểu. CẤM đưa ai_confidence vào công thức Half-Kelly position sizing."
+        )
+    else:
+        is_calibrated = True
+        allow_kelly = True
+        warn = ""
+
+    return {
+        "buckets": bucket_results,
+        "is_calibrated": is_calibrated,
+        "allow_kelly_sizing": allow_kelly,
+        "brier_score": brier_score,
+        "total_evaluated_trades": len(win_vals),
+        "warning": warn,
+    }
+
+
+def compare_quant_vs_ai_arms(
+    trades_arm_a: list[dict[str, Any]],
+    trades_arm_b: list[dict[str, Any]],
+    cagr_a: float = 0.0,
+    cagr_b: float = 0.0,
+    sharpe_a: float = 0.0,
+    sharpe_b: float = 0.0,
+) -> dict[str, Any]:
+    """So sánh 2 nhánh thử nghiệm A/B: Quant-Only vs Quant+AI (Phase 4a).
+
+    Xác định liệu hội đồng AI có tạo ra Alpha thặng dư thực sự hay chỉ là một tầng phân tích tốn kém.
+    """
+    m_a = calculate_signal_performance_metrics(trades_arm_a, cagr_pct=cagr_a, sharpe_ratio=sharpe_a)
+    m_b = calculate_signal_performance_metrics(trades_arm_b, cagr_pct=cagr_b, sharpe_ratio=sharpe_b)
+
+    inc_sharpe = round(m_b["sharpe_ratio"] - m_a["sharpe_ratio"], 2)
+    inc_expectancy = round(m_b["expectancy"] - m_a["expectancy"], 3)
+    inc_win_rate = round(m_b["win_rate"] - m_a["win_rate"], 2)
+
+    # Đánh giá kết luận nghiệp vụ
+    if inc_sharpe > 0.10 and inc_expectancy > 0.0:
+        verdict = "POSITIVE_AI_ALPHA"
+        recommendation = (
+            "Khuyến nghị: Giữ AI trong quy trình ra quyết định. AI cải thiện rõ rệt "
+            f"Sharpe (+{inc_sharpe}) và Expectancy (+{inc_expectancy})."
+        )
+    elif abs(inc_sharpe) <= 0.10:
+        verdict = "NEUTRAL_REPORTING_ONLY"
+        recommendation = (
+            "Khuyến nghị: AI không tạo ra thặng dư Sharpe đáng kể so với Quant-Only. "
+            "Nên chuyển AI thành tầng phân tích giải thích (reporting layer) để tiết kiệm token và giảm độ trễ."
+        )
+    else:
+        verdict = "NEGATIVE_AI_DRAG"
+        recommendation = (
+            "Khuyến nghị: AI làm suy giảm hiệu năng so với Quant-Only thuần túy "
+            f"(Sharpe lệch {inc_sharpe}). Cần điều tra lại prompt hội đồng hoặc vô hiệu hóa quyền phủ quyết của AI."
+        )
+
+    return {
+        "arm_a_quant_only": m_a,
+        "arm_b_quant_ai": m_b,
+        "incremental_sharpe": inc_sharpe,
+        "incremental_expectancy": inc_expectancy,
+        "incremental_win_rate": inc_win_rate,
+        "ai_verdict": verdict,
+        "recommendation": recommendation,
+    }
+

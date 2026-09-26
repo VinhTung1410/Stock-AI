@@ -3,7 +3,7 @@
 **Tên dự án:** Stock-AI / AI Trading Bot  
 **Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-26  
 **Người yêu cầu (Client):** Tùng  
-**Phiên bản yêu cầu:** v5.3 — Kiểm định Chuyên sâu: Walk-Forward, Stress Backtest & Bootstrap Sharpe CI (Phase 3)  
+**Phiên bản yêu cầu:** v5.4 — Thử Nghiệm Song Song A/B (Quant-Only vs Quant+AI) & Chuẩn Định AI Confidence (Phase 4)  
 
 ---
 
@@ -13,7 +13,7 @@
   - Hạ tầng cứng Backtest đã mô phỏng chuẩn xác cơ chế HOSE (trần/sàn ±7%, quy chế T+2.5, thuế phí 0.25%, trượt giá động sát thực tế, trần hấp thụ thanh khoản 5% ADV20, Audit Trail Supabase).
   - Tích hợp thành công giao diện Tab 6 (Backtest Dashboard, Bảng số liệu Regime, Paper Trading).
   - Hoàn thiện luồng Web-to-Discord hook cho khuyến nghị MUA và cô lập 100% mock Discord trong bộ kiểm thử tự động (Zero Test Leakage).
-  - Hoàn tất **Phase 0** (Tường lửa Disclaimer, Content Filter RSS, Heartbeat 08:30), **Phase 1** (Hạ tầng Bằng chứng Signal Lifecycle, ADR-0001 Lock Thresholds), và **Phase 2** (Chốt chặn Ngành $\le 25\%$, Trượt giá động 60–75 bps, Cầu dao Gemini 12 RPM).
+  - Hoàn tất **Phase 0** (Tường lửa Disclaimer, Content Filter RSS, Heartbeat 08:30), **Phase 1** (Hạ tầng Bằng chứng Signal Lifecycle, ADR-0001 Lock Thresholds), **Phase 2** (Chốt chặn Ngành $\le 25\%$, Trượt giá động 60–75 bps, Cầu dao Gemini 12 RPM), và **Phase 3** (Walk-Forward 3 chặng, Ma trận Stress 11 sự kiện khủng hoảng, Bộ quét Flash Crash, Bootstrap Sharpe CI $10,000$ lần).
 
 - **Định vị lại triết lý cốt lõi của Client & Ban Cố vấn Tài chính (Paradigm Shift):**
   1. **Bản chất của Backtest không phải là PnL tĩnh:** Mục tiêu tối thượng của backtest không phải là tìm kiếm một con số lợi nhuận (PnL/CAGR) đẹp nhân tạo hay phán xét bot đúng/sai một vài deal đơn lẻ, mà là **đo lường năng lực nương theo pha thị trường (Market Regime Alignment)**:
@@ -29,15 +29,15 @@
      [1. Macro Regime Gate] ──> [2. Smart Money Watchlist] ──> [3. Quant Trigger] ──> [4. Dynamic Risk Sizing] ──> [5. Execution]
      ```
 
-- **Mục tiêu phiên bản 5.2** *(đã hoàn thành)*:
+- **Mục tiêu phiên bản 5.2 – 5.3** *(đã hoàn thành)*:
   - **Phase 0 — Tường lửa bảo mật & tuân thủ pháp lý** (xem Mục 3A, đã hoàn thành).
   - **Phase 1 — Hạ tầng bằng chứng (Signal Lifecycle)** (xem Mục 3B, đã hoàn thành).
   - **Phase 2 — Kiểm soát rủi ro & Bảo vệ danh mục (Risk Fixes)** (xem Mục 3C, đã hoàn thành).
+  - **Phase 3 — Nghiên cứu & Thẩm định Chuyên sâu (Walk-Forward, Stress Matrix, Bootstrap Sharpe CI)** (xem Mục 3D, đã hoàn thành).
 
-- **Mục tiêu phiên bản 5.3** *(hiện tại — Nghiên cứu & Thẩm định Chuyên sâu - Phase 3)*:
-  - **Phase 3a — Khung kiểm định Walk-Forward:** Phân chia cứng Timeline Training (2018–2020), Validation (2020–2022) và OOS (2022–2024), khóa cứng tham số trước khi kiểm định OOS.
-  - **Phase 3b — Kiểm tra áp lực khủng hoảng (Stress Backtest):** Thẩm định qua 4 cú sập lịch sử: Chiến tranh thương mại Q4/2018 (-30%), COVID-19 Q1/2020 (-35%), Khủng hoảng Trái phiếu/BĐS 2022 (-45%), và Thị trường Bull bong bóng 2021.
-  - **Phase 3c — Khoảng tin cậy Sharpe bằng phương pháp Bootstrap (Bootstrap Sharpe CI):** Đánh giá ý nghĩa thống kê của Sharpe với mẫu nhỏ ($10,000$ iterations), tính toán `ci_lower`, `ci_upper` và xác định Edge thực sự của hệ thống.
+- **Mục tiêu phiên bản 5.4** *(hiện tại — Kiểm chứng Giá trị AI & Thử nghiệm Song song A/B - Phase 4)*:
+  - **Phase 4a — Thiết lập 2 Nhánh Thử nghiệm A/B (Quant-Only vs Quant+AI):** Tách bạch hoàn toàn `Arm A (QUANT_ONLY)` và `Arm B (QUANT_AI)`, lưu vết vào `signal_lifecycle`, đối chiếu Expectancy, Sharpe và Tỷ lệ thắng để chứng minh AI có thực sự tạo ra Alpha hay chỉ là lớp báo cáo.
+  - **Phase 4b — Chuẩn định Độ tin cậy AI (AI Confidence Calibration):** Triển khai hàm `check_ai_calibration()` đo lường độ lệch giữa Confidence công bố và Actual Win Rate, ngăn chặn triệt để việc đưa Confidence chưa chuẩn định vào công thức Half-Kelly.
 
 
 
@@ -441,6 +441,59 @@
 - **Định nghĩa Done:** Unit test xác nhận `bootstrap_sharpe_ci()` tạo ra khoảng tin cậy chuẩn xác qua $10,000$ lần tái mẫu với NumPy/Pandas.
 
 ---
+
+## 3E. PHASE 4 — KIỂM CHỨNG GIÁ TRỊ AI & THỬ NGHIỆM SONG SONG A/B (v5.4 — AI VALIDATION & CALIBRATION)
+
+> **Mục tiêu:** Trả lời dứt khoát câu hỏi cốt tử của nhà đầu tư và ban quản trị quỹ: *"AI đóng góp bao nhiêu vào Sharpe Ratio và Expectancy? Hay AI chỉ là một tầng phân tích tốn kém, tạo ảo giác tự tin?"*
+
+### Phase 4a: Khung Thử nghiệm Song song 2 Nhánh (A/B Testing Framework: Quant-Only vs Quant+AI)
+
+- **Vấn đề thực tế:**
+  - Nhiều hệ thống AI trading gán mác "AI" nhưng không chứng minh được AI tạo ra thặng dư lợi suất (Incremental Alpha) so với một bộ lọc định lượng thuần túy (Quant-Only). Nếu bộ lọc định lượng đạt Sharpe 1.2 mà khi có AI vào Sharpe chỉ còn 1.1 (do AI quá thận trọng bỏ lỡ cơ hội hoặc bị ảo giác bắt đáy sai), thì việc tốn token LLM là hoàn toàn vô nghĩa.
+- **Yêu cầu kỹ thuật:**
+  - Thiết lập 2 nhánh thử nghiệm độc lập (Experiment Arms) chạy song song:
+    - **Arm A (QUANT_ONLY):** 
+      - Điều kiện: Piotroski F-Score $\ge 6$, MoS $\ge 15\%$, Conviction $\ge 55$, Vượt qua Hard Gates.
+      - Hành động: Phát tín hiệu MUA ngay lập tức nếu pass định lượng mà không cần AI phê duyệt.
+    - **Arm B (QUANT_AI):**
+      - Điều kiện: Thỏa mãn toàn bộ điều kiện Arm A + Hội đồng AI Gemini phân tích và ra quyết định đồng thuận MUA.
+      - Hành động: Chỉ phát tín hiệu MUA khi AI phê duyệt.
+  - Lưu trường `arm: "QUANT_ONLY" | "QUANT_AI"` trong bảng `signal_lifecycle`.
+  - Triển khai hàm `compare_quant_vs_ai_arms(trades_arm_a: list[dict], trades_arm_b: list[dict]) -> dict`:
+    - Bóc tách so sánh trực diện:
+      - **Expectancy:** Lợi nhuận kỳ vọng trên mỗi lệnh.
+      - **Sharpe Ratio:** Tỷ suất sinh lời điều chỉnh theo rủi ro.
+      - **Win Rate & Profit Factor:** Độ chính xác và tỷ lệ Lãi/Lỗ.
+      - **Tần suất tín hiệu (Signal Frequency):** Đánh giá AI có quá dè dặt (overly conservative) làm bỏ lỡ sóng lớn không.
+    - Đưa ra kết luận định lượng:
+      - Nếu `Sharpe(Arm B) > Sharpe(Arm A)`: AI tạo ra giá trị gia tăng (Positive AI Alpha) -> Khuyến nghị giữ AI.
+      - Nếu `Sharpe(Arm B) <= Sharpe(Arm A)`: AI không tạo Alpha hoặc làm giảm hiệu năng -> Điều tra lại prompt hoặc chuyển AI về tầng báo cáo thuần túy (Reporting Layer).
+- **Định nghĩa Done:** Unit test so sánh 2 tập trade records và xác định chính xác đóng góp thặng dư của AI.
+
+---
+
+### Phase 4b: Kiểm định Chuẩn định Độ tin cậy AI (AI Confidence Calibration)
+
+- **Vấn đề thực tế:**
+  - Các mô hình LLM thường mắc hội chứng **Tự tin thái quá (Overconfidence Hallucination)**: Gemini có thể đưa ra mức tự tin $75\% - 85\%$, nhưng trong thực tế các deal đó chỉ có tỷ lệ thắng $50\%$. Nếu lấy con số $75\%$ chưa qua chuẩn định (uncalibrated) đưa thẳng vào công thức Half-Kelly sizing, hệ thống sẽ đi lệnh quá lớn và dẫn đến sụt giảm vốn nghiêm trọng.
+- **Yêu cầu kỹ thuật:**
+  - Triển khai hàm `check_ai_calibration(trades: list[dict], min_observations_per_bucket: int = 3) -> dict`:
+    - Phân nhóm các giao dịch đã hoàn tất theo 5 khoảng Confidence:
+      - `50-60` (Midpoint 55%)
+      - `60-70` (Midpoint 65%)
+      - `70-80` (Midpoint 75%)
+      - `80-90` (Midpoint 85%)
+      - `90-100` (Midpoint 95%)
+    - Đối chiếu `claimed_midpoint` và `actual_win_rate` (Số lệnh thắng / Tổng lệnh trong bucket).
+    - Tính toán `calibration_gap = abs(actual_win_rate - claimed_midpoint)` và `brier_score`.
+    - **Chốt chặn An toàn Quỹ (Safety Circuit Breaker):**
+      - Nếu `is_calibrated == False` (ví dụ: `calibration_gap > 0.15` hoặc `actual_win_rate < 0.60` ở bucket $\ge 70\%$):
+        - **HARD BLOCK:** CẤM tuyệt đối đưa `ai_confidence` vào công thức định cỡ vị thế Half-Kelly.
+        - Hệ thống tự động chuyển sang chế độ `FIXED_DEFAULT_SIZING` hoặc `PURE_QUANT_SIZING` để bảo vệ vốn.
+- **Định nghĩa Done:** Unit test chứng minh khi AI overconfident (claimed 80% nhưng thực tế 50%), hàm trả về `is_calibrated = False` và kích hoạt cờ cảnh báo rủi ro Kelly.
+
+---
+
 
 ## 4. ĐỊNH HƯỚNG VÀ RÀNG BUỘC KỸ THUẬT (TECHNICAL CONSTRAINTS)
 

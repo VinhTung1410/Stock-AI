@@ -197,3 +197,18 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   3. Triển khai `bootstrap_sharpe_ci()` trong `quant_engine.py`: Tái mẫu $10,000$ lần bằng NumPy vectorization, ước lượng phân vị tin cậy 95% (`ci_lower`, `ci_upper`), tính $p$-value kiểm định Sharpe $\le 0$, hiệu chỉnh tự tương quan (Effective Sample Size), và cảnh báo minh bạch nếu `ci_lower \le 0`.
 - **Hệ quả:** Hệ thống chính thức bước lên đẳng cấp **Investment Research Platform**, kiểm định khắt khe theo tiêu chuẩn kinh tế lượng và quản lý quỹ chuyên nghiệp, chống triệt để hiện tượng overfitting.
 
+---
+
+### [ADR-014] Thử Nghiệm Song Song A/B (Quant-Only vs Quant+AI) & Chuẩn Định AI Confidence (Phase 4)
+- **Ngày quyết định:** 2026-09-26
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  1. Chưa có phương pháp định lượng chứng minh hội đồng AI Gemini tạo ra Alpha thực sự hay chỉ là một tầng phân tích làm đẹp báo cáo nhưng tốn chi phí gọi API.
+  2. Nguy cơ từ hiện tượng AI tự tin thái quá (Overconfidence Hallucination): AI phát biểu độ tin cậy 75–85% nhưng tỷ lệ thắng thực tế thấp hơn nhiều. Nếu đưa trực tiếp độ tin cậy này vào Half-Kelly position sizing sẽ gây rủi ro cháy tài khoản.
+- **Quyết định lựa chọn:**
+  1. Triển khai cấu trúc 2 nhánh thử nghiệm `ARM_QUANT_ONLY` và `ARM_QUANT_AI` cùng hàm `compare_quant_vs_ai_arms()` trong `quant_engine.py`: Bóc tách đối chiếu trực diện Expectancy, Sharpe Ratio, Win Rate và Tần suất lệnh giữa 2 nhánh để đưa ra kết luận khoa học (`POSITIVE_AI_ALPHA`, `NEUTRAL_REPORTING_ONLY`, `NEGATIVE_AI_DRAG`).
+  2. Triển khai `check_ai_calibration()` trong `quant_engine.py`: Phân nhóm 5 khoảng confidence (`50-60`, `60-70`, `70-80`, `80-90`, `90-100`), đo lường `calibration_gap` và Brier Score.
+  3. Thiết lập Cầu dao An toàn (Safety Circuit Breaker): Nếu AI bị lệch chuẩn (`calibration_gap > 0.15` hoặc bucket cao có actual win rate < 60%), hệ thống tự động ngắt quyền đưa `ai_confidence` vào Half-Kelly position sizing và phát cảnh báo rủi ro.
+- **Hệ quả:** Hệ thống đạt chuẩn mực phân tích khoa học tài chính định lượng, minh bạch hóa hoàn toàn giá trị thực của AI và triệt tiêu nguy cơ phá sản do ảo giác của mô hình ngôn ngữ lớn.
+
+
