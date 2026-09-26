@@ -1512,3 +1512,227 @@ def compare_quant_vs_ai_arms(
         "recommendation": recommendation,
     }
 
+
+# Phase 5: Advanced Portfolio Optimization & Monte Carlo Tail Risk
+def simulate_monte_carlo_drawdown(
+    trade_pnl_pcts: list[float],
+    n_simulations: int = 2_000,
+    initial_capital: float = 100_000_000.0,
+    random_state: int | None = 42,
+) -> dict[str, Any]:
+    """Mô phỏng 2,000 kịch bản ngẫu nhiên tráo đổi chuỗi lệnh (Trade order shuffling) (Phase 5a).
+
+    Đo lường phân vị Max Drawdown tồi tệ nhất (P95, P99) và xác suất sụt giảm quá 15% vốn.
+    """
+    fallback_res: dict[str, Any] = {
+        "median_drawdown_pct": 0.0,
+        "p95_drawdown_pct": 0.0,
+        "p99_drawdown_pct": 0.0,
+        "prob_drawdown_over_15pct": 0.0,
+        "max_consecutive_losses": 0,
+        "n_simulations": 0,
+        "n_trades": 0,
+    }
+
+    if not trade_pnl_pcts:
+        return fallback_res
+
+    try:
+        arr = np.asarray(trade_pnl_pcts, dtype=float)
+        arr = arr[~np.isnan(arr)]
+    except Exception:
+        return fallback_res
+
+    n = len(arr)
+    if n == 0:
+        return fallback_res
+
+    rng = np.random.default_rng(random_state)
+    indices = rng.integers(0, n, size=(n_simulations, n))
+    sim_pnl = arr[indices]
+
+    # Vectorized equity curve computation
+    mults = 1.0 + (sim_pnl / 100.0)
+    cum_equity = np.cumprod(mults, axis=1) * initial_capital
+    initial_col = np.full((n_simulations, 1), initial_capital)
+    full_equity = np.hstack([initial_col, cum_equity])
+
+    running_max = np.maximum.accumulate(full_equity, axis=1)
+    drawdowns = (full_equity - running_max) / running_max
+    max_dd_per_sim = np.min(drawdowns, axis=1) * 100.0
+
+    # Phân vị Max Drawdown đại số âm (5% và 1% xấu nhất)
+    median_dd = round(float(np.median(max_dd_per_sim)), 2)
+    p95_dd = round(float(np.percentile(max_dd_per_sim, 5.0)), 2)
+    p99_dd = round(float(np.percentile(max_dd_per_sim, 1.0)), 2)
+    prob_over_15 = round(float(np.mean(max_dd_per_sim <= -15.0)), 4)
+
+    cur_loss, max_loss = 0, 0
+    for p in arr:
+        if p <= 0:
+            cur_loss += 1
+            max_loss = max(max_loss, cur_loss)
+        else:
+            cur_loss = 0
+
+    return {
+        "median_drawdown_pct": median_dd,
+        "p95_drawdown_pct": p95_dd,
+        "p99_drawdown_pct": p99_dd,
+        "prob_drawdown_over_15pct": prob_over_15,
+        "max_consecutive_losses": max_loss,
+        "n_simulations": n_simulations,
+        "n_trades": n,
+    }
+
+
+def optimize_portfolio_risk_parity(
+    volatilities: dict[str, float],
+    max_weight: float = 0.25,
+) -> dict[str, float]:
+    """Phân bổ tỷ trọng đóng góp rủi ro ngang bằng theo nghịch đảo biến động (Phase 5b).
+
+    Bảo đảm cổ phiếu rủi ro cao không chi phối toàn bộ danh mục, áp dụng trần max_weight.
+    """
+    if not volatilities:
+        return {}
+
+    clean_vols = {k: max(float(v), 0.001) for k, v in volatilities.items() if float(v) >= 0}
+    if not clean_vols:
+        return {}
+
+    n_assets = len(clean_vols)
+    effective_cap = max(max_weight, 1.0 / n_assets)
+
+    inv_vols = {k: 1.0 / v for k, v in clean_vols.items()}
+    sum_inv = sum(inv_vols.values())
+    weights = {k: v / sum_inv for k, v in inv_vols.items()}
+
+    fixed_weights: dict[str, float] = {}
+    remaining_keys = set(clean_vols.keys())
+
+    for _ in range(n_assets):
+        exceeded = [k for k in remaining_keys if weights[k] > effective_cap + 1e-6]
+        if not exceeded:
+            break
+        for k in exceeded:
+            fixed_weights[k] = effective_cap
+            remaining_keys.remove(k)
+
+        if not remaining_keys:
+            break
+
+        rem_weight_budget = 1.0 - sum(fixed_weights.values())
+        rem_inv_sum = sum(inv_vols[k] for k in remaining_keys)
+        if rem_inv_sum > 0:
+            for k in remaining_keys:
+                weights[k] = rem_weight_budget * (inv_vols[k] / rem_inv_sum)
+        else:
+            eq_share = rem_weight_budget / len(remaining_keys)
+            for k in remaining_keys:
+                weights[k] = eq_share
+
+    for k, fw in fixed_weights.items():
+        weights[k] = fw
+
+    # Final normalization & hard cap verification
+    tot = sum(weights.values())
+    if tot > 0:
+        weights = {k: min(w / tot, effective_cap) for k, w in weights.items()}
+
+    tot2 = sum(weights.values())
+    return {k: round(w / tot2, 4) for k, w in weights.items()}
+
+
+
+def calculate_factor_exposures(
+    asset_returns: pd.Series | list[float],
+    market_returns: pd.Series | list[float],
+    sector_returns: pd.Series | list[float] | None = None,
+) -> dict[str, Any]:
+    """Phân rã đa nhân tố lợi suất theo Market Beta và Sector Beta (Phase 5c)."""
+    s_asset = pd.Series(asset_returns, dtype=float).dropna()
+    s_market = pd.Series(market_returns, dtype=float).dropna()
+
+    if len(s_asset) < 3 or len(s_market) < 3:
+        return {
+            "market_beta": 1.0,
+            "market_r2": 0.0,
+            "sector_beta": None,
+            "idiosyncratic_alpha_pct": 0.0,
+        }
+
+    # Căn chỉnh độ dài chuỗi
+    n_min = min(len(s_asset), len(s_market))
+    r_a = s_asset.iloc[-n_min:].to_numpy()
+    r_m = s_market.iloc[-n_min:].to_numpy()
+
+    var_m = float(np.var(r_m, ddof=1))
+    if var_m > 1e-12:
+        cov_am = float(np.cov(r_a, r_m)[0, 1])
+        market_beta = round(cov_am / var_m, 2)
+        corr_m = float(np.corrcoef(r_a, r_m)[0, 1])
+        market_r2 = round(corr_m ** 2, 3)
+    else:
+        market_beta = 1.0
+        market_r2 = 0.0
+
+    sector_beta = None
+    if sector_returns is not None:
+        s_sector = pd.Series(sector_returns, dtype=float).dropna()
+        if len(s_sector) >= n_min:
+            r_s = s_sector.iloc[-n_min:].to_numpy()
+            var_s = float(np.var(r_s, ddof=1))
+            if var_s > 1e-12:
+                cov_as = float(np.cov(r_a, r_s)[0, 1])
+                sector_beta = round(cov_as / var_s, 2)
+
+    # Idiosyncratic Alpha (Lợi suất vượt trội riêng biệt hàng năm sau điều chỉnh beta)
+    excess_annual = (np.mean(r_a) - (market_beta * np.mean(r_m))) * 252.0 * 100.0
+
+    return {
+        "market_beta": market_beta,
+        "market_r2": market_r2,
+        "sector_beta": sector_beta,
+        "idiosyncratic_alpha_pct": round(float(excess_annual), 2),
+    }
+
+
+def evaluate_partial_profit_lock(
+    entry_price: float,
+    current_high: float,
+    current_price: float,
+    target_profit_pct: float = 12.0,
+) -> dict[str, Any]:
+    """Đánh giá chiến lược Chốt lời từng phần và dời stop lên break-even (Phase 5d)."""
+    if entry_price <= 0:
+        return {
+            "partial_take_profit": False,
+            "lock_fraction": 0.0,
+            "new_stop_price": None,
+            "status": "INVALID_ENTRY_PRICE",
+        }
+
+    max_gain_pct = ((current_high - entry_price) / entry_price) * 100.0
+    current_pnl_pct = ((current_price - entry_price) / entry_price) * 100.0
+
+    if max_gain_pct >= target_profit_pct:
+        return {
+            "partial_take_profit": True,
+            "lock_fraction": 0.50,
+            "new_stop_price": round(entry_price, 2),
+            "max_gain_pct": round(max_gain_pct, 2),
+            "current_pnl_pct": round(current_pnl_pct, 2),
+            "status": "TARGET_1_REACHED_BREAKEVEN_LOCKED",
+        }
+
+    return {
+        "partial_take_profit": False,
+        "lock_fraction": 0.0,
+        "new_stop_price": None,
+        "max_gain_pct": round(max_gain_pct, 2),
+        "current_pnl_pct": round(current_pnl_pct, 2),
+        "status": "TRAIL_IN_PROGRESS",
+    }
+
+

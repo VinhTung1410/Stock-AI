@@ -3,7 +3,7 @@
 **Tên dự án:** Stock-AI / AI Trading Bot  
 **Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-26  
 **Người yêu cầu (Client):** Tùng  
-**Phiên bản yêu cầu:** v5.4 — Thử Nghiệm Song Song A/B (Quant-Only vs Quant+AI) & Chuẩn Định AI Confidence (Phase 4)  
+**Phiên bản yêu cầu:** v5.5 — Tối Ưu Hóa Danh Mục, Mô Phỏng Rủi Ro Monte Carlo & Phân Rã Nhân Tố (Phase 5 — Advanced Quantitative Portfolio Engine)  
 
 ---
 
@@ -13,7 +13,7 @@
   - Hạ tầng cứng Backtest đã mô phỏng chuẩn xác cơ chế HOSE (trần/sàn ±7%, quy chế T+2.5, thuế phí 0.25%, trượt giá động sát thực tế, trần hấp thụ thanh khoản 5% ADV20, Audit Trail Supabase).
   - Tích hợp thành công giao diện Tab 6 (Backtest Dashboard, Bảng số liệu Regime, Paper Trading).
   - Hoàn thiện luồng Web-to-Discord hook cho khuyến nghị MUA và cô lập 100% mock Discord trong bộ kiểm thử tự động (Zero Test Leakage).
-  - Hoàn tất **Phase 0** (Tường lửa Disclaimer, Content Filter RSS, Heartbeat 08:30), **Phase 1** (Hạ tầng Bằng chứng Signal Lifecycle, ADR-0001 Lock Thresholds), **Phase 2** (Chốt chặn Ngành $\le 25\%$, Trượt giá động 60–75 bps, Cầu dao Gemini 12 RPM), và **Phase 3** (Walk-Forward 3 chặng, Ma trận Stress 11 sự kiện khủng hoảng, Bộ quét Flash Crash, Bootstrap Sharpe CI $10,000$ lần).
+  - Hoàn tất **Phase 0** (Tường lửa Disclaimer, Content Filter RSS, Heartbeat 08:30), **Phase 1** (Hạ tầng Bằng chứng Signal Lifecycle, ADR-0001 Lock Thresholds), **Phase 2** (Chốt chặn Ngành $\le 25\%$, Trượt giá động 60–75 bps, Cầu dao Gemini 12 RPM), **Phase 3** (Walk-Forward 3 chặng, Ma trận Stress 11 sự kiện khủng hoảng, Bộ quét Flash Crash, Bootstrap Sharpe CI $10,000$ lần), và **Phase 4** (Thử nghiệm song song A/B Quant-Only vs Quant+AI, Chuẩn định Confidence Calibration & Brier Score).
 
 - **Định vị lại triết lý cốt lõi của Client & Ban Cố vấn Tài chính (Paradigm Shift):**
   1. **Bản chất của Backtest không phải là PnL tĩnh:** Mục tiêu tối thượng của backtest không phải là tìm kiếm một con số lợi nhuận (PnL/CAGR) đẹp nhân tạo hay phán xét bot đúng/sai một vài deal đơn lẻ, mà là **đo lường năng lực nương theo pha thị trường (Market Regime Alignment)**:
@@ -29,15 +29,18 @@
      [1. Macro Regime Gate] ──> [2. Smart Money Watchlist] ──> [3. Quant Trigger] ──> [4. Dynamic Risk Sizing] ──> [5. Execution]
      ```
 
-- **Mục tiêu phiên bản 5.2 – 5.3** *(đã hoàn thành)*:
+- **Mục tiêu phiên bản 5.2 – 5.4** *(đã hoàn thành)*:
   - **Phase 0 — Tường lửa bảo mật & tuân thủ pháp lý** (xem Mục 3A, đã hoàn thành).
   - **Phase 1 — Hạ tầng bằng chứng (Signal Lifecycle)** (xem Mục 3B, đã hoàn thành).
   - **Phase 2 — Kiểm soát rủi ro & Bảo vệ danh mục (Risk Fixes)** (xem Mục 3C, đã hoàn thành).
   - **Phase 3 — Nghiên cứu & Thẩm định Chuyên sâu (Walk-Forward, Stress Matrix, Bootstrap Sharpe CI)** (xem Mục 3D, đã hoàn thành).
+  - **Phase 4 — Thử nghiệm Song song A/B & Chuẩn định AI Confidence** (xem Mục 3E, đã hoàn thành).
 
-- **Mục tiêu phiên bản 5.4** *(hiện tại — Kiểm chứng Giá trị AI & Thử nghiệm Song song A/B - Phase 4)*:
-  - **Phase 4a — Thiết lập 2 Nhánh Thử nghiệm A/B (Quant-Only vs Quant+AI):** Tách bạch hoàn toàn `Arm A (QUANT_ONLY)` và `Arm B (QUANT_AI)`, lưu vết vào `signal_lifecycle`, đối chiếu Expectancy, Sharpe và Tỷ lệ thắng để chứng minh AI có thực sự tạo ra Alpha hay chỉ là lớp báo cáo.
-  - **Phase 4b — Chuẩn định Độ tin cậy AI (AI Confidence Calibration):** Triển khai hàm `check_ai_calibration()` đo lường độ lệch giữa Confidence công bố và Actual Win Rate, ngăn chặn triệt để việc đưa Confidence chưa chuẩn định vào công thức Half-Kelly.
+- **Mục tiêu phiên bản 5.5** *(hiện tại — Tối ưu hóa Danh mục & Mô phỏng Rủi ro Nâng cao - Phase 5)*:
+  - **Phase 5a — Mô phỏng Rủi ro Đuôi Monte Carlo (Monte Carlo Tail Risk Simulation):** Tráo thứ tự chuỗi giao dịch qua 2,000 đường mô phỏng để tính 95th/99th Percentile Drawdown và xác suất sụt giảm vốn quá 15%.
+  - **Phase 5b — Tối ưu hóa Tỷ trọng Đóng góp Rủi ro Ngang bằng (Risk Parity / Inverse Volatility Sizing):** Phân bổ tỷ trọng theo nghịch đảo độ biến động ATR/Vol thay vì tỷ trọng đều, khống chế trần tối đa 25%/mã.
+  - **Phase 5c — Phân rã Đa Nhân tố Rủi ro (Multi-Factor Beta Decomposition):** Bóc tách Market Beta và Sector Beta độc lập.
+  - **Phase 5d — Chiến lược Chốt lời Từng phần & Kéo Break-even (Partial Profit Taking & Breakeven Stop):** Chốt 50% tại Target 1 (+12%), tự động dời stop lên giá vốn để tạo vị thế "Risk-Free Trade".
 
 
 
@@ -493,6 +496,68 @@
 - **Định nghĩa Done:** Unit test chứng minh khi AI overconfident (claimed 80% nhưng thực tế 50%), hàm trả về `is_calibrated = False` và kích hoạt cờ cảnh báo rủi ro Kelly.
 
 ---
+
+## 3F. PHASE 5 — TỐI ƯU HÓA DANH MỤC & MÔ PHỎNG RỦI RO NÂNG CAO (v5.5 — ADVANCED QUANT PORTFOLIO ENGINE)
+
+> **Mục tiêu:** Nâng tầm hệ thống lên chuẩn mực quỹ phòng hộ (Hedge Fund Standard): Mô phỏng rủi ro đuôi Monte Carlo, Phân bổ tỷ trọng Risk Parity (nghịch đảo biến động), Phân rã đa nhân tố (Factor Beta), và Chốt lời từng phần (Partial Profit Lock).
+
+### Phase 5a: Mô phỏng Rủi ro Đuôi Monte Carlo (Monte Carlo Drawdown & Tail Risk Engine)
+
+- **Vấn đề thực tế:**
+  - Một đường vốn backtest lịch sử duy nhất không phản ánh rủi ro đuôi (Tail Risk). Nếu thứ tự các lệnh bị đảo lộn (ví dụ gặp một chuỗi 4 lệnh thua liên tiếp rơi đúng vào lúc khởi đầu phân bổ vốn), tài khoản có thể bị Drawdown nặng nề hơn nhiều so với con số Max Drawdown quá khứ.
+- **Yêu cầu kỹ thuật:**
+  - Triển khai hàm `simulate_monte_carlo_drawdown(trade_pnl_pcts: list[float], n_simulations: int = 2_000, initial_capital: float = 100_000_000.0, random_state: int | None = 42) -> dict[str, Any]`:
+    - Chạy $2,000$ đường mô phỏng ngẫu nhiên tráo đổi chuỗi lệnh (Trade order shuffling with replacement).
+    - Tính toán:
+      - `median_drawdown_pct`: Trung vị Max Drawdown qua các kịch bản.
+      - `p95_drawdown_pct`: Phân vị 95% Max Drawdown (95% kịch bản drawdown không vượt quá con số này).
+      - `p99_drawdown_pct`: Phân vị 99% Max Drawdown (Kịch bản rủi ro đuôi cực đoan / Tail Risk VaR).
+      - `prob_drawdown_over_15pct`: Xác suất xảy ra sụt giảm vốn quá $15\%$.
+      - `max_consecutive_losses`: Số lệnh thua liên tiếp tồi tệ nhất qua các mô phỏng.
+- **Định nghĩa Done:** Unit test chứng minh mô phỏng 2,000 lần tính toán chuẩn xác các phân vị P95, P99 và xác suất rủi ro đuôi.
+
+---
+
+### Phase 5b: Phân bổ Tỷ trọng Đóng góp Rủi ro Ngang bằng (Risk Parity / Equal Risk Contribution)
+
+- **Vấn đề thực tế:**
+  - Phân bổ tỷ trọng đều bằng nhau (Equal Weight: ví dụ chia đều 20% cho mỗi mã) là một sai lầm chết người trong quản lý quỹ. Một cổ phiếu High-Beta biến động $5\%$/ngày (như nhóm Thép/BĐS) sẽ chi phối $80\%$ rủi ro của toàn danh mục, khiến một mã giảm sàn có thể kéo sập NAV.
+- **Yêu cầu kỹ thuật:**
+  - Triển khai hàm `optimize_portfolio_risk_parity(volatilities: dict[str, float], max_weight: float = 0.25) -> dict[str, float]`:
+    - Phân bổ tỷ trọng nghịch đảo với độ biến động (Inverse Volatility / Equal Risk Contribution):
+      $$w_i \propto \frac{1}{\sigma_i}$$
+    - Chuẩn hóa tổng trọng số danh mục bằng $1.0$ ($100\%$).
+    - Áp dụng trần tỷ trọng tối đa `max_weight = 0.25` ($25\%$/mã) theo quy định an toàn danh mục của Quỹ. Tái phân bổ phần thặng dư cho các mã còn lại.
+- **Định nghĩa Done:** Unit test chứng minh mã biến động thấp (VCB, FPT) được cấp tỷ trọng lớn hơn mã biến động cao (NVL, DIG), và không mã nào vượt quá trần $25\%$.
+
+---
+
+### Phase 5c: Phân rã Đa Nhân tố Rủi ro (Multi-Factor Beta Decomposition)
+
+- **Vấn đề thực tế:**
+  - Đánh giá chỉ bằng Market Beta (so với VN-Index) là chưa đủ. Một cổ phiếu có thể tăng không phải nhờ thị trường chung mà nhờ sóng riêng của ngành (Sector Momentum), hoặc ngược lại sụt giảm theo sóng tháo chạy của nhóm ngành.
+- **Yêu cầu kỹ thuật:**
+  - Triển khai hàm `calculate_factor_exposures(asset_returns: pd.Series, market_returns: pd.Series, sector_returns: pd.Series | None = None) -> dict[str, Any]`:
+    - Tính toán Market Beta ($\beta_M$) và $R^2$ giải thích của thị trường chung.
+    - Nếu có dữ liệu ngành, hồi quy đa biến tính toán Sector Beta ($\beta_S$) và Alpha thặng dư thuần túy (Idiosyncratic Alpha).
+- **Định nghĩa Done:** Unit test xác nhận phân rã thành công hệ số Beta thị trường và Beta ngành.
+
+---
+
+### Phase 5d: Chiến lược Chốt lời Từng phần & Kéo Break-even (Partial Profit Taking & Breakeven Stop)
+
+- **Vấn đề thực tế:**
+  - Khi cổ phiếu đã lãi $+12\%$ đến $+15\%$, nếu để nguyên vị thế và gặp nhịp đảo chiều bất ngờ, khoản lãi có thể biến thành khoản lỗ, gây tổn thương tâm lý nhà đầu tư.
+- **Yêu cầu kỹ thuật:**
+  - Thiết kế quy tắc `evaluate_partial_profit_lock(entry_price: float, current_high: float, current_price: float, target_profit_pct: float = 12.0) -> dict[str, Any]`:
+    - **Nấc 1:** Khi giá chạm hoặc vượt `target_profit_pct` (+12%):
+      - Kích hoạt lệnh BÁN $50\%$ vị thế (Hiện thực hóa lợi nhuận).
+      - Tự động kéo Stop-Loss của $50\%$ còn lại lên **Giá vốn (Break-even Stop)**.
+    - **Nấc 2:** Phần vị thế $50\%$ còn lại trở thành một "Risk-Free Trade", được thả cho Trailing Stop tiếp tục gồng lãi tối đa theo sóng tăng.
+- **Định nghĩa Done:** Unit test xác nhận khi giá đạt +12%, hàm phát tín hiệu chốt 50% và dời stop lên break-even.
+
+---
+
 
 
 ## 4. ĐỊNH HƯỚNG VÀ RÀNG BUỘC KỸ THUẬT (TECHNICAL CONSTRAINTS)

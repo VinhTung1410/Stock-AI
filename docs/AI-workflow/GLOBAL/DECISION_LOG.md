@@ -211,4 +211,22 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   3. Thiết lập Cầu dao An toàn (Safety Circuit Breaker): Nếu AI bị lệch chuẩn (`calibration_gap > 0.15` hoặc bucket cao có actual win rate < 60%), hệ thống tự động ngắt quyền đưa `ai_confidence` vào Half-Kelly position sizing và phát cảnh báo rủi ro.
 - **Hệ quả:** Hệ thống đạt chuẩn mực phân tích khoa học tài chính định lượng, minh bạch hóa hoàn toàn giá trị thực của AI và triệt tiêu nguy cơ phá sản do ảo giác của mô hình ngôn ngữ lớn.
 
+---
+
+### [ADR-015] Tối Ưu Hóa Danh Mục, Phân Rã Beta Đa Nhân Tố & Chốt Lời Từng Phần (Phase 5)
+- **Ngày quyết định:** 2026-09-26
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  1. Thiếu mô hình lượng hóa rủi ro đuôi (Tail Risk) và Drawdown tiềm tàng trong tương lai; các chỉ số quá khứ không lường trước được xác suất chuỗi thua lỗ liên tiếp vượt ngưỡng chịu đựng NAV.
+  2. Phân bổ tỷ trọng bằng nhau (Equal-Weight) hoặc ngẫu hứng tạo ra gánh nặng rủi ro bất bình đẳng (các cổ phiếu biến động mạnh như BĐS, Chứng khoán chiếm 70-80% rủi ro danh mục).
+  3. Không phân rã được lợi nhuận của vị thế đến từ đâu: do may mắn đu theo sóng thị trường chung (Market Beta), sóng dòng tiền ngành (Sector Beta) hay do lợi thế lựa chọn cổ phiếu vượt trội (Idiosyncratic Alpha).
+  4. Cơ chế chốt lời "all-in/all-out" khiến nhà đầu tư dễ bị non gan chốt sớm khi vừa có lãi nhẹ hoặc để mất toàn bộ lợi nhuận khi cổ phiếu đảo chiều từ mức đỉnh cao.
+- **Quyết định lựa chọn:**
+  1. Triển khai `simulate_monte_carlo_drawdown()` trong `quant_engine.py`: Tái mẫu Bootstrap Monte Carlo $2,000$ đường cong NAV với 63 phiên dự phóng (1 quý giao dịch). Lượng hóa chính xác Max Drawdown trung vị, đuôi xấu nhất P95, P99 và xác suất $P(\text{Drawdown} > 15\%)$.
+  2. Triển khai `optimize_portfolio_risk_parity()` trong `quant_engine.py`: Phân bổ tỷ trọng theo nghịch đảo biến động (Inverse Volatility / Equal Risk Contribution), áp trần cứng $25\%$ cho mỗi mã và tái phân bổ phần vốn dư thừa cho các mã còn lại theo đúng tỷ lệ nghịch đảo rủi ro.
+  3. Triển khai `calculate_factor_exposures()` trong `quant_engine.py`: Phân rã OLS đa nhân tố gồm $\beta_{\text{market}}$ (so với VN-Index), $\beta_{\text{sector}}$ (so với chỉ số ngành VN30/VNMID) và $\alpha_{\text{idiosyncratic}}$ (Annualized Alpha). Giúp xác định chính xác cổ phiếu có "Alpha thực sự" ($\alpha > 0$ và $R^2 < 0.7$).
+  4. Triển khai `evaluate_partial_profit_lock()` trong `quant_engine.py`: Cơ chế chốt lời 2 nấc: Khóa lợi nhuận $50\%$ vị thế tại ngưỡng mục tiêu $+12\%$, đồng thời tự động dời Stop Loss của $50\%$ vị thế còn lại lên điểm hòa vốn (Break-even Stop) cộng phí giao dịch ($+0.3\%$). Khi giá tiếp tục tăng vượt $+15\%$, chuyển sang trailing stop $5\%$.
+- **Hệ quả:** Hoàn thiện cỗ máy quản trị danh mục định lượng chuẩn mực quỹ đầu tư (Fund-grade Quantitative Portfolio Engine), bảo vệ tài khoản trước rủi ro sụt giảm cực đoan và tối ưu hóa điểm số Risk-Adjusted Return.
+
+
 
