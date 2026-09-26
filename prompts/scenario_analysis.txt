@@ -32,7 +32,9 @@ QUYẾT: Nếu nguồn = C, hoặc giá không phải phiên gần nhất, hoặ
 LẦN 1 (bạn): đọc dữ liệu, chọn xác suất kịch bản có căn cứ → xuất JSON gán xác suất.
 Sau đó hệ thống Python tính: {ev_price} (giá trị kỳ vọng), {margin_of_safety_pct}, 
 {atr_stop_loss}, {risk_reward}, {kelly_cap_pct}, {position_size_pct}, 
-{liquidity_cap_pct} — rồi trả kết quả về cho bạn.
+{liquidity_cap_pct}, {partial_lock_price}, {partial_lock_pct}, 
+{breakeven_stop_trigger}, {breakout_confirm_level}, {max_holding_period_sessions}, 
+{position_size_multiplier}, {kelly_fraction_applied} — rồi trả kết quả về cho bạn.
 LẦN 2 (bạn): dùng TOÀN BỘ số vừa tính để viết báo cáo cuối. Trong lần 2, bạn 
 KHÔNG được thay đổi bất kỳ con số nào của hệ thống.
 
@@ -46,6 +48,21 @@ KHÔNG được thay đổi bất kỳ con số nào của hệ thống.
                   chuẩn hóa chu kỳ, giá bull/base/bear do hệ thống tính)
 {news_str}       (tin tức vĩ mô & tin liên quan trực tiếp tới mã, mỗi tin 
                   kèm nguồn và ngày)
+
+=== DỮ LIỆU KIỂM SOÁT VỊ THẾ & THOÁT LỆNH (MỚI — HỆ THỐNG ĐÃ TÍNH SẴN) ===
+{partial_lock_price}         (giá chốt lời một phần, = entry + 1R hoặc target 
+                              gần nhất trong tam giác định giá)
+{partial_lock_pct}           (% vị thế bán tại partial_lock_price, mặc định 30–50%)
+{breakeven_stop_trigger}     (giá dời stop về sau khi đã chốt một phần = giá vốn + phí)
+{breakout_confirm_level}     (ngưỡng giá xác nhận thesis kỹ thuật còn hiệu lực, 
+                              dùng cho Time-Stop ở Bước 6b)
+{max_holding_period_sessions} (số phiên tối đa chờ xác nhận thesis trước khi 
+                              bắt buộc đánh giá lại theo Time-Stop)
+{position_size_multiplier}   (Drawdown Governor: 1.0 mặc định; 0.5 nếu danh mục 
+                              có ≥2 lệnh thua liên tiếp hoặc drawdown ≥5%; 
+                              0 nếu drawdown ≥10% — tạm dừng mở vị thế mới)
+{kelly_fraction_applied}     (tỷ lệ Kelly cuối cùng đã nhân với position_size_multiplier, 
+                              xem Bước 6)
 
 === QUY TRÌNH PHÂN TÍCH 7 BƯỚC ===
 
@@ -91,17 +108,40 @@ BƯỚC 5 — RỦI RO THỊ TRƯỜNG VIỆT NAM
 - Nêu rủi ro room ngoại, free float, thanh khoản thoát vị thế, thanh toán T+2.
 
 BƯỚC 6 — CỠ VỊ THẾ (diễn giải số hệ thống đã tính: {atr_stop_loss}, 
-{position_size_pct}, {liquidity_cap_pct}, {kelly_cap_pct})
+{position_size_pct}, {liquidity_cap_pct}, {kelly_cap_pct}, {kelly_fraction_applied}, 
+{position_size_multiplier})
 - Stop-loss theo ATR và đáy hỗ trợ gần nhất ({atr_stop_loss}); số phiên tối thiểu 
   chạm stop-loss theo biên độ trần/sàn của sàn niêm yết.
+- Trần thanh khoản PHÂN TẦNG theo ADV20 tuyệt đối (không dùng một con số cố định 
+  cho mọi mã): mã có ADV20 ≥ 50 tỷ VND/phiên (thanh khoản cao) → trần 10% ADV20; 
+  mã có ADV20 < 50 tỷ VND/phiên (thanh khoản mỏng) → trần 5% ADV20. 
+  {liquidity_cap_pct} đã được Python áp dụng đúng mức phân tầng này — chỉ diễn giải, không tự đổi.
 - Cỡ vị thế tối đa = min({position_size_pct} theo rủi ro 1% danh mục, 
-  {liquidity_cap_pct} theo trần thanh khoản 5% ADV20).
-- Nếu {kelly_cap_pct} ≤ 0 (Kelly không dương): cấm khuyến nghị MUA.
+  {liquidity_cap_pct} theo trần thanh khoản phân tầng ở trên,
+  {kelly_fraction_applied} × NAV).
+- {kelly_fraction_applied} = Half-Kelly (0,5) mặc định, có thể nâng lên 0,75 
+  nếu Data Confidence ≥ 90 VÀ Market Regime Risk-On, sau đó nhân với 
+  {position_size_multiplier} (Drawdown Governor — xem Bước 6b).
+- Nếu {kelly_cap_pct} ≤ 0 (Kelly không dương) HOẶC {position_size_multiplier} = 0 
+  (danh mục đang drawdown ≥10%): cấm khuyến nghị MUA mới, dù các chỉ số khác tốt.
+
+BƯỚC 6b — CHỐT LỜI TỪNG PHẦN & TIME-STOP (BẮT BUỘC — diễn giải số đã tính, 
+không được để trống hoặc viết định tính)
+- Chốt lời từng phần: khi giá chạm {partial_lock_price}, bán {partial_lock_pct}% 
+  vị thế; ngay sau đó dời stop-loss của phần còn lại lên {breakeven_stop_trigger} 
+  (giá vốn + phí) — biến phần còn lại thành vị thế không còn rủi ro vốn gốc.
+- Đây là cơ chế cho phép chấp nhận biến động cao lúc vào lệnh nhưng loại bỏ 
+  rủi ro nhanh chóng ngay khi lệnh đi đúng hướng — không phụ thuộc cảm tính.
+- Time-Stop: nếu sau {max_holding_period_sessions} phiên mà giá CHƯA vượt 
+  {breakout_confirm_level} VÀ chưa có catalyst nào được xác nhận xảy ra 
+  → khuyến nghị thoát lệnh dù chưa chạm stop-loss theo giá, ghi rõ lý do 
+  "thesis chưa được xác nhận trong khung thời gian cho phép".
 
 BƯỚC 7 — BÁO CÁO CUỐI (đúng cấu trúc, ngắn gọn, định lượng)
 Phần I — TÓM TẮT ĐIỀU HÀNH: Khuyến nghị (🟢MUA/🟡THEO DÕI/🔴BÁN/KHÔNG ĐỦ 
   DỮ LIỆU), vùng giá mua gom tối ưu, EV kỳ vọng, stop-loss theo ATR, tỷ lệ R, 
-  biên an toàn, cỡ vị thế tối đa theo % danh mục.
+  biên an toàn, cỡ vị thế tối đa theo % danh mục (kèm Kelly Fraction áp dụng), 
+  giá chốt lời từng phần và mốc Time-Stop.
 Phần II — 8 TRỤ CỘT với màu 🟢🟡🔴, mỗi trụ cột ghi số liệu định lượng 
   làm bằng chứng:
   • Trụ cột 1 — Dữ liệu: 🟢 ĐẦY ĐỦ/ĐỘ TIN CẬY CAO hoặc 🟡 THIẾU, hoặc 🔴 KHÔNG ĐỦ → dừng.
@@ -111,17 +151,30 @@ Phần II — 8 TRỤ CỘT với màu 🟢🟡🔴, mỗi trụ cột ghi số 
   • Trụ cột 5 — Hành vi dòng tiền: Vol/SMA20, dấu hiệu gom/xả.
   • Trụ cột 6 — Mức độ rủi ro: Z-Score, đòn bẩy, nợ vay, drawdown xấu nhất.
   • Trụ cột 7 — Kịch bản 6–12 tháng: 3 kịch bản kèm xác suất đã gán.
-  • Trụ cột 8 — Phân bổ danh mục: cỡ vị thế tối đa theo quy tắc Bước 6.
+  • Trụ cột 8 — Phân bổ danh mục: cỡ vị thế tối đa theo quy tắc Bước 6 
+    (kèm Kelly Fraction áp dụng và trạng thái Drawdown Governor).
 Phần III — 7 bước phân tích chi tiết, mỗi bước tối đa 5 gạch đầu dòng.
 Phần IV — 3 KỊCH BẢN 6–12 THÁNG: mỗi kịch bản nêu điều kiện kích hoạt, xác suất 
   đã gán, giá mục tiêu (đã tính), kỳ vọng lãi/lỗ. Cuối cùng: EV tổng, biên an toàn, 
   và khuyến nghị theo hàng rào Bước 4.
 Phần V — KIỂM TRA CHÉO: liệt kê tối thiểu 2 rủi ro có thể khiến toàn bộ phân 
   tích sai, và 1 tín hiệu theo dõi sẽ khiến chủ động hạ khuyến nghị.
+Phần VI — KẾ HOẠCH THOÁT LỆNH (BẮT BUỘC, không được bỏ qua dù khuyến nghị 
+  là MUA hay THEO DÕI): giá chốt lời từng phần ({partial_lock_price}, 
+  {partial_lock_pct}%), giá dời stop breakeven ({breakeven_stop_trigger}), 
+  và mốc Time-Stop ({max_holding_period_sessions} phiên / ngưỡng xác nhận 
+  {breakout_confirm_level}). Đây là phần trả lời câu hỏi "nếu đúng thì chốt 
+  thế nào, nếu sai thì thoát khi nào" — không được để trống.
   
 Ví dụ
 Ví dụ chạy Hệ thống v2.0 — Cổ phiếu HPG (Hòa Phát)
 Bản demo đầy đủ quy trình hai lượt trên cổ phiếu HPG, minh họa vì sao Hệ thống v2.0 cho kết quả khác căn bản với prompt cũ: cùng một bộ dữ liệu, prompt cũ khuyên MUA (vì P/E thấp), Hệ thống v2.0 khuyên THEO DÕI — vì số liệu cho thấy mã thép chu kỳ đang ở vùng đỉnh lợi nhuận.
+
+[Ghi chú: bản demo dưới đây được viết trước khi bổ sung nhóm trường mới 
+{partial_lock_price}, {breakeven_stop_trigger}, {max_holding_period_sessions}, 
+{position_size_multiplier}, {kelly_fraction_applied} (Bước 6/6b, Phần VI) nên 
+chưa minh họa các trường này bằng số. Khi vận hành thật, lớp Python cần tính 
+và điền đủ các trường này giống như đã làm với {ev_price}, {atr_stop_loss}...]
 
 Ghi chú về dữ liệu: giá và kết quả kinh doanh lấy từ nguồn thực tế trích dẫn dưới đây. Các trường tính toán (bội số lịch sử, giá kịch bản, điểm số) là số minh họa do lớp Python tạo cho demo — khi vận hành thật, lớp Python thay bằng số liệu thực từ nguồn của bạn.
 

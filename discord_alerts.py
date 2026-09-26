@@ -16,6 +16,12 @@ DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
 DISCORD_USER_ID = os.environ.get("DISCORD_USER_ID")
 
+SIGNAL_DISCLAIMER = (
+    "\n\n⚠️ *Tín hiệu tự động từ hệ thống AI — KHÔNG phải tư vấn đầu tư "
+    "được cấp phép. Tự chịu trách nhiệm quyết định. Quá khứ không đảm bảo "
+    "tương lai. Chỉ dùng số tiền có thể mất hoàn toàn.*"
+)
+
 
 def send_discord_dm(content: str = None, embeds: list = None) -> bool:
     """
@@ -326,11 +332,14 @@ def send_trade_signal_alert(symbol: str, action: str, current_price: float, trig
 
     embed = {
         "title": f"{icon} [DM RIÊNG] TÍN HIỆU {action_str}: {symbol.upper()}",
-        "description": f"Hệ thống Trading Bot vừa phát hiện tín hiệu kỹ thuật cho mã **{symbol.upper()}** (Gửi bảo mật vào DM riêng)!",
+        "description": (
+            f"Hệ thống Trading Bot vừa phát hiện tín hiệu kỹ thuật cho mã **{symbol.upper()}** "
+            f"(Gửi bảo mật vào DM riêng)!{SIGNAL_DISCLAIMER}"
+        ),
         "color": color,
         "fields": fields,
         "footer": {
-            "text": "Trading Signal Bot • Tín hiệu riêng tư 24/7",
+            "text": "Trading Signal Bot • Tín hiệu riêng tư 24/7 • Miễn trừ trách nhiệm",
         },
     }
 
@@ -354,17 +363,80 @@ def send_risk_alert(symbol: str, current_price: float, cost_price: float, trigge
             f"- **Lý do:** `{trigger_reason}`\n"
             f"- **Thị giá hiện tại:** `{current_price}` (Giá vốn: `{cost_price}`)\n"
             f"- **Tỷ lệ vi phạm:** `{pnl_pct:+.2f}%`\n\n"
-            f"⚠️ **Khuyến nghị:** Cân nhắc hạ tỷ trọng bảo toàn vốn!"
+            f"⚠️ **Khuyến nghị:** Cân nhắc hạ tỷ trọng bảo toàn vốn!{SIGNAL_DISCLAIMER}"
         ),
         "color": 0xE74C3C,  # Đỏ khẩn cấp
         "footer": {
-            "text": "Risk Management Bot • Cảnh báo riêng tư",
+            "text": "Risk Management Bot • Cảnh báo riêng tư • Miễn trừ trách nhiệm",
         },
     }
     if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
         return send_discord_dm(embeds=[embed])
     else:
         return send_discord_webhook(embeds=[embed])
+
+
+def send_system_heartbeat(subsystems: dict = None) -> bool:
+    """
+    Gửi báo cáo Heartbeat kiểm tra sức khỏe hệ thống lúc 08:30 trước ATO.
+    Định dạng:
+    - Nếu bình thường: ✅ SYSTEM ONLINE 08:30 — [data_engine ✅] [gemini ✅] [supabase ✅]
+    - Nếu có lỗi: 🚨 SYSTEM DEGRADED — Lỗi: [danh sách subsystems fail]
+    """
+    if subsystems is None:
+        subsystems = {"data_engine": True, "gemini": True, "supabase": True}
+
+    failed = [k for k, v in subsystems.items() if not v]
+    now_str = time.strftime("%H:%M")
+
+    if not failed:
+        status_items = " ".join([f"[{k} ✅]" for k in subsystems])
+        content = f"✅ SYSTEM ONLINE {now_str} — {status_items}"
+        embed = {
+            "title": f"🟢 [DISCORD DM] SYSTEM ONLINE ({now_str})",
+            "description": f"Toàn bộ hạ tầng cốt lõi đã sẵn sàng cho phiên giao dịch:\n\n{content}",
+            "color": 0x2ECC71,
+            "footer": {"text": "Stock AI Heartbeat Daemon • Health Monitor"},
+        }
+    else:
+        fail_str = ", ".join(failed)
+        content = f"🚨 SYSTEM DEGRADED {now_str} — Lỗi: [{fail_str}]"
+        embed = {
+            "title": f"🚨 [DISCORD DM] CẢNH BÁO: SYSTEM DEGRADED ({now_str})",
+            "description": (
+                f"{content}\n\n"
+                f"⚠️ **Khuyến cáo:** Cần kiểm tra thủ công các phân hệ bị lỗi trước khi giao dịch theo tín hiệu."
+            ),
+            "color": 0xE74C3C,
+            "footer": {"text": "Stock AI Heartbeat Daemon • Alert Monitor"},
+        }
+
+    if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
+        return send_discord_dm(content=content, embeds=[embed])
+    else:
+        return send_discord_webhook(content=content, embeds=[embed])
+
+
+def send_gemini_rate_limit_alert(current_rpm: int, dropped_symbols: list = None) -> bool:
+    """Cảnh báo khi gọi Gemini chạm ngưỡng giới hạn 15 RPM (cảnh báo khi chạm 12+ RPM)."""
+    dropped = dropped_symbols or []
+    dropped_str = ", ".join(dropped) if dropped else "Không có mã bị hủy"
+    content = f"⚠️ [RATE LIMIT ALERT] Gemini API đang chạm {current_rpm}/15 RPM! Mã bị bỏ qua: {dropped_str}"
+    embed = {
+        "title": "⚠️ [DISCORD DM] GEMINI API RATE LIMIT ALERT",
+        "description": (
+            f"Tần suất gọi Gemini API đã đạt **{current_rpm} RPM** (ngưỡng an toàn 12/15 RPM).\n\n"
+            f"- **Các mã tạm bỏ qua:** `{dropped_str}`\n"
+            f"- **Hành động:** Hệ thống tự động kích hoạt cooldown để bảo vệ hạn mức API."
+        ),
+        "color": 0xF1C40F,
+        "footer": {"text": "Gemini Rate Limiter • Quản lý ngân sách Token"},
+    }
+    if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
+        return send_discord_dm(content=content, embeds=[embed])
+    else:
+        return send_discord_webhook(content=content, embeds=[embed])
+
 
 
 def _format_pruned_item_stats(curr_p: float, rsi: Any, mos: Any) -> str:

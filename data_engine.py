@@ -61,17 +61,60 @@ def parse_google_sheet_csv_url(url: str) -> str:
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
 
+def _clean_numeric_string(s: str) -> str:
+    """Normalize comma/dot decimal separators in string representations."""
+    if "." in s and "," in s:
+        if s.rfind(".") > s.rfind(","):
+            return s.replace(",", "")
+        return s.replace(".", "").replace(",", ".")
+    if "," in s:
+        return s.replace(",", ".")
+    return s
+
+
 def _parse_numeric(val, default=0.0, is_int: bool = False):
-    """Safely parse numeric values from sheet strings."""
-    if not val or str(val).lower() == "nan":
+    """Safely parse numeric values from sheet strings supporting VN and US formats.
+
+    Guards against 100x and 1000x scaling anomalies for stock prices in (k VND).
+    """
+    if val is None:
         return int(default) if is_int else float(default)
-    cleaned = str(val).replace(",", "").strip()
+    if isinstance(val, (int, float)):
+        import math
+        if math.isnan(val) or math.isinf(val):
+            return int(default) if is_int else float(default)
+        if is_int:
+            return int(val)
+        res = float(val)
+        if res >= 10000.0:
+            res /= 1000.0
+        elif 1000.0 <= res < 10000.0:
+            res /= 100.0
+        return round(res, 2)
+
+    s = str(val).strip()
+    if not s or s.lower() in ("nan", "none", "null", ""):
+        return int(default) if is_int else float(default)
+
     if is_int:
-        cleaned = cleaned.replace(".", "")
+        # Strip trailing .0 / .00 from excel string floats, e.g. '220.0' -> '220'
+        s = re.sub(r"\.0{1,2}$", "", s)
+        s = s.replace(",", "").replace(".", "")
+        try:
+            return int(float(s))
+        except (ValueError, TypeError):
+            return int(default)
+
+    s = _clean_numeric_string(s)
     try:
-        return int(float(cleaned)) if is_int else float(cleaned)
+        res = float(s)
+        if res >= 10000.0:
+            res /= 1000.0
+        elif 1000.0 <= res < 10000.0:
+            res /= 100.0
+        return round(res, 2)
     except (ValueError, TypeError):
-        return int(default) if is_int else float(default)
+        return float(default)
 
 
 def _normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
@@ -985,13 +1028,17 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
     records = []
     for item in portfolio:
         symbol = item["symbol"]
-        volume = item["volume"]
-        cost_price = item["cost_price"]
+        volume = _parse_numeric(item.get("volume"), 0, is_int=True)
+        cost_price = _parse_numeric(item.get("cost_price"), 0.0)
         note = item.get("note", "")
         strategy = item.get("strategy", "SWING")
 
         tech = tech_map.get(symbol) or fetch_stock_technical(symbol)
-        curr_price = tech.get("current_price", cost_price)
+        raw_curr_price = tech.get("current_price")
+        if raw_curr_price is None or raw_curr_price <= 0:
+            curr_price = cost_price
+        else:
+            curr_price = _parse_numeric(raw_curr_price, cost_price)
 
         cost_value = volume * cost_price * 1000  # Đơn vị giá vnstock thường là nghìn VNĐ
         market_value = volume * curr_price * 1000
@@ -1071,11 +1118,15 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
     records = []
     for item in watchlist:
         symbol = item["symbol"]
-        target_buy = float(item.get("target_buy", 0.0))
+        target_buy = _parse_numeric(item.get("target_buy", 0.0), 0.0)
         note = item.get("note", "")
 
         tech = tech_map.get(symbol) or fetch_stock_technical(symbol)
-        curr_price = tech.get("current_price", target_buy)
+        raw_curr_price = tech.get("current_price")
+        if raw_curr_price is None or raw_curr_price <= 0:
+            curr_price = target_buy
+        else:
+            curr_price = _parse_numeric(raw_curr_price, target_buy)
         diff_pct = ((curr_price - target_buy) / target_buy * 100) if target_buy > 0 else 0.0
 
         ff = tech.get("foreign_flow", {})
@@ -1122,6 +1173,43 @@ def group_watchlist_by_sector(df: pd.DataFrame) -> dict:
     return grouped
 
 
+PROMPT_INJECTION_PATTERNS = [
+    re.compile(r"ignore\s+(?:all\s+)?(?:previous\s+)?instructions", re.IGNORECASE),
+    re.compile(r"disregard\s+(?:all\s+)?(?:previous\s+)?instructions", re.IGNORECASE),
+    re.compile(r"system\s*:", re.IGNORECASE),
+    re.compile(r"dan\s*:", re.IGNORECASE),
+    re.compile(r"act\s+as\s+(?:an?\s+)?ai", re.IGNORECASE),
+    re.compile(r"bỏ\s+qua\s+(?:mọi\s+)?chỉ\s+dẫn", re.IGNORECASE),
+    re.compile(r"bỏ\s+qua\s+(?:mọi\s+)?hướng\s+dẫn", re.IGNORECASE),
+    re.compile(r"từ\s+bỏ\s+quy\s+tắc", re.IGNORECASE),
+    re.compile(r"khuyến\s+nghị\s+mua\s+ngay\s+lập\s+tức\s+100%", re.IGNORECASE),
+]
+
+
+def sanitize_news_for_llm(title: str, summary: str = "") -> dict | None:
+    """Làm sạch và kiểm duyệt nội dung tin tức RSS trước khi nạp vào LLM prompt.
+
+    - Chặn các pattern Prompt Injection nguy hiểm (bỏ qua chỉ dẫn, system, DAN...).
+    - Giới hạn cứng độ dài: title <= 120 ký tự, summary <= 400 ký tự.
+    - Trả về None nếu phát hiện injection để cô lập tin độc hại khỏi LLM.
+    """
+    if not title:
+        return None
+
+    raw_combined = f"{title} {summary or ''}"
+    for pat in PROMPT_INJECTION_PATTERNS:
+        if pat.search(raw_combined):
+            logging.warning(
+                "Phát hiện nguy cơ Prompt Injection trong tin tức RSS! Đã loại bỏ. Tiêu đề: %s",
+                title[:60],
+            )
+            return None
+
+    clean_title = title.strip()[:120].strip()
+    clean_summary = (summary or "").strip()[:400].strip()
+    return {"title": clean_title, "summary": clean_summary}
+
+
 def fetch_macro_news(limit: int = 15, tracked_symbols: list = None) -> list:
     """
     Cào tin tức tài chính chuyên sâu trực tiếp từ CafeF RSS (Thị trường chứng khoán & Doanh nghiệp).
@@ -1159,6 +1247,14 @@ def fetch_macro_news(limit: int = 15, tracked_symbols: list = None) -> list:
                 summary_raw = getattr(entry, "summary", "")
                 summary_clean = re.sub(r"<[^>]+>", "", summary_raw).strip()
                 summary_clean = html.unescape(" ".join(summary_clean.split()))
+
+                # Lọc bảo mật Prompt Injection trước khi xử lý tiếp
+                clean_news = sanitize_news_for_llm(title, summary_clean)
+                if not clean_news:
+                    continue
+                title = clean_news["title"]
+                summary_clean = clean_news["summary"]
+
 
                 # Trích xuất link ảnh nếu có (linear non-backtracking parsing)
                 img_match = re.search(r'src="([^"]+)"', summary_raw)

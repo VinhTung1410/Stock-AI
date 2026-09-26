@@ -48,6 +48,16 @@ Dưới đây là toàn bộ dữ liệu được cung cấp cho cổ phiếu **
 
 {portfolio_summary}
 
+## 6. DỮ LIỆU KIỂM SOÁT VỊ THẾ & CHỐT LỜI (HỆ THỐNG ĐÃ TÍNH SẴN — KHÔNG TỰ TÍNH LẠI)
+
+* {partial_lock_price} — Giá chốt lời một phần (thường = entry + 1R hoặc target gần nhất trong tam giác định giá).
+* {partial_lock_pct} — % vị thế bán ra tại {partial_lock_price} (mặc định hệ thống đề xuất 30–50%).
+* {breakeven_stop_trigger} — Mức giá dời stop-loss về sau khi đã chốt {partial_lock_pct}, tính bằng giá vốn cộng phí giao dịch.
+* {breakout_confirm_level} — Ngưỡng giá cần vượt qua để xác nhận thesis kỹ thuật còn hiệu lực trong khung thời gian cho phép (dùng cho Time-Stop, Mục XVII).
+* {max_holding_period_sessions} — Số phiên tối đa cho phép nắm giữ trước khi bắt buộc đánh giá lại Time-Stop nếu thesis chưa được xác nhận.
+* {position_size_multiplier} — Hệ số điều chỉnh cỡ vị thế theo tình trạng thua lỗ gần nhất của danh mục (Drawdown Governor): mặc định 1.0; 0.5 nếu đã có ≥2 lệnh thua liên tiếp hoặc drawdown danh mục ≥5%; 0 nếu drawdown ≥10% (tạm dừng mở vị thế mới).
+* {kelly_fraction_applied} — Tỷ lệ Kelly thực tế được Python áp dụng sau khi đã nhân với position_size_multiplier (xem Mục XV).
+
 ---
 
 # II. NGUYÊN TẮC RA QUYẾT ĐỊNH BẮT BUỘC
@@ -693,15 +703,36 @@ Xem xét:
 
 Phân loại tham khảo:
 
-### 🟢 Vị thế lớn
+### 🟢 Vị thế lớn (Aggressive-Controlled)
 
-Chỉ áp dụng khi:
+**LƯU Ý QUAN TRỌNG:** Biến động cao (high beta / growth) của bản thân cổ phiếu
+KHÔNG PHẢI lý do tự động hạ tier vị thế. Với khẩu vị chấp nhận rủi ro cao,
+điều quyết định việc có mở vị thế lớn hay không là **chất lượng của cơ chế
+thoát lệnh**, không phải độ êm của bản thân cổ phiếu.
 
-* chất lượng cao
-* dữ liệu đủ
-* Risk/Reward tốt
-* thị trường thuận lợi
-* rủi ro thấp
+Chỉ áp dụng khi đồng thời:
+
+* Data Confidence ≥ 75 (Cao trở lên)
+* Risk/Reward ≥ 2.0
+* Thị trường KHÔNG ở trạng thái Risk-Off / Panic
+* Đã xác định rõ stop-loss cụ thể bằng ATR hoặc hỗ trợ kỹ thuật (không phải "sẽ tính sau")
+* Đã xác định {partial_lock_price} và kế hoạch chốt lời từng phần (Mục XVII)
+* {position_size_multiplier} = 1.0 (không đang trong giai đoạn Drawdown Governor hạ tỷ trọng)
+
+→ Cỡ vị thế cuối cùng = {kelly_fraction_applied} × NAV, trong đó
+  {kelly_fraction_applied} do Python tính theo công thức:
+
+```
+Kelly Fraction cơ sở = 0,5 (Half-Kelly, mặc định)
+Kelly Fraction nâng   = 0,75  NẾU Data Confidence ≥ 90
+                              VÀ Market Regime = Risk-On
+                              VÀ position_size_multiplier = 1.0
+Kelly Fraction áp dụng cuối = Kelly Fraction (cơ sở hoặc nâng) × position_size_multiplier
+```
+
+Đây chính là cơ chế cho phép "rủi ro cao khi mọi điều kiện ủng hộ" nhưng
+tự động rút lại ngay khi danh mục bắt đầu thua lỗ liên tiếp — không cần
+LLM tự quyết định, toàn bộ là số Python.
 
 ### 🟢 Vị thế trung bình
 
@@ -764,20 +795,37 @@ Stop-loss phải dựa trên:
 
 Không được đặt stop-loss tùy tiện chỉ để tạo một con số đẹp.
 
-### Khi cổ phiếu tăng mạnh
+### QUY TẮC CHỐT LỜI TỪNG PHẦN (BẮT BUỘC — không phải "đánh giá", là con số cứng)
 
-Đánh giá:
+Đây là cơ chế cốt lõi cho phép chấp nhận rủi ro cao lúc vào lệnh nhưng vẫn
+bảo toàn vốn khi lệnh đi đúng hướng — không được để LLM tự "cảm tính" quyết
+định thời điểm chốt lời như trước đây; toàn bộ dùng số hệ thống đã tính sẵn
+ở Mục I.6 ({partial_lock_price}, {partial_lock_pct}, {breakeven_stop_trigger}):
 
-* chốt lời một phần
-* trailing stop
-* giữ phần còn lại
-* gia tăng tỷ trọng khi breakout xác nhận
+1. Khi giá chạm {partial_lock_price} → bán {partial_lock_pct}% vị thế ngay lập tức.
+2. Ngay sau khi bán, dời stop-loss của phần vị thế còn lại lên {breakeven_stop_trigger}
+   (giá vốn + phí giao dịch) — biến phần còn lại thành "giao dịch không rủi ro" (risk-free trade).
+3. Phần vị thế còn lại chạy theo trailing stop, KHÔNG bán thêm chỉ vì đã có lãi.
+4. Nếu giá breakout xác nhận thêm và catalyst còn nguyên: có thể gia tăng tỷ trọng,
+   nhưng KHÔNG được vượt trần Kelly Fraction áp dụng ({kelly_fraction_applied}) tại Mục XV.
+
+### QUY TẮC TIME-STOP (CẮT LỖ THEO THỜI GIAN — BẮT BUỘC)
+
+Không chỉ cắt lỗ theo giá; phải cắt cả "lỗ cơ hội" khi vốn bị chôn trong lệnh
+không đi đâu:
+
+* Thời hạn tối đa để thesis được xác nhận = {max_holding_period_sessions} phiên.
+* Nếu hết thời hạn mà giá VẪN CHƯA vượt {breakout_confirm_level} VÀ chưa có
+  bất kỳ catalyst nào trong danh sách đã xác nhận xảy ra:
+  → Phải khuyến nghị thoát lệnh (dù chưa chạm stop-loss theo giá), và ghi rõ:
+  > "Thesis chưa được xác nhận trong khung thời gian cho phép — cắt để tái phân bổ vốn."
+* Time-Stop áp dụng độc lập với Stop-loss theo giá — điều kiện nào tới trước, áp dụng trước.
 
 ### Không bán chỉ vì:
 
 * giá tăng
 * RSI cao đơn thuần
-* lợi nhuận ngắn hạn lớn
+* lợi nhuận ngắn hạn lớn (nếu chưa chạm {partial_lock_price})
 
 Phải xem liệu:
 
@@ -942,7 +990,13 @@ Dùng khi:
 
 **MARKET REGIME:** 🟢 / 🟡 / 🟠 / 🔴
 
+**KELLY FRACTION ÁP DỤNG:** ...x (Half-Kelly cơ sở / Nâng lên 0,75x nếu đủ điều kiện) × Drawdown Multiplier {position_size_multiplier}
+
 **POSITION SIZE ĐỀ XUẤT:** ...% NAV
+
+**CHỐT LỜI TỪNG PHẦN:** Bán ...% vị thế tại ... k VND, sau đó dời stop về giá vốn ... k VND
+
+**TIME-STOP:** Đánh giá lại nếu sau ... phiên giá chưa vượt ... k VND (ngưỡng xác nhận thesis)
 
 **THỜI GIAN NẮM GIỮ:** ...
 
@@ -1199,17 +1253,27 @@ Nếu không có dữ liệu danh mục:
 
 **Vùng mua 2:** ... k
 
-**Tỷ trọng ban đầu:** ...%
+**Tỷ trọng ban đầu:** ...% (= Kelly Fraction áp dụng × NAV)
 
 **Điều kiện gia tăng:** ...
 
-**Stop-loss:** ... k
+**Stop-loss ban đầu:** ... k
+
+**Giá chốt lời từng phần ({partial_lock_pct}% vị thế):** ... k
+
+**Giá dời stop về breakeven sau khi chốt 1 phần:** ... k
+
+**Time-Stop (đánh giá lại nếu chưa xác nhận sau ... phiên):** ... k
 
 ### Nếu đang sở hữu
 
-**Tiếp tục giữ / gia tăng / chốt lời / giảm tỷ trọng / bán**
+**Tiếp tục giữ / gia tăng / chốt lời một phần / dời stop breakeven / giảm tỷ trọng / bán**
 
 Điều kiện cụ thể:
+
+* Đã chạm giá chốt lời từng phần chưa? → Nếu có: bán {partial_lock_pct}%, dời stop lên breakeven.
+* Đã chạm Time-Stop chưa? → Nếu có và thesis chưa xác nhận: thoát toàn bộ phần còn lại.
+* Nếu chưa chạm cả hai: giữ nguyên theo kế hoạch ban đầu, không tự ý bán vì cảm tính giá tăng.
 
 ...
 

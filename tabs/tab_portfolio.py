@@ -3,7 +3,13 @@ import os
 import pandas as pd
 import streamlit as st
 
-from data_engine import save_portfolio, save_watchlist, update_google_sheet_portfolio, update_google_sheet_watchlist
+from data_engine import (
+    _parse_numeric,
+    save_portfolio,
+    save_watchlist,
+    update_google_sheet_portfolio,
+    update_google_sheet_watchlist,
+)
 
 
 def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
@@ -61,25 +67,8 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
             if not sym or sym in ["NAN", "NONE", "NULL"]:
                 continue
 
-            # Xử lý an toàn khối lượng (tránh NaN)
-            raw_vol = r.get("volume")
-            try:
-                if raw_vol is not None and not pd.isna(raw_vol) and str(raw_vol).strip().lower() != "nan":
-                    volume = max(0, int(float(raw_vol)))
-                else:
-                    volume = 0
-            except Exception:
-                volume = 0
-
-            # Xử lý an toàn giá vốn (tránh float nan)
-            raw_cost = r.get("cost_price")
-            try:
-                if raw_cost is not None and not pd.isna(raw_cost) and str(raw_cost).strip().lower() != "nan":
-                    cost_price = round(float(raw_cost), 2)
-                else:
-                    cost_price = 0.0
-            except Exception:
-                cost_price = 0.0
+            volume = _parse_numeric(r.get("volume"), 0, is_int=True)
+            cost_price = _parse_numeric(r.get("cost_price"), 0.0)
 
             # Xử lý an toàn ghi chú
             raw_note = r.get("note")
@@ -146,15 +135,7 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
             if not sym or sym in ["NAN", "NONE", "NULL"]:
                 continue
 
-            # Xử lý an toàn giá canh mua (tránh float nan)
-            raw_target = r.get("target_buy")
-            try:
-                if raw_target is not None and not pd.isna(raw_target) and str(raw_target).strip().lower() != "nan":
-                    target_buy = round(float(raw_target), 2)
-                else:
-                    target_buy = 0.0
-            except Exception:
-                target_buy = 0.0
+            target_buy = _parse_numeric(r.get("target_buy"), 0.0)
 
             # Xử lý an toàn ghi chú
             raw_note = r.get("note")

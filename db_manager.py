@@ -432,3 +432,72 @@ def get_signal_audit_metrics() -> dict:
     except Exception as e:
         logging.exception("Lỗi tính toán chỉ số kiểm toán")
         return empty_res
+
+
+def save_signal_lifecycle(signal_data: dict) -> dict | None:
+    """Lưu bản ghi vòng đời tín hiệu (Signal Lifecycle) bất biến vào Supabase (Phase 1a).
+
+    - Đóng băng toàn bộ các yếu tố định lượng và AI metadata tại thời điểm phát tín hiệu.
+    - initial_stop_price được lưu cố định để tính R-Multiple chuẩn xác, không bị ảnh hưởng bởi trailing stop.
+    """
+    client = get_supabase_client()
+    if not client:
+        return None
+
+    symbol = str(signal_data.get("symbol", "")).upper().strip()
+    if not symbol:
+        return None
+
+    signal_id = signal_data.get(
+        "signal_id",
+        f"{symbol}_{datetime.now(VN_TZ).strftime('%Y%m%d_%H%M%S')}"
+    )
+
+    row = {
+        "signal_id": signal_id,
+        "symbol": symbol,
+        "entry_price": float(signal_data.get("entry_price", 0.0)),
+        "entry_regime": signal_data.get("entry_regime", "UNKNOWN"),
+        "entry_sector": signal_data.get("entry_sector", "UNKNOWN"),
+        "f_score": int(signal_data.get("f_score", 0)),
+        "z_score": float(signal_data.get("z_score", 0.0)),
+        "mos_pct": float(signal_data.get("mos_pct", 0.0)),
+        "kelly_f": float(signal_data.get("kelly_f", 0.0)),
+        "rsi14": float(signal_data.get("rsi14", 0.0)),
+        "conviction_score": float(signal_data.get("conviction_score", 0.0)),
+        "adv20_billion": float(signal_data.get("adv20_billion", 0.0)),
+        "ai_confidence": float(signal_data.get("ai_confidence", 0.0)),
+        "ai_recommendation": signal_data.get("ai_recommendation", ""),
+        "prompt_version": signal_data.get("prompt_version", "quant_2pass_v3.2"),
+        "model_version": signal_data.get("model_version", "gemini-2.5-flash"),
+        "initial_stop_price": float(signal_data.get("initial_stop_price", 0.0)),
+        "stop_loss_price": float(signal_data.get("stop_loss_price", 0.0)),
+        "target_price": float(signal_data.get("target_price", 0.0)),
+        "arm": signal_data.get("arm", "QUANT_AI"),
+        "status": "OPEN",
+    }
+
+    try:
+        res = client.table("signal_lifecycle").insert(row).execute()
+        if res.data:
+            logging.info("Đã lưu signal lifecycle cho %s (ID: %s)", symbol, signal_id)
+            return res.data[0]
+        return None
+    except Exception:
+        logging.exception("Lỗi khi lưu signal lifecycle")
+        return None
+
+
+def update_signal_lifecycle_exit(signal_id: str, exit_data: dict) -> dict | None:
+    """Cập nhật dữ liệu đóng vị thế và các chỉ số Path Metrics cho signal lifecycle."""
+    client = get_supabase_client()
+    if not client:
+        return None
+
+    try:
+        res = client.table("signal_lifecycle").update(exit_data).eq("signal_id", signal_id).execute()
+        return res.data[0] if res.data else None
+    except Exception:
+        logging.exception("Lỗi khi cập nhật exit cho signal lifecycle")
+        return None
+

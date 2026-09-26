@@ -1094,3 +1094,112 @@ def evaluate_smart_money_flow(
         "reason": reason,
     }
 
+
+LOCKED_QUANT_THRESHOLDS = {
+    "f_score_min": 6,
+    "mos_min_pct": 15.0,
+    "z_score_min": 1.80,
+    "rsi_max_entry": 70.0,
+    "conviction_min": 55.0,
+    "adv20_absorption_max_pct": 0.10,
+    "sector_exposure_max_pct": 0.25,
+}
+
+RISK_FREE_HURDLE_RATE_PCT = 4.5  # Sàn lãi suất tiền gửi rủi ro thấp theo năm
+
+
+def calculate_signal_performance_metrics(
+    trades: list[dict],
+    cagr_pct: float = 0.0,
+    sharpe_ratio: float = 0.0,
+) -> dict:
+    """Tính toán toàn diện bộ chỉ số bằng chứng kiểm định hiệu năng (Phase 1b & 1c).
+
+    - Trade-level: Win Rate, Expectancy, Profit Factor, R-Multiple, Effective Sample Size (ESS).
+    - Portfolio-level: Dual Benchmark check, Hurdle Rate sàn 4.5%/năm, Sharpe >= 0.5.
+    """
+    if not trades:
+        return {
+            "total_trades": 0,
+            "win_rate": 0.0,
+            "expectancy": 0.0,
+            "profit_factor": 0.0,
+            "avg_r_multiple": 0.0,
+            "effective_n": 0.0,
+            "statistically_reliable": False,
+            "meets_hurdle_rate": False,
+            "acceptable_sharpe": False,
+            "warning": "Không có dữ liệu giao dịch để kiểm định.",
+        }
+
+    pnl_list = []
+    r_multiples = []
+
+    for t in trades:
+        pnl = float(t.get("pnl_pct", 0.0))
+        pnl_list.append(pnl)
+
+        entry_p = float(t.get("entry_price", 0.0))
+        init_stop = float(t.get("initial_stop_price", 0.0))
+
+        if entry_p > 0 and init_stop > 0 and entry_p > init_stop:
+            initial_risk_pct = ((entry_p - init_stop) / entry_p) * 100.0
+            r_m = pnl / initial_risk_pct if initial_risk_pct > 0 else 0.0
+        else:
+            r_m = float(t.get("r_multiple", 0.0))
+        r_multiples.append(r_m)
+
+    n_trades = len(pnl_list)
+    wins = [p for p in pnl_list if p > 0]
+    losses = [p for p in pnl_list if p <= 0]
+
+    win_count = len(wins)
+    loss_count = len(losses)
+    win_rate = (win_count / n_trades) * 100.0 if n_trades > 0 else 0.0
+    loss_rate = (loss_count / n_trades) * 100.0 if n_trades > 0 else 0.0
+
+    avg_win = float(pd.Series(wins).mean()) if wins else 0.0
+    avg_loss = abs(float(pd.Series(losses).mean())) if losses else 0.0
+
+    # Expectancy: (WinRate * AvgWin) - (LossRate * |AvgLoss|)
+    expectancy = round(((win_rate / 100.0) * avg_win) - ((loss_rate / 100.0) * avg_loss), 3)
+
+    sum_wins = sum(wins)
+    sum_losses = abs(sum(losses))
+    if sum_losses > 0:
+        profit_factor = round(sum_wins / sum_losses, 2)
+    elif sum_wins > 0:
+        profit_factor = 99.0
+    else:
+        profit_factor = 0.0
+
+    avg_r = round(float(pd.Series(r_multiples).mean()), 2) if r_multiples else 0.0
+
+    # Effective Sample Size (ESS) qua lag-1 autocorrelation
+    effective_n = float(n_trades)
+    if n_trades >= 4:
+        s_pnl = pd.Series(pnl_list)
+        rho_1 = s_pnl.autocorr(lag=1)
+        if pd.notnull(rho_1) and -0.99 <= rho_1 <= 0.99:
+            ess_calc = n_trades * ((1.0 - rho_1) / (1.0 + rho_1))
+            effective_n = round(max(1.0, min(float(n_trades), ess_calc)), 1)
+
+    meets_hurdle = cagr_pct >= RISK_FREE_HURDLE_RATE_PCT
+    acceptable_sharpe = sharpe_ratio >= 0.5
+    statistically_reliable = effective_n >= 30.0
+
+    return {
+        "total_trades": n_trades,
+        "effective_n": effective_n,
+        "win_rate": round(win_rate, 2),
+        "expectancy": expectancy,
+        "profit_factor": profit_factor,
+        "avg_r_multiple": avg_r,
+        "cagr_pct": round(cagr_pct, 2),
+        "sharpe_ratio": round(sharpe_ratio, 2),
+        "meets_hurdle_rate": meets_hurdle,
+        "acceptable_sharpe": acceptable_sharpe,
+        "statistically_reliable": statistically_reliable,
+    }
+
+

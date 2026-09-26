@@ -147,6 +147,28 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   6. Tích hợp checkbox "🛡️ Kích hoạt Chốt chặn Vĩ mô Né sập" trực tiếp trên giao diện Backtest của Tab Alpha Tracker.
 - **Hệ quả:** Hệ thống đạt chuẩn quản lý quỹ quốc tế (Institutional Grade), tự động kích hoạt chế độ phòng thủ bảo toàn vốn khi thị trường sụp đổ và phân bổ vốn kỷ luật, loại bỏ triệt để sai lầm cảm xúc của nhà đầu tư cá nhân.
 
+---
+
+### [ADR-011] Tường Lửa Bảo Mật & Pháp Lý (Phase 0) + Hạ Tầng Bằng Chứng Signal Lifecycle (Phase 1)
+- **Ngày quyết định:** 2026-09-26
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  1. Thiếu disclaimer pháp lý trên các thông báo Discord DM, tiềm ẩn rủi ro theo Luật Chứng khoán 2019 Điều 10 & 82.
+  2. RSS CafeF nạp raw text trực tiếp vào LLM prompt mở ra bề mặt tấn công Prompt Injection thao túng tín hiệu tiền thật.
+  3. Thiếu liveness heartbeat định kỳ 08:30 trước ATO và cảnh báo nghẽn rate limit Gemini (15 RPM).
+  4. Hệ thống có nhiều cơ chế nhưng thiếu bằng chứng (Evidence): chưa tách biệt `initial_stop_price` để đo R-Multiple chuẩn xác, chưa tính Expectancy và Effective Sample Size (ESS) xử lý tương quan chuỗi.
+  5. Cần khóa cứng các tham số Quant Core (ADR-0001) trước khi backtest để chống Data Snooping và Overfitting.
+- **Quyết định lựa chọn:**
+  1. Ban hành `SIGNAL_DISCLAIMER` cố định trên 100% cảnh báo Discord (`discord_alerts.py`).
+  2. Xây dựng bộ lọc `sanitize_news_for_llm()` với blocklist regex và length caps (title $\le 120$, summary $\le 400$) cô lập tin độc hại khỏi LLM prompt (`data_engine.py`).
+  3. Tích hợp `send_system_heartbeat()` 08:30 hàng ngày và `send_gemini_rate_limit_alert()` bảo vệ hạn mức API (`trading_bot.py`, `discord_alerts.py`).
+  4. Xây dựng schema `signal_lifecycle` bất biến (`migrations/0002_create_signal_lifecycle.sql`, `db_manager.py`) bảo toàn `initial_stop_price` độc lập với trailing stop.
+  5. Xây dựng `calculate_signal_performance_metrics()` trong `quant_engine.py`: Đo Win Rate, Expectancy, Profit Factor, R-Multiple, Effective Sample Size (ESS), Hurdle Rate sàn 4.5%/năm và Sharpe $\ge 0.5$.
+  6. Ban hành `ADR-0001` chính thức khóa cố định các ngưỡng Quant Core (F-Score $\ge 6$, MoS $\ge 15\%$, Z-Score $> 1.8$, RSI $< 70$, Conviction $\ge 55$, Sector $\le 25\%$).
+  7. Thiết lập chốt chặn Git Workspace Hygiene: Đưa `danh_gia_he_thong_quy_fund.md`, `stock_ai_roadmap.md`, `idea.md` vào `.gitignore` và untrack khỏi Git index cache để giữ nguyên làm tài liệu local riêng của Client.
+- **Hệ quả:** Hệ thống chính thức bước sang giai đoạn *Investment Research Platform* vững chắc về an ninh pháp lý, chống tấn công dữ liệu đầu vào, và sở hữu hạ tầng bằng chứng kiểm định định lượng chuẩn mực quỹ.
+
+
 
 
 

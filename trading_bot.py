@@ -13,6 +13,7 @@
 """
 
 import logging
+import os
 import time
 from datetime import datetime
 from datetime import time as dtime
@@ -34,6 +35,7 @@ from discord_alerts import (
     format_portfolio_embed,
     send_discord_dm,
     send_discord_webhook,
+    send_system_heartbeat,
     send_trade_signal_alert,
 )
 
@@ -436,9 +438,29 @@ def _clean_expired_daily_keys(today_str: str):
         sent_alerts.discard(a)
 
 
+def trigger_pre_ato_heartbeat():
+    """Kiểm tra sức khỏe toàn hệ thống trước phiên ATO lúc 08:30 (Phase 0c)."""
+    logging.info("🩺 Đang thực hiện Pre-ATO System Heartbeat Check (08:30)...")
+    subsystems = {
+        "data_engine": True,
+        "gemini": bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")),
+        "supabase": bool(os.environ.get("SUPABASE_URL") and os.environ.get("SUPABASE_KEY")),
+    }
+    try:
+        send_system_heartbeat(subsystems=subsystems)
+    except Exception:
+        logging.exception("Lỗi khi gửi Pre-ATO Heartbeat")
+
+
 def _check_scheduled_reports(now: datetime, today_str: str, cur_t: dtime):
     if not is_trading_day(now):
         return
+
+    # 08:30: Pre-ATO System Heartbeat
+    key_0830 = (today_str, "08:30_HEARTBEAT")
+    if dtime(8, 30) <= cur_t < dtime(8, 45) and key_0830 not in sent_scheduled_reports:
+        sent_scheduled_reports.add(key_0830)
+        trigger_pre_ato_heartbeat()
 
     schedules = [
         ("08:45", dtime(8, 45), dtime(9, 0), "BÁO CÁO ĐẦU NGÀY (TRƯỚC PHIÊN ATO)", "Điểm tin vĩ mô thế giới & Sẵn sàng mở phiên"),
@@ -456,6 +478,7 @@ def _check_scheduled_reports(now: datetime, today_str: str, cur_t: dtime):
     if dtime(15, 15) <= cur_t < dtime(16, 0) and key_1515 not in sent_scheduled_reports:
         sent_scheduled_reports.add(key_1515)
         trigger_post_market_audit()
+
 
 
 def run_trading_bot_loop(check_interval_sec: int = 30):

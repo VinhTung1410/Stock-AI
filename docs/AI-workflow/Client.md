@@ -1,9 +1,9 @@
 # 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF)
 
 **Tên dự án:** Stock-AI / AI Trading Bot  
-**Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-24  
+**Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-26  
 **Người yêu cầu (Client):** Tùng  
-**Phiên bản yêu cầu:** v4.5 — Chuẩn hóa Thước đo Backtest, Lõi Chiến lược Regime-First Alignment, Quản trị Rủi ro & Tích hợp Smart Money Flow Tracking  
+**Phiên bản yêu cầu:** v5.1 — Tường lửa Bảo mật & Pháp lý (Phase 0) + Hạ tầng Bằng chứng Signal Lifecycle (Phase 1)  
 
 ---
 
@@ -28,15 +28,20 @@
      [1. Macro Regime Gate] ──> [2. Smart Money Watchlist] ──> [3. Quant Trigger] ──> [4. Dynamic Risk Sizing] ──> [5. Execution]
      ```
 
-- **Mục tiêu phiên bản 4.1:**
+- **Mục tiêu phiên bản 4.5** *(kế thừa từ v4.1, đã hoàn thành)*:
   1. **Chuẩn hóa thước đo định lượng:** Nạp chuỗi dữ liệu VN-Index làm Benchmark để tính toán chính xác Alpha, Beta thực của từng mã cổ phiếu và vẽ đường so sánh Buy & Hold trực quan.
-  2. **Chuẩn hóa bộ phân loại Regime theo VN-Index:** Xác định trạng thái thị trường dựa trên VN-Index thay vì từng mã riêng lẻ; linh hoạt ngưỡng nến để bảng 4 cột hiển thị đầy đủ dữ liệu Uptrend/Downtrend/Sideways.
-  3. **Xây dựng chiến lược lõi "Quant Core Strategy":** Đưa bộ tiêu chí thực tế của hệ thống (F-Score $\ge 6$, MoS $\ge 15\%$, Z-Score $> 1.8$, RSI $< 70$, Hard Gates & ATR Stop-loss) vào làm chiến lược kiểm thử chính.
-  4. **Kích hoạt Chốt chặn Vĩ mô (Macro Circuit Breaker / Cash Mode):** Tự động khóa toàn bộ lệnh Mua khi VN-Index gãy MA50/MA200 hoặc Market Breadth xấu, bảo toàn vốn tuyệt đối khi thị trường sập.
-  5. **Mô-đun Theo dõi Dòng tiền Thông minh (Smart Money Flow Engine):** Tích hợp dữ liệu gom/xả ròng EOD của Khối ngoại và Tự doanh làm bộ lọc xác nhận tín hiệu.
-  6. **Cơ chế Quản trị Vốn Thu hẹp Drawdown (Drawdown-Controlled Sizing):** Giảm 50% quy mô vị thế khi gặp chuỗi thua liên tiếp (Losing Streak).
-  7. **Kết nối luồng Forward Testing (Paper Trading) với Supabase:** Hiển thị danh mục lệnh ảo phát sinh từ tín hiệu thực tế của bot để kiểm chứng trượt giá.
-  8. **Hoàn thiện UX:** Định dạng số tiền nhập liệu trực quan (`100,000,000 VND`).
+  2. **Chuẩn hóa bộ phân loại Regime theo VN-Index:** Xác định trạng thái thị trường dựa trên VN-Index thay vì từng mã riêng lẻ.
+  3. **Xây dựng chiến lược lõi "Quant Core Strategy":** F-Score $\ge 6$, MoS $\ge 15\%$, Z-Score $> 1.8$, RSI $< 70$, Hard Gates & ATR Stop-loss.
+  4. **Kích hoạt Macro Circuit Breaker / Cash Mode:** Khóa 100% lệnh Mua khi VN-Index xác nhận Downtrend.
+  5. **Smart Money Flow Engine:** EOD flow Khối ngoại & Tự doanh làm bộ lọc xác nhận.
+  6. **Drawdown-Controlled Sizing:** Giảm 50% vị thế khi chuỗi thua $\ge 2$ hoặc drawdown $\ge 5\%$.
+  7. **Paper Trading → Supabase:** Hiển thị lệnh ảo và đo Implementation Shortfall thực.
+  8. **UX:** Định dạng số tiền nhập liệu (`100,000,000 VND`).
+
+- **Mục tiêu phiên bản 5.1** *(hiện tại — ưu tiên cao nhất)*:
+  - **Shift triết lý:** `AI Stock Bot → Investment Research Platform` — hệ thống không chỉ phát tín hiệu mà còn **tự ghi nhận, đo lường, kiểm định và phản biện chính các tín hiệu của nó**.
+  - **Phase 0 — Tường lửa bảo mật & tuân thủ pháp lý** (xem Mục 3A).
+  - **Phase 1 — Hạ tầng bằng chứng (Signal Lifecycle)** (xem Mục 3B).
 
 ---
 
@@ -139,6 +144,152 @@
 
 ---
 
+## 3A. PHASE 0 — TƯỜNG LỬA BẢO MẬT & TUÂN THỦ (v5.1 — Làm Ngay)
+
+> **Ưu tiên tuyệt đối.** Đây là các rủi ro đang active trong production trước khi bổ sung bất kỳ tính năng mới nào.
+
+### Phase 0a: Disclaimer Bắt buộc trên Mọi Tín hiệu Discord
+
+- **Vấn đề:** Hệ thống tự động phát tín hiệu MUA cụ thể (giá vào, target, stop-loss) qua Discord DM. Tại Việt Nam, hoạt động này có thể cấu thành "tư vấn đầu tư chứng khoán" cần giấy phép UBCKNN (Luật CK 2019, Điều 10 & 82). Không có tuyên bố miễn trừ trách nhiệm đi kèm.
+- **Yêu cầu:** Thêm disclaimer cố định vào cuối **mọi** Discord DM — `discord_alerts.py`:
+  ```python
+  SIGNAL_DISCLAIMER = (
+      "\n\n⚠️ *Tín hiệu tự động từ hệ thống AI — KHÔNG phải tư vấn đầu tư "
+      "được cấp phép. Tự chịu trách nhiệm quyết định. Quá khứ không đảm bảo "
+      "tương lai. Chỉ dùng số tiền có thể mất hoàn toàn.*"
+  )
+  ```
+- **Định nghĩa Done:** 100% Discord DM phát tín hiệu có disclaimer, unit test xác nhận.
+
+### Phase 0b: Content Filter RSS → LLM (Chống Prompt Injection)
+
+- **Vấn đề xác nhận tại `data_engine.py:1201`:**
+  ```python
+  feed = feedparser.parse(resp.content)
+  title = html.unescape(str(entry.title).strip())
+  # → title + summary đẩy thẳng vào LLM prompt, không qua filter
+  ```
+  Luồng tấn công: `CafeF RSS (bên ngoài) → LLM prompt bị thao túng → Tín hiệu BUY sai → Discord DM → Lệnh tiền thật`.
+  Hệ thống hiện chỉ sanitize HTML tags, **không có lớp bảo vệ nội dung** (content-level).
+- **Yêu cầu:** Implement `sanitize_news_for_llm(title, summary) -> dict | None` với:
+  - Regex blocklist: `ignore previous instructions`, `system:`, `disregard all`...
+  - Hard cap độ dài: title ≤ 120 ký tự, summary ≤ 400 ký tự.
+  - Return `None` nếu phát hiện injection → bỏ qua tin đó, log warning.
+  - Tin tức chỉ được đưa vào LLM dưới dạng **sentiment score / category** (gián tiếp), không phải raw text trực tiếp vào decision prompt.
+- **Định nghĩa Done:** Unit test với payload injection thực tế xác nhận bị chặn.
+
+### Phase 0c: Heartbeat & System Status Alert
+
+- **Vấn đề:** Không có cơ chế báo hiệu khi bot crash. Người dùng có thể đặt lệnh dựa trên tín hiệu cũ từ hôm trước mà không hay biết.
+- **Yêu cầu:**
+  - Bot tự gửi Discord DM `"✅ SYSTEM ONLINE 08:30 — [data_engine ✅] [gemini ✅] [supabase ✅]"` mỗi sáng trước ATO.
+  - Nếu bất kỳ check nào fail: `"🚨 SYSTEM DEGRADED — Lỗi: [danh sách subsystems fail]"` kèm tên mã cần kiểm tra thủ công.
+  - Rate limit Gemini (15 RPM): khi chạm ngưỡng 12 calls/phút, bắn Discord alert kèm danh sách symbols bị bỏ qua.
+- **Định nghĩa Done:** Mock test xác nhận heartbeat gửi đúng giờ; fail-case gửi đúng format alert.
+
+---
+
+## 3B. PHASE 1 — HẠ TẦNG BẰNG CHỨNG: SIGNAL LIFECYCLE (v5.1)
+
+> **Mục tiêu:** Biến mỗi trade thành một research observation. Không có Signal Lifecycle Database, mọi con số hiệu suất đều không có giá trị kiểm chứng.
+
+### Phase 1a: Bảng `signal_lifecycle` trên Supabase
+
+- **Schema bắt buộc** (mọi trường đều immutable tại thời điểm phát tín hiệu, trừ các trường exit và path metrics):
+
+  ```sql
+  CREATE TABLE signal_lifecycle (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    signal_id        TEXT UNIQUE NOT NULL,  -- "FPT_20260926_143022"
+    symbol           TEXT NOT NULL,
+    created_at       TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Quant inputs (đóng băng khi phát tín hiệu)
+    entry_price      NUMERIC(10,2),
+    entry_regime     TEXT,                  -- UPTREND/SIDEWAYS/DOWNTREND
+    entry_sector     TEXT,
+    f_score          INT,
+    z_score          NUMERIC(6,3),
+    mos_pct          NUMERIC(6,2),
+    kelly_f          NUMERIC(6,4),
+    rsi14            NUMERIC(5,1),
+    conviction_score NUMERIC(5,1),
+    adv20_billion    NUMERIC(8,2),
+
+    -- AI metadata (đóng băng khi phát tín hiệu)
+    ai_confidence      NUMERIC(5,1),
+    ai_recommendation  TEXT,
+    prompt_version     TEXT,               -- "quant_2pass_v3.2"
+    model_version      TEXT,               -- "gemini-2.5-flash"
+
+    -- Position
+    initial_stop_price NUMERIC(10,2),      -- KHÔNG thay đổi → tính R-multiple
+    stop_loss_price    NUMERIC(10,2),      -- có thể điều chỉnh (trailing)
+    target_price       NUMERIC(10,2),
+
+    -- Exit
+    exit_timestamp  TIMESTAMPTZ,
+    exit_price      NUMERIC(10,2),
+    exit_reason     TEXT,                  -- STOP/TARGET/TRAILING/MANUAL/REGIME
+    pnl_pct         NUMERIC(7,3),
+    r_multiple      NUMERIC(6,3),          -- pnl / initial_risk
+
+    -- Path metrics (cron T+1, T+5, T+20)
+    mfe_pct  NUMERIC(7,3),
+    mae_pct  NUMERIC(7,3),
+    t1_pct   NUMERIC(7,3),
+    t5_pct   NUMERIC(7,3),
+    t20_pct  NUMERIC(7,3),
+
+    -- Benchmark
+    vnindex_pct_same_period NUMERIC(7,3),
+    vn30_pct_same_period    NUMERIC(7,3),
+
+    -- Experiment arm (Phase 4 — AI Validation)
+    arm    TEXT DEFAULT 'QUANT_AI',        -- QUANT_ONLY / QUANT_AI
+    status TEXT DEFAULT 'OPEN'
+  );
+  ```
+
+- **Lý do `initial_stop_price` riêng biệt với `stop_loss_price`:** Trailing stop làm thay đổi `stop_loss_price` theo thời gian — nhưng R-multiple phải tính dựa trên **rủi ro ban đầu tại thời điểm vào lệnh**, không phải stop đã dời. Đây là sai lầm phổ biến khiến R-multiple bị đo lường không chính xác.
+
+### Phase 1b: Metrics Bắt buộc trong Performance Dashboard
+
+**Trade-level:**
+
+| Metric | Công thức | Ghi chú |
+|---|---|---|
+| Win Rate | Lệnh thắng / Tổng lệnh | Không kết luận với < 30 lệnh |
+| Expectancy | WinRate × AvgWin − LossRate × \|AvgLoss\| | Quan trọng hơn Win Rate |
+| Profit Factor | Tổng lãi / \|Tổng lỗ\| | > 1.5 = chấp nhận được |
+| R-Multiple | pnl / initial_risk | Dùng `initial_stop_price` |
+| Effective N | Bootstrap ESS, không phải raw count | 100 trades tương quan ≠ 100 obs độc lập |
+
+**Portfolio-level:** CAGR, Max Drawdown, Sharpe, Sortino, Calmar, Alpha vs VN-Index, Alpha vs VN30.
+
+### Phase 1c: Benchmark Nâng cấp
+
+- **Thêm VN30** làm secondary benchmark (phù hợp hơn VN-Index đơn thuần cho chiến lược mid-cap/growth).
+- **Floor tối thiểu:** CAGR sau phí phải > 4.5%/năm (lãi suất tiền gửi risk-free). Nếu không → không có lý do dùng hệ thống thay vì gửi ngân hàng.
+- **Rule:** Sharpe < 0.5 → không đủ risk-adjusted return → điều tra trước khi mở rộng vốn.
+
+### Phase 1d: Lock Quant Core Thresholds (ADR)
+
+- **Yêu cầu:** Ghi ADR với **ngày chốt** và lý do chọn từng ngưỡng Quant Core **trước khi** chạy thêm bất kỳ backtest nào.
+- **Mục đích:** Ngăn data snooping — nếu ngưỡng được tune sau khi nhìn kết quả backtest, toàn bộ con số Sharpe/Win Rate đều bị thổi phồng và không có giá trị dự báo.
+- **ADR template tối thiểu:**
+
+  | Parameter | Value | Nguồn gốc chọn |
+  |---|---|---|
+  | F-Score min | ≥ 6 | Piotroski (2000): >5 = quality firm |
+  | MoS min | ≥ 15% | Conservative value investing floor |
+  | Z-Score min | > 1.8 | Altman "safe zone" boundary |
+  | RSI max (entry) | < 70 | Below FOMO/overbought territory |
+  | Conviction min | ≥ 55 | Medium pillar threshold |
+
+---
+
+
 ## 4. ĐỊNH HƯỚNG VÀ RÀNG BUỘC KỸ THUẬT (TECHNICAL CONSTRAINTS)
 
 - **Bộ tiêu chuẩn chất lượng SonarCloud:**
@@ -178,7 +329,7 @@
 7. **Rò rỉ Môi trường Test ra Kênh Thật:** 100% test case bắt buộc phải mock toàn bộ I/O bên ngoài.
 8. **Spam Thông báo Thanh lọc:** Chỉ quét dọn Watchlist duy nhất 1 lần trước ATO (08:45).
 
-*Bài học MỚI từ v3.1 — v4.1 & Đối thoại cùng Quản lý Quỹ:*
+*Bài học MỚI từ v3.1 — v4.5 & Đối thoại cùng Quản lý Quỹ:*
 9. **Lỗi "Đồng hồ đo sai" (Dead Metrics Trap — Beta luôn bằng 1.0):**
    - Không truyền dữ liệu Benchmark làm tê liệt Alpha, Beta. Mọi kiểm định định lượng bắt buộc phải có chuỗi Benchmark VN-Index thật đi kèm.
 10. **Nghịch lý "Xe đua F1 gắn bánh xe đạp" (Strategy Mismatch in Backtest):**
@@ -188,9 +339,21 @@
 12. **Bẫy Overfitting & Tâm lý "Làm đẹp số liệu":**
     - Đo lường khả năng thích ứng thị trường và bảo toàn vốn có giá trị cao gấp nhiều lần một đường vốn tăng trưởng dốc đứng do "nắn nót" tham số.
 13. **Cạm bẫy "Bắt chước Quỹ" (Fund Copycat Trap) & Độ trễ Báo cáo:**
-    - Tin tức và báo cáo tháng của quỹ có độ trễ lớn (T+30 đến T+45). Mua theo tin tức quỹ dễ biến nhà đầu tư thành thanh khoản chốt lời (Exit Liquidity). Quỹ không giúp né sập thị trường vì họ bị ràng buộc luật giữ 80-95% cổ phiếu. Danh mục quỹ chỉ được dùng làm Watchlist nội tại, quyết định vào lệnh phải do Dòng tiền EOD + Kỹ thuật xác nhận.
+    - Tin tức và báo cáo tháng của quỹ có độ trễ lớn (T+30 đến T+45). Mua theo tin tức quỹ dễ biến nhà đầu tư thành thanh khoản chốt lời (Exit Liquidity). Quỹ không giúp né sập thị trường vì họ bị ràng buộc luật giữ 80-95% cổ phiếu.
 14. **Tư duy Regime Alignment — "Bảo toàn vốn trước khi tìm kiếm lợi nhuận":**
     - Thước đo bot tốt không phải là PnL tĩnh, mà là sự nhịp nhàng với thị trường: Vào sóng mạnh trong Uptrend, và tuyệt đối kích hoạt **Cash Mode** đứng ngoài khi Downtrend để né trọn các đợt sập lịch sử.
 15. **Hành vi "Trả thù thị trường" (Revenge Trading Trap):**
     - Phải áp dụng cơ chế tự động hạ $50\%$ quy mô vốn sau chuỗi thua liên tiếp (Drawdown-Controlled Sizing) để cứu nhà đầu tư khỏi sự phá vỡ kỷ luật giao dịch.
+
+*Bài học MỚI từ v4.5 → v5.1 — Đánh giá Quỹ & Quant Researcher:*
+16. **Bề mặt tấn công Prompt Injection qua RSS (RSS Injection Surface):**
+    - `data_engine.py` scrape CafeF RSS rồi đẩy raw title/summary thẳng vào LLM decision prompt mà không qua content filter. Sanitize HTML tags là chưa đủ — phải có lớp kiểm tra nội dung (content-level blocklist) để ngăn tín hiệu bị thao túng từ nội dung bên ngoài.
+17. **Slippage Cố định 15 bps — Lạc quan Cấu trúc trong Thị trường Gấu (`Fixed Slippage Optimism`):**
+    - `backtest_engine.py` dùng `DEFAULT_SLIPPAGE_BPS = 15.0` cho mọi điều kiện thị trường. Trong kịch bản giảm sàn liên tiếp, slippage thực tế 50–150 bps. Con số Sharpe/Alpha trong backtest do đó bị thổi phồng cấu trúc ở giai đoạn thị trường gấu — đúng lúc Cash Mode được thiết kế để bảo vệ. Cần slippage động theo `is_floor`, `vol_ratio`, `adv20`.
+18. **SECTOR_MAP tồn tại nhưng không được dùng (Dead Code Risk Gate):**
+    - `SECTOR_MAP` đã định nghĩa tại `data_engine.py:1269` nhưng không có risk gate nào enforce giới hạn sector. 8/8 vị thế cùng BĐS hoặc Ngân hàng vẫn "hợp lệ" — trong khủng hoảng ngành, correlation tiến về 1.0, Half-Kelly không bảo vệ được gì.
+19. **AI Confidence Chưa Calibrated — Không được Dùng trực tiếp vào Kelly (`Uncalibrated AI Input`):**
+    - Gemini trả về `confidence=78%` nhưng actual win rate có thể chỉ 52%. Dùng confidence chưa calibrate làm `p_win` trong Kelly dẫn đến position sizing bị thổi phồng — đây là model risk nhân lên, không phải lỗi nhỏ. Phải đo calibration curve từ `signal_lifecycle` trước khi dùng AI confidence vào bất kỳ sizing formula nào.
+20. **100 Trades ≠ 100 Independent Observations (Effective Sample Size):**
+    - Nếu nhiều tín hiệu xuất hiện trong cùng một regime hoặc cùng sector, các observations bị correlated — raw count N không phản ánh đúng sức mạnh thống kê. Phải dùng Effective Sample Size (ESS = N × (1 − |autocorrelation|)) khi kết luận về edge của hệ thống.
 

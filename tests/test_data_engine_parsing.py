@@ -24,7 +24,16 @@ class TestDataEngineParsing:
 
     def test_parse_numeric(self):
         assert _parse_numeric("1,000", is_int=True) == 1000
+        assert _parse_numeric("1.000", is_int=True) == 1000
+        assert _parse_numeric("220.0", is_int=True) == 220
         assert _parse_numeric("25.5") == 25.5
+        assert _parse_numeric("66,66") == 66.66
+        assert _parse_numeric("10,65") == 10.65
+        assert _parse_numeric("21,21") == 21.21
+        assert _parse_numeric(6666.0) == 66.66
+        assert _parse_numeric("6666") == 66.66
+        assert _parse_numeric(66660) == 66.66
+        assert _parse_numeric("66660") == 66.66
         assert _parse_numeric("nan", default=0.0) == 0.0
         assert _parse_numeric(None, default=5.0) == 5.0
         assert _parse_numeric("invalid", default=0.0) == 0.0

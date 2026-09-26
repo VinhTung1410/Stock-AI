@@ -31,3 +31,9 @@ Thumbs.db
 scratch/
 *.log
 data/.signal_cooldown.json
+
+# Local workspace / Private research notes (Client Local Use Only - Do not push)
+danh_gia_he_thong_quy_fund.md
+stock_ai_roadmap.md
+idea.md
+
