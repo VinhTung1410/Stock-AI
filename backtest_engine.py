@@ -28,6 +28,102 @@ STRATEGY_QUANT_CORE: Final[str] = "QUANT_CORE"
 STRATEGY_MA_CROSSOVER: Final[str] = "MA_CROSSOVER"
 STRATEGY_RSI_REVERSION: Final[str] = "RSI_REVERSION"
 
+# Walk-Forward Timeline Constants (Phase 3a)
+WALK_FORWARD_WINDOWS: Final[dict[str, tuple[str, str]]] = {
+    "training": ("2018-01-01", "2019-12-31"),
+    "validation": ("2020-01-01", "2021-12-31"),
+    "oos": ("2022-01-01", "2024-12-31"),
+}
+
+# Crisis Stress Backtest Scenarios (Phase 3b - 11 Historical Events 2018–2024)
+CRISIS_STRESS_REGIMES: Final[dict[str, dict[str, Any]]] = {
+    "trade_war_2018": {
+        "name": "Chiến tranh thương mại Mỹ - Trung (2018)",
+        "start_date": "2018-03-01",
+        "end_date": "2018-12-31",
+        "market_drop_pct": -25.0,
+    },
+    "trump_tariff_2019": {
+        "name": "Trump Tariff – 20 ngày đỏ lửa Thiên nga đen",
+        "start_date": "2019-05-05",
+        "end_date": "2019-05-31",
+        "market_drop_pct": -5.0,
+    },
+    "covid_crash_2020": {
+        "name": "Bùng phát đại dịch Covid-19 (2020)",
+        "start_date": "2020-01-23",
+        "end_date": "2020-03-31",
+        "market_drop_pct": -35.0,
+    },
+    "covid_lockdown_2021": {
+        "name": "Giãn cách xã hội nghiêm ngặt do Covid-19 (Delta 2021)",
+        "start_date": "2021-07-09",
+        "end_date": "2021-09-30",
+        "market_drop_pct": -14.0,
+    },
+    "bull_market_2021": {
+        "name": "Sóng Bull Market Bong bóng F0 (2021)",
+        "start_date": "2021-01-01",
+        "end_date": "2021-12-31",
+        "market_drop_pct": 150.0,
+    },
+    "bond_crackdown_2022": {
+        "name": "Sự kiện vi phạm TTCK & Trái phiếu doanh nghiệp (2022)",
+        "start_date": "2022-03-29",
+        "end_date": "2022-05-31",
+        "market_drop_pct": -23.0,
+    },
+    "rate_hike_2022": {
+        "name": "NHNN thắt chặt tiền tệ, tăng lãi suất sau nhiều năm (2022)",
+        "start_date": "2022-09-23",
+        "end_date": "2022-12-31",
+        "market_drop_pct": -20.0,
+    },
+    "van_thinh_phat_2022": {
+        "name": "Sự kiện Vạn Thịnh Phát & Ngân hàng SCB (2022)",
+        "start_date": "2022-10-06",
+        "end_date": "2022-11-16",
+        "market_drop_pct": -25.0,
+    },
+    "fx_bill_tightening_2023": {
+        "name": "Khối ngoại bán ròng kỷ lục & Hút tín phiếu SBV (Q3/2023)",
+        "start_date": "2023-07-01",
+        "end_date": "2023-09-30",
+        "market_drop_pct": -18.0,
+    },
+    "fx_dxy_pressure_2024": {
+        "name": "Đồng USD tăng giá mạnh & Tỷ giá kỷ lục (Q2/2024)",
+        "start_date": "2024-04-01",
+        "end_date": "2024-06-30",
+        "market_drop_pct": -10.0,
+    },
+    "liquidity_dry_2024": {
+        "name": "Sụt giảm thanh khoản, khối ngoại bán ròng và áp lực tỷ giá (Q3/2024)",
+        "start_date": "2024-07-01",
+        "end_date": "2024-09-30",
+        "market_drop_pct": -5.0,
+    },
+}
+
+# Historical Flash Crash Dates (Point drop >= 50 or single day >= 4%)
+HISTORICAL_FLASH_CRASH_DATES: Final[list[str]] = [
+    "2015-08-24",
+    "2018-02-05",
+    "2020-03-09",
+    "2021-01-19",
+    "2021-01-28",  # -73 pts
+    "2022-04-25",  # -68 pts
+    "2022-05-12",  # -62 pts
+    "2023-08-18",  # -55 pts
+    "2024-04-15",  # -60 pts
+]
+
+KEY_START_DATE: Final[str] = "start_date"
+KEY_END_DATE: Final[str] = "end_date"
+KEY_STATUS: Final[str] = "status"
+KEY_NO_DATA: Final[str] = "NO_DATA"
+KEY_MARKET_DROP: Final[str] = "market_drop_pct"
+
 
 @dataclass
 class TradeRecord:
@@ -736,3 +832,223 @@ class RegimeBacktestEngine:
             summary_metrics=summary,
             regime_metrics=regime_break,
         )
+
+
+BacktestEngine = RegimeBacktestEngine
+
+
+def _slice_by_dates(
+    df_price: pd.DataFrame,
+    start_date: str,
+    end_date: str,
+    signals: pd.Series | None = None,
+    regimes: pd.Series | None = None,
+    adv20: pd.Series | None = None,
+    benchmark_returns: pd.Series | None = None,
+) -> tuple[pd.DataFrame, pd.Series | None, pd.Series | None, pd.Series | None, pd.Series | None]:
+    """Slice price history and auxiliary series within [start_date, end_date]."""
+    if df_price.empty:
+        return df_price, signals, regimes, adv20, benchmark_returns
+
+    try:
+        idx = pd.to_datetime(df_price.index)
+        mask = (idx >= pd.to_datetime(start_date)) & (idx <= pd.to_datetime(end_date))
+        sub_price = df_price.loc[mask]
+    except Exception:
+        sub_price = df_price.loc[start_date:end_date]
+
+    def _slice_series(s: pd.Series | None) -> pd.Series | None:
+        if s is None or s.empty:
+            return s
+        try:
+            s_idx = pd.to_datetime(s.index)
+            s_mask = (s_idx >= pd.to_datetime(start_date)) & (s_idx <= pd.to_datetime(end_date))
+            return s.loc[s_mask]
+        except Exception:
+            return s.loc[start_date:end_date]
+
+    return (
+        sub_price,
+        _slice_series(signals),
+        _slice_series(regimes),
+        _slice_series(adv20),
+        _slice_series(benchmark_returns),
+    )
+
+
+def run_walk_forward_backtest(
+    engine: RegimeBacktestEngine,
+    df_price: pd.DataFrame,
+    signals: pd.Series,
+    regimes: pd.Series | None = None,
+    adv20: pd.Series | None = None,
+    benchmark_returns: pd.Series | None = None,
+    symbol: str = "TEST",
+    enforce_regime_gate: bool = False,
+    windows: dict[str, tuple[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Chạy kiểm định Walk-Forward phân tách Training, Validation và OOS (Phase 3a)."""
+    target_windows = windows or WALK_FORWARD_WINDOWS
+    results_by_window: dict[str, BacktestResult] = {}
+    metrics_comparison: dict[str, dict[str, Any]] = {}
+
+    for win_name, (start_dt, end_dt) in target_windows.items():
+        sub_p, sub_sig, sub_reg, sub_adv, sub_bm = _slice_by_dates(
+            df_price, start_dt, end_dt, signals, regimes, adv20, benchmark_returns
+        )
+        if sub_p.empty or (sub_sig is not None and sub_sig.empty):
+            results_by_window[win_name] = BacktestResult()
+            metrics_comparison[win_name] = {
+                KEY_START_DATE: start_dt,
+                KEY_END_DATE: end_dt,
+                KEY_STATUS: KEY_NO_DATA,
+            }
+            continue
+
+        res = engine.run_backtest(
+            df_price=sub_p,
+            signals=sub_sig,
+            regimes=sub_reg,
+            adv20=sub_adv,
+            benchmark_returns=sub_bm,
+            symbol=symbol,
+            enforce_regime_gate=enforce_regime_gate,
+        )
+        results_by_window[win_name] = res
+        sm = res.summary_metrics
+        metrics_comparison[win_name] = {
+            KEY_START_DATE: start_dt,
+            KEY_END_DATE: end_dt,
+            "total_trades": sm.get("total_trades", 0),
+            "win_rate_pct": sm.get("win_rate_pct", 0.0),
+            "cagr_pct": sm.get("cagr_pct", 0.0),
+            "sharpe_ratio": sm.get("sharpe_ratio", 0.0),
+            "max_drawdown_pct": sm.get("max_drawdown_pct", 0.0),
+            "profit_factor": sm.get("profit_factor", 0.0),
+        }
+
+    return {
+        "results_by_window": results_by_window,
+        "metrics_comparison": metrics_comparison,
+    }
+
+
+def run_crisis_stress_matrix(
+    engine: RegimeBacktestEngine,
+    df_price: pd.DataFrame,
+    signals: pd.Series,
+    regimes: pd.Series | None = None,
+    adv20: pd.Series | None = None,
+    benchmark_returns: pd.Series | None = None,
+    symbol: str = "TEST",
+    enforce_regime_gate: bool = False,
+    stress_regimes: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Chạy ma trận kiểm tra áp lực khủng hoảng qua 4 kịch bản sập lịch sử (Phase 3b)."""
+    regimes_map = stress_regimes or CRISIS_STRESS_REGIMES
+    period_results: dict[str, BacktestResult] = {}
+    stress_summary: dict[str, dict[str, Any]] = {}
+
+    for key, info in regimes_map.items():
+        start_dt = info[KEY_START_DATE]
+        end_dt = info[KEY_END_DATE]
+        sub_p, sub_sig, sub_reg, sub_adv, sub_bm = _slice_by_dates(
+            df_price, start_dt, end_dt, signals, regimes, adv20, benchmark_returns
+        )
+
+        if sub_p.empty or (sub_sig is not None and sub_sig.empty):
+            period_results[key] = BacktestResult()
+            stress_summary[key] = {
+                "name": info["name"],
+                KEY_MARKET_DROP: info.get(KEY_MARKET_DROP, 0.0),
+                KEY_STATUS: KEY_NO_DATA,
+            }
+            continue
+
+        res = engine.run_backtest(
+            df_price=sub_p,
+            signals=sub_sig,
+            regimes=sub_reg,
+            adv20=sub_adv,
+            benchmark_returns=sub_bm,
+            symbol=symbol,
+            enforce_regime_gate=enforce_regime_gate,
+        )
+        period_results[key] = res
+        sm = res.summary_metrics
+
+        ret_pct = 0.0
+        if not res.equity_curve.empty and res.equity_curve.iloc[0] > 0:
+            ret_pct = round(((res.equity_curve.iloc[-1] / res.equity_curve.iloc[0]) - 1.0) * 100.0, 2)
+
+        stress_summary[key] = {
+            "name": info["name"],
+            KEY_START_DATE: start_dt,
+            KEY_END_DATE: end_dt,
+            KEY_MARKET_DROP: info.get(KEY_MARKET_DROP, 0.0),
+            "strategy_return_pct": ret_pct,
+            "max_drawdown_pct": sm.get("max_drawdown_pct", 0.0),
+            "total_trades": sm.get("total_trades", 0),
+            "win_rate_pct": sm.get("win_rate_pct", 0.0),
+            "profit_factor": sm.get("profit_factor", 0.0),
+        }
+
+    return {
+        "period_results": period_results,
+        "stress_summary": stress_summary,
+    }
+
+
+def scan_market_stress_events(
+    df_benchmark: pd.DataFrame,
+    point_drop_threshold: float = 50.0,
+    pct_drop_threshold: float = 0.04,
+    rolling_window: int = 20,
+    rolling_drawdown_threshold: float = 0.10,
+) -> dict[str, Any]:
+    """Quét các sự kiện căng thẳng định lượng trên chỉ số VN-Index (Flash crash, % sụt giảm, đợt sập dốc)."""
+    if df_benchmark.empty or "close" not in df_benchmark.columns:
+        return {
+            "drop_50pts_days": [],
+            "drop_4pct_days": [],
+            "sharp_drawdown_clusters": [],
+            "total_stress_days": 0,
+        }
+
+    close = df_benchmark["close"].astype(float)
+    point_diff = close.diff()
+    pct_diff = close.pct_change()
+
+    # 1. Flash crashes >= 50 points
+    mask_pts = point_diff <= -abs(point_drop_threshold)
+    drop_pts = [
+        {"date": str(idx)[:10], "drop_points": round(float(val), 2), "close": round(float(c), 2)}
+        for idx, val, c in zip(close.index[mask_pts], point_diff[mask_pts], close[mask_pts])
+    ]
+
+    # 2. Flash drops >= 4%
+    mask_pct = pct_diff <= -abs(pct_drop_threshold)
+    drop_pcts = [
+        {"date": str(idx)[:10], "pct_change": round(float(val) * 100.0, 2), "close": round(float(c), 2)}
+        for idx, val, c in zip(close.index[mask_pct], pct_diff[mask_pct], close[mask_pct])
+    ]
+
+    # 3. Rolling drawdown >= 10% trong vòng <= rolling_window phiên
+    roll_max = close.rolling(rolling_window, min_periods=5).max()
+    roll_dd = (close - roll_max) / roll_max
+    mask_dd = roll_dd <= -abs(rolling_drawdown_threshold)
+    dd_clusters = [
+        {"date": str(idx)[:10], "rolling_drawdown_pct": round(float(dd) * 100.0, 2)}
+        for idx, dd in zip(close.index[mask_dd], roll_dd[mask_dd])
+    ]
+
+    unique_dates = {d["date"] for d in drop_pts} | {d["date"] for d in drop_pcts}
+
+    return {
+        "drop_50pts_days": drop_pts,
+        "drop_4pct_days": drop_pcts,
+        "sharp_drawdown_clusters": dd_clusters,
+        "total_stress_days": len(unique_dates),
+    }
+
+

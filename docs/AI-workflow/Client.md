@@ -3,16 +3,17 @@
 **Tên dự án:** Stock-AI / AI Trading Bot  
 **Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-26  
 **Người yêu cầu (Client):** Tùng  
-**Phiên bản yêu cầu:** v5.2 — Kiểm soát Rủi ro & Dynamic Slippage (Phase 2)  
+**Phiên bản yêu cầu:** v5.3 — Kiểm định Chuyên sâu: Walk-Forward, Stress Backtest & Bootstrap Sharpe CI (Phase 3)  
 
 ---
 
 ## 1. TỔNG QUAN DỰ ÁN (EXECUTIVE SUMMARY)
 
 - **Kế thừa thành quả các phiên bản trước:**
-  - Hạ tầng cứng Backtest đã mô phỏng chuẩn xác cơ chế HOSE (trần/sàn ±7%, quy chế T+2.5, thuế phí 0.25%, trượt giá 15 bps, trần hấp thụ thanh khoản 5% ADV20, Audit Trail Supabase).
+  - Hạ tầng cứng Backtest đã mô phỏng chuẩn xác cơ chế HOSE (trần/sàn ±7%, quy chế T+2.5, thuế phí 0.25%, trượt giá động sát thực tế, trần hấp thụ thanh khoản 5% ADV20, Audit Trail Supabase).
   - Tích hợp thành công giao diện Tab 6 (Backtest Dashboard, Bảng số liệu Regime, Paper Trading).
   - Hoàn thiện luồng Web-to-Discord hook cho khuyến nghị MUA và cô lập 100% mock Discord trong bộ kiểm thử tự động (Zero Test Leakage).
+  - Hoàn tất **Phase 0** (Tường lửa Disclaimer, Content Filter RSS, Heartbeat 08:30), **Phase 1** (Hạ tầng Bằng chứng Signal Lifecycle, ADR-0001 Lock Thresholds), và **Phase 2** (Chốt chặn Ngành $\le 25\%$, Trượt giá động 60–75 bps, Cầu dao Gemini 12 RPM).
 
 - **Định vị lại triết lý cốt lõi của Client & Ban Cố vấn Tài chính (Paradigm Shift):**
   1. **Bản chất của Backtest không phải là PnL tĩnh:** Mục tiêu tối thượng của backtest không phải là tìm kiếm một con số lợi nhuận (PnL/CAGR) đẹp nhân tạo hay phán xét bot đúng/sai một vài deal đơn lẻ, mà là **đo lường năng lực nương theo pha thị trường (Market Regime Alignment)**:
@@ -28,21 +29,16 @@
      [1. Macro Regime Gate] ──> [2. Smart Money Watchlist] ──> [3. Quant Trigger] ──> [4. Dynamic Risk Sizing] ──> [5. Execution]
      ```
 
-- **Mục tiêu phiên bản 4.5** *(kế thừa từ v4.1, đã hoàn thành)*:
-  1. **Chuẩn hóa thước đo định lượng:** Nạp chuỗi dữ liệu VN-Index làm Benchmark để tính toán chính xác Alpha, Beta thực của từng mã cổ phiếu và vẽ đường so sánh Buy & Hold trực quan.
-  2. **Chuẩn hóa bộ phân loại Regime theo VN-Index:** Xác định trạng thái thị trường dựa trên VN-Index thay vì từng mã riêng lẻ.
-  3. **Xây dựng chiến lược lõi "Quant Core Strategy":** F-Score $\ge 6$, MoS $\ge 15\%$, Z-Score $> 1.8$, RSI $< 70$, Hard Gates & ATR Stop-loss.
-  4. **Kích hoạt Macro Circuit Breaker / Cash Mode:** Khóa 100% lệnh Mua khi VN-Index xác nhận Downtrend.
-  5. **Smart Money Flow Engine:** EOD flow Khối ngoại & Tự doanh làm bộ lọc xác nhận.
-  6. **Drawdown-Controlled Sizing:** Giảm 50% vị thế khi chuỗi thua $\ge 2$ hoặc drawdown $\ge 5\%$.
-  7. **Paper Trading → Supabase:** Hiển thị lệnh ảo và đo Implementation Shortfall thực.
-  8. **UX:** Định dạng số tiền nhập liệu (`100,000,000 VND`).
-
-- **Mục tiêu phiên bản 5.1** *(hiện tại — ưu tiên cao nhất)*:
-  - **Shift triết lý:** `AI Stock Bot → Investment Research Platform` — hệ thống không chỉ phát tín hiệu mà còn **tự ghi nhận, đo lường, kiểm định và phản biện chính các tín hiệu của nó**.
+- **Mục tiêu phiên bản 5.2** *(đã hoàn thành)*:
   - **Phase 0 — Tường lửa bảo mật & tuân thủ pháp lý** (xem Mục 3A, đã hoàn thành).
   - **Phase 1 — Hạ tầng bằng chứng (Signal Lifecycle)** (xem Mục 3B, đã hoàn thành).
-  - **Phase 2 — Kiểm soát rủi ro & Bảo vệ danh mục (Risk Fixes)** (xem Mục 3C).
+  - **Phase 2 — Kiểm soát rủi ro & Bảo vệ danh mục (Risk Fixes)** (xem Mục 3C, đã hoàn thành).
+
+- **Mục tiêu phiên bản 5.3** *(hiện tại — Nghiên cứu & Thẩm định Chuyên sâu - Phase 3)*:
+  - **Phase 3a — Khung kiểm định Walk-Forward:** Phân chia cứng Timeline Training (2018–2020), Validation (2020–2022) và OOS (2022–2024), khóa cứng tham số trước khi kiểm định OOS.
+  - **Phase 3b — Kiểm tra áp lực khủng hoảng (Stress Backtest):** Thẩm định qua 4 cú sập lịch sử: Chiến tranh thương mại Q4/2018 (-30%), COVID-19 Q1/2020 (-35%), Khủng hoảng Trái phiếu/BĐS 2022 (-45%), và Thị trường Bull bong bóng 2021.
+  - **Phase 3c — Khoảng tin cậy Sharpe bằng phương pháp Bootstrap (Bootstrap Sharpe CI):** Đánh giá ý nghĩa thống kê của Sharpe với mẫu nhỏ ($10,000$ iterations), tính toán `ci_lower`, `ci_upper` và xác định Edge thực sự của hệ thống.
+
 
 
 ---
@@ -369,7 +365,85 @@
 
 ---
 
+## 3D. PHASE 3 — NGHIÊN CỨU & THẨM ĐỊNH CHUYÊN SÂU (v5.3 — RESEARCH & STRESS TESTING)
+
+> **Mục tiêu:** Kiểm chứng tính vững chắc (Robustness) của chiến lược bằng phương pháp luận quản lý quỹ khắt khe: Walk-Forward OOS, Stress Test 4 đợt sập lịch sử, và Bootstrap Sharpe Confidence Interval.
+
+### Phase 3a: Khung Kiểm định Walk-Forward (Walk-Forward Optimization Framework)
+
+- **Vấn đề thực tế:**
+  - Sai lầm lớn nhất của các mô hình giao dịch là "Backtest toàn bộ chuỗi dữ liệu cùng lúc". Việc nắn tham số trên toàn bộ lịch sử 2018–2024 khiến kết quả kiểm định bị nhiễm Look-ahead Bias và Data Snooping.
+- **Yêu cầu kỹ thuật:**
+  - Thiết lập phân chia timeline cố định 3 giai đoạn không gối đầu:
+    1. **Training Period (2018–2020):** Khớp các tham số nền tảng (Lookback window, baseline multiples).
+    2. **Validation Period (2020–2022):** Tinh chỉnh ngưỡng chốt chặn (Hard Gates, Stop loss, ATR) — TUYỆT ĐỐI KHÔNG nhìn trước dữ liệu giai đoạn sau.
+    3. **Out-of-Sample (OOS) Test (2022–2024):** Chạy kiểm định 1 lần duy nhất trên dữ liệu hoàn toàn chưa từng biết đến.
+  - **Quy tắc sắt Quản lý Quỹ:**
+    - Khóa cứng tham số Quant Core bằng `ADR-0001` trước khi chạy OOS.
+    - Nếu OOS thất bại (Sharpe < 0.5 hoặc CAGR < 4.5%): Bắt buộc quay lại bước Training để cấu trúc lại luận điểm, nghiêm cấm "nhìn trộm" OOS để sửa tham số lần 2.
+- **Định nghĩa Done:** Báo cáo bóc tách hiệu năng theo 3 giai đoạn độc lập: Training vs. Validation vs. OOS.
+
+---
+
+### Phase 3b: Ma trận Kiểm tra Áp lực Khủng hoảng & Bộ Quét Định lượng (Crisis Stress Matrix & Quantitative Event Scanners)
+
+- **Vấn đề thực tế:**
+  - Một chiến lược định lượng chỉ thực sự có giá trị nếu nó sống sót và bảo toàn được vốn qua các giai đoạn thị trường sụp đổ thảm khốc nhất của VN-Index và né được các cú sốc thanh khoản vĩ mô.
+- **Yêu cầu kỹ thuật:**
+
+  #### 1. Danh mục 10 Sự kiện Khủng hoảng & Biến động Lịch sử Trọng yếu (2018–2024):
+
+  | Mã sự kiện | Giai đoạn | Sự kiện Thị trường & Bối cảnh | Mức tác động VN-Index | Trọng tâm Thẩm định Sống còn |
+  |---|---|---|---|---|
+  | `trade_war_2018` | 03/2018 – 12/2018 | **Chiến tranh thương mại Mỹ - Trung (2018):** Mỹ áp thuế nhôm/thép và 50 tỷ USD hàng TQ. VN-Index từ đỉnh lịch sử 1.204 (09/04/2018) lao dốc về quanh 900 điểm vào tháng 7 và giằng co giảm tới hết năm. | Sụt giảm $-25\%$ đến $-30\%$ | Cash Mode có kích hoạt kịp thời để cắt lỗ và đứng ngoài hay không? |
+  | `trump_tariff_2019` | 05/05/2019 – 31/05/2019 | **Trump Tariff – 20 ngày đỏ lửa Thiên nga đen:** Tweet ngày 05/05/2019 của TT Trump tuyên bố tăng thuế từ 10% lên 25% đối với 200 tỷ USD hàng TQ khiến thị trường chìm trong sắc đỏ suốt tháng 5. | Sụt giảm dốc ngắn hạn $-5\%$ | Hệ thống có phát tín hiệu phòng thủ né bẫy bắt đáy sớm? |
+  | `covid_crash_2020` | 23/01/2020 – 31/03/2020 | **Bùng phát đại dịch Covid-19 (2020):** Bán tháo toàn cầu khi WHO công bố đại dịch, VN-Index chạm đáy chu kỳ 659 điểm (24/03/2020) trước Chỉ thị 16. | Sụt giảm $-35\%$ | Max Drawdown thực tế của hệ thống là bao nhiêu so với mức sập $-35\%$ của Index? |
+  | `covid_lockdown_2021` | 09/07/2021 – 30/09/2021 | **Giãn cách xã hội nghiêm ngặt (Biến chủng Delta):** Phong tỏa cứng TP.HCM và 19 tỉnh phía Nam theo Chỉ thị 16. VN-Index giảm nhanh từ 1.420 về 1.225 điểm (-14%) trong tháng 7 trước khi dòng tiền F0 hấp thụ. | Giảm sốc $-14\%$ rồi hồi phục | Quản trị rủi ro nhịp chỉnh sâu trong sóng uptrend lớn. |
+  | `bull_market_2021` | 01/01/2021 – 31/12/2021 | **Sóng Bull Market Siêu thanh khoản:** Lãi suất rẻ, bùng nổ nhà đầu tư cá nhân F0 đưa VN-Index vượt 1.500 điểm (cổ phiếu x3–x5). | Tăng trưởng $+35\%$ (nhiều mã $+150\%$) | Hệ thống có kiên nhẫn để lãi chạy (ride the trend) hay chốt non quá sớm? |
+  | `bond_crackdown_2022` | 29/03/2022 – 31/05/2022 | **Sai phạm TTCK & Trái phiếu doanh nghiệp:** Khởi tố Chủ tịch FLC Trịnh Văn Quyết và Tân Hoàng Minh Đỗ Anh Dũng; bán tháo diện rộng nhóm đầu cơ, đóng băng kênh trái phiếu. | Sụt giảm $-23\%$ | Chốt chặn Sector Gate và FA Gate có né hoàn toàn các mã đầu cơ? |
+  | `rate_hike_2022` | 23/09/2022 – 31/12/2022 | **NHNN thắt chặt tiền tệ, tăng lãi suất điều hành:** Hai đợt tăng lãi suất liên tiếp (mỗi lần +100 bps vào 23/09 và 25/10/2022) nhằm ghìm tỷ giá và lạm phát. | Sụt giảm $-20\%$ | Hệ thống có duy trì tỷ trọng tiền mặt tối đa khi lãi suất đảo chiều tăng? |
+  | `van_thinh_phat_2022` | 06/10/2022 – 16/11/2022 | **Sự kiện Vạn Thịnh Phát & SCB:** Khởi tố bà Trương Mỹ Lan, rút tiền tại SCB, giải chấp chéo đưa VN-Index về đáy sâu nhất 873 điểm (16/11/2022). | Sụt giảm $-25\%$ (Đáy 873 điểm) | Cơ chế cắt lỗ kỷ luật và trượt giá sàn có giúp bảo toàn vốn? |
+  | `fx_bill_tightening_2023` | 01/07/2023 – 30/09/2023 | **Khối ngoại bán ròng kỷ lục & Hút tín phiếu SBV:** Chênh lệch lãi suất USD-VND nới rộng, NHNN mở lại kênh hút tín phiếu giữa tháng 9/2023 khiến Index sập từ 1.250 về 1.020. | Sụt giảm $-18\%$ | Nhận diện đảo chiều dòng tiền ngoại và tín hiệu co hẹp vị thế. |
+  | `fx_dxy_pressure_2024` | 01/04/2024 – 30/06/2024 | **Đồng USD tăng vọt & Tỷ giá chạm kỷ lục:** DXY vượt 105-106, USD/VND vượt 25.400, SBV bán can thiệp ngoại tệ và phát hành tín phiếu. | Điều chỉnh dốc ngắn $-10\%$ | Đánh giá phản ứng co cụm tỷ trọng trước áp lực vĩ mô. |
+  | `liquidity_dry_2024` | 01/07/2024 – 30/09/2024 | **Sụt giảm thanh khoản & Khối ngoại bán ròng:** Giá trị giao dịch teo tóp về 12.000–15.000 tỷ/phiên trước thềm Fed hạ lãi suất và khối ngoại duy trì rút ròng. | Đi ngang / Phân hóa hẹp | Tránh bẫy Whipsaw khi thị trường cạn kiệt thanh khoản. |
+
+  #### 2. Bộ Lọc Quy Tắc Quét Định Lượng (Quantitative Stress Scanners / Dynamic Event Filters):
+  - **Flash Crash $\ge 50$ điểm/phiên:** Quét tự động các phiên hoảng loạn lịch sử: 24/08/2015, 05/02/2018, 09/03/2020, 19/01/2021, 28/01/2021 (-73 điểm), 25/04/2022 (-68 điểm), 12/05/2022 (-62 điểm), 18/08/2023 (-55 điểm), và 15/04/2024 (-60 điểm).
+  - **Phiên sụt giảm $\ge 4\%$/phiên của VN-Index:** Lọc các phiên giảm $\ge 4\%$ trong chu kỳ 10 năm qua (tháng 03/2020, tháng 01/2021, tháng 04-05/2022).
+  - **Gãy sóng dốc liên tiếp $\sim 10\%$ trong thời gian $< 1$ tháng (2022–2024):** Nhắm vào 4 đợt sập dốc: 04/2022, 10/2022, 09-10/2023 và 04/2024.
+  - **DXY bứt phá dốc đứng (2022–2024):** Quét các giai đoạn DXY vượt 114 (08–10/2022) và vượt 106 (03–05/2024).
+  - **Phản ứng Ngày Công bố Lãi suất FED (FOMC):** Các đợt tăng sốc 75 bps (tháng 6, 7, 9, 11 năm 2022) và đợt hạ lãi suất 50 bps (18/09/2024).
+
+  - **Bảng tổng kết Stress Test bắt buộc so sánh:** Max Drawdown, Net Return, Tỷ lệ Lệnh cắt lỗ đúng kỷ luật, Tốc độ hồi phục vốn (Recovery Factor), và Tỷ trọng Tiền mặt (Cash Mode) duy trì trong kỳ.
+- **Định nghĩa Done:** Module tự động chạy stress test trên 10 kịch bản lịch sử, tích hợp hàm quét quy tắc định lượng flash crash, và xuất báo cáo đối soát chi tiết.
+
+---
+
+### Phase 3c: Khoảng Tin cậy Sharpe bằng Phương pháp Bootstrap (Bootstrap Sharpe CI)
+
+- **Vấn đề thực tế:**
+  - Khi số lượng giao dịch còn ít ($N < 30$ hoặc Effective $N < 20$), con số Sharpe point-estimate (ví dụ: Sharpe = 1.4) không có ý nghĩa thống kê đáng tin cậy. Nếu khoảng tin cậy 95% rơi vào `[-0.3, 2.8]`, điều đó có nghĩa là hiệu năng dương chỉ là ngẫu nhiên may mắn.
+- **Yêu cầu kỹ thuật:**
+  - Triển khai hàm `bootstrap_sharpe_ci(returns, n_bootstrap=10_000, risk_free_annual=0.045, ci=0.95) -> dict`:
+    ```python
+    def bootstrap_sharpe_ci(
+        returns: list[float],
+        n_bootstrap: int = 10_000,
+        risk_free_annual: float = 0.045,
+        ci: float = 0.95,
+    ) -> dict:
+        """Tính toán Khoảng tin cậy (Confidence Interval) của Sharpe qua 10,000 lần Resampling."""
+        # Ước lượng ci_lower, ci_upper tại phân vị 2.5% và 97.5%
+        # Tính toán Effective Sample Size (ESS) xử lý tự tương quan
+        # Xác định rõ cờ is_statistically_significant: ci_lower > 0
+    ```
+  - Nếu `ci_lower < 0`: Đưa ra cảnh báo minh bạch trên Dashboard: *"Số lượng quan sát chưa đủ để khẳng định chiến lược có Edge thống kê. Cần tiếp tục tích lũy quan sát từ Signal Lifecycle."*
+- **Định nghĩa Done:** Unit test xác nhận `bootstrap_sharpe_ci()` tạo ra khoảng tin cậy chuẩn xác qua $10,000$ lần tái mẫu với NumPy/Pandas.
+
+---
+
 ## 4. ĐỊNH HƯỚNG VÀ RÀNG BUỘC KỸ THUẬT (TECHNICAL CONSTRAINTS)
+
 
 
 - **Bộ tiêu chuẩn chất lượng SonarCloud:**

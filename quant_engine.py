@@ -14,6 +14,7 @@ Capabilities:
 import logging
 from typing import Any, Dict, List
 
+import numpy as np
 import pandas as pd
 
 from quant_valuation import calculate_fair_value_and_mos
@@ -1247,4 +1248,98 @@ def check_sector_concentration(
     return True, "SECTOR_CONCENTRATION_OK"
 
 
+def bootstrap_sharpe_ci(
+    returns: list[float] | pd.Series | np.ndarray,
+    n_bootstrap: int = 10_000,
+    risk_free_annual: float = 0.045,
+    ci: float = 0.95,
+    periods_per_year: int = 252,
+    random_state: int | None = 42,
+) -> dict[str, Any]:
+    """Tính toán Khoảng tin cậy (Confidence Interval) của Sharpe qua n_bootstrap lần Resampling (Phase 3c).
 
+    Giúp bóc tách giữa may mắn ngẫu nhiên (luck) và lợi thế định lượng thực sự (edge)
+    đặc biệt khi số lượng quan sát giao dịch nhỏ (N < 30).
+    """
+    fallback_res: dict[str, Any] = {
+        "sharpe_point": 0.0,
+        "ci_lower": 0.0,
+        "ci_upper": 0.0,
+        "std_err": 0.0,
+        "p_value_zero": 1.0,
+        "is_statistically_significant": False,
+        "n_samples": 0,
+        "effective_n": 0.0,
+        "warning": "Dữ liệu lợi suất rỗng hoặc không đủ số lượng quan sát để chạy Bootstrap CI.",
+    }
+
+    if returns is None:
+        return fallback_res
+
+    try:
+        arr = np.asarray(returns, dtype=float)
+        arr = arr[~np.isnan(arr)]
+    except Exception:
+        return fallback_res
+
+    n = len(arr)
+    if n < 2:
+        fallback_res["n_samples"] = n
+        fallback_res["effective_n"] = float(n)
+        return fallback_res
+
+    daily_rf = (1.0 + risk_free_annual) ** (1.0 / periods_per_year) - 1.0
+    ret_std = float(np.std(arr, ddof=1))
+    point_sharpe = float(((np.mean(arr) - daily_rf) / ret_std) * np.sqrt(periods_per_year)) if ret_std > 1e-12 else 0.0
+
+    # Resampling ma trận vectorization
+    rng = np.random.default_rng(random_state)
+    indices = rng.integers(0, n, size=(n_bootstrap, n))
+    samples = arr[indices]
+
+    sample_means = np.mean(samples, axis=1) - daily_rf
+    sample_stds = np.std(samples, axis=1, ddof=1)
+    valid_mask = sample_stds > 1e-12
+
+    sharpe_dist = np.zeros(n_bootstrap, dtype=float)
+    sharpe_dist[valid_mask] = (sample_means[valid_mask] / sample_stds[valid_mask]) * np.sqrt(periods_per_year)
+
+    alpha_level = (1.0 - ci) / 2.0
+    ci_lower = round(float(np.percentile(sharpe_dist, alpha_level * 100.0)), 3)
+    ci_upper = round(float(np.percentile(sharpe_dist, (1.0 - alpha_level) * 100.0)), 3)
+    std_err = round(float(np.std(sharpe_dist)), 3)
+    p_value_zero = round(float(np.mean(sharpe_dist <= 0.0)), 4)
+
+    # Effective Sample Size (ESS) xử lý tự tương quan lag-1
+    effective_n = float(n)
+    if n >= 4:
+        s_ret = pd.Series(arr)
+        rho_1 = s_ret.autocorr(lag=1)
+        if pd.notnull(rho_1) and -0.99 <= rho_1 <= 0.99:
+            ess = n * ((1.0 - rho_1) / (1.0 + rho_1))
+            effective_n = round(max(1.0, min(float(n), ess)), 1)
+
+    is_significant = bool(ci_lower > 0.0)
+    warning_msg = ""
+    if not is_significant:
+        warning_msg = (
+            f"Khoảng tin cậy {int(ci*100)}% [{ci_lower}, {ci_upper}] chứa giá trị <= 0. "
+            "Chưa đủ bằng chứng thống kê để khẳng định chiến lược có Edge thực sự."
+        )
+    elif effective_n < 30.0:
+        warning_msg = (
+            f"Effective Sample Size ({effective_n}) < 30. "
+            "Cần tích lũy thêm dữ liệu để kết luận chắc chắn."
+        )
+
+    return {
+        "sharpe_point": round(point_sharpe, 3),
+        "ci_lower": ci_lower,
+        "ci_upper": ci_upper,
+        "std_err": std_err,
+        "p_value_zero": p_value_zero,
+        "is_statistically_significant": is_significant,
+        "n_samples": n,
+        "effective_n": effective_n,
+        "warning": warning_msg,
+    }

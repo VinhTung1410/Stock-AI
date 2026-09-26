@@ -182,8 +182,18 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   3. Triển khai `check_and_track_gemini_call()` trong `ai_analyst.py`: Cơ chế Sliding Window 60s, đệm an toàn 12/15 RPM, tự động kích hoạt cooldown và bắn Discord alert danh sách các mã bị hoãn.
 - **Hệ quả:** Hệ thống loại bỏ hoàn toàn các điểm mù rủi ro danh mục, mô phỏng chi phí trượt giá sát thực tế thị trường HOSE và bảo vệ hạ tầng gọi AI ổn định 24/7.
 
+---
 
-
-
-
+### [ADR-013] Khung Kiểm Định Walk-Forward, Ma Trận Stress Backtest & Bootstrap Sharpe CI (Phase 3)
+- **Ngày quyết định:** 2026-09-26
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  1. Mô hình giao dịch thường backtest toàn bộ dữ liệu 2018–2024 trong một lần chạy, tiềm ẩn nguy cơ nghiêm trọng về Look-ahead Bias và Data Snooping.
+  2. Thiếu quy trình kiểm tra áp lực (Crisis Stress Matrix) độc lập qua các đợt sập lịch sử lớn nhất của VN-Index: Chiến tranh Thương mại Q4/2018 (-30%), COVID-19 Q1/2020 (-35%), Khủng hoảng Trái phiếu/BĐS 2022 (-45%), và Sóng Bull 2021 (+150%).
+  3. Giá trị Sharpe point-estimate với mẫu nhỏ ($N < 30$) không có ý nghĩa thống kê; không phân biệt được giữa may mắn ngẫu nhiên (luck) và lợi thế định lượng thực sự (true quant edge).
+- **Quyết định lựa chọn:**
+  1. Triển khai `run_walk_forward_backtest()` trong `backtest_engine.py`: Tách bạch 3 giai đoạn không gối đầu: Training (2018–2020), Validation (2020–2022), và Out-of-Sample OOS (2022–2024), khóa cứng tham số Quant Core bằng `ADR-0001` trước khi chạy OOS.
+  2. Triển khai `run_crisis_stress_matrix()` và `scan_market_stress_events()` trong `backtest_engine.py`: Tự động cắt chuỗi dữ liệu qua 11 kịch bản lịch sử (Chiến tranh TM 2018, Trump Tariff 2019, COVID 2020, Lockdown Delta 2021, Bull 2021, Bắt bớ FLC/Tân Hoàng Minh 2022, Tăng lãi suất 2022, Vạn Thịnh Phát 2022, Hút tín phiếu Q3/2023, Áp lực DXY Q2/2024, Cạn thanh khoản Q3/2024) và bộ lọc quét Flash Crash 50 điểm/phiên, -4%/phiên, sụt giảm dốc >= 10%.
+  3. Triển khai `bootstrap_sharpe_ci()` trong `quant_engine.py`: Tái mẫu $10,000$ lần bằng NumPy vectorization, ước lượng phân vị tin cậy 95% (`ci_lower`, `ci_upper`), tính $p$-value kiểm định Sharpe $\le 0$, hiệu chỉnh tự tương quan (Effective Sample Size), và cảnh báo minh bạch nếu `ci_lower \le 0`.
+- **Hệ quả:** Hệ thống chính thức bước lên đẳng cấp **Investment Research Platform**, kiểm định khắt khe theo tiêu chuẩn kinh tế lượng và quản lý quỹ chuyên nghiệp, chống triệt để hiện tượng overfitting.
 
