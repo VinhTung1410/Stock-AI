@@ -3,7 +3,7 @@
 **Tên dự án:** Stock-AI / AI Trading Bot  
 **Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-26  
 **Người yêu cầu (Client):** Tùng  
-**Phiên bản yêu cầu:** v5.1 — Tường lửa Bảo mật & Pháp lý (Phase 0) + Hạ tầng Bằng chứng Signal Lifecycle (Phase 1)  
+**Phiên bản yêu cầu:** v5.2 — Kiểm soát Rủi ro & Dynamic Slippage (Phase 2)  
 
 ---
 
@@ -40,8 +40,10 @@
 
 - **Mục tiêu phiên bản 5.1** *(hiện tại — ưu tiên cao nhất)*:
   - **Shift triết lý:** `AI Stock Bot → Investment Research Platform` — hệ thống không chỉ phát tín hiệu mà còn **tự ghi nhận, đo lường, kiểm định và phản biện chính các tín hiệu của nó**.
-  - **Phase 0 — Tường lửa bảo mật & tuân thủ pháp lý** (xem Mục 3A).
-  - **Phase 1 — Hạ tầng bằng chứng (Signal Lifecycle)** (xem Mục 3B).
+  - **Phase 0 — Tường lửa bảo mật & tuân thủ pháp lý** (xem Mục 3A, đã hoàn thành).
+  - **Phase 1 — Hạ tầng bằng chứng (Signal Lifecycle)** (xem Mục 3B, đã hoàn thành).
+  - **Phase 2 — Kiểm soát rủi ro & Bảo vệ danh mục (Risk Fixes)** (xem Mục 3C).
+
 
 ---
 
@@ -289,8 +291,86 @@
 
 ---
 
+## 3C. PHASE 2 — KIỂM SOÁT RỦI RO & BẢO VỆ DANH MỤC (v5.1 — RISK FIXES)
+
+> **Mục tiêu:** Vá triệt để các lỗ hổng rủi ro danh mục và hoàn thiện cơ chế mô phỏng thực tế trước khi bước vào giai đoạn nghiên cứu phân tích chuyên sâu (Phase 3).
+
+### Phase 2a: Chốt chặn Tập trung Ngành (Sector Concentration Gate)
+
+- **Vấn đề thực tế:** 
+  - Tại `data_engine.py:1269`, từ điển `SECTOR_MAP` đã được định nghĩa nhưng chưa từng được nối vào Risk Engine hay Data Gate.
+  - Hậu quả: Hệ thống có thể mở đồng thời 8/8 vị thế vào cùng một nhóm ngành (ví dụ: toàn Bất động sản hoặc Ngân hàng). Khi khủng hoảng ngành xảy ra (như sự kiện Trái phiếu Doanh nghiệp 2022), hệ số tương quan giữa các cổ phiếu tiến tới 1.0, khiến mô hình Half-Kelly và đa dạng hóa danh mục hoàn toàn bị vô hiệu hóa.
+- **Yêu cầu kỹ thuật:**
+  - Tích hợp hàm kiểm tra tập trung ngành:
+    ```python
+    MAX_POSITIONS_PER_SECTOR = 3  # Tối đa 3 vị thế cùng một ngành trong danh mục 8-10 mã (<= 35% portfolio)
+    MAX_SECTOR_WEIGHT_PCT = 25.0  # Hoặc tối đa 25% tổng giá trị danh mục
+    ```
+  - Triển khai hàm `check_sector_concentration(new_symbol: str, current_portfolio: list, sector_map: dict = None) -> tuple[bool, str]`.
+  - Nếu số lượng mã cùng ngành trong danh mục đã chạm trần hoặc tỷ trọng vượt quá $25\%$:
+    - Hard Block: Không cho phép kích hoạt tín hiệu Mua mới (`allowed = False`).
+    - Ghi log và trả về lý do từ chối cụ thể: *"Sector Gate Blocked: Ngành '{sector}' đã đạt giới hạn tập trung vị thế"*.
+- **Định nghĩa Done:** Unit test mô phỏng danh mục đã có 3 mã BĐS/Ngân hàng và xác nhận mã thứ 4 bị từ chối 100%.
+
+---
+
+### Phase 2b: Mô hình Trượt giá Động (Dynamic Slippage Engine)
+
+- **Vấn đề thực tế:** 
+  - `backtest_engine.py:23` đang áp dụng `DEFAULT_SLIPPAGE_BPS = 15.0` cố định cho mọi điều kiện thị trường.
+  - Hậu quả: Đây là sự **lạc quan cấu trúc (Structural Optimism)** nghiêm trọng trong thị trường gấu. Trong các phiên bán tháo hoặc giảm sàn liên tiếp, thanh khoản biến mất (trắng bên mua), mức trượt giá thực tế lên tới 50–150 bps. Dùng 15 bps cố định làm cho con số Sharpe, Max Drawdown và Alpha trong backtest bị thổi phồng một cách phi thực tế ở chính pha Downtrend mà hệ thống cần kiểm chứng.
+- **Yêu cầu kỹ thuật:**
+  - Thay thế 15 bps cố định bằng hàm tính trượt giá động `calculate_dynamic_slippage_bps()`:
+    ```python
+    def calculate_dynamic_slippage_bps(
+        is_buy: bool,
+        vol_ratio: float,
+        is_floor: bool = False,
+        is_ceiling: bool = False,
+        adv20_billion: float = 10.0,
+        order_size_billion: float = 0.1,
+    ) -> float:
+        base_bps = 15.0
+        # Kịch bản kịch trần (khó mua)
+        if is_ceiling and is_buy:
+            base_bps *= 4.0
+        # Kịch bản kịch sàn (rất khó thoát hàng, kẹt thanh khoản)
+        elif is_floor and not is_buy:
+            base_bps *= 5.0
+        # Thanh khoản suy kiệt so với bình quân
+        if vol_ratio < 0.5:
+            base_bps *= 2.0
+        elif vol_ratio > 3.0:
+            base_bps *= 1.5
+        # Quy mô lệnh chiếm tỷ trọng đáng kể trên ADV20
+        order_pct_adv = order_size_billion / adv20_billion if adv20_billion > 0 else 0
+        if order_pct_adv > 0.05:
+            base_bps *= (1 + order_pct_adv * 3)
+        return min(base_bps, 200.0)
+    ```
+  - Tích hợp trượt giá động vào vòng lặp khớp lệnh ảo của Backtest Engine và Paper Trading.
+- **Định nghĩa Done:** Unit test chứng minh slippage khi chạm giá sàn tăng lên tối thiểu 75 bps và trần tối đa không vượt quá 200 bps.
+
+---
+
+### Phase 2c: Cầu dao Hạn mức API Gemini (Rate Limit Circuit Breaker 15 RPM)
+
+- **Vấn đề thực tế:**
+  - Hạn mức Google Gemini API (Free tier) bị giới hạn trần 15 RPM (Requests Per Minute). Khi bot chạy quét đa mã đồng thời hoặc gặp phiên thị trường biến động mạnh, việc gọi LLM liên tục sẽ kích hoạt lỗi `HTTP 429 Too Many Requests`.
+  - Hậu quả: Bot bị crash hoặc tự động bỏ qua tín hiệu mà không có thông báo cho người dùng, dẫn đến mất dấu cơ hội hoặc không kịp cảnh báo rủi ro.
+- **Yêu cầu kỹ thuật:**
+  - Triển khai cơ chế Sliding Window 60 giây theo dõi tần suất gọi `_GEMINI_RATE_TRACKER`:
+    - Đếm số lượt gọi trong 60 giây gần nhất.
+    - Ngưỡng cảnh báo đệm: Chạm $\ge 12$ calls/phút (buffer 3 calls).
+  - Khi chạm ngưỡng $\ge 12$ calls/phút:
+    - Kích hoạt trạng thái Cooldown an toàn (tạm dừng gọi LLM cho các mã ít ưu tiên).
+    - Tự động bắn Discord Alert thông báo: *"⚠️ Gemini Rate Limit Buffer Reached (12/15 RPM)"* kèm danh sách các mã bị hoãn để người dùng chủ động theo dõi thủ công.
+- **Định nghĩa Done:** Mock test xác nhận khi gọi đến request thứ 12 trong vòng 60s, hàm trả về False và phát cảnh báo Discord.
+
+---
 
 ## 4. ĐỊNH HƯỚNG VÀ RÀNG BUỘC KỸ THUẬT (TECHNICAL CONSTRAINTS)
+
 
 - **Bộ tiêu chuẩn chất lượng SonarCloud:**
   - Độ phức tạp nhận thức (Cognitive Complexity) của mọi hàm mới phải **$< 15$** (S3776).

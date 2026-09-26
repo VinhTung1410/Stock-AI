@@ -85,6 +85,45 @@ def calculate_slippage_price(price: float, is_buy: bool, slippage_bps: float) ->
     return price * (1.0 - bps_factor)
 
 
+def calculate_dynamic_slippage_bps(
+    is_buy: bool,
+    vol_ratio: float = 1.0,
+    is_floor: bool = False,
+    is_ceiling: bool = False,
+    adv20_billion: float = 10.0,
+    order_size_billion: float = 0.1,
+) -> float:
+    """Tính toán trượt giá động (Dynamic Slippage - Phase 2b) thay thế 15 bps cố định.
+
+    - Base slippage: 15.0 bps.
+    - Kịch trần & Mua: x4.0 (60 bps) do tranh mua trần khó khớp.
+    - Kịch sàn & Bán: x5.0 (75 bps) do mất thanh khoản trắng bên mua.
+    - Cạn kiệt thanh khoản (vol_ratio < 0.5): x2.0 base.
+    - Khối lượng giao dịch đột biến (vol_ratio > 3.0): x1.5 base.
+    - Tác động lệnh lớn (> 5% ADV20): tăng thêm theo tỷ trọng.
+    - Giới hạn: trần tối đa 200 bps.
+    """
+    base_bps = DEFAULT_SLIPPAGE_BPS
+
+    if is_ceiling and is_buy:
+        base_bps *= 4.0
+    elif is_floor and not is_buy:
+        base_bps *= 5.0
+
+    if vol_ratio < 0.5:
+        base_bps *= 2.0
+    elif vol_ratio > 3.0:
+        base_bps *= 1.5
+
+    if adv20_billion > 0:
+        order_pct_adv = order_size_billion / adv20_billion
+        if order_pct_adv > 0.05:
+            base_bps *= (1.0 + order_pct_adv * 3.0)
+
+    return min(round(base_bps, 2), 200.0)
+
+
+
 def can_execute_t_plus_2(entry_idx: int, current_idx: int) -> bool:
     """Enforce Vietnam T+2.5 settlement rule.
 

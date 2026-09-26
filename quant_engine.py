@@ -1203,3 +1203,48 @@ def calculate_signal_performance_metrics(
     }
 
 
+MAX_POSITIONS_PER_SECTOR: int = 3
+MAX_SECTOR_WEIGHT_PCT: float = 25.0
+
+
+def check_sector_concentration(
+    new_symbol: str,
+    current_portfolio: list,
+    sector_map: dict | None = None,
+) -> tuple[bool, str]:
+    """Kiểm tra chốt chặn tập trung ngành (Sector Concentration Gate - Phase 2a).
+
+    Quy tắc:
+    - Tối đa MAX_POSITIONS_PER_SECTOR (3) vị thế cùng ngành trong danh mục 8-10 mã.
+    - Trả về tuple (is_allowed, reason).
+    """
+    if not new_symbol:
+        return False, "INVALID_SYMBOL"
+
+    if not current_portfolio:
+        return True, "SECTOR_CONCENTRATION_OK"
+
+    from data_engine import SECTOR_MAP
+    s_map = sector_map if sector_map is not None else SECTOR_MAP
+
+    sym_clean = new_symbol.upper().strip()
+    new_sector = s_map.get(sym_clean, "Khác")
+
+    same_sector_count = 0
+    for item in current_portfolio:
+        p_sym = str(item.get("symbol", item.get("Mã CP", ""))).upper().strip()
+        if p_sym and s_map.get(p_sym, "Khác") == new_sector:
+            same_sector_count += 1
+
+    if same_sector_count >= MAX_POSITIONS_PER_SECTOR:
+        reason = (
+            f"Sector Gate Blocked: Ngành '{new_sector}' đã đạt giới hạn "
+            f"{same_sector_count}/{MAX_POSITIONS_PER_SECTOR} vị thế tối đa. "
+            f"Từ chối mở thêm vị thế cho {sym_clean} để chống rủi ro tương quan chùm."
+        )
+        return False, reason
+
+    return True, "SECTOR_CONCENTRATION_OK"
+
+
+

@@ -165,8 +165,23 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   4. Xây dựng schema `signal_lifecycle` bất biến (`migrations/0002_create_signal_lifecycle.sql`, `db_manager.py`) bảo toàn `initial_stop_price` độc lập với trailing stop.
   5. Xây dựng `calculate_signal_performance_metrics()` trong `quant_engine.py`: Đo Win Rate, Expectancy, Profit Factor, R-Multiple, Effective Sample Size (ESS), Hurdle Rate sàn 4.5%/năm và Sharpe $\ge 0.5$.
   6. Ban hành `ADR-0001` chính thức khóa cố định các ngưỡng Quant Core (F-Score $\ge 6$, MoS $\ge 15\%$, Z-Score $> 1.8$, RSI $< 70$, Conviction $\ge 55$, Sector $\le 25\%$).
-  7. Thiết lập chốt chặn Git Workspace Hygiene: Đưa `danh_gia_he_thong_quy_fund.md`, `stock_ai_roadmap.md`, `idea.md` vào `.gitignore` và untrack khỏi Git index cache để giữ nguyên làm tài liệu local riêng của Client.
 - **Hệ quả:** Hệ thống chính thức bước sang giai đoạn *Investment Research Platform* vững chắc về an ninh pháp lý, chống tấn công dữ liệu đầu vào, và sở hữu hạ tầng bằng chứng kiểm định định lượng chuẩn mực quỹ.
+
+---
+
+### [ADR-012] Kiểm Soát Rủi Ro Tập Trung Ngành, Mô Hình Trượt Giá Động & Cầu Dao Rate Limit Gemini (Phase 2)
+- **Ngày quyết định:** 2026-09-26
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  1. `SECTOR_MAP` không được kết nối với Risk Gate, tiềm ẩn rủi ro mở 8/8 vị thế cùng ngành, khiến hệ số tương quan tiệm cận 1.0 làm vô hiệu hóa Half-Kelly.
+  2. Mức trượt giá cố định 15 bps (`DEFAULT_SLIPPAGE_BPS`) trong Backtest Engine là sự lạc quan cấu trúc trong thị trường gấu, không phản ánh đúng chi phí thoát hàng khi thị trường sập sàn (50–150 bps).
+  3. Quét đa mã đồng thời có thể vượt trần 15 RPM của Gemini API Free tier gây lỗi HTTP 429 và bỏ lỡ cơ hội.
+- **Quyết định lựa chọn:**
+  1. Triển khai `check_sector_concentration()` trong `quant_engine.py`: Giới hạn tối đa 3 vị thế cùng ngành trong danh mục 8-10 mã (hoặc $\le 25\%$ tổng NAV danh mục). Chặn mua mới nếu vi phạm.
+  2. Triển khai `calculate_dynamic_slippage_bps()` trong `backtest_engine.py`: Tăng trượt giá gấp 4.0x khi mua kịch trần (60 bps), gấp 5.0x khi bán tháo kịch sàn (75 bps), tăng khi thanh khoản cạn kiệt (`vol_ratio < 0.5`) và tăng theo quy mô lệnh chiếm tỷ trọng lớn trên ADV20. Trần tối đa 200 bps.
+  3. Triển khai `check_and_track_gemini_call()` trong `ai_analyst.py`: Cơ chế Sliding Window 60s, đệm an toàn 12/15 RPM, tự động kích hoạt cooldown và bắn Discord alert danh sách các mã bị hoãn.
+- **Hệ quả:** Hệ thống loại bỏ hoàn toàn các điểm mù rủi ro danh mục, mô phỏng chi phí trượt giá sát thực tế thị trường HOSE và bảo vệ hạ tầng gọi AI ổn định 24/7.
+
 
 
 

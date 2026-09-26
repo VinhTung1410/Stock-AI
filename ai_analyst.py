@@ -104,6 +104,40 @@ def sanitize_ai_text(text: str) -> str:
     return text.strip()
 
 
+_GEMINI_RATE_TRACKER: dict = {"calls": [], "limit_hit": False}
+MAX_GEMINI_CALLS_PER_MINUTE: int = 12
+
+
+def check_and_track_gemini_call(pending_symbols: list[str] | None = None) -> bool:
+    """Kiểm tra và ghi nhận tần suất gọi Gemini API theo Sliding Window 60s (Phase 2c).
+
+    - Ngưỡng an toàn: tối đa 12 calls/phút (đệm 3 calls trước trần 15 RPM).
+    - Khi chạm ngưỡng: trả về False và gửi cảnh báo Discord.
+    """
+    import time
+    now = time.time()
+    _GEMINI_RATE_TRACKER["calls"] = [
+        t for t in _GEMINI_RATE_TRACKER["calls"] if now - t < 60.0
+    ]
+
+    if len(_GEMINI_RATE_TRACKER["calls"]) >= MAX_GEMINI_CALLS_PER_MINUTE:
+        if not _GEMINI_RATE_TRACKER["limit_hit"]:
+            _GEMINI_RATE_TRACKER["limit_hit"] = True
+            try:
+                from discord_alerts import send_gemini_rate_limit_alert
+                send_gemini_rate_limit_alert(
+                    current_rpm=len(_GEMINI_RATE_TRACKER["calls"]),
+                    dropped_symbols=pending_symbols or [],
+                )
+            except Exception:
+                logging.exception("Lỗi khi gửi cảnh báo Gemini rate limit")
+        return False
+
+    _GEMINI_RATE_TRACKER["calls"].append(now)
+    _GEMINI_RATE_TRACKER["limit_hit"] = False
+    return True
+
+
 def call_gemini(client, prompt: str, max_retries: int = 3, retry_delay: float = 2.0) -> str:
     """
     Gọi Gemini API với System Language Rule tích hợp sẵn ở cả đầu và cuối prompt,
@@ -111,6 +145,10 @@ def call_gemini(client, prompt: str, max_retries: int = 3, retry_delay: float = 
     sau đó tự động lọc qua sanitize_ai_text để đảm bảo đầu ra sạch 100%.
     """
     import time
+
+    if not check_and_track_gemini_call():
+        raise RuntimeError("Gemini API rate limit buffer reached (12 RPM). Cooldown activated.")
+
     full_prompt = f"{SYSTEM_LANGUAGE_RULE}\n\n{prompt}\n\n{SYSTEM_LANGUAGE_RULE}"
     last_err = None
     for attempt in range(1, max_retries + 1):
@@ -125,6 +163,7 @@ def call_gemini(client, prompt: str, max_retries: int = 3, retry_delay: float = 
             logging.warning("[Gemini API] Lần gọi %d/%d thất bại: %s", attempt, max_retries, e)
             if attempt < max_retries:
                 time.sleep(retry_delay * attempt)
+
     logging.exception("[Gemini API] Toàn bộ %d lần gọi Gemini thất bại: %s", max_retries, last_err)
     raise RuntimeError(f"Gemini API generation failed after {max_retries} attempts: {last_err}") from last_err
 
