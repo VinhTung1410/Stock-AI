@@ -921,7 +921,13 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
         return {}
 
 
-def fetch_stock_historical(symbol: str, time_frame: str = "1D", limit: int = 30) -> pd.DataFrame:
+def fetch_stock_historical(
+    symbol: str,
+    time_frame: str = "1D",
+    limit: int = 30,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> pd.DataFrame:
     """
     Kéo dữ liệu lịch sử giá OHLCV của cổ phiếu từ vnstock (mặc định n phiên gần nhất).
     Phục vụ tính toán độ biến động ATR và kiểm định lượng hóa Quant Gate.
@@ -930,25 +936,42 @@ def fetch_stock_historical(symbol: str, time_frame: str = "1D", limit: int = 30)
     try:
         from vnstock.api.quote import Quote
         q = Quote(symbol=sym_clean, source="VCI")
-        days_back = max(int(limit * 2.5), 60)
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-        df = q.history(start=start_date, end=end_date, interval=time_frame)
+        calc_end = end_date or datetime.now().strftime("%Y-%m-%d")
+        if start_date:
+            calc_start = start_date
+        else:
+            days_back = max(int(limit * 2.5), 60)
+            calc_start = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+
+        df = q.history(start=calc_start, end=calc_end, interval=time_frame)
         if df is None or df.empty:
             return pd.DataFrame()
         df = df.sort_values("time").reset_index(drop=True)
+        if start_date is not None:
+            return df.reset_index(drop=True)
         return df.tail(limit).reset_index(drop=True)
     except Exception:
         logging.exception(f"Lỗi khi lấy dữ liệu lịch sử cho {symbol}")
         return pd.DataFrame()
 
 
-def fetch_index_historical(symbol: str = "VNINDEX", limit: int = 300) -> pd.DataFrame:
+def fetch_index_historical(
+    symbol: str = "VNINDEX",
+    limit: int = 300,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> pd.DataFrame:
     """
     Kéo dữ liệu lịch sử giá chỉ số thị trường (mặc định VNINDEX) từ vnstock.
     Phục vụ làm Benchmark so sánh Alpha/Beta và phân loại Regime thị trường chung.
     """
-    return fetch_stock_historical(symbol=symbol, time_frame="1D", limit=limit)
+    return fetch_stock_historical(
+        symbol=symbol,
+        time_frame="1D",
+        limit=limit,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 def fetch_corporate_dividends(symbol: str):
