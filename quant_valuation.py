@@ -13,29 +13,92 @@ Integrates institutional consensus targets (SSI, HSC, Vietcap) with
 """
 
 import logging
+from datetime import date, datetime
 from typing import Any, Dict
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Mỏ neo định giá trung vị tham chiếu từ các tổ chức phân tích uy tín (SSI Research, HSC, Vietcap)
-# Được cập nhật định kỳ, đóng vai trò "Trần định giá tham chiếu" (Consensus Ceiling)
+# Được cập nhật định kỳ (kèm last_updated), đóng vai trò "Trần định giá tham chiếu" (Consensus Ceiling)
 INSTITUTIONAL_CONSENSUS_TARGETS = {
-    "FPT": {"consensus_target": 88.0, "source": "SSI/Vietcap/HSC Consensus", "quality_tier": "TIER_1_COMPOUNDER"},
-    "HPG": {"consensus_target": 26.5, "source": "HSC/SSI Research", "quality_tier": "TIER_1_CYCLICAL"},
-    "MWG": {"consensus_target": 82.0, "source": "Vietcap/SSI Research", "quality_tier": "TIER_1_RETAIL"},
-    "SSI": {"consensus_target": 24.5, "source": "MBS/HSC Research", "quality_tier": "TIER_1_BROKER"},
-    "MSB": {"consensus_target": 14.5, "source": "SSI Research/VCSC", "quality_tier": "TIER_2_BANK"},
-    "BSR": {"consensus_target": 32.0, "source": "KBSV/SSI Research", "quality_tier": "TIER_2_ENERGY"},
-    "TCB": {"consensus_target": 28.0, "source": "Vietcap/HSC Research", "quality_tier": "TIER_1_BANK"},
-    "MBB": {"consensus_target": 27.0, "source": "SSI/HSC Research", "quality_tier": "TIER_1_BANK"},
-    "ACB": {"consensus_target": 28.5, "source": "SSI/Vietcap", "quality_tier": "TIER_1_BANK"},
-    "VCB": {"consensus_target": 98.0, "source": "SSI/HSC Research", "quality_tier": "TIER_1_BANK"},
-    "VHM": {"consensus_target": 48.0, "source": "Vietcap/SSI Research", "quality_tier": "TIER_1_REALTY"},
-    "VNM": {"consensus_target": 75.0, "source": "HSC/SSI Research", "quality_tier": "TIER_1_CONSUMER"},
-    "DGC": {"consensus_target": 115.0, "source": "Vietcap/HSC Research", "quality_tier": "TIER_1_CHEMICAL"},
-    "PNJ": {"consensus_target": 105.0, "source": "SSI/Vietcap Research", "quality_tier": "TIER_1_RETAIL"},
-    "REE": {"consensus_target": 72.0, "source": "SSI Research", "quality_tier": "TIER_1_UTILITY"},
+    "FPT": {"consensus_target": 88.0, "source": "SSI/Vietcap/HSC Consensus", "quality_tier": "TIER_1_COMPOUNDER", "last_updated": "2024-10-01"},
+    "HPG": {"consensus_target": 26.5, "source": "HSC/SSI Research", "quality_tier": "TIER_1_CYCLICAL", "last_updated": "2024-10-01"},
+    "MWG": {"consensus_target": 82.0, "source": "Vietcap/SSI Research", "quality_tier": "TIER_1_RETAIL", "last_updated": "2024-10-01"},
+    "SSI": {"consensus_target": 24.5, "source": "MBS/HSC Research", "quality_tier": "TIER_1_BROKER", "last_updated": "2024-10-01"},
+    "MSB": {"consensus_target": 14.5, "source": "SSI Research/VCSC", "quality_tier": "TIER_2_BANK", "last_updated": "2024-10-01"},
+    "BSR": {"consensus_target": 32.0, "source": "KBSV/SSI Research", "quality_tier": "TIER_2_ENERGY", "last_updated": "2024-10-01"},
+    "TCB": {"consensus_target": 28.0, "source": "Vietcap/HSC Research", "quality_tier": "TIER_1_BANK", "last_updated": "2024-10-01"},
+    "MBB": {"consensus_target": 27.0, "source": "SSI/HSC Research", "quality_tier": "TIER_1_BANK", "last_updated": "2024-10-01"},
+    "ACB": {"consensus_target": 28.5, "source": "SSI/Vietcap", "quality_tier": "TIER_1_BANK", "last_updated": "2024-10-01"},
+    "VCB": {"consensus_target": 98.0, "source": "SSI/HSC Research", "quality_tier": "TIER_1_BANK", "last_updated": "2024-10-01"},
+    "VHM": {"consensus_target": 48.0, "source": "Vietcap/SSI Research", "quality_tier": "TIER_1_REALTY", "last_updated": "2024-10-01"},
+    "VNM": {"consensus_target": 75.0, "source": "HSC/SSI Research", "quality_tier": "TIER_1_CONSUMER", "last_updated": "2024-10-01"},
+    "DGC": {"consensus_target": 115.0, "source": "Vietcap/HSC Research", "quality_tier": "TIER_1_CHEMICAL", "last_updated": "2024-10-01"},
+    "PNJ": {"consensus_target": 105.0, "source": "SSI/Vietcap Research", "quality_tier": "TIER_1_RETAIL", "last_updated": "2024-10-01"},
+    "REE": {"consensus_target": 72.0, "source": "SSI Research", "quality_tier": "TIER_1_UTILITY", "last_updated": "2024-10-01"},
 }
+
+
+def check_institutional_target_freshness(
+    symbol: str,
+    as_of_date: str | None = None,
+    max_age_days: int = 180,
+) -> dict[str, Any]:
+    """Kiểm tra độ tươi của mỏ neo định giá đồng thuận từ các CTCK (Phase 6e).
+
+    Nếu dữ liệu cũ quá max_age_days (mặc định 180 ngày ~ 2 quý), cảnh báo rủi ro dữ liệu đóng băng (stale data).
+    """
+    sym = symbol.strip().upper() if symbol else ""
+    cons_data = INSTITUTIONAL_CONSENSUS_TARGETS.get(sym)
+    if not cons_data:
+        return {
+            "symbol": sym,
+            "has_target": False,
+            "is_stale": False,
+            "age_days": 0,
+            "last_updated": None,
+            "warning": "NO_INSTITUTIONAL_TARGET",
+        }
+
+    last_updated_str = cons_data.get("last_updated", "")
+    if not last_updated_str:
+        return {
+            "symbol": sym,
+            "has_target": True,
+            "is_stale": True,
+            "age_days": 999,
+            "last_updated": None,
+            "warning": "MISSING_TIMESTAMP",
+        }
+
+    try:
+        updated_dt = datetime.strptime(last_updated_str, "%Y-%m-%d").date()
+        ref_dt = datetime.strptime(as_of_date, "%Y-%m-%d").date() if as_of_date else date.today()
+        age = (ref_dt - updated_dt).days
+    except Exception:
+        return {
+            "symbol": sym,
+            "has_target": True,
+            "is_stale": True,
+            "age_days": 999,
+            "last_updated": last_updated_str,
+            "warning": "INVALID_DATE_FORMAT",
+        }
+
+    is_stale = age > max_age_days
+    warning_msg = f"Target outdated by {age} days (> {max_age_days}d)" if is_stale else "FRESH"
+    if is_stale:
+        logging.warning("Mỏ neo định giá đồng thuận của %s đã quá hạn (%d ngày)", sym, age)
+
+    return {
+        "symbol": sym,
+        "has_target": True,
+        "is_stale": is_stale,
+        "age_days": age,
+        "last_updated": last_updated_str,
+        "consensus_target": cons_data.get("consensus_target", 0.0),
+        "warning": warning_msg,
+    }
 
 
 def classify_stock_archetype(symbol: str, sector: str = "") -> str:

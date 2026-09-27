@@ -352,6 +352,9 @@ def _render_regime_kpi_table(reg_data: dict) -> None:
 
     st.markdown("#### 📊 Bảng Chỉ Số Bóc Tách Theo 3 Chế Độ Thị Trường")
     st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
+    full_trades = reg_data.get("FULL", {}).get("total_trades", 0)
+    if isinstance(full_trades, (int, float)) and full_trades < 30:
+        st.caption(f"⚠️ **Lưu ý mẫu nhỏ:** Số lệnh Toàn Kỳ (N = {full_trades} < 30). Khoảng tin cậy ước lượng rộng, nên xem xét thận trọng trước khi kết luận.")
 
 
 def _render_equity_charts(result: Any, df_p: pd.DataFrame, df_vni: pd.DataFrame, initial_cap: float) -> None:
@@ -573,6 +576,57 @@ def _build_crisis_stress_table(stress_summary: dict) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _render_crisis_bar_chart(stress_summary: dict) -> None:
+    """Render Paired Horizontal Bar Chart comparing Market Drop vs Strategy Return (Phase 6b)."""
+    if not stress_summary:
+        return
+    import plotly.graph_objects as go
+
+    # Sắp xếp các cuộc khủng hoảng theo mức độ sụt giảm của VN-Index (nghiêm trọng nhất ở trên)
+    sorted_items = sorted(
+        stress_summary.values(),
+        key=lambda x: abs(float(x.get("market_drop_pct", 0.0))),
+        reverse=True,
+    )
+    names = [item.get("name", "N/A") for item in sorted_items]
+    market_drops = [float(item.get("market_drop_pct", 0.0)) for item in sorted_items]
+    strategy_rets = [float(item.get("strategy_return_pct", 0.0)) for item in sorted_items]
+
+    # Màu cho cột chiến lược: xanh nếu >= 0, đỏ nếu < 0
+    strat_colors = ["#10b981" if r >= 0 else "#ef4444" for r in strategy_rets]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        y=names,
+        x=market_drops,
+        name="VN-Index Sụt Giảm (%)",
+        orientation="h",
+        marker_color="#94a3b8",
+        text=[f"{v:+.1f}%" for v in market_drops],
+        textposition="outside",
+    ))
+    fig.add_trace(go.Bar(
+        y=names,
+        x=strategy_rets,
+        name="Chiến Lược Lãi/Lỗ (%)",
+        orientation="h",
+        marker_color=strat_colors,
+        text=[f"{v:+.1f}%" for v in strategy_rets],
+        textposition="outside",
+    ))
+    fig.update_layout(
+        title="<b>📊 Đối Chiếu Trực Quan: Thị Trường vs Chiến Lược Qua 11 Cuộc Khủng Hoảng</b>",
+        barmode="group",
+        height=max(420, len(names) * 36),
+        margin=dict(l=10, r=40, t=40, b=20),
+        xaxis=dict(title="Lợi Nhuận / Sụt Giảm (%)", zeroline=True, zerolinecolor="#cbd5e1"),
+        yaxis=dict(autorange="reversed"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        template="plotly_white",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+
 def _run_and_display_crisis_matrix(sym_input: str, enforce_cash_mode: bool) -> list[float]:
     """Fetch history, run 11-crisis stress matrix and display interactive table."""
     from backtest_engine import (
@@ -615,8 +669,16 @@ def _run_and_display_crisis_matrix(sym_input: str, enforce_cash_mode: bool) -> l
             enforce_regime_gate=enforce_cash_mode,
         )
 
-        df_summary = _build_crisis_stress_table(res.get("stress_summary", {}))
-        st.dataframe(df_summary, width="stretch", hide_index=True)
+        stress_summary = res.get("stress_summary", {})
+        st.session_state["stress_summary"] = stress_summary
+
+        # Biểu đồ thanh ngang đôi trực quan hóa
+        _render_crisis_bar_chart(stress_summary)
+
+        # Bảng chi tiết được xếp gọn gàng trong expander
+        with st.expander("📋 Xem Bảng Số Liệu Chi Tiết 11 Cuộc Khủng Hoảng", expanded=False):
+            df_summary = _build_crisis_stress_table(stress_summary)
+            st.dataframe(df_summary, width="stretch", hide_index=True)
 
         full_bt = engine.run_backtest(
             df_price=df_p,
@@ -626,7 +688,9 @@ def _run_and_display_crisis_matrix(sym_input: str, enforce_cash_mode: bool) -> l
             symbol=sym_input,
             enforce_regime_gate=enforce_cash_mode,
         )
-        return [t.pnl_pct for t in full_bt.trades] if full_bt.trades else []
+        pnl_list = [t.pnl_pct for t in full_bt.trades] if full_bt.trades else []
+        st.session_state["stress_pnls"] = pnl_list
+        return pnl_list
 
 
 def _render_flash_crash_scanner(df_vni: pd.DataFrame) -> None:
@@ -651,50 +715,150 @@ def _render_flash_crash_scanner(df_vni: pd.DataFrame) -> None:
 
 
 def _render_monte_carlo_tail_risk_ui(extracted_pnls: list[float]) -> None:
-    """Render Monte Carlo tail risk simulation cards and metrics."""
+    """Render Monte Carlo tail risk simulation cards and metrics (Phase 6a & 6b)."""
     from quant_engine import simulate_monte_carlo_drawdown
 
     st.divider()
-    st.markdown("### 🎲 Mô Phỏng Rủi Ro Đuôi Monte Carlo (Tail Risk 2,000 Kịch Bản - Phase 5a)")
-    st.caption("Tráo đổi ngẫu nhiên thứ tự các lệnh để lượng hóa rủi ro tài khoản khi gặp chuỗi đen đủi liên tiếp:")
+    st.markdown("### 🎲 Mô Phỏng Rủi Ro Đuôi Monte Carlo (Stationary Block Bootstrap - Phase 6a)")
+    st.caption("Bảo toàn các cụm lệnh lỗ liên tiếp trong khủng hoảng để lượng hóa chính xác rủi ro sụt giảm vốn:")
 
-    default_pnls = extracted_pnls if extracted_pnls else [4.5, -2.1, 7.2, -5.0, 12.0, -6.5, 3.2, -4.0, 8.5, -3.2, 5.1, -7.0]
-    col_mc1, col_mc2 = st.columns([3, 1])
+    pnls_source = extracted_pnls if extracted_pnls else st.session_state.get("stress_pnls", [])
+    if pnls_source:
+        st.success(f"⚡ **Tự động liên kết dữ liệu:** Đang nạp N = {len(pnls_source)} lệnh từ đợt kiểm tra áp lực vừa hoàn thành.")
+    else:
+        st.info("💡 Chưa có dữ liệu lệnh từ backtest. Bạn có thể bấm **Chạy Ma Trận** phía trên để tự động nạp hoặc tự nhập chuỗi PnL bên dưới.")
+
+    default_pnls = pnls_source if pnls_source else [4.5, -2.1, 7.2, -5.0, 12.0, -6.5, 3.2, -4.0, 8.5, -3.2, 5.1, -7.0]
+
+    col_mc1, col_mc2, col_mc3 = st.columns([2, 1, 1])
     with col_mc1:
-        pnl_str = st.text_input(
-            "Chuỗi PnL lệnh (%) phân cách bằng dấu phẩy:",
-            value=", ".join(str(round(p, 1)) for p in default_pnls[:15]),
+        block_mode = st.selectbox(
+            "Phương pháp Resampling",
+            [
+                "Stationary Block Bootstrap (Tự động thích ứng cỡ khối L)",
+                "I.I.D. Resampling (Khối L = 1, Giả định lệnh độc lập)",
+                "Khối Cố Định L = 3",
+                "Khối Cố Định L = 5",
+            ],
+            index=0,
+            help="Block Bootstrap bảo toàn tính tự tương quan giữa các lệnh thua lỗ khi thị trường sụp đổ.",
         )
     with col_mc2:
         n_sim = st.selectbox("Số kịch bản giả lập", [1000, 2000, 5000], index=1)
+    with col_mc3:
+        initial_cap = st.number_input("Vốn Giả Lập (VND)", value=100_000_000, step=10_000_000)
 
-    if st.button("🎲 Chạy Mô Phỏng Rủi Ro Đuôi Monte Carlo", width="stretch", type="secondary"):
+    # Lựa chọn block size tương ứng
+    block_val: int | None = None
+    if "Khối L = 1" in block_mode:
+        block_val = 1
+    elif "L = 3" in block_mode:
+        block_val = 3
+    elif "L = 5" in block_mode:
+        block_val = 5
+
+    with st.expander("🔧 Nâng cao: Tùy biến chuỗi PnL thủ công", expanded=False):
+        pnl_str = st.text_area(
+            "Chuỗi PnL lệnh (%) phân cách bằng dấu phẩy:",
+            value=", ".join(str(round(p, 1)) for p in default_pnls),
+            height=70,
+        )
+
+    if st.button("🎲 Thực Thi Mô Phỏng Rủi Ro Đuôi Monte Carlo", width="stretch", type="secondary"):
         try:
             parsed_pnls = [float(x.strip()) for x in pnl_str.split(",") if x.strip()]
         except ValueError:
             st.error("Chuỗi PnL không hợp lệ. Vui lòng nhập số thực phân cách bằng dấu phẩy.")
             return
 
-        with st.spinner(f"Đang chạy tái mẫu Bootstrap {n_sim:,} lần..."):
-            res_mc = simulate_monte_carlo_drawdown(parsed_pnls, n_simulations=int(n_sim))
+        with st.spinner(f"Đang chạy mô phỏng {n_sim:,} kịch bản với Block Bootstrap..."):
+            res_mc = simulate_monte_carlo_drawdown(
+                trade_pnl_pcts=parsed_pnls,
+                n_simulations=int(n_sim),
+                initial_capital=float(initial_cap),
+                block_size=block_val,
+            )
+            st.session_state["stress_mc"] = res_mc
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Max Drawdown Trung Vị", f"{res_mc['median_drawdown_pct']:.2f}%", "Median DD")
-        c2.metric("Rủi Ro Đuôi P95", f"{res_mc['p95_drawdown_pct']:.2f}%", "95% Worst DD", delta_color="inverse")
+        c1.metric("Max Drawdown Trung Vị", f"{res_mc['median_drawdown_pct']:.2f}%", f"Khối L = {res_mc.get('block_size', 1)}")
+        c2.metric("Rủi Ro Đuôi P95", f"{res_mc['p95_drawdown_pct']:.2f}%", "95% Worst Case", delta_color="inverse")
         c3.metric("Rủi Ro Đuôi P99 (Khủng Hoảng)", f"{res_mc['p99_drawdown_pct']:.2f}%", "99% Catastrophic", delta_color="inverse")
-        c4.metric("Xác Suất Lỗ Quá 15%", f"{res_mc['prob_drawdown_over_15pct']:.1f}%", f"Max {res_mc['max_consecutive_losses']} lệnh lỗ liên tiếp", delta_color="inverse")
+        c4.metric(
+            "Xác Suất Lỗ Quá 15%",
+            f"{res_mc['prob_drawdown_over_15pct'] * 100.0:.1f}%",
+            f"Max {res_mc['max_consecutive_losses']} lệnh lỗ liên tiếp",
+            delta_color="inverse",
+        )
+
+
+def _render_sector_gate_insurance_roi_ui(sym_input: str) -> None:
+    """Render Sector Gate Insurance ROI widget (Phase 6d)."""
+    from quant_engine import calculate_sector_gate_insurance_roi
+
+    with st.expander("🛡️ Định Lượng Chi Phí Bảo Hiểm Sector Gate (Insurance ROI - Phase 6d)", expanded=False):
+        st.markdown("""
+        <p style="color: #64748b; font-size: 13.5px;">
+            Đo lường mức đánh đổi: <b>Chi phí Upside hy sinh</b> (trong sóng tăng) vs <b>Lợi ích Bảo vệ Vốn</b> (giảm Max Drawdown trong khủng hoảng) khi kích hoạt chốt chặn rủi ro.
+        </p>
+        """, unsafe_allow_html=True)
+
+        col_roi1, col_roi2 = st.columns(2)
+        with col_roi1:
+            cagr_no = st.number_input("CAGR Không Dùng Gate (%)", value=22.5, step=1.0)
+            mdd_no = st.number_input("MDD Không Dùng Gate (%)", value=-38.0, step=1.0)
+        with col_roi2:
+            cagr_with = st.number_input("CAGR Có Dùng Gate (%)", value=18.5, step=1.0)
+            mdd_with = st.number_input("MDD Có Dùng Gate (%)", value=-14.5, step=1.0)
+
+        roi_data = calculate_sector_gate_insurance_roi(cagr_no, cagr_with, mdd_no, mdd_with)
+
+        cr1, cr2, cr3 = st.columns(3)
+        cr1.metric("Chi Phí Upside Hy Sinh", f"{roi_data['upside_cost_pct']:.2f}%", "CAGR Delta", delta_color="inverse")
+        cr2.metric("Lợi Ích Bảo Vệ Vốn", f"{roi_data['protection_benefit_pct']:.2f}%", "MDD Giảm Thiểu")
+        cr3.metric("Tỷ Lệ Hiệu Quả Bảo Hiểm", f"{roi_data['insurance_roi']:.2f}x", roi_data["verdict"])
+        st.caption("ℹ️ *Định lượng ex-post dựa trên dữ liệu kiểm định lịch sử, phục vụ thẩm định khẩu vị rủi ro tổ chức.*")
 
 
 def _render_stress_test_subtab():
-    """Render Subtab 4: Crisis Stress Matrix & Monte Carlo Tail Risk."""
+    """Render Subtab 4: Crisis Stress Matrix & Monte Carlo Tail Risk (Phase 6 Overhaul)."""
     st.markdown("""
     <div style="margin-bottom: 16px;">
         <h3 style="margin: 0; color: #0f172a; font-weight: 700;">🌪️ Kiểm Tra Áp Lực Khủng Hoảng & Mô Phỏng Rủi Ro Đuôi (Stress Test)</h3>
         <p style="color: #64748b; font-size: 13.5px; margin-top: 4px;">
-            Kiểm tra sức chịu đựng của chiến lược qua <b>11 cuộc khủng hoảng lịch sử lớn nhất VN-Index (2018–2024)</b> và <b>Mô phỏng rủi ro đuôi Monte Carlo 2,000 kịch bản</b>.
+            Thẩm định sức chịu đựng của chiến lược qua <b>11 cuộc khủng hoảng lịch sử lớn nhất VN-Index (2018–2024)</b> và <b>Mô phỏng rủi ro đuôi Stationary Block Bootstrap</b>.
         </p>
     </div>
     """, unsafe_allow_html=True)
+
+    # Risk Executive Summary (Đầu trang - Phase 6b)
+    stress_sum = st.session_state.get("stress_summary", {})
+    mc_sum = st.session_state.get("stress_mc", {})
+    pnls = st.session_state.get("stress_pnls", [])
+
+    worst_mdd_text = "—"
+    worst_mdd_sub = "Chưa có dữ liệu"
+    if stress_sum:
+        worst_item = max(stress_sum.values(), key=lambda x: float(x.get("max_drawdown_pct", 0.0)), default=None)
+        if worst_item:
+            worst_mdd_text = f"-{float(worst_item.get('max_drawdown_pct', 0.0)):.1f}%"
+            worst_mdd_sub = f"Đợt: {worst_item.get('name', 'N/A')[:20]}..."
+
+    p99_text = f"{mc_sum['p99_drawdown_pct']:.1f}%" if mc_sum else "—"
+    p99_sub = f"Xác suất lỗ >15%: {mc_sum.get('prob_drawdown_over_15pct', 0.0)*100.0:.1f}%" if mc_sum else "Chờ mô phỏng"
+    sample_badge = f"N = {len(pnls)} lệnh" if len(pnls) >= 30 else (f"⚠️ Mẫu nhỏ (N={len(pnls)})" if pnls else "Chưa chạy")
+
+    st.markdown("##### 🛡️ Tóm Lược Rủi Ro Điều Hành (Risk Executive Summary)")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Sụt Giảm Tệ Nhất (Lịch Sử)", worst_mdd_text, worst_mdd_sub, delta_color="inverse")
+    c2.metric("Rủi Ro Đuôi P99 (Monte Carlo)", p99_text, p99_sub, delta_color="inverse")
+    c3.metric(
+        "Trạng Thái Macro Cash Mode",
+        "🟢 ĐANG BẬT" if st.session_state.get("stress_cash_mode", True) else "🔴 ĐANG TẮT",
+        "Khóa mua khi VN-Index Downtrend",
+    )
+    c4.metric("Độ Tin Cậy Cỡ Mẫu", sample_badge, "Effective Sample Size")
+    st.divider()
 
     col1, col2 = st.columns([2, 2])
     with col1:
@@ -717,5 +881,7 @@ def _render_stress_test_subtab():
         _render_flash_crash_scanner(_normalize_price_index(df_vni))
 
     _render_monte_carlo_tail_risk_ui(trade_pnls)
+    _render_sector_gate_insurance_roi_ui(sym_input)
+
 
 

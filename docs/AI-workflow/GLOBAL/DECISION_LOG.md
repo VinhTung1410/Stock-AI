@@ -228,5 +228,28 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   4. Triển khai `evaluate_partial_profit_lock()` trong `quant_engine.py`: Cơ chế chốt lời 2 nấc: Khóa lợi nhuận $50\%$ vị thế tại ngưỡng mục tiêu $+12\%$, đồng thời tự động dời Stop Loss của $50\%$ vị thế còn lại lên điểm hòa vốn (Break-even Stop) cộng phí giao dịch ($+0.3\%$). Khi giá tiếp tục tăng vượt $+15\%$, chuyển sang trailing stop $5\%$.
 - **Hệ quả:** Hoàn thiện cỗ máy quản trị danh mục định lượng chuẩn mực quỹ đầu tư (Fund-grade Quantitative Portfolio Engine), bảo vệ tài khoản trước rủi ro sụt giảm cực đoan và tối ưu hóa điểm số Risk-Adjusted Return.
 
+---
+
+### [ADR-016] Tái Cấu Trúc Stress Test, Stationary Block Bootstrap & Quản Trị Rủi Ro Dữ Liệu (Phase 6)
+- **Ngày quyết định:** 2026-09-27
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề (Từ Thẩm Định Due Diligence):**
+  1. Mô phỏng rủi ro đuôi Monte Carlo sử dụng giả định độc lập $I.I.D.$ (xáo trộn từng lệnh đơn lẻ) làm phân tán cụm thua lỗ liên tiếp thường thấy trong các cú sốc vĩ mô (loss clustering), khiến chỉ số P95/P99 Drawdown bị đánh giá thấp nghiêm trọng.
+  2. Giao diện Stress Test bị "rối" do thiếu phân tầng nhận thức: bảng số liệu thô 8 cột không sort, danh sách ngày sập rời rạc, bắt copy-paste PnL thủ công, thiếu kết luận tóm lược cho nhà đầu tư ở đầu trang.
+  3. Mọi điểm ước tính (Sharpe, CAGR, Win Rate) hiển thị đơn lẻ không có khoảng tin cậy 95% và không cảnh báo khi cỡ mẫu nhỏ ($N < 30$).
+  4. Sector Gate chưa định lượng được "chi phí bảo hiểm" (Upside hy sinh vs MDD tránh được) để trả lời câu hỏi đánh đổi của nhà đầu tư.
+  5. Mỏ neo giá mục tiêu đồng thuận (`INSTITUTIONAL_CONSENSUS_TARGETS`) bị hardcode cố định không có timestamp `last_updated`, tiềm ẩn rủi ro dùng định giá quá hạn làm sai lệch Margin of Safety.
+- **Quyết định lựa chọn:**
+  1. Triển khai **Stationary Block Bootstrap** trong `simulate_monte_carlo_drawdown()` (`quant_engine.py`): Tái lấy mẫu theo các khối lệnh liên tiếp có kích thước tự thích ứng $L = \max(3, \lfloor n^{1/3} \rfloor)$, bảo toàn các cụm lệnh lỗ liên tiếp trong khủng hoảng.
+  2. Tái cấu trúc toàn diện Subtab 4 Stress Test (`tabs/tab_alpha_tracker.py`):
+     - Bổ sung *Risk Executive Summary* (4 thẻ KPI đầu trang: MDD tệ nhất, P99 Monte Carlo, Trạng thái Cash Mode, Cảnh báo cỡ mẫu).
+     - Thay thế bảng thô 8 cột bằng *Biểu đồ Cột Ngang Đôi (Paired Horizontal Bar Chart)* bằng Plotly, sắp xếp giảm dần theo mức độ sụt giảm VN-Index và tô màu trực quan; thu gọn bảng chi tiết vào expander.
+     - Tự động liên kết (Auto-wire) chuỗi PnL từ kết quả backtest sang Monte Carlo mà không bắt người dùng paste tay.
+  3. Minh bạch hóa thống kê: Thêm ghi chú cảnh báo cỡ mẫu nhỏ ($N < 30$) dưới bảng KPI phân tích theo Regime.
+  4. Triển khai `calculate_sector_gate_insurance_roi()` trong `quant_engine.py` và tích hợp widget định lượng chi phí bảo hiểm minh bạch trên UI.
+  5. Bổ sung `last_updated: "2024-10-01"` vào 100% mục trong `INSTITUTIONAL_CONSENSUS_TARGETS` và triển khai `check_institutional_target_freshness()` trong `quant_valuation.py` tự động cảnh báo dữ liệu cũ quá 180 ngày.
+- **Hệ quả:** Hệ thống đạt chuẩn mực thẩm định của quỹ đầu tư định lượng tổ chức (Institutional Quant Due Diligence Standard), loại bỏ thiên lệch lạc quan của mô phỏng I.I.D., phân tầng trực quan hóa rõ ràng và minh bạch hóa chi phí bảo vệ vốn.
+
+
 
 

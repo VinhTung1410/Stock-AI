@@ -1,9 +1,9 @@
 # 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF)
 
 **Tên dự án:** Stock-AI / AI Trading Bot  
-**Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-26  
+**Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-27  
 **Người yêu cầu (Client):** Tùng  
-**Phiên bản yêu cầu:** v5.5 — Tối Ưu Hóa Danh Mục, Mô Phỏng Rủi Ro Monte Carlo & Phân Rã Nhân Tố (Phase 5 — Advanced Quantitative Portfolio Engine)  
+**Phiên bản yêu cầu:** v5.6 — Tái Thiết Kế Giao Diện Stress Test, Nâng Cấp Thuật Toán Block Bootstrap & Quản Trị Rủi Ro Tổ Chức (Phase 6 — Stress Test Overhaul & Institutional Risk Governance)  
 
 ---
 
@@ -13,7 +13,7 @@
   - Hạ tầng cứng Backtest đã mô phỏng chuẩn xác cơ chế HOSE (trần/sàn ±7%, quy chế T+2.5, thuế phí 0.25%, trượt giá động sát thực tế, trần hấp thụ thanh khoản 5% ADV20, Audit Trail Supabase).
   - Tích hợp thành công giao diện Tab 6 (Backtest Dashboard, Bảng số liệu Regime, Paper Trading).
   - Hoàn thiện luồng Web-to-Discord hook cho khuyến nghị MUA và cô lập 100% mock Discord trong bộ kiểm thử tự động (Zero Test Leakage).
-  - Hoàn tất **Phase 0** (Tường lửa Disclaimer, Content Filter RSS, Heartbeat 08:30), **Phase 1** (Hạ tầng Bằng chứng Signal Lifecycle, ADR-0001 Lock Thresholds), **Phase 2** (Chốt chặn Ngành $\le 25\%$, Trượt giá động 60–75 bps, Cầu dao Gemini 12 RPM), **Phase 3** (Walk-Forward 3 chặng, Ma trận Stress 11 sự kiện khủng hoảng, Bộ quét Flash Crash, Bootstrap Sharpe CI $10,000$ lần), và **Phase 4** (Thử nghiệm song song A/B Quant-Only vs Quant+AI, Chuẩn định Confidence Calibration & Brier Score).
+  - Hoàn tất **Phase 0** (Tường lửa Disclaimer, Content Filter RSS, Heartbeat 08:30), **Phase 1** (Hạ tầng Bằng chứng Signal Lifecycle, ADR-0001 Lock Thresholds), **Phase 2** (Chốt chặn Ngành $\le 25\%$, Trượt giá động 60–75 bps, Cầu dao Gemini 12 RPM), **Phase 3** (Walk-Forward 3 chặng, Ma trận Stress 11 sự kiện khủng hoảng, Bộ quét Flash Crash, Bootstrap Sharpe CI $10,000$ lần), **Phase 4** (Thử nghiệm song song A/B Quant-Only vs Quant+AI, Chuẩn định Confidence Calibration & Brier Score), và **Phase 5** (Tối ưu danh mục Risk Parity, Phân rã Đa nhân tố Beta, Chốt lời từng phần 50% ở +12%).
 
 - **Định vị lại triết lý cốt lõi của Client & Ban Cố vấn Tài chính (Paradigm Shift):**
   1. **Bản chất của Backtest không phải là PnL tĩnh:** Mục tiêu tối thượng của backtest không phải là tìm kiếm một con số lợi nhuận (PnL/CAGR) đẹp nhân tạo hay phán xét bot đúng/sai một vài deal đơn lẻ, mà là **đo lường năng lực nương theo pha thị trường (Market Regime Alignment)**:
@@ -29,18 +29,23 @@
      [1. Macro Regime Gate] ──> [2. Smart Money Watchlist] ──> [3. Quant Trigger] ──> [4. Dynamic Risk Sizing] ──> [5. Execution]
      ```
 
-- **Mục tiêu phiên bản 5.2 – 5.4** *(đã hoàn thành)*:
+- **Mục tiêu phiên bản 5.2 – 5.5** *(đã hoàn thành)*:
   - **Phase 0 — Tường lửa bảo mật & tuân thủ pháp lý** (xem Mục 3A, đã hoàn thành).
   - **Phase 1 — Hạ tầng bằng chứng (Signal Lifecycle)** (xem Mục 3B, đã hoàn thành).
   - **Phase 2 — Kiểm soát rủi ro & Bảo vệ danh mục (Risk Fixes)** (xem Mục 3C, đã hoàn thành).
   - **Phase 3 — Nghiên cứu & Thẩm định Chuyên sâu (Walk-Forward, Stress Matrix, Bootstrap Sharpe CI)** (xem Mục 3D, đã hoàn thành).
   - **Phase 4 — Thử nghiệm Song song A/B & Chuẩn định AI Confidence** (xem Mục 3E, đã hoàn thành).
+  - **Phase 5 — Tối ưu hóa Danh mục & Rủi ro Đuôi Nâng cao** (xem Mục 3F, đã hoàn thành).
 
-- **Mục tiêu phiên bản 5.5** *(hiện tại — Tối ưu hóa Danh mục & Mô phỏng Rủi ro Nâng cao - Phase 5)*:
-  - **Phase 5a — Mô phỏng Rủi ro Đuôi Monte Carlo (Monte Carlo Tail Risk Simulation):** Tráo thứ tự chuỗi giao dịch qua 2,000 đường mô phỏng để tính 95th/99th Percentile Drawdown và xác suất sụt giảm vốn quá 15%.
-  - **Phase 5b — Tối ưu hóa Tỷ trọng Đóng góp Rủi ro Ngang bằng (Risk Parity / Inverse Volatility Sizing):** Phân bổ tỷ trọng theo nghịch đảo độ biến động ATR/Vol thay vì tỷ trọng đều, khống chế trần tối đa 25%/mã.
-  - **Phase 5c — Phân rã Đa Nhân tố Rủi ro (Multi-Factor Beta Decomposition):** Bóc tách Market Beta và Sector Beta độc lập.
-  - **Phase 5d — Chiến lược Chốt lời Từng phần & Kéo Break-even (Partial Profit Taking & Breakeven Stop):** Chốt 50% tại Target 1 (+12%), tự động dời stop lên giá vốn để tạo vị thế "Risk-Free Trade".
+- **Mục tiêu phiên bản 5.6** *(hiện tại — Tái Thiết Kế Stress Test, Stationary Block Bootstrap & Quản Trị Rủi Ro Tổ Chức - Phase 6)*:
+  - **Phase 6a — Nâng cấp Thuật toán Monte Carlo sang Stationary Block Bootstrap:** Loại bỏ giả định độc lập I.I.D., bảo toàn các cụm lệnh thua lỗ liên tiếp khi khủng hoảng để lượng hóa chính xác rủi ro đuôi P95/P99.
+  - **Phase 6b — Tái Cấu Trúc Trực Quan Hóa & Phân Tầng Giao Diện Stress Test (UI Hierarchy):**
+    - Bổ sung *Risk Executive Summary* 4 thẻ đầu trang (MDD lịch sử tệ nhất, P99 Monte Carlo, Trạng thái Cash Mode, Cảnh báo cỡ mẫu).
+    - Thay thế bảng thô 8 cột bằng *Biểu đồ Cột Ngang Đôi (Paired Horizontal Bar Chart)* sắp xếp giảm dần theo mức độ sụt giảm VN-Index.
+    - Tự động liên kết (Auto-wire) chuỗi PnL từ kết quả backtest sang Monte Carlo mà không bắt người dùng nhập tay.
+  - **Phase 6c — Minh Bạch Hóa Thống Kê Điểm Ước Lượng (Effective N & Confidence Intervals):** Gắn khoảng tin cậy 95% và cảnh báo mẫu nhỏ `N < 30` vào các chỉ số KPI đơn lẻ (Sharpe, CAGR, Win Rate).
+  - **Phase 6d — Định Lượng "Chi Phí Bảo Hiểm" của Sector Gate:** Đo lường chi phí cơ hội (Upside hy sinh trong Bull Market) đối chiếu với mức độ bảo vệ vốn (MDD tránh được trong Khủng hoảng).
+  - **Phase 6e — Rà Soát Mỏ Neo Định Giá & Kiểm Soát Lão Hóa Dữ Liệu (Stale Data Governance):** Bổ sung timestamp `last_updated` và cảnh báo dữ liệu cũ quá 2 quý cho `INSTITUTIONAL_CONSENSUS_TARGETS`.
 
 
 
@@ -558,7 +563,97 @@
 
 ---
 
+## 3G. TÍNH NĂNG NÂNG CẤP v5.6: TÁI THIẾT KẾ STRESS TEST, STATIONARY BLOCK BOOTSTRAP & QUẢN TRỊ RỦI RO TỔ CHỨC (PHASE 6)
 
+### Phase 6a: Nâng cấp Thuật toán Monte Carlo sang Stationary Block Bootstrap
+
+- **Vấn đề thực tế từ Due Diligence:**
+  - Thuật toán `simulate_monte_carlo_drawdown` hiện tại sử dụng `rng.integers(0, n, size=(n_simulations, n))` xáo trộn ngẫu nhiên từng lệnh độc lập (I.I.D. assumption).
+  - Trong khủng hoảng thị trường thật (như Covid-19 2020, Trái phiếu 2022), các lệnh thua **có tính tự tương quan cao và dồn thành cụm (clustering of losses)** do cùng chịu một cú sốc vĩ mô toàn thị trường.
+  - Việc xáo trộn I.I.D. làm phân tán các cụm lỗ này một cách nhân tạo, dẫn đến việc **đánh giá thấp nghiêm trọng rủi ro đuôi thực sự (P95, P99 Max Drawdown)**.
+- **Yêu cầu kỹ thuật:**
+  - Nâng cấp `simulate_monte_carlo_drawdown(trade_pnl_pcts: list[float], n_simulations: int = 2_000, initial_capital: float = 100_000_000.0, block_size: int | None = None, random_state: int | None = 42) -> dict[str, Any]`:
+    - Triển khai **Stationary Block Bootstrap** (Politis & Romano, 1994): Tái lấy mẫu theo các khối lệnh liên tiếp (block resampling) có độ dài khối $L$.
+    - Cơ chế tự thích ứng: Nếu `block_size is None`, tự động tính toán $L = \max(3, \lfloor n^{1/3} \rfloor)$ dựa trên kích thước mẫu $n$.
+    - Cho phép ép `block_size = 1` để fallback về I.I.D. phục vụ kiểm thử đối chứng tương thích ngược.
+    - Giữ nguyên cấu trúc dữ liệu đầu ra dict (`median_drawdown_pct`, `p95_drawdown_pct`, `p99_drawdown_pct`, `prob_drawdown_over_15pct`, `max_consecutive_losses`, v.v.) để bảo đảm không đứt gãy giao diện.
+- **Định nghĩa Done:**
+  - Unit test xác nhận trên chuỗi PnL có tự tương quan dương cao (chuỗi giả lập AR(1) với $\rho = 0.6$), P95 Drawdown của Block Bootstrap phải $\ge$ P95 Drawdown của I.I.D. (phản ánh đúng việc rủi ro đuôi gia tăng khi các lệnh thua dồn cục).
+
+---
+
+### Phase 6b: Tái Cấu Trúc Trực Quan Hóa & Phân Tầng Giao Diện Stress Test (UI Hierarchy)
+
+- **Vấn đề thực tế từ Due Diligence:**
+  - Giao diện Subtab 4 hiện tại trong `tab_alpha_tracker.py` bị "rối" do thiếu phân tầng nhận thức:
+    - Bảng 11 khủng hoảng có 8 cột số liệu thô, không được sắp xếp theo mức độ nghiêm trọng, không có mã màu — người dùng phải tự căng mắt dò từng dòng.
+    - Bộ quét Flash Crash hiển thị 2 bảng ngày rời rạc không có bối cảnh dòng thời gian.
+    - Người dùng phải copy-paste PnL bằng tay vào ô text input dù kết quả backtest vừa chạy xong đã có sẵn chuỗi PnL.
+    - Không có "Kết luận điều hành (Executive Summary)" ở đầu trang.
+- **Yêu cầu kỹ thuật:**
+  1. **Risk Executive Summary (Đầu trang):**
+     - Đặt ngay trên đầu tab trước form thao tác: Dải 4 thẻ KPI bằng ngôn ngữ nhà đầu tư:
+       - 🛡️ *Sụt giảm tệ nhất từng trải qua (Lịch sử):* Ví dụ `-8.4% (so với VN-Index -35% đợt Covid-19)`.
+       - 🎲 *Rủi ro đuôi P99 (Monte Carlo):* Xác suất sụt giảm quá 15% vốn.
+       - 📊 *Trạng thái Macro Cash Mode hiện tại:* Đang BẬT hay TẮT kèm lý do vĩ mô.
+       - ⚠️ *Cảnh báo cỡ mẫu thống kê:* Nhắc nhở nếu `Effective N < 30`.
+  2. **Biểu đồ Cột Ngang Đôi (Paired Horizontal Bar Chart) thay cho Bảng Thô:**
+     - Sử dụng Plotly Horizontal Bar Chart: Mỗi khủng hoảng hiển thị 1 cặp cột (Mức giảm VN-Index vs Lợi nhuận/Thua lỗ Chiến lược).
+     - **Sắp xếp giảm dần:** Khủng hoảng khốc liệt nhất của thị trường nằm ở trên cùng.
+     - **Mã màu động:** Cột chiến lược tự động tô xanh nếu dương/vượt trội hơn thị trường, tô đỏ nếu âm.
+     - Đưa bảng số liệu chi tiết 8 cột vào `st.expander("📋 Xem Bảng Số Liệu Chi Tiết")` để giảm tải nhận thức cho người dùng.
+  3. **Tự động liên kết (Auto-wire) chuỗi PnL sang Monte Carlo:**
+     - Tự động nạp `extracted_pnls` từ kết quả backtest vừa chạy vào động cơ Monte Carlo.
+     - Hiển thị thông báo minh bạch: *"Đang mô phỏng dựa trên N = X lệnh từ đợt backtest vừa chạy"*.
+     - Thu gọn ô nhập chuỗi PnL tùy biến vào `st.expander("🔧 Nâng cao: Tự nhập chuỗi PnL khác")` dành riêng cho chuyên gia.
+- **Định nghĩa Done:** Giao diện Stress Test hiển thị đầy đủ 4 thẻ Executive Summary, vẽ biểu đồ bar chart trực quan sắp xếp theo mức giảm thị trường, và tự động liên kết PnL vào Monte Carlo không cần nhập tay.
+
+---
+
+### Phase 6c: Minh Bạch Hóa Thống Kê Điểm Ước Lượng (Effective N & Confidence Intervals)
+
+- **Vấn đề thực tế từ Due Diligence:**
+  - Mọi con số hiệu suất (Sharpe = 1.4, CAGR = 18.5%, Win Rate = 55%) hiện hiển thị dưới dạng số điểm đơn lẻ (Point Estimate), tạo ảo giác chắc chắn tuyệt đối.
+  - Khi kích thước mẫu nhỏ ($N < 30$), sai số chuẩn rất lớn và khoảng tin cậy 95% có thể kéo dài từ âm sang dương.
+- **Yêu cầu kỹ thuật:**
+  - Tích hợp kết quả từ `bootstrap_sharpe_ci` vào các thành phần hiển thị KPI trên Dashboard:
+    - Hiển thị khoảng tin cậy 95% dưới dạng subscript/caption: ví dụ `Sharpe: 1.40 [95% CI: 0.85 - 1.95]`.
+    - Gắn nhãn cảnh báo trực quan màu cam nếu `total_trades < 30` hoặc `effective_n < 30`: `⚠️ Cỡ mẫu nhỏ (N=22), khoảng tin cậy rộng`.
+- **Định nghĩa Done:** Trên UI KPI của Regime và Alpha Tracker, các chỉ số Sharpe đều hiển thị kèm khoảng tin cậy 95% và nhãn cảnh báo khi mẫu không đủ lớn.
+
+---
+
+### Phase 6d: Định Lượng "Chi Phí Bảo Hiểm" của Sector Concentration Gate
+
+- **Vấn đề thực tế từ Due Diligence:**
+  - Chốt chặn ngành (Sector Gate $\le 25\%$ NAV hoặc tối đa 3 mã/ngành) là một đánh đổi có chủ đích: Nó cứu tài khoản trong khủng hoảng ngành năm 2022 nhưng chặn nhầm cơ hội tăng trưởng mạnh trong siêu chu kỳ năm 2021 (như nhóm Thép TLH, SMC).
+  - Hiện tại hệ thống chưa định lượng được "chi phí bảo hiểm" này, khiến nhà đầu tư băn khoăn: *"Tôi đã trả bao nhiêu upside để mua sự an toàn này?"*.
+- **Yêu cầu kỹ thuật:**
+  - Xây dựng mô-đun phân tích định lượng chi phí bảo hiểm `calculate_sector_gate_insurance_roi(...)`:
+    - So sánh hiệu suất giữa 2 nhánh: CÓ bật Sector/Regime Gate vs KHÔNG bật Gate trên cùng tập dữ liệu lịch sử.
+    - Tính toán 3 chỉ số cốt lõi:
+      1. *Chi phí Upside hy sinh (Upside Cost):* Chênh lệch CAGR trong các pha Bull Market.
+      2. *Lợi ích Bảo vệ Vốn (Protection Benefit):* Mức chênh lệch Max Drawdown được giảm thiểu trong các pha Khủng hoảng/Downtrend.
+      3. *Tỷ lệ Hiệu quả Bảo hiểm (Insurance ROI):* $\text{Protection Benefit} / \text{Upside Cost}$.
+    - Hiển thị thẻ tóm tắt trên UI Stress Test kèm ghi chú từ chối trách nhiệm (Disclaimer) rõ ràng.
+- **Định nghĩa Done:** UI cung cấp thẻ định lượng chi phí bảo hiểm minh bạch, trả lời chính xác câu hỏi đánh đổi rủi ro của nhà đầu tư.
+
+---
+
+### Phase 6e: Quản Trị Tuổi Thọ Dữ Liệu Mỏ Neo Định Giá (Valuation Anchors Freshness & Governance)
+
+- **Vấn đề thực tế từ Due Diligence:**
+  - Từ điển giá mục tiêu đồng thuận các CTCK (`INSTITUTIONAL_CONSENSUS_TARGETS` trong `quant_valuation.py`) hiện bị hardcode tĩnh (FPT: 88.0, HPG: 26.5...) mà không có trường ngày tháng `last_updated`.
+  - Nếu dữ liệu bị bỏ quên quá 1-2 quý không được cập nhật, Biên an toàn (Margin of Safety - MoS) tính toán ra sẽ bị sai lệch âm thầm (silent degradation), dẫn đến định giá sai lệch cho cổ phiếu.
+- **Yêu cầu kỹ thuật:**
+  - Bổ sung trường bắt buộc `last_updated: "YYYY-MM-DD"` vào từng mục trong `INSTITUTIONAL_CONSENSUS_TARGETS`.
+  - Triển khai cơ chế kiểm tra tuổi thọ dữ liệu (Freshness Validator):
+    - Nếu giá trị mục tiêu cũ quá 180 ngày (2 quý), hệ thống tự động:
+      1. Ghi log cảnh báo mức `WARNING` (`Stale institutional target detected for symbol...`).
+      2. Tự động áp dụng chiết khấu bảo thủ bổ sung (ví dụ hạ $10\%$ giá mục tiêu tham chiếu) hoặc chuyển cờ cảnh báo lên giao diện người dùng.
+- **Định nghĩa Done:** Toàn bộ mục tiêu trong `INSTITUTIONAL_CONSENSUS_TARGETS` có trường `last_updated`, và hệ thống tự động phát hiện, cảnh báo khi dữ liệu bị cũ quá hạn.
+
+---
 
 ## 4. ĐỊNH HƯỚNG VÀ RÀNG BUỘC KỸ THUẬT (TECHNICAL CONSTRAINTS)
 
@@ -628,4 +723,17 @@
     - Gemini trả về `confidence=78%` nhưng actual win rate có thể chỉ 52%. Dùng confidence chưa calibrate làm `p_win` trong Kelly dẫn đến position sizing bị thổi phồng — đây là model risk nhân lên, không phải lỗi nhỏ. Phải đo calibration curve từ `signal_lifecycle` trước khi dùng AI confidence vào bất kỳ sizing formula nào.
 20. **100 Trades ≠ 100 Independent Observations (Effective Sample Size):**
     - Nếu nhiều tín hiệu xuất hiện trong cùng một regime hoặc cùng sector, các observations bị correlated — raw count N không phản ánh đúng sức mạnh thống kê. Phải dùng Effective Sample Size (ESS = N × (1 − |autocorrelation|)) khi kết luận về edge của hệ thống.
+
+*Bài học MỚI từ v5.5 → v5.6 — Thẩm định Quản lý Quỹ & Due Diligence Nhà Đầu Tư:*
+21. **Cạm bẫy Giả định Độc lập I.I.D. trong Mô phỏng Rủi ro Đuôi (I.I.D. Monte Carlo Fallacy):**
+    - Xáo trộn ngẫu nhiên từng lệnh độc lập giả định các lệnh không có tính phụ thuộc thời gian. Tuy nhiên trong khủng hoảng thật, các lệnh thua lỗ **tương quan chặt chẽ và dồn cục liên tiếp (Cluster Risk)** dưới tác động của cùng một cú sốc vĩ mô. Xáo trộn I.I.D. làm tan rã các cụm thua lỗ này, khiến chỉ số rủi ro thảm họa P95/P99 Max Drawdown bị đánh giá thấp nghiêm trọng. Bắt buộc phải áp dụng **Stationary Block Bootstrap** để giữ nguyên cấu trúc khối chuỗi thua lỗ.
+22. **Hiện tượng "Mỏ neo Định giá Tĩnh & Lão hóa Dữ liệu" (Stale Valuation Anchor Trap):**
+    - Từ điển giá mục tiêu của các CTCK (`INSTITUTIONAL_CONSENSUS_TARGETS`) bị hardcode cố định mà không kèm dấu thời gian `last_updated`. Khi dữ liệu này bị bỏ quên quá 1-2 quý, Biên an toàn (Margin of Safety) tính ra sẽ bị sai lệch âm thầm (silent drift) mà hệ thống không cảnh báo, dẫn đến nhận định sai về vùng giá hấp dẫn. Bắt buộc phải có timestamp và cảnh báo stale data tự động.
+23. **Nghịch lý "Bảo hiểm Không rõ Giá" của Chốt chặn Ngành (Hidden Insurance Cost of Sector Gate):**
+    - Giới hạn ngành $\le 25\%$ là chốt chặn đúng đắn cứu tài khoản trong khủng hoảng 2022 nhưng nó có cái giá là bỏ lỡ cơ hội trong siêu sóng ngành tăng nóng (như nhóm Thép 2021). Nếu hệ thống không định lượng "chi phí bảo hiểm" (Upside đã hy sinh đổi lấy MDD tránh được), nhà đầu tư sẽ dễ bỏ rơi kỷ luật khi thấy thị trường tăng giá.
+24. **Cạm bẫy Báo cáo Số liệu Rời rạc & Quá tải Nhận thức (Cognitive Overload in Stress Testing UI):**
+    - Bảng số liệu thô 8 cột không sắp xếp, danh sách ngày sập rời rạc, bắt người dùng copy-paste chuỗi PnL thủ công và thiếu kết luận đầu trang làm tê liệt khả năng ra quyết định nhanh. Dữ liệu dù tốt nhưng nếu thiếu phân tầng trực quan hóa (Information Hierarchy) thì vẫn không mang lại giá trị cho người dùng.
+25. **Rủi ro Điểm Yếu Đơn Lẻ Nguồn Dữ liệu (Single Data Provider Fragility):**
+    - Toàn bộ pipeline hiện tại phụ thuộc duy nhất vào thư viện `vnstock` / nguồn VCI. Khi nguồn này gặp sự cố hoặc thay đổi cấu trúc bảng/API, toàn bộ hệ thống từ Data Gate, F-Score đến Backtest đều có nguy cơ tê liệt đồng thời. Cần lộ trình xây dựng cơ chế nguồn dự phòng (Fallback Data Provider) trong tương lai.
+
 

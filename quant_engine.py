@@ -1550,15 +1550,35 @@ def compare_quant_vs_ai_arms(
     }
 
 
-# Phase 5: Advanced Portfolio Optimization & Monte Carlo Tail Risk
+def _generate_bootstrap_indices(
+    n: int,
+    n_simulations: int,
+    block_size: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Sinh ma trận chỉ số lấy mẫu theo khối tròn (Circular Block Bootstrap)."""
+    if block_size <= 1 or n <= 1:
+        return rng.integers(0, n, size=(n_simulations, n))
+
+    effective_block = min(block_size, n)
+    k_blocks = int(np.ceil(n / effective_block))
+    start_indices = rng.integers(0, n, size=(n_simulations, k_blocks))
+    offsets = np.arange(effective_block)
+    stacked = (start_indices[:, :, None] + offsets[None, None, :]) % n
+    return stacked.reshape(n_simulations, k_blocks * effective_block)[:, :n]
+
+
+# Phase 5 & 6: Advanced Portfolio Optimization, Monte Carlo & Risk Governance
 def simulate_monte_carlo_drawdown(
     trade_pnl_pcts: list[float],
     n_simulations: int = 2_000,
     initial_capital: float = 100_000_000.0,
+    block_size: int | None = None,
     random_state: int | None = 42,
 ) -> dict[str, Any]:
-    """Mô phỏng 2,000 kịch bản ngẫu nhiên tráo đổi chuỗi lệnh (Trade order shuffling) (Phase 5a).
+    """Mô phỏng 2,000 kịch bản ngẫu nhiên tráo đổi chuỗi lệnh (Trade order shuffling) (Phase 5a & 6a).
 
+    Hỗ trợ Stationary Block Bootstrap để bảo toàn các cụm lệnh lỗ liên tiếp trong khủng hoảng.
     Đo lường phân vị Max Drawdown tồi tệ nhất (P95, P99) và xác suất sụt giảm quá 15% vốn.
     """
     fallback_res: dict[str, Any] = {
@@ -1569,6 +1589,7 @@ def simulate_monte_carlo_drawdown(
         "max_consecutive_losses": 0,
         "n_simulations": 0,
         "n_trades": 0,
+        "block_size": 1,
     }
 
     if not trade_pnl_pcts:
@@ -1584,8 +1605,14 @@ def simulate_monte_carlo_drawdown(
     if n == 0:
         return fallback_res
 
+    if block_size is None:
+        effective_block = 1 if n < 3 else max(3, int(round(n ** (1.0 / 3.0))))
+        effective_block = min(effective_block, n)
+    else:
+        effective_block = max(1, min(int(block_size), n))
+
     rng = np.random.default_rng(random_state)
-    indices = rng.integers(0, n, size=(n_simulations, n))
+    indices = _generate_bootstrap_indices(n, n_simulations, effective_block, rng)
     sim_pnl = arr[indices]
 
     # Vectorized equity curve computation
@@ -1620,6 +1647,54 @@ def simulate_monte_carlo_drawdown(
         "max_consecutive_losses": max_loss,
         "n_simulations": n_simulations,
         "n_trades": n,
+        "block_size": effective_block,
+    }
+
+
+VERDICT_HIGH_EFFICIENCY: Final[str] = "HIGH_EFFICIENCY_INSURANCE"
+VERDICT_FAIR_TRADE: Final[str] = "FAIR_RISK_TRADE"
+VERDICT_COSTLY_PROTECTION: Final[str] = "COSTLY_PROTECTION"
+VERDICT_FREE_PROTECTION: Final[str] = "FREE_PROTECTION"
+
+
+def calculate_sector_gate_insurance_roi(
+    cagr_without_gate: float,
+    cagr_with_gate: float,
+    mdd_without_gate: float,
+    mdd_with_gate: float,
+) -> dict[str, Any]:
+    """Đo lường chi phí bảo hiểm và tỷ lệ hiệu quả (ROI) của Sector Gate (Phase 6d).
+
+    - Upside Cost: Mức CAGR bị giảm do chốt chặn giới hạn ngành trong pha thị trường tăng.
+    - Protection Benefit: Mức giảm thiểu Max Drawdown tránh được khi xảy ra sụp đổ ngành/thị trường.
+    - Insurance ROI = Protection Benefit / Upside Cost.
+    """
+    upside_cost = max(0.0, round(float(cagr_without_gate - cagr_with_gate), 2))
+    abs_mdd_no_gate = abs(float(mdd_without_gate))
+    abs_mdd_with_gate = abs(float(mdd_with_gate))
+    protection_benefit = max(0.0, round(abs_mdd_no_gate - abs_mdd_with_gate, 2))
+
+    if upside_cost <= 0.0:
+        roi = 999.0 if protection_benefit > 0.0 else 1.0
+        verdict = VERDICT_FREE_PROTECTION
+    else:
+        roi = round(protection_benefit / upside_cost, 2)
+        if roi >= 2.0:
+            verdict = VERDICT_HIGH_EFFICIENCY
+        elif roi >= 1.0:
+            verdict = VERDICT_FAIR_TRADE
+        else:
+            verdict = VERDICT_COSTLY_PROTECTION
+
+    return {
+        "cagr_without_gate": round(float(cagr_without_gate), 2),
+        "cagr_with_gate": round(float(cagr_with_gate), 2),
+        "upside_cost_pct": upside_cost,
+        "mdd_without_gate": round(abs_mdd_no_gate, 2),
+        "mdd_with_gate": round(abs_mdd_with_gate, 2),
+        "protection_benefit_pct": protection_benefit,
+        "insurance_roi": roi,
+        "verdict": verdict,
     }
 
 
