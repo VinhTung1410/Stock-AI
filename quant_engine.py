@@ -12,6 +12,7 @@ Capabilities:
 """
 
 import logging
+import math
 from datetime import datetime, timedelta
 from typing import Any, Dict, Final, List, Optional
 
@@ -2025,5 +2026,204 @@ def evaluate_partial_profit_lock(
         "current_pnl_pct": round(current_pnl_pct, 2),
         "status": "TRAIL_IN_PROGRESS",
     }
+
+
+# =============================================================================
+# PHASE 7e: CONVICTION WEIGHTS STATISTICAL VALIDATION (SPEARMAN IC & FDR)
+# =============================================================================
+
+MIN_CONVICTION_OPTIMIZATION_SAMPLE: Final[int] = 100
+
+
+def _calculate_spearman_rank_correlation(x: list[float], y: list[float]) -> tuple[float, float, float]:
+    """Calculate Spearman rank correlation, t-statistic, and two-tailed p-value without scipy."""
+    n = len(x)
+    if n < 3:
+        return 0.0, 0.0, 1.0
+
+    sx = pd.Series(x, dtype=float).rank()
+    sy = pd.Series(y, dtype=float).rank()
+
+    rho = sx.corr(sy)
+    if pd.isna(rho):
+        return 0.0, 0.0, 1.0
+
+    rho = float(np.clip(rho, -0.999999, 0.999999))
+    t_stat = float(rho * np.sqrt((n - 2) / (1.0 - rho**2)))
+
+    # Two-tailed p-value using normal/asymptotic erf approximation
+    p_val = float(math.erfc(abs(t_stat) / math.sqrt(2.0)))
+    return round(rho, 4), round(t_stat, 4), round(p_val, 4)
+
+
+def calculate_pillar_spearman_ic(
+    records: list[dict[str, Any]],
+    return_col: str = "alpha_t20",
+    min_observations: int = 30,
+) -> dict[str, Any]:
+    """Tính toán Hệ số tương quan hạng Spearman (Spearman IC) cho 4 trụ cột Conviction (Phase 7e).
+
+    Loại trừ các bản ghi có mos_is_informative = False khi tính IC cho trụ cột MoS.
+    """
+    if not records:
+        return {
+            "status": "EMPTY_RECORDS",
+            "pillars": {},
+            "total_records": 0,
+            "informative_mos_ratio": 0.0,
+        }
+
+    pillar_keys = ["s_mos", "s_fscore", "s_ta", "s_flow"]
+    extracted: dict[str, tuple[list[float], list[float]]] = {k: ([], []) for k in pillar_keys}
+
+    total_mos_records = 0
+    informative_mos_count = 0
+
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+
+        ret = rec.get(return_col)
+        if ret is None:
+            ret = rec.get("alpha") or rec.get("return_t20") or rec.get("ret_t20")
+        if ret is None or pd.isna(ret):
+            continue
+        ret_val = float(ret)
+
+        # 1. MoS: Bắt buộc lọc theo cờ mos_is_informative
+        mos_val = rec.get("s_mos") if rec.get("s_mos") is not None else rec.get("mos_pct")
+        if mos_val is not None and not pd.isna(mos_val):
+            total_mos_records += 1
+            is_info = rec.get("mos_is_informative", True)
+            if is_info:
+                informative_mos_count += 1
+                extracted["s_mos"][0].append(float(mos_val))
+                extracted["s_mos"][1].append(ret_val)
+
+        # 2. F-Score
+        f_val = rec.get("s_fscore") if rec.get("s_fscore") is not None else rec.get("f_score")
+        if f_val is not None and not pd.isna(f_val):
+            extracted["s_fscore"][0].append(float(f_val))
+            extracted["s_fscore"][1].append(ret_val)
+
+        # 3. Technical (TA)
+        ta_val = rec.get("s_ta") if rec.get("s_ta") is not None else rec.get("rsi14")
+        if ta_val is not None and not pd.isna(ta_val):
+            extracted["s_ta"][0].append(float(ta_val))
+            extracted["s_ta"][1].append(ret_val)
+
+        # 4. Flow
+        flow_val = rec.get("s_flow") if rec.get("s_flow") is not None else rec.get("foreign_flow")
+        if flow_val is not None and not pd.isna(flow_val):
+            try:
+                extracted["s_flow"][0].append(float(flow_val))
+                extracted["s_flow"][1].append(ret_val)
+            except (ValueError, TypeError):
+                pass
+
+    results: dict[str, Any] = {}
+    for p_key in pillar_keys:
+        xs, ys = extracted[p_key]
+        n_obs = len(xs)
+        if n_obs < min_observations:
+            results[p_key] = {
+                "ic": 0.0,
+                "t_stat": 0.0,
+                "p_value": 1.0,
+                "n_obs": n_obs,
+                "is_significant": False,
+                "status": "INSUFFICIENT_OBSERVATIONS",
+            }
+            continue
+
+        ic, t_stat, p_val = _calculate_spearman_rank_correlation(xs, ys)
+        results[p_key] = {
+            "ic": ic,
+            "t_stat": t_stat,
+            "p_value": p_val,
+            "n_obs": n_obs,
+            "is_significant": bool(p_val < 0.05),
+            "status": "EVALUATED",
+        }
+
+    info_ratio = round(informative_mos_count / total_mos_records, 2) if total_mos_records > 0 else 1.0
+
+    return {
+        "status": "SUCCESS",
+        "pillars": results,
+        "total_records": len(records),
+        "informative_mos_ratio": info_ratio,
+    }
+
+
+def apply_benjamini_hochberg_fdr(
+    p_values: dict[str, float],
+    alpha: float = 0.05,
+    total_sample_size: Optional[int] = None,
+) -> dict[str, Any]:
+    """Kiểm định hiệu chỉnh đa biến Benjamini–Hochberg kiểm soát False Discovery Rate (FDR - Phase 7e).
+
+    Nếu tổng số quan sát < 100, phát cảnh báo INSUFFICIENT_SAMPLE theo nguyên tắc
+    'Thu thập trước, Hồi quy sau' (cấm tự động cập nhật trọng số Conviction).
+    """
+    if not p_values:
+        return {
+            "alpha": alpha,
+            "total_hypotheses": 0,
+            "significant_count": 0,
+            "warning": "",
+            "results": {},
+        }
+
+    warning_msg = ""
+    if total_sample_size is not None and total_sample_size < MIN_CONVICTION_OPTIMIZATION_SAMPLE:
+        warning_msg = (
+            f"INSUFFICIENT_SAMPLE: Quy mô mẫu N={total_sample_size} < 100 quan sát. "
+            "Tuân thủ nguyên tắc 'Thu thập trước, Hồi quy sau' — Không đủ điều kiện để tối ưu trọng số Conviction."
+        )
+
+    # Sort p-values ascending
+    sorted_items = sorted(p_values.items(), key=lambda item: float(item[1]))
+    m = len(sorted_items)
+
+    # Calculate BH adjusted p-values and significance
+    q_thresholds = [(i + 1) / m * alpha for i in range(m)]
+
+    # Largest k such that P_(k) <= (k/m) * alpha
+    max_k = -1
+    for i in range(m):
+        if float(sorted_items[i][1]) <= q_thresholds[i]:
+            max_k = i
+
+    # Step-up adjusted p-values: p_adj_i = min(1.0, (m / (i+1)) * p_i)
+    raw_p_floats = [float(val) for _, val in sorted_items]
+    adj_p_vals = [min(1.0, (m / (i + 1)) * raw_p_floats[i]) for i in range(m)]
+
+    # Monotonic adjustment from right to left
+    for i in range(m - 2, -1, -1):
+        adj_p_vals[i] = min(adj_p_vals[i], adj_p_vals[i + 1])
+
+    results: dict[str, Any] = {}
+    sig_count = 0
+    for idx, (name, _) in enumerate(sorted_items):
+        is_sig = idx <= max_k
+        if is_sig:
+            sig_count += 1
+        results[name] = {
+            "rank": idx + 1,
+            "raw_p_value": round(raw_p_floats[idx], 4),
+            "adjusted_p_value": round(adj_p_vals[idx], 4),
+            "critical_threshold": round(q_thresholds[idx], 4),
+            "is_significant": is_sig,
+        }
+
+    return {
+        "alpha": alpha,
+        "total_hypotheses": m,
+        "significant_count": sig_count,
+        "warning": warning_msg,
+        "results": results,
+    }
+
 
 

@@ -33,6 +33,17 @@
    - **Độ ổn định & Tái lập:** Khóa cứng `temperature = 0.0`, lưu đầy đủ `prompt_hash`, `input_hash`, `model_id`.
    - **Calibration Horizon 60 phiên:** Hiệu chuẩn xác suất kịch bản Pass 1 và AI confidence theo chu kỳ 60 phiên giao dịch (khớp vòng đời EXPIRED).
 
+5. **Exit Hypothesis Lab & Conviction Weights Statistical Validation (TASK-0016):**
+   - **Exit Hypothesis Lab (Chế độ chỉ báo cáo nghiên cứu):**
+     + So sánh song song 4 chiến lược chốt lời/cắt lỗ (A: Hiện tại +12% chốt 50% dời BE; B: R-Multiple +2R chốt 50% dời +0.5R; C: ATR Trailing 2.5x; D: All-or-Nothing đến Target 2).
+     + Đánh giá bằng phương pháp **Paired Bootstrap** (1,000 resamples), đối chiếu Expectancy theo R ($\text{PnL}/R$), Win Rate, Max Drawdown.
+     + Giữ chế độ chỉ báo cáo (Report-Only), không tự ý đổi quy tắc live nếu chưa có ADR mới.
+   - **Kiểm định Trọng số Conviction (Thu thập trước, Hồi quy sau):**
+     + Tính toán **Spearman IC** giữa từng trụ cột định lượng thô (`s_mos`, `s_fscore`, `s_ta`, `s_flow`) với Alpha thực tế $T+20$.
+     + Loại trừ các bản ghi có `mos_is_informative = False` để chống nhiễu định giá.
+     + Áp dụng kiểm định hiệu chỉnh đa biến **Benjamini–Hochberg** kiểm soát False Discovery Rate (FDR $\le 0.05$).
+     + Cảnh báo mẫu nhỏ (`INSUFFICIENT_SAMPLE`) khi cỡ mẫu $< 100$ hoặc $N_{\text{eff}}$ chưa đủ.
+
 ---
 
 ## 2. NGUYÊN TẮC QUẢN TRỊ RỦI RO & BẢO TOÀN KIẾN TRÚC

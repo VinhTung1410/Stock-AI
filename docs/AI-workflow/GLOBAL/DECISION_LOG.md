@@ -307,3 +307,26 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   5. Thiết lập `check_ai_calibration(horizon_days=60)` và `calibrate_scenario_probabilities(horizon_days=60)`: Lọc dữ liệu giao dịch và phân phối xác suất kịch bản theo chu kỳ 60 phiên giao dịch, tính toán Brier Score và Calibration Gap cho từng kịch bản Bull/Base/Bear.
   6. Triển khai trọn bộ 13 unit tests chuyên biệt trong `tests/test_task_0015_ai_governance.py` bảo đảm 100% pass và SonarCloud clean.
 - **Hệ quả:** Hệ thống đóng băng hoàn toàn rủi ro ảo giác từ AI, bảo đảm tính tất định và khả năng tái lập kiểm toán toán học, bảo vệ vốn tuyệt đối trước mọi sự cố sập cấu trúc của LLM.
+
+---
+
+### [ADR-020] Exit Hypothesis Lab, Paired Bootstrap & Kiểm Định Thống Kê Conviction Weights với Spearman IC & Benjamini–Hochberg FDR (TASK-0016)
+- **Ngày quyết định:** 2026-09-28
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề (Exit Replay Rigor & Data Snooping Prevention):**
+  1. Chiến lược thoát lệnh hiện tại (Policy A: Lãi $\ge +12\%$ chốt 50%, dời SL về BE) chưa từng được đối chiếu khách quan với các phương án định chế chuẩn (Policy B: R-Multiple $+2R$, Policy C: ATR Trailing $2.5\times$, Policy D: All-or-Nothing).
+  2. Nguy cơ Rule Snooping / Overfitting: Nếu tùy tiện đổi luật bán theo cảm tính sau mỗi nhịp thị trường, chiến lược sẽ rơi vào bẫy đường cong hồi quy giả tạo. Cần một phòng thí nghiệm Replay offline độc lập hoạt động nghiêm ngặt ở chế độ "Chỉ Báo Cáo" (Report-Only).
+  3. Kiểm định trọng số 4 trụ cột Conviction (MoS 40%, F-Score 25%, TA 20%, Flow 15%): Cần đo lường hệ số tương quan hạng Spearman (Spearman IC) đối với Alpha thực tế $T+20$, đồng thời bắt buộc loại trừ các bản ghi có `mos_is_informative = False` (do suy từ hệ số nhân cố định 1.18x).
+  4. Vấn đề Đa so sánh (Multiple Testing & False Discovery): Khi kiểm định đồng thời nhiều yếu tố, xác suất ngẫu nhiên bắt gặp một biến "có vẻ hiệu quả" tăng vọt. Cần cơ chế kiểm soát False Discovery Rate (FDR).
+  5. Nguyên tắc "Thu thập trước, Hồi quy sau": Tuyệt đối cấm cập nhật trọng số khi cỡ mẫu quan sát $N < 100$.
+- **Quyết định lựa chọn:**
+  1. Xây dựng module `Exit Hypothesis Lab` trong `backtest_engine.py`:
+     - Hiện thực hóa 4 hàm mô phỏng thoát lệnh độc lập: `_simulate_policy_a`, `_simulate_policy_b`, `_simulate_policy_c`, `_simulate_policy_d` và `simulate_exit_policy`.
+     - Áp dụng phương pháp **Paired Bootstrap** (1,000 resamples trên cùng tập lệnh) trong `run_exit_hypothesis_lab()`, đối chiếu Expectancy theo R ($\text{PnL}/R$), Win Rate, Max Drawdown và tính khoảng tin cậy 95% chênh lệch $\Delta \text{Expectancy}$ kèm $p$-value so sánh với Baseline A.
+     - Khóa cứng cờ `report_only = True` và phát thông điệp `EXIT_LAB_REPORT_DISCLAIMER` cấm tự động cập nhật hệ thống live khi chưa có ADR mới.
+  2. Xây dựng pipeline kiểm định trọng số trong `quant_engine.py`:
+     - Viết `calculate_pillar_spearman_ic()`: Tính Spearman IC thuần qua Standard Library + Pandas rank (không phụ thuộc Scipy), lọc sạch các bản ghi có `mos_is_informative = False`.
+     - Viết `apply_benjamini_hochberg_fdr()`: Thực hiện kiểm định step-up Benjamini–Hochberg kiểm soát FDR ở mức $\alpha = 0.05$.
+     - Bật cảnh báo `INSUFFICIENT_SAMPLE` khi quy mô mẫu $N < 100$, ngăn ngừa việc tối ưu hóa vội vàng khi thiếu dữ liệu.
+  3. Tạo bộ unit tests chuyên biệt `tests/test_task_0016_exit_lab_and_ic.py` (12 tests) đạt 100% pass, đưa toàn bộ suite lên 289 tests xanh.
+- **Hệ quả:** Hoàn tất trọn vẹn Phase 7 trong lộ trình `stock_ai_roadmap.md`, thiết lập nền tảng khoa học dữ liệu và thống kê định chế vững chắc cho toàn bộ hệ thống Stock-AI.

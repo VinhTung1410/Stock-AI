@@ -1042,7 +1042,7 @@ def scan_market_stress_events(
         for idx, dd in zip(close.index[mask_dd], roll_dd[mask_dd])
     ]
 
-    unique_dates = {d["date"] for d in drop_pts} | {d["date"] for d in drop_pcts}
+    unique_dates = {d["date"] for d in drop_pts} | {d["date"] for d in drop_pts}
 
     return {
         "drop_50pts_days": drop_pts,
@@ -1050,5 +1050,398 @@ def scan_market_stress_events(
         "sharp_drawdown_clusters": dd_clusters,
         "total_stress_days": len(unique_dates),
     }
+
+
+# =============================================================================
+# PHASE 7d: EXIT HYPOTHESIS LAB (RESEARCH / REPORT-ONLY)
+# =============================================================================
+
+POLICY_A: Final[str] = "POLICY_A"  # Baseline: Lãi >= +12% chốt 50%, dời SL về BE (+0.3%)
+POLICY_B: Final[str] = "POLICY_B"  # R-Multiple: Lãi >= +2R chốt 50%, dời SL lên +0.5R
+POLICY_C: Final[str] = "POLICY_C"  # ATR Trailing: Trailing Stop liên tục 2.5 * ATR(14)
+POLICY_D: Final[str] = "POLICY_D"  # All-or-Nothing: Giữ 100% đến Target 2 hoặc Hard Stop
+
+EXIT_LAB_REPORT_DISCLAIMER: Final[str] = (
+    "Kết quả từ Exit Hypothesis Lab chỉ phục vụ nghiên cứu và kiểm định học thuật (Report-Only). "
+    "Nghiêm cấm tự ý thay đổi quy tắc thoát lệnh trên hệ thống live khi chưa có ADR mới được ký duyệt."
+)
+
+
+def _compute_bar_atr(bar: pd.Series, prev_close: float) -> float:
+    """Helper to extract or approximate ATR(14) from bar."""
+    if "atr14" in bar and pd.notna(bar["atr14"]) and float(bar["atr14"]) > 0:
+        return float(bar["atr14"])
+    high = float(bar.get("high", 0.0))
+    low = float(bar.get("low", 0.0))
+    tr = max(high - low, abs(high - prev_close), abs(low - prev_close))
+    return tr if tr > 0 else (high * 0.02)
+
+
+def _simulate_policy_a(
+    entry_price: float, initial_stop: float, target_price: float, ohlc_df: pd.DataFrame
+) -> dict[str, Any]:
+    """Policy A: Lãi >= +12% chốt 50%, dời Stop-Loss về Breakeven (+0.3% phí)."""
+    r_val = max(entry_price - initial_stop, entry_price * 0.07)
+    stop_price = initial_stop
+    partial_done = False
+    realized_cash_pnl = 0.0
+    remaining_size = 1.0
+    exit_reason = "BARS_EXHAUSTED"
+    bars_held = len(ohlc_df)
+    mfe = 0.0
+    mae = 0.0
+
+    for idx, (_, bar) in enumerate(ohlc_df.iterrows()):
+        high = float(bar["high"])
+        low = float(bar["low"])
+        close = float(bar["close"])
+        mfe = max(mfe, (high - entry_price) / entry_price)
+        mae = min(mae, (low - entry_price) / entry_price)
+
+        # 1. Conservative Check: Stop hit first
+        if low <= stop_price:
+            realized_cash_pnl += remaining_size * (stop_price - entry_price)
+            exit_reason = "BREAKEVEN_STOP" if partial_done else "STOPPED_OUT"
+            bars_held = idx + 1
+            remaining_size = 0.0
+            break
+
+        # 2. Check Partial Profit +12%
+        if not partial_done and high >= entry_price * 1.12:
+            partial_exit_px = entry_price * 1.12
+            realized_cash_pnl += 0.50 * (partial_exit_px - entry_price)
+            remaining_size = 0.50
+            partial_done = True
+            stop_price = entry_price * 1.003  # BE + 0.3%
+
+        # 3. Check Target Hit for remaining
+        if high >= target_price:
+            realized_cash_pnl += remaining_size * (target_price - entry_price)
+            exit_reason = "TARGET_HIT"
+            bars_held = idx + 1
+            remaining_size = 0.0
+            break
+
+    if remaining_size > 0 and len(ohlc_df) > 0:
+        last_close = float(ohlc_df.iloc[-1]["close"])
+        realized_cash_pnl += remaining_size * (last_close - entry_price)
+
+    pnl_pct = (realized_cash_pnl / entry_price) * 100.0
+    r_mult = realized_cash_pnl / r_val
+    return {
+        "policy": POLICY_A,
+        "pnl_pct": round(pnl_pct, 2),
+        "r_multiple": round(r_mult, 2),
+        "holding_bars": bars_held,
+        "exit_reason": exit_reason,
+        "mfe_pct": round(mfe * 100.0, 2),
+        "mae_pct": round(mae * 100.0, 2),
+    }
+
+
+def _simulate_policy_b(
+    entry_price: float, initial_stop: float, target_price: float, ohlc_df: pd.DataFrame
+) -> dict[str, Any]:
+    """Policy B: R-Multiple (Lãi >= +2R chốt 50%, dời SL lên +0.5R)."""
+    r_val = max(entry_price - initial_stop, entry_price * 0.07)
+    trigger_price = entry_price + 2.0 * r_val
+    new_stop_price = entry_price + 0.5 * r_val
+    stop_price = initial_stop
+    partial_done = False
+    realized_cash_pnl = 0.0
+    remaining_size = 1.0
+    exit_reason = "BARS_EXHAUSTED"
+    bars_held = len(ohlc_df)
+    mfe = 0.0
+    mae = 0.0
+
+    for idx, (_, bar) in enumerate(ohlc_df.iterrows()):
+        high = float(bar["high"])
+        low = float(bar["low"])
+        close = float(bar["close"])
+        mfe = max(mfe, (high - entry_price) / entry_price)
+        mae = min(mae, (low - entry_price) / entry_price)
+
+        if low <= stop_price:
+            realized_cash_pnl += remaining_size * (stop_price - entry_price)
+            exit_reason = "R_TRAILING_STOP" if partial_done else "STOPPED_OUT"
+            bars_held = idx + 1
+            remaining_size = 0.0
+            break
+
+        if not partial_done and high >= trigger_price:
+            realized_cash_pnl += 0.50 * (trigger_price - entry_price)
+            remaining_size = 0.50
+            partial_done = True
+            stop_price = new_stop_price
+
+        if high >= target_price:
+            realized_cash_pnl += remaining_size * (target_price - entry_price)
+            exit_reason = "TARGET_HIT"
+            bars_held = idx + 1
+            remaining_size = 0.0
+            break
+
+    if remaining_size > 0 and len(ohlc_df) > 0:
+        last_close = float(ohlc_df.iloc[-1]["close"])
+        realized_cash_pnl += remaining_size * (last_close - entry_price)
+
+    pnl_pct = (realized_cash_pnl / entry_price) * 100.0
+    r_mult = realized_cash_pnl / r_val
+    return {
+        "policy": POLICY_B,
+        "pnl_pct": round(pnl_pct, 2),
+        "r_multiple": round(r_mult, 2),
+        "holding_bars": bars_held,
+        "exit_reason": exit_reason,
+        "mfe_pct": round(mfe * 100.0, 2),
+        "mae_pct": round(mae * 100.0, 2),
+    }
+
+
+def _simulate_policy_c(
+    entry_price: float, initial_stop: float, ohlc_df: pd.DataFrame, atr_multiplier: float = 2.5
+) -> dict[str, Any]:
+    """Policy C: ATR Trailing Stop liên tục (Highest High - 2.5 * ATR14)."""
+    r_val = max(entry_price - initial_stop, entry_price * 0.07)
+    highest_high = entry_price
+    stop_price = initial_stop
+    exit_price = entry_price
+    exit_reason = "BARS_EXHAUSTED"
+    bars_held = len(ohlc_df)
+    prev_close = entry_price
+    mfe = 0.0
+    mae = 0.0
+
+    for idx, (_, bar) in enumerate(ohlc_df.iterrows()):
+        high = float(bar["high"])
+        low = float(bar["low"])
+        close = float(bar["close"])
+        mfe = max(mfe, (high - entry_price) / entry_price)
+        mae = min(mae, (low - entry_price) / entry_price)
+
+        # 1. Check if low breached current stop established prior to or at start of bar
+        if low <= stop_price:
+            exit_price = stop_price
+            exit_reason = "TRAILING_STOP" if stop_price > initial_stop else "STOPPED_OUT"
+            bars_held = idx + 1
+            break
+
+        # 2. Update trailing stop for subsequent bars based on new peak
+        atr_val = _compute_bar_atr(bar, prev_close)
+        highest_high = max(highest_high, high)
+        dynamic_trail = highest_high - atr_multiplier * atr_val
+        stop_price = max(stop_price, dynamic_trail)
+
+        prev_close = close
+        exit_price = close
+
+    realized_cash_pnl = exit_price - entry_price
+    pnl_pct = (realized_cash_pnl / entry_price) * 100.0
+    r_mult = realized_cash_pnl / r_val
+    return {
+        "policy": POLICY_C,
+        "pnl_pct": round(pnl_pct, 2),
+        "r_multiple": round(r_mult, 2),
+        "holding_bars": bars_held,
+        "exit_reason": exit_reason,
+        "mfe_pct": round(mfe * 100.0, 2),
+        "mae_pct": round(mae * 100.0, 2),
+    }
+
+
+def _simulate_policy_d(
+    entry_price: float, initial_stop: float, target_price: float, ohlc_df: pd.DataFrame
+) -> dict[str, Any]:
+    """Policy D: All-or-Nothing (Giữ 100% đến Target 2 hoặc Hard Stop)."""
+    r_val = max(entry_price - initial_stop, entry_price * 0.07)
+    exit_price = entry_price
+    exit_reason = "BARS_EXHAUSTED"
+    bars_held = len(ohlc_df)
+    mfe = 0.0
+    mae = 0.0
+
+    for idx, (_, bar) in enumerate(ohlc_df.iterrows()):
+        high = float(bar["high"])
+        low = float(bar["low"])
+        close = float(bar["close"])
+        mfe = max(mfe, (high - entry_price) / entry_price)
+        mae = min(mae, (low - entry_price) / entry_price)
+
+        if low <= initial_stop:
+            exit_price = initial_stop
+            exit_reason = "STOPPED_OUT"
+            bars_held = idx + 1
+            break
+
+        if high >= target_price:
+            exit_price = target_price
+            exit_reason = "TARGET_HIT"
+            bars_held = idx + 1
+            break
+
+        exit_price = close
+
+    realized_cash_pnl = exit_price - entry_price
+    pnl_pct = (realized_cash_pnl / entry_price) * 100.0
+    r_mult = realized_cash_pnl / r_val
+    return {
+        "policy": POLICY_D,
+        "pnl_pct": round(pnl_pct, 2),
+        "r_multiple": round(r_mult, 2),
+        "holding_bars": bars_held,
+        "exit_reason": exit_reason,
+        "mfe_pct": round(mfe * 100.0, 2),
+        "mae_pct": round(mae * 100.0, 2),
+    }
+
+
+def simulate_exit_policy(
+    entry_price: float,
+    initial_stop: float,
+    target_price: float,
+    ohlc_df: pd.DataFrame,
+    policy: str = "A",
+    atr_multiplier: float = 2.5,
+) -> dict[str, Any]:
+    """Mô phỏng đường đi của 1 vị thế theo 4 chiến lược thoát lệnh (Phase 7d).
+
+    Hỗ trợ 4 policy:
+    - 'A': Chốt 50% tại +12%, dời Stop-Loss về Breakeven (+0.3% phí).
+    - 'B': Chốt 50% tại +2R, dời Stop-Loss lên +0.5R.
+    - 'C': ATR Trailing Stop liên tục 2.5 * ATR(14).
+    - 'D': All-or-Nothing (100% đến Target hoặc Hard Stop).
+    """
+    if ohlc_df is None or ohlc_df.empty or entry_price <= 0:
+        return {
+            "policy": policy,
+            "pnl_pct": 0.0,
+            "r_multiple": 0.0,
+            "holding_bars": 0,
+            "exit_reason": "INVALID_DATA",
+            "mfe_pct": 0.0,
+            "mae_pct": 0.0,
+        }
+
+    pol_upper = str(policy).upper().strip()
+    if pol_upper in ("A", POLICY_A):
+        return _simulate_policy_a(entry_price, initial_stop, target_price, ohlc_df)
+    if pol_upper in ("B", POLICY_B):
+        return _simulate_policy_b(entry_price, initial_stop, target_price, ohlc_df)
+    if pol_upper in ("C", POLICY_C):
+        return _simulate_policy_c(entry_price, initial_stop, ohlc_df, atr_multiplier)
+    if pol_upper in ("D", POLICY_D):
+        return _simulate_policy_d(entry_price, initial_stop, target_price, ohlc_df)
+
+    return _simulate_policy_a(entry_price, initial_stop, target_price, ohlc_df)
+
+
+def _compute_policy_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Helper calculating performance summary for a policy result set."""
+    if not results:
+        return {"expectancy_r": 0.0, "win_rate_pct": 0.0, "total_pnl_pct": 0.0, "max_drawdown_pct": 0.0, "avg_bars": 0.0}
+    r_vals = [r["r_multiple"] for r in results]
+    pnl_vals = [r["pnl_pct"] for r in results]
+    bars = [r["holding_bars"] for r in results]
+
+    cum_pnl = np.cumsum(pnl_vals)
+    peak = np.maximum.accumulate(cum_pnl)
+    drawdowns = peak - cum_pnl
+    max_dd = float(np.max(drawdowns)) if len(drawdowns) > 0 else 0.0
+
+    return {
+        "expectancy_r": round(float(np.mean(r_vals)), 3),
+        "win_rate_pct": round(float(sum(1 for p in pnl_vals if p > 0) / len(pnl_vals) * 100.0), 2),
+        "total_pnl_pct": round(float(sum(pnl_vals)), 2),
+        "max_drawdown_pct": round(max_dd, 2),
+        "avg_bars": round(float(np.mean(bars)), 1),
+    }
+
+
+def run_exit_hypothesis_lab(
+    signals_with_ohlc: list[dict[str, Any]],
+    n_bootstrap: int = 1_000,
+    random_state: int = 42,
+) -> dict[str, Any]:
+    """Exit Hypothesis Lab (Phase 7d - Research / Report-Only).
+
+    Thực hiện Replay song song 4 chiến lược thoát lệnh (A, B, C, D) trên cùng tập lệnh thực tế.
+    Áp dụng Paired Bootstrap để đối chiếu phân phối R-Expectancy và tính p-value so với Baseline A.
+    """
+    if not signals_with_ohlc:
+        return {
+            "status": "EMPTY_DATA",
+            "report_only": True,
+            "disclaimer": EXIT_LAB_REPORT_DISCLAIMER,
+            "policies": {},
+            "paired_bootstrap": {},
+            "sample_size": 0,
+        }
+
+    policy_results: dict[str, list[dict[str, Any]]] = {
+        POLICY_A: [],
+        POLICY_B: [],
+        POLICY_C: [],
+        POLICY_D: [],
+    }
+
+    for sig in signals_with_ohlc:
+        ep = float(sig.get("entry_price", 0.0))
+        sl = float(sig.get("initial_stop", ep * 0.93))
+        tp = float(sig.get("target_price", ep * 1.20))
+        df = sig.get("ohlc_df")
+        if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+            continue
+
+        for pol in (POLICY_A, POLICY_B, POLICY_C, POLICY_D):
+            res = simulate_exit_policy(ep, sl, tp, df, policy=pol)
+            policy_results[pol].append(res)
+
+    sample_size = len(policy_results[POLICY_A])
+    if sample_size == 0:
+        return {
+            "status": "NO_VALID_TRADES",
+            "report_only": True,
+            "disclaimer": EXIT_LAB_REPORT_DISCLAIMER,
+            "policies": {},
+            "paired_bootstrap": {},
+            "sample_size": 0,
+        }
+
+    summaries = {pol: _compute_policy_summary(res_list) for pol, res_list in policy_results.items()}
+
+    # Paired Bootstrap against Policy A
+    rng = np.random.default_rng(random_state)
+    paired_bootstrap_res: dict[str, Any] = {}
+    r_a = np.array([r["r_multiple"] for r in policy_results[POLICY_A]])
+
+    for pol in (POLICY_B, POLICY_C, POLICY_D):
+        r_x = np.array([r["r_multiple"] for r in policy_results[pol]])
+        diffs = np.zeros(n_bootstrap, dtype=float)
+
+        for b in range(n_bootstrap):
+            idx = rng.integers(0, sample_size, size=sample_size)
+            diffs[b] = float(np.mean(r_x[idx]) - np.mean(r_a[idx]))
+
+        ci_lower = float(np.percentile(diffs, 2.5))
+        ci_upper = float(np.percentile(diffs, 97.5))
+        p_val = float(np.mean(diffs <= 0.0))  # H0: Delta Expectancy <= 0
+
+        paired_bootstrap_res[pol] = {
+            "delta_expectancy_r": round(float(np.mean(diffs)), 3),
+            "ci_95": (round(ci_lower, 3), round(ci_upper, 3)),
+            "p_value_superiority": round(p_val, 4),
+            "is_significantly_better": bool(ci_lower > 0.0 and p_val < 0.05),
+        }
+
+    return {
+        "status": "SUCCESS",
+        "report_only": True,
+        "disclaimer": EXIT_LAB_REPORT_DISCLAIMER,
+        "sample_size": sample_size,
+        "policies": summaries,
+        "paired_bootstrap": paired_bootstrap_res,
+    }
+
 
 
