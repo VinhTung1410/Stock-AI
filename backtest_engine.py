@@ -573,12 +573,12 @@ def _generate_quant_core_signals(
         aligned_regimes = regimes.reindex(close.index).fillna(REGIME_SIDEWAYS)
         buy_cond = buy_cond & (aligned_regimes != REGIME_DOWNTREND)
 
-    buy_prev = buy_cond.shift(1).fillna(False).astype(bool)
+    buy_prev = buy_cond.shift(1, fill_value=False)
     buy_trigger = buy_cond & (~buy_prev)
 
     # Sell: Overbought climax or breakdown below MA20 * 0.95
     sell_cond = (rsi >= 75) | (close < ma20 * 0.95)
-    sell_prev = sell_cond.shift(1).fillna(False).astype(bool)
+    sell_prev = sell_cond.shift(1, fill_value=False)
     sell_trigger = sell_cond & (~sell_prev)
 
     signals[buy_trigger] = 1

@@ -1317,7 +1317,7 @@ def bootstrap_sharpe_ci(
 
     # Effective Sample Size (ESS) xử lý tự tương quan lag-1
     effective_n = float(n)
-    if n >= 4:
+    if n >= 4 and ret_std > 1e-12:
         s_ret = pd.Series(arr)
         rho_1 = s_ret.autocorr(lag=1)
         if pd.notnull(rho_1) and -0.99 <= rho_1 <= 0.99:
