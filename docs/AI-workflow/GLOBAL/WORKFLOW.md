@@ -32,9 +32,10 @@ Quy trình phát triển phần mềm và tối ưu hóa hệ thống định l�
     │   Audit mã nguồn, kiểm tra linting (Ruff exit 0), quét lỗ hổng bảo mật, Duplication <= 3%,
     │   Audit Disclaimer pháp lý trên 100% cảnh báo, kiểm toán Git Staging (No Local Files)
     ▼
-[Phase 7: Client Review, Release & Local Workspace Hygiene]
+[Phase 7: Client Review, Release, Workspace Hygiene & Post-Push CI/CD Monitoring]
         Bàn giao báo cáo nghiệm thu (Walkthrough) -> Client duyệt / Yêu cầu Push ->
-        Cập nhật DECISION_LOG.md -> Kiểm tra .gitignore -> Commit (English Only) & Push an toàn
+        Cập nhật DECISION_LOG.md -> Kiểm tra .gitignore -> Commit (English Only) & Push an toàn ->
+        Theo dõi GitHub Actions & SonarCloud CI/CD -> Khắc phục ngay nếu có lỗi (Fast Remediation)
 ```
 
 
@@ -51,11 +52,11 @@ Nếu ở bất kỳ giai đoạn nào tiêu chuẩn không đạt, task sẽ k�
 [Phase 2: PO làm rõ/điều chỉnh AC]           [Phase 4: Senior Dev]
                                                       ▲
                                                       │ (Sửa lỗi code/test/security)
-                                                      ├────────────────────────┐
-                                                      │                        │
-                                             [Phase 5: QA Lead]       [Phase 6: Reviewer]
-                                            (Failed test/Cov < 80%)  (Lint/Sonar/Duplication/
-                                            (Leakage/Injection bypass) Disclaimer/Git Leak)
+                                                      ├────────────────────────┬─────────────────────────┐
+                                                      │                        │                         │
+                                             [Phase 5: QA Lead]       [Phase 6: Reviewer]       [GitHub CI/CD & Sonar]
+                                            (Failed test/Cov < 80%)  (Lint/Sonar/Duplication/  (Remote test/build fail/
+                                            (Leakage/Injection bypass)Disclaimer/Git Leak)      Sonar Red Quality Gate)
 ```
 
 1. **Finance Lead REJECT (Không đạt chuẩn an toàn tài chính & phương pháp luận):**
@@ -82,6 +83,11 @@ Nếu ở bất kỳ giai đoạn nào tiêu chuẩn không đạt, task sẽ k�
 4. **Client REJECT (Chưa đạt kỳ vọng nghiệp vụ hoặc trải nghiệm):**
    - **Lý do:** Giao diện chưa trực quan, ngôn ngữ chưa chuẩn Unicode/CFA, hoặc thiếu tính năng Must-have theo hợp đồng nghiệp vụ.
    - **Xử lý:** Task chuyển về `PO_REVIEW` để tái lập trình kế hoạch cải tiến.
+5. **GitHub CI/CD & SonarCloud REJECT (Thất bại Pipeline Sau Khi Push):**
+   - **Lý do:**
+     - GitHub Actions Workflow thất bại ở bất kỳ bước nào (Setup Python, Cài thư viện, Pytest, Coverage < 80%, Ruff check).
+     - SonarCloud Quality Gate chuyển trạng thái RED (phát hiện bug mới, Cognitive Complexity, trùng lặp code > 3.0%, hoặc coverage không đạt ngưỡng).
+   - **Xử lý:** Task tự động quay lại `DEV_IN_PROGRESS`. Senior Dev bắt buộc trích xuất log lỗi từ GitHub, tái hiện và sửa chữa khẩn cấp (Fast Remediation) trên local, chạy test đối soát rồi push commit sửa lỗi ngay lập tức cho đến khi toàn bộ pipeline trên GitHub chuyển sang xanh (Green Build).
 
 ---
 
@@ -151,7 +157,7 @@ Nếu ở bất kỳ giai đoạn nào tiêu chuẩn không đạt, task sẽ k�
   4. **Audit Vệ sinh Git (Git Workspace Hygiene):** Kiểm tra `git status` đảm bảo **KHÔNG CÓ** file nháp cá nhân hoặc tài liệu nghiên cứu nội bộ nào của Client bị stage vào Git index.
 - **Cổng chuyển tiếp:** Đóng dấu `[ LGTM - Looks Good To Me ]` vào `TASK-xxxx.md`, chuyển trạng thái `CLIENT_ACCEPTANCE`.
 
-### Giai đoạn 7: Nghiệm thu & Quản lý Tài nguyên Cục bộ (Client Acceptance & Release)
+### Giai đoạn 7: Nghiệm thu, Phát hành & Giám sát CI/CD Sau Khi Push (Client Acceptance, Release & Post-Push CI/CD Monitoring)
 - **Actor:** Client + Hệ thống.
 - **Hành động:**
   1. Trình diễn báo cáo nghiệm thu tóm tắt (Walkthrough) cho Client.
@@ -165,7 +171,15 @@ Nếu ở bất kỳ giai đoạn nào tiêu chuẩn không đạt, task sẽ k�
      - Khi Client yêu cầu push lên Git, **mọi Git Commit Message (Title + Description) và Release Notes BẮT BUỘC PHẢI VIẾT BẰNG TIẾNG ANH 100% (ENGLISH ONLY)** theo chuẩn Conventional Commits (ví dụ: `feat(quant): ...`, `fix(security): ...`, `chore(docs): ...`).
      - Tuyệt đối **KHÔNG** viết Git commit message bằng tiếng Việt để bảo đảm tính chuyên nghiệp, dễ theo dõi trong CI/CD, và đáp ứng chuẩn mực mã nguồn quốc tế trên GitHub.
   6. Thực hiện `git commit` và `git push` mã nguồn chính thức lên GitHub an toàn.
-- **Cổng chuyển tiếp:** Chuyển trạng thái task sang `DONE`.
+  7. **Giám Sát CI/CD & Khắc Phục Lỗi Kịp Thời Sau Khi Push (Post-Push Pipeline Monitoring & Fast Remediation):**
+     - Sau khi push, AI Agent / Developer **BẮT BUỘC chủ động theo dõi pipeline GitHub Actions và SonarCloud Quality Gate** trên remote repository (qua GitHub CLI `gh run list` / `gh run watch` hoặc giao diện GitHub).
+     - **Nếu phát hiện bất kỳ step nào FAILED** (lỗi unit test trên môi trường remote, flake test, lỗi dependency, ruff lint, hoặc SonarCloud Quality Gate RED):
+       + Tuyệt đối **KHÔNG ĐƯỢC BỎ MẶC** hoặc tự ý kết thúc task khi build đang đỏ.
+       + Lập tức trích xuất log lỗi chi tiết từ GitHub Actions để xác định chính xác nguyên nhân gốc rễ.
+       + Kích hoạt vòng lặp sửa lỗi khẩn cấp (Fast Remediation loop): tái hiện lỗi trên local, sửa mã nguồn, chạy kiểm thử đối soát (`pytest`, `ruff check`).
+       + Tạo commit sửa lỗi với Git commit message chuẩn tiếng Anh (ví dụ: `fix(ci): resolve remote test failure on github actions`) và push lại ngay lập tức.
+       + Tiếp tục theo dõi cho đến khi toàn bộ GitHub Actions jobs hiển thị trạng thái thành công (Green Checkmark ✅) và SonarCloud đạt **Quality Gate: Passed**.
+- **Cổng chuyển tiếp:** Code đã push thành công, GitHub Actions xanh 100% (Green Build) và SonarCloud Quality Gate đạt Passed. Khi đó task mới chính thức chuyển trạng thái `DONE`.
 
 ---
 
