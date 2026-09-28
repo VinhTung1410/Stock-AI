@@ -796,23 +796,39 @@ def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> d
     }
 
 
-_TECH_CACHE = {}
+_TECH_CACHE: dict[str, tuple[float, dict]] = {}
+_LAST_KNOWN_TECH_CACHE: dict[str, dict] = {}
+_LAST_KNOWN_PRICE_CACHE: dict[str, float] = {}
+
+
+def get_last_known_price(symbol: str) -> float | None:
+    """Lấy thị giá hợp lệ gần nhất từ bộ nhớ đệm (Last Known Price)."""
+    sym_clean = symbol.upper().strip() if symbol else ""
+    return _LAST_KNOWN_PRICE_CACHE.get(sym_clean)
+
+
+def set_last_known_price(symbol: str, price: float) -> None:
+    """Ghi nhận thị giá hợp lệ gần nhất cho mã cổ phiếu."""
+    sym_clean = symbol.upper().strip() if symbol else ""
+    if sym_clean and price > 0:
+        _LAST_KNOWN_PRICE_CACHE[sym_clean] = float(price)
+
 
 def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool = True) -> dict:
     """
     Kéo lịch sử giá và tính toán các chỉ số kỹ thuật:
     MA20, MA50, RSI14, Vol/Vol_SMA20, ATR(14), Giá trị GD 20 phiên (ADV20 Tỷ),
     Hình thái nến (Upper Wick) và Dòng tiền Khối ngoại.
-    Tích hợp cache 120 giây chống nghẽn / Rate Limit vnstock.
+    Tích hợp cache 120 giây và Last Known Tech Cache phòng thủ chống rớt mạng / Rate Limit.
     """
-    global _TECH_CACHE
+    global _TECH_CACHE, _LAST_KNOWN_TECH_CACHE, _LAST_KNOWN_PRICE_CACHE
     import time
     now = time.time()
     sym_clean = symbol.upper().strip()
     cache_key = f"{sym_clean}_{fetch_foreign}"
     if cache_key in _TECH_CACHE:
         c_time, c_data = _TECH_CACHE[cache_key]
-        if now - c_time < 120:
+        if now - c_time < 120 and c_data:
             return c_data
 
     try:
@@ -825,7 +841,10 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
 
         df = q.history(start=start_date, end=end_date)
         if df is None or df.empty:
-            logging.warning(f"Không lấy được dữ liệu cho {symbol}")
+            logging.warning("Không lấy được dữ liệu nến mới cho %s", symbol)
+            if sym_clean in _LAST_KNOWN_TECH_CACHE:
+                logging.info("Sử dụng dữ liệu kỹ thuật gần nhất từ bộ nhớ đệm cho %s", sym_clean)
+                return _LAST_KNOWN_TECH_CACHE[sym_clean]
             return {}
 
         df = df.sort_values("time").reset_index(drop=True)
@@ -868,18 +887,27 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
         # Xác định trạng thái kỹ thuật
         status_ma20 = "Nằm TRÊN MA20 (Khả quan)" if ma20 and current_price >= ma20 else "Nằm DƯỚI MA20 (Thận trọng)"
 
-        # Kéo dòng tiền khối ngoại nếu được yêu cầu
-        foreign_data = fetch_foreign_trading_flow(symbol) if fetch_foreign else {}
+        # Kéo dòng tiền khối ngoại nếu được yêu cầu (cách ly lỗi)
+        foreign_data = {}
+        if fetch_foreign:
+            try:
+                foreign_data = fetch_foreign_trading_flow(symbol)
+            except Exception as e_ff:
+                logging.warning("Lỗi kéo dòng tiền ngoại %s: %s", symbol, e_ff)
 
-        # Phát hiện bẫy kỹ thuật / nến
-        trap_info = detect_news_trap(symbol, {
-            "current_price": current_price,
-            "ma20": ma20,
-            "ma50": ma50,
-            "rsi14": rsi14,
-            "vol_ratio": vol_ratio,
-            "upper_wick_ratio": upper_wick_ratio
-        })
+        # Phát hiện bẫy kỹ thuật / nến (cách ly lỗi)
+        try:
+            trap_info = detect_news_trap(symbol, {
+                "current_price": current_price,
+                "ma20": ma20,
+                "ma50": ma50,
+                "rsi14": rsi14,
+                "vol_ratio": vol_ratio,
+                "upper_wick_ratio": upper_wick_ratio,
+            })
+        except Exception as e_trap:
+            logging.warning("Lỗi phát hiện bẫy %s: %s", symbol, e_trap)
+            trap_info = {"is_trap": False, "trap_type": "NONE"}
 
         # Tính giá trần / sàn ước lượng (HOSE ±7%, HNX ±10%)
         # Mặc định an toàn cho HOSE: 6.8% - 7.0%
@@ -915,9 +943,14 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             "trap_info": trap_info
         }
         _TECH_CACHE[cache_key] = (now, res)
+        _LAST_KNOWN_TECH_CACHE[sym_clean] = res
+        _LAST_KNOWN_PRICE_CACHE[sym_clean] = current_price
         return res
     except Exception:
-        logging.exception(f"Lỗi khi lấy kỹ thuật mã {symbol}")
+        logging.exception("Lỗi khi lấy kỹ thuật mã %s", symbol)
+        if sym_clean in _LAST_KNOWN_TECH_CACHE:
+            logging.info("Fallback sử dụng dữ liệu kỹ thuật gần nhất cho %s", sym_clean)
+            return _LAST_KNOWN_TECH_CACHE[sym_clean]
         return {}
 
 
@@ -1059,10 +1092,30 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
 
         tech = tech_map.get(symbol) or fetch_stock_technical(symbol)
         raw_curr_price = tech.get("current_price")
+        sym_clean = symbol.upper().strip()
+
+        # Tuyến phòng thủ 1: Tìm trong bộ nhớ đệm Last Known Price
         if raw_curr_price is None or raw_curr_price <= 0:
+            raw_curr_price = _LAST_KNOWN_PRICE_CACHE.get(sym_clean)
+
+        # Tuyến phòng thủ 2: Kéo 2 nến gần nhất từ fetch_stock_historical để lấy close
+        if raw_curr_price is None or raw_curr_price <= 0:
+            try:
+                hist_df = fetch_stock_historical(symbol, limit=2)
+                if hist_df is not None and not hist_df.empty:
+                    last_c = float(hist_df["close"].iloc[-1])
+                    if last_c > 0:
+                        raw_curr_price = last_c
+                        _LAST_KNOWN_PRICE_CACHE[sym_clean] = last_c
+            except Exception:
+                pass
+
+        if raw_curr_price is None or raw_curr_price <= 0:
+            logging.warning("⚠️ Không thể xác định thị giá cho %s, bắt buộc dùng giá vốn %s", symbol, cost_price)
             curr_price = cost_price
         else:
             curr_price = _parse_numeric(raw_curr_price, cost_price)
+            _LAST_KNOWN_PRICE_CACHE[sym_clean] = curr_price
 
         cost_value = volume * cost_price * 1000  # Đơn vị giá vnstock thường là nghìn VNĐ
         market_value = volume * curr_price * 1000
@@ -1147,10 +1200,16 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
 
         tech = tech_map.get(symbol) or fetch_stock_technical(symbol)
         raw_curr_price = tech.get("current_price")
+        sym_clean = symbol.upper().strip()
+
+        if raw_curr_price is None or raw_curr_price <= 0:
+            raw_curr_price = _LAST_KNOWN_PRICE_CACHE.get(sym_clean)
+
         if raw_curr_price is None or raw_curr_price <= 0:
             curr_price = target_buy
         else:
             curr_price = _parse_numeric(raw_curr_price, target_buy)
+            _LAST_KNOWN_PRICE_CACHE[sym_clean] = curr_price
         diff_pct = ((curr_price - target_buy) / target_buy * 100) if target_buy > 0 else 0.0
 
         ff = tech.get("foreign_flow", {})

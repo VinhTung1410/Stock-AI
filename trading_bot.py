@@ -35,6 +35,8 @@ from discord_alerts import (
     format_portfolio_embed,
     send_discord_dm,
     send_discord_webhook,
+    send_partial_take_profit_alert,
+    send_regime_circuit_breaker_alert,
     send_system_heartbeat,
     send_trade_signal_alert,
 )
@@ -153,6 +155,33 @@ def _handle_value_deep_drawdown(symbol: str, curr_price: float, cost_price: floa
     return False
 
 
+def _handle_partial_profit_lock(symbol: str, curr_price: float, cost_price: float, high_price: float, today_str: str) -> bool:
+    alert_key = (today_str, symbol, "PARTIAL_PROFIT_LOCK")
+    if alert_key in sent_alerts:
+        return False
+
+    from quant_engine import evaluate_partial_profit_lock
+    res = evaluate_partial_profit_lock(
+        entry_price=cost_price,
+        current_high=max(curr_price, high_price),
+        current_price=curr_price,
+        target_profit_pct=12.0,
+    )
+    if res.get("partial_take_profit"):
+        logging.info(f"🎯 KÍCH HOẠT PARTIAL PROFIT LOCK: {symbol} (+{res.get('max_gain_pct'):.1f}%)")
+        send_partial_take_profit_alert(
+            symbol=symbol,
+            current_price=curr_price,
+            entry_price=cost_price,
+            gain_pct=float(res.get("max_gain_pct", 0.0)),
+            new_stop_price=float(res.get("new_stop_price", cost_price)),
+            lock_fraction=float(res.get("lock_fraction", 0.5)),
+        )
+        sent_alerts.add(alert_key)
+        return True
+    return False
+
+
 def _check_single_holding_risk(row, today_str: str, vnindex_chg_pct: float):
     from data_engine import detect_gdkhq_event, fetch_stock_technical
     from quant_valuation import get_stock_archetype_details
@@ -177,6 +206,11 @@ def _check_single_holding_risk(row, today_str: str, vnindex_chg_pct: float):
     gdkhq_info = detect_gdkhq_event(symbol, tech_sym, vnindex_chg_pct)
     if gdkhq_info.get("is_gdkhq"):
         _handle_gdkhq_shield(symbol, curr_price, today_str, gdkhq_info)
+        return
+
+    # Kiểm tra Chốt lời từng phần (Target 1 +12% -> Chốt 50%, dời stop hòa vốn)
+    high_p = float(row.get("Giá cao (k)") or curr_price)
+    if _handle_partial_profit_lock(symbol, curr_price, cost_price, high_p, today_str):
         return
 
     if not is_value_investing:
@@ -323,6 +357,11 @@ def _process_single_watchlist_item(item: dict, today_str: str):
         return
 
     target_p = round(curr_p * 1.12, 2)
+    p_min = round(curr_p * 0.995, 2)
+    p_max = round(curr_p * 1.005, 2)
+    rr = round((target_p - curr_p) / max(curr_p - dynamic_sl, 0.01), 2)
+    style = "⚡ LƯỚT SÓNG T+ / BREAKOUT" if "Breakout" in buy_reason else "🛡️ TÍCH SẢN VÙNG GIÁ RẺ"
+
     logging.info(f"🟢 BẮN TÍN HIỆU MUA WATCHLIST: {sym} (SL: {dynamic_sl}k{f_score_txt})")
     send_trade_signal_alert(
         symbol=sym,
@@ -330,7 +369,19 @@ def _process_single_watchlist_item(item: dict, today_str: str):
         current_price=curr_p,
         trigger_reason=f"[WATCHLIST THEO DÕI] {buy_reason}{f_score_txt}",
         target_price=target_p,
-        stop_loss=dynamic_sl
+        stop_loss=dynamic_sl,
+        entry_range=(p_min, p_max),
+        target_price_t2=round(curr_p * 1.20, 2),
+        risk_reward=rr,
+        position_size_nav="10% - 15% NAV",
+        conviction_score=75.0,
+        quant_metrics={
+            "f_score": f_score_dict.get("score"),
+            "tech_status": tech.get("status_ma20"),
+            "rsi": tech.get("rsi14"),
+        },
+        thesis_breaker=f"Thủng hỗ trợ {dynamic_sl:,.2f}k hoặc vi phạm BCTC quý.",
+        strategy_style=style,
     )
     sent_alerts.add(alert_key)
     _record_and_save_buy_signal(sym, curr_p, target_p, dynamic_sl, buy_reason, f_score_txt, f_score_dict, tech)
@@ -348,12 +399,147 @@ def _scan_watchlist_opportunities(today_str: str):
             logging.exception("Lỗi khi quét mục watchlist")
 
 
+last_market_scan_time = 0.0
+_last_macro_check_time: float = 0.0
+_last_macro_cash_mode: bool = False
+
+
+def check_macro_circuit_breaker(today_str: str, cache_ttl_sec: int = 300) -> bool:
+    """Kiểm tra chốt chặn vĩ mô Macro Circuit Breaker (Cache 5 phút tránh spam 250 nến VN-Index).
+
+    Trả về True nếu Cash Mode đang kích hoạt (VN-Index Downtrend), False nếu an toàn.
+    """
+    global _last_macro_check_time, _last_macro_cash_mode
+    now_ts = time.time()
+    if (now_ts - _last_macro_check_time) < cache_ttl_sec:
+        return _last_macro_cash_mode
+
+    from data_engine import fetch_stock_historical
+    from regime_classifier import REGIME_DOWNTREND, classify_market_regime
+
+    alert_key = (today_str, "CIRCUIT_BREAKER_CASH_MODE")
+    try:
+        df_vnindex = fetch_stock_historical("VNINDEX", time_frame="1D", limit=250)
+        _last_macro_check_time = now_ts
+        if df_vnindex is None or df_vnindex.empty:
+            return False
+
+        regimes = classify_market_regime(df_vnindex)
+        latest_regime = regimes.iloc[-1] if not regimes.empty else "SIDEWAYS"
+
+        if latest_regime == REGIME_DOWNTREND:
+            _last_macro_cash_mode = True
+            if alert_key not in sent_alerts:
+                vn_close = float(df_vnindex["close"].iloc[-1])
+                send_regime_circuit_breaker_alert(
+                    regime=REGIME_DOWNTREND,
+                    reason="VN-Index đóng cửa dưới MA200 kèm độ dốc âm. Kích hoạt Cash Mode bảo vệ vốn!",
+                    vnindex_price=vn_close,
+                )
+                sent_alerts.add(alert_key)
+            return True
+        else:
+            _last_macro_cash_mode = False
+    except Exception:
+        logging.exception("Lỗi khi kiểm tra Macro Circuit Breaker")
+    return False
+
+
+def _process_active_screener_opportunity(opp: dict, today_str: str):
+    sym = opp.get("symbol", "").upper()
+    conv_score = float(opp.get("conviction_score", 0.0))
+    status = opp.get("status", "")
+
+    if conv_score < 70 or status != "HIGH_CONVICTION":
+        return
+
+    alert_key = (today_str, sym, "ACTIVE_MARKET_BUY")
+    if alert_key in sent_alerts or is_symbol_in_cooldown(sym, cooldown_days=5):
+        return
+
+    curr_p = float(opp.get("current_price", 0.0))
+    target_p = float(opp.get("target_price", curr_p * 1.12))
+    stop_loss = float(opp.get("stop_loss", curr_p * 0.94))
+    p_min = float(opp.get("p_min", curr_p * 0.995))
+    p_max = float(opp.get("p_max", curr_p * 1.005))
+    fv = float(opp.get("fair_value", curr_p * 1.15))
+    mos_pct = float(opp.get("mos_pct", 0.0))
+    rr = float(opp.get("risk_reward", 2.0))
+    pos_nav = str(opp.get("position_size_nav", "10% NAV"))
+    style = str(opp.get("style_type", "⚡ LƯỚT SÓNG T+"))
+    setup_desc = str(opp.get("setup_type", "Breakout nổ Vol"))
+    story = str(opp.get("story", ""))
+
+    quant_info = {
+        "f_score": opp.get("f_score", 7),
+        "mos_pct": mos_pct,
+        "z_score": opp.get("z_score", 2.8),
+        "tech_status": opp.get("status_ma20", "TRÊN MA20"),
+    }
+
+    logging.info(f"💎 BẮN TÍN HIỆU ACTIVE SCREENER: {sym} (Score: {conv_score:.0f}, R:R: {rr:.1f}x)")
+    send_trade_signal_alert(
+        symbol=sym,
+        action="MUA",
+        current_price=curr_p,
+        trigger_reason=f"[ACTIVE SCREENER] {setup_desc}",
+        target_price=target_p,
+        stop_loss=stop_loss,
+        entry_range=(p_min, p_max),
+        target_price_t2=fv,
+        risk_reward=rr,
+        position_size_nav=pos_nav,
+        conviction_score=conv_score,
+        quant_metrics=quant_info,
+        catalysts=[story] if story else None,
+        thesis_breaker=f"Thủng hỗ trợ {stop_loss:,.2f}k hoặc vi phạm BCTC quý.",
+        strategy_style=style,
+    )
+    sent_alerts.add(alert_key)
+    record_signal_cooldown(sym, action="MUA", conviction_score=conv_score)
+
+
+def _scan_active_market_opportunities(today_str: str):
+    """Quét chủ động cơ hội thị trường (Active Market Screener) mỗi 15 phút."""
+    global last_market_scan_time
+    now_ts = time.time()
+    if (now_ts - last_market_scan_time) < 900:
+        return
+
+    last_market_scan_time = now_ts
+    logging.info("🔍 Đang kích hoạt Active Market Screener (đãi cát tìm vàng)...")
+
+    try:
+        opportunities = scan_market_opportunities()
+        if not opportunities:
+            return
+
+        for opp in opportunities:
+            _process_active_screener_opportunity(opp, today_str)
+
+    except Exception:
+        logging.exception("Lỗi khi quét Active Market Screener")
+
+
 def check_realtime_risk():
     """Tier 1: Real-time risk and opportunity monitoring (< 1s latency)."""
     now = get_vn_time()
     today_str = now.strftime("%Y-%m-%d")
+
+    # 1. Quản trị rủi ro danh mục (luôn chạy để bảo vệ tài sản)
     _audit_portfolio_risk(today_str)
+
+    # 2. Chốt chặn Macro Circuit Breaker
+    is_cash_mode = check_macro_circuit_breaker(today_str)
+    if is_cash_mode:
+        logging.warning("🛡️ MACRO CIRCUIT BREAKER ĐANG KÍCH HOẠT: Tạm dừng quét tín hiệu Mua mới.")
+        return
+
+    # 3. Quét tín hiệu mua từ Watchlist
     _scan_watchlist_opportunities(today_str)
+
+    # 4. Quét cơ hội thị trường chủ động (Active Market Screener)
+    _scan_active_market_opportunities(today_str)
 
 
 def trigger_scheduled_report(report_type: str, title_desc: str):
@@ -373,6 +559,14 @@ def trigger_scheduled_report(report_type: str, title_desc: str):
 
         portfolio = load_portfolio()
         df_eval = evaluate_portfolio(portfolio)
+        if df_eval is not None and not df_eval.empty:
+            for _, r in df_eval.iterrows():
+                sym_r = r.get("Mã CP", "")
+                m_price = float(r.get("Thị giá (k)", 0.0))
+                c_price = float(r.get("Giá vốn (k)", 0.0))
+                if abs(m_price - c_price) < 0.001 and float(r.get("Lãi/Lỗ (%)", 0.0)) == 0.0:
+                    logging.warning("⚠️ Báo cáo %s: Mã %s có Thị giá trùng Giá vốn %.2fk (fallback)", report_type, sym_r, c_price)
+
         watchlist = load_watchlist()
         df_wl = evaluate_watchlist(watchlist) if watchlist else None
         news = fetch_macro_news(limit=10, tracked_symbols=[p["symbol"] for p in portfolio] + [w["symbol"] for w in watchlist])

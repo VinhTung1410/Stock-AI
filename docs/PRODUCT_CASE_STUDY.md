@@ -33,7 +33,7 @@ This case study documents a real-world product evolution cycle: from handling an
 
 ---
 
-## 🗺️ Part I: The Product Evolution Chronicle (v1.0 → v4.0)
+## 🗺️ Part I: The Product Evolution Chronicle (v1.0 → v5.5)
 
 Before diving into the crisis deep-dives, here is how Stock-AI systematically matured through continuous customer feedback, domain adaptation, and architectural iterations:
 

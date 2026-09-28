@@ -311,35 +311,204 @@ def format_portfolio_embed(portfolio_df, ai_summary: str, report_type: str = "B�
     return [embed1, embed2]
 
 
-def send_trade_signal_alert(symbol: str, action: str, current_price: float, trigger_reason: str, target_price: float = None, stop_loss: float = None) -> bool:
+def _format_execution_fields(
+    current_price: float,
+    target_price: float | None,
+    stop_loss: float | None,
+    entry_range: tuple[float, float] | None,
+    target_price_t2: float | None,
+    risk_reward: float | None,
+    position_size_nav: str | None,
+) -> list[dict[str, Any]]:
+    fields = []
+    if entry_range and len(entry_range) == 2:
+        fields.append({
+            "name": "🎯 Vùng gom mua tối ưu",
+            "value": f"`{entry_range[0]:,.2f} - {entry_range[1]:,.2f} k VND`",
+            "inline": True,
+        })
+    else:
+        fields.append({
+            "name": "💵 Thị giá hiện tại",
+            "value": f"`{current_price:,.2f} k VND`",
+            "inline": True,
+        })
+
+    if target_price:
+        t1_label = "🚀 Giá mục tiêu T1" if target_price_t2 else "🚀 Giá mục tiêu (Target)"
+        t1_pct = ((target_price - current_price) / current_price) * 100 if current_price > 0 else 0.0
+        fields.append({
+            "name": t1_label,
+            "value": f"`{target_price:,.2f} k` (**{t1_pct:+.1f}%**)",
+            "inline": True,
+        })
+
+    if target_price_t2:
+        t2_pct = ((target_price_t2 - current_price) / current_price) * 100 if current_price > 0 else 0.0
+        fields.append({
+            "name": "💎 Giá mục tiêu T2 (Fair Value)",
+            "value": f"`{target_price_t2:,.2f} k` (**{t2_pct:+.1f}%**)",
+            "inline": True,
+        })
+
+    if stop_loss:
+        sl_pct = ((stop_loss - current_price) / current_price) * 100 if current_price > 0 else 0.0
+        fields.append({
+            "name": "🛡️ Ngưỡng cắt lỗ (Stop Loss)",
+            "value": f"`{stop_loss:,.2f} k` (**{sl_pct:+.1f}%**)",
+            "inline": True,
+        })
+
+    if risk_reward:
+        rr_icon = "⭐" if risk_reward >= 2.0 else "⚠️"
+        fields.append({
+            "name": f"{rr_icon} Tỷ lệ R:R",
+            "value": f"`{risk_reward:.2f}x` (Chuẩn Quỹ ≥ 2.0x)",
+            "inline": True,
+        })
+
+    if position_size_nav:
+        fields.append({
+            "name": "⚖️ Tỷ trọng đề xuất (Half-Kelly)",
+            "value": f"`{position_size_nav}`",
+            "inline": True,
+        })
+
+    return fields
+
+
+def _format_quant_fields(
+    quant_metrics: dict | None,
+    trigger_reason: str,
+    conviction_score: float | None,
+) -> list[dict[str, Any]]:
+    fields = []
+    if conviction_score is not None:
+        tier_label = "💎 HIGH CONVICTION" if conviction_score >= 70 else "🎯 MEDIUM CONVICTION"
+        fields.append({
+            "name": "⭐ Điểm tin cậy (Conviction)",
+            "value": f"**{conviction_score:.0f}/100** ({tier_label})",
+            "inline": True,
+        })
+
+    if quant_metrics:
+        f_score = quant_metrics.get("f_score")
+        mos = quant_metrics.get("mos_pct")
+        z_score = quant_metrics.get("z_score")
+        tech_status = quant_metrics.get("tech_status") or quant_metrics.get("ma20_status")
+        rsi_val = quant_metrics.get("rsi")
+
+        metrics_items = []
+        if f_score is not None:
+            metrics_items.append(f"• **F-Score:** `{f_score}/9`")
+        if mos is not None:
+            metrics_items.append(f"• **Biên an toàn (MoS):** `{mos:+.1f}%`")
+        if z_score is not None:
+            metrics_items.append(f"• **Altman Z-Score:** `{z_score:.2f}` (An toàn)")
+        if tech_status:
+            metrics_items.append(f"• **Kỹ thuật:** `{tech_status}`")
+        if rsi_val is not None:
+            metrics_items.append(f"• **RSI(14):** `{rsi_val:.1f}`")
+
+        if metrics_items:
+            fields.append({
+                "name": "🔬 Bảo chứng Định lượng (Quant Proof)",
+                "value": "\n".join(metrics_items),
+                "inline": False,
+            })
+
+    if trigger_reason:
+        fields.append({
+            "name": "🎯 Lý do kích hoạt",
+            "value": f"`{trigger_reason}`",
+            "inline": False,
+        })
+
+    return fields
+
+
+def _format_thesis_fields(
+    catalysts: list[str] | str | None,
+    thesis_breaker: str | None,
+) -> list[dict[str, Any]]:
+    fields = []
+    if catalysts:
+        if isinstance(catalysts, list):
+            cat_text = "\n".join([f"• {c}" for c in catalysts])
+        else:
+            cat_text = str(catalysts)
+        fields.append({
+            "name": "💡 Luận điểm Xúc tác (Catalysts)",
+            "value": cat_text[:1000],
+            "inline": False,
+        })
+
+    if thesis_breaker:
+        fields.append({
+            "name": "⚠️ Kịch bản Vô hiệu hóa (Thesis Breaker)",
+            "value": f"`{thesis_breaker[:500]}`",
+            "inline": False,
+        })
+    return fields
+
+
+def send_trade_signal_alert(
+    symbol: str,
+    action: str,
+    current_price: float,
+    trigger_reason: str,
+    target_price: float = None,
+    stop_loss: float = None,
+    *,
+    entry_range: tuple[float, float] = None,
+    target_price_t2: float = None,
+    risk_reward: float = None,
+    position_size_nav: str = None,
+    conviction_score: float = None,
+    quant_metrics: dict = None,
+    catalysts: list[str] | str = None,
+    thesis_breaker: str = None,
+    strategy_style: str = None,
+) -> bool:
     """
-    Gửi cảnh báo tín hiệu MUA hoặc BÁN bảo mật trực tiếp vào Tin nhắn riêng (DM) của bạn.
-    Không gửi vào group/kênh chung để bảo mật danh mục và chiến lược giao dịch cá nhân.
+    Gửi thẻ tín hiệu MUA hoặc BÁN bảo mật chuẩn Quỹ (Institutional Trade Signal Card)
+    trực tiếp vào Tin nhắn riêng (DM) của bạn.
     """
     is_buy = "MUA" in action.upper()
     color = 0x2ECC71 if is_buy else 0xE74C3C
     icon = "🟢" if is_buy else "🔴"
-    action_str = "MUA / TÍCH LŨY" if is_buy else "BÁN / HẠ TỶ TRỌNG"
+    base_action = "MUA / TÍCH LŨY" if is_buy else "BÁN / HẠ TỶ TRỌNG"
+    action_str = f"{base_action} ({strategy_style})" if strategy_style else base_action
 
-    fields = [
-        {"name": "💵 Thị giá hiện tại", "value": f"`{current_price:,.2f} k VND`", "inline": True},
-        {"name": "🎯 Lý do kích hoạt", "value": f"`{trigger_reason}`", "inline": False},
-    ]
-    if target_price:
-        fields.append({"name": "🚀 Giá mục tiêu (Target)", "value": f"`{target_price:,.2f} k VND`", "inline": True})
-    if stop_loss:
-        fields.append({"name": "🛡️ Ngưỡng cắt lỗ (Stop Loss)", "value": f"`{stop_loss:,.2f} k VND`", "inline": True})
+    fields = _format_execution_fields(
+        current_price=current_price,
+        target_price=target_price,
+        stop_loss=stop_loss,
+        entry_range=entry_range,
+        target_price_t2=target_price_t2,
+        risk_reward=risk_reward,
+        position_size_nav=position_size_nav,
+    )
+    fields.extend(_format_quant_fields(
+        quant_metrics=quant_metrics,
+        trigger_reason=trigger_reason,
+        conviction_score=conviction_score,
+    ))
+    fields.extend(_format_thesis_fields(
+        catalysts=catalysts,
+        thesis_breaker=thesis_breaker,
+    ))
 
     embed = {
         "title": f"{icon} [DM RIÊNG] TÍN HIỆU {action_str}: {symbol.upper()}",
         "description": (
-            f"Hệ thống Trading Bot vừa phát hiện tín hiệu kỹ thuật cho mã **{symbol.upper()}** "
+            f"Hệ thống Trading Bot vừa kích hoạt tín hiệu định lượng cho mã **{symbol.upper()}** "
             f"(Gửi bảo mật vào DM riêng)!{SIGNAL_DISCLAIMER}"
         ),
         "color": color,
         "fields": fields,
         "footer": {
-            "text": "Trading Signal Bot • Tín hiệu riêng tư 24/7 • Miễn trừ trách nhiệm",
+            "text": "Institutional Signal Engine • Tín hiệu riêng tư 24/7 • Miễn trừ trách nhiệm",
         },
     }
 
@@ -349,6 +518,76 @@ def send_trade_signal_alert(symbol: str, action: str, current_price: float, trig
     else:
         logging.warning("Chưa cấu hình DISCORD_BOT_TOKEN hoặc DISCORD_USER_ID để gửi DM! Tạm thời fallback sang Webhook...")
         return send_discord_webhook(embeds=[embed])
+
+
+def send_partial_take_profit_alert(
+    symbol: str,
+    current_price: float,
+    entry_price: float,
+    gain_pct: float,
+    new_stop_price: float,
+    lock_fraction: float = 0.5,
+) -> bool:
+    """Gửi cảnh báo chốt lời từng phần (Partial Profit Lock) và dời stop lên break-even (Phase 5d)."""
+    embed = {
+        "title": f"🎯 [DM RIÊNG] ĐẠT TARGET 1: CHỐT LỜI {symbol.upper()} (+{gain_pct:.1f}%)",
+        "description": (
+            f"Vị thế **{symbol.upper()}** vừa chạm mục tiêu Target 1 với mức lãi **+{gain_pct:.1f}%**!\n\n"
+            f"**Kế hoạch khóa lợi nhuận (Institutional Rule):**\n"
+            f"• 💰 **Chốt lời:** Bán `{int(lock_fraction * 100)}%` vị thế để hiện thực hóa lợi nhuận vào túi.\n"
+            f"• 🛡️ **Dời Stop Loss:** Nâng Stop Loss của `{int((1 - lock_fraction) * 100)}%` còn lại lên giá vốn `{new_stop_price:,.2f} k` (Break-even).\n"
+            f"• ✨ **Trạng thái:** Vị thế hiện tại đã chuyển sang **Risk-Free Trade** (Tuyệt đối không thể lỗ)!"
+            f"{SIGNAL_DISCLAIMER}"
+        ),
+        "color": 0xF39C12,  # Màu vàng cam Target Reached
+        "fields": [
+            {"name": "💵 Thị giá hiện tại", "value": f"`{current_price:,.2f} k`", "inline": True},
+            {"name": "💼 Giá vốn ban đầu", "value": f"`{entry_price:,.2f} k`", "inline": True},
+            {"name": "🛡️ Stop Loss mới (Hòa vốn)", "value": f"`{new_stop_price:,.2f} k`", "inline": True},
+        ],
+        "footer": {
+            "text": "Partial Profit Lock Engine • Kỷ luật chốt lời 2 nấc",
+        },
+    }
+    if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
+        return send_discord_dm(embeds=[embed])
+    return send_discord_webhook(embeds=[embed])
+
+
+def send_regime_circuit_breaker_alert(
+    regime: str,
+    reason: str,
+    vnindex_price: float = None,
+) -> bool:
+    """Gửi cảnh báo Macro Circuit Breaker khi thị trường chuyển sang DOWNTREND hoặc CASH MODE."""
+    is_downtrend = "DOWNTREND" in regime.upper()
+    color = 0xE74C3C if is_downtrend else 0x2ECC71
+    icon = "🚨" if is_downtrend else "🟢"
+    action_note = (
+        "**HÀNH ĐỘNG BẮT BUỘC (CASH MODE):**\n"
+        "• Khóa 100% lệnh mua mới để tránh rủi ro 'bắt dao rơi'.\n"
+        "• Ưu tiên bảo toàn vốn, hạ margin và kích hoạt Stop Loss dứt khoát nếu vi phạm."
+        if is_downtrend else
+        "**HÀNH ĐỘNG:**\n"
+        "• Thị trường đã lấy lại xu hướng tăng/cân bằng. Mở lại luồng quét cơ hội mua theo định lượng."
+    )
+    vn_info = f" (VN-Index: `{vnindex_price:,.1f}`)" if vnindex_price else ""
+    embed = {
+        "title": f"{icon} [MACRO CIRCUIT BREAKER] TRẠNG THÁI THỊ TRƯỜNG: {regime.upper()}",
+        "description": (
+            f"Hệ thống phát hiện biến động trạng thái vĩ mô VN-Index{vn_info}:\n\n"
+            f"• **Lý do kích hoạt:** `{reason}`\n\n"
+            f"{action_note}"
+            f"{SIGNAL_DISCLAIMER}"
+        ),
+        "color": color,
+        "footer": {
+            "text": "Macro Regime Circuit Breaker • Quản trị rủi ro hệ thống",
+        },
+    }
+    if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
+        return send_discord_dm(embeds=[embed])
+    return send_discord_webhook(embeds=[embed])
 
 
 def send_risk_alert(symbol: str, current_price: float, cost_price: float, trigger_reason: str):
