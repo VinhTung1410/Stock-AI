@@ -19,6 +19,8 @@ from datetime import datetime
 from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
+import pandas as pd
+
 from ai_analyst import generate_morning_strategy_report, generate_portfolio_analysis
 from data_engine import (
     evaluate_portfolio,
@@ -542,30 +544,40 @@ def check_realtime_risk():
     _scan_active_market_opportunities(today_str)
 
 
+def _maybe_prune_watchlist_before_ato(report_type: str, today_str: str) -> None:
+    global last_ato_pruned_date
+    if any(tag in report_type for tag in ["08:45", "ATO"]) and last_ato_pruned_date != today_str:
+        try:
+            sync_auto_watchlist(prune_manual=True)
+            last_ato_pruned_date = today_str
+            logging.info("✅ Đã hoàn tất thanh lọc Watchlist trước ATO cho ngày %s", today_str)
+        except Exception:
+            logging.exception("Không thể đồng bộ tự động Watchlist trước ATO")
+
+
+def _warn_portfolio_fallback_prices(df_eval: pd.DataFrame | None, report_type: str) -> None:
+    if df_eval is None or df_eval.empty:
+        return
+    for _, r in df_eval.iterrows():
+        sym_r = r.get("Mã CP", "")
+        m_price = float(r.get("Thị giá (k)", 0.0))
+        c_price = float(r.get("Giá vốn (k)", 0.0))
+        pnl = float(r.get("Lãi/Lỗ (%)", 0.0))
+        if abs(m_price - c_price) < 0.001 and abs(pnl) < 0.001:
+            logging.warning("⚠️ Báo cáo %s: Mã %s có Thị giá trùng Giá vốn %.2fk (fallback)", report_type, sym_r, c_price)
+
+
 def trigger_scheduled_report(report_type: str, title_desc: str):
     """Tier 2: AI-driven scheduled strategy reports (ATO 08:45, Lunch 11:30, ATC 14:45)."""
     logging.info(f"🚀 Starting scheduled strategy report: {report_type} ({title_desc})")
     try:
         # Tự động cập nhật & thanh lọc Watchlist DUY NHẤT 1 LẦN trước phiên ATO (08:45)
-        global last_ato_pruned_date
         today_str = get_vn_time().strftime("%Y-%m-%d")
-        if any(tag in report_type for tag in ["08:45", "ATO"]) and last_ato_pruned_date != today_str:
-            try:
-                sync_auto_watchlist(prune_manual=True)
-                last_ato_pruned_date = today_str
-                logging.info(f"✅ Đã hoàn tất thanh lọc Watchlist trước ATO cho ngày {today_str}")
-            except Exception:
-                logging.exception("Không thể đồng bộ tự động Watchlist trước ATO")
+        _maybe_prune_watchlist_before_ato(report_type, today_str)
 
         portfolio = load_portfolio()
         df_eval = evaluate_portfolio(portfolio)
-        if df_eval is not None and not df_eval.empty:
-            for _, r in df_eval.iterrows():
-                sym_r = r.get("Mã CP", "")
-                m_price = float(r.get("Thị giá (k)", 0.0))
-                c_price = float(r.get("Giá vốn (k)", 0.0))
-                if abs(m_price - c_price) < 0.001 and float(r.get("Lãi/Lỗ (%)", 0.0)) == 0.0:
-                    logging.warning("⚠️ Báo cáo %s: Mã %s có Thị giá trùng Giá vốn %.2fk (fallback)", report_type, sym_r, c_price)
+        _warn_portfolio_fallback_prices(df_eval, report_type)
 
         watchlist = load_watchlist()
         df_wl = evaluate_watchlist(watchlist) if watchlist else None
