@@ -17,7 +17,7 @@ def test_pb_vcb_sept_2026():
     mock_fin = {"bvps": 25.0, "pb": 2.33, "period": "2026-Q2"}
     mock_board = pd.DataFrame({("match", "match_price"): [58.25]})
     with patch("data_engine.get_financial_ratios", return_value=mock_fin), \
-         patch("vnstock.Trading.price_board", return_value=mock_board):
+         patch("vnstock.api.trading.Trading.price_board", return_value=mock_board):
         result = compute_pb("VCB", as_of_date="2026-09-23")
         assert result is not None, "P/B của VCB không được là None"
         assert 1.5 <= result <= 2.8, f"P/B={result} vượt ngưỡng hợp lý đã biết của VCB"
@@ -28,7 +28,7 @@ def test_pb_tcb_sept_2026():
     mock_fin = {"bvps": 24.5, "pb": 1.12, "period": "2026-Q2"}
     mock_board = pd.DataFrame({("match", "match_price"): [27.44]})
     with patch("data_engine.get_financial_ratios", return_value=mock_fin), \
-         patch("vnstock.Trading.price_board", return_value=mock_board):
+         patch("vnstock.api.trading.Trading.price_board", return_value=mock_board):
         result = compute_pb("TCB", as_of_date="2026-09-23")
         assert result is not None, "P/B của TCB không được là None"
         assert 0.7 <= result <= 2.0, f"P/B={result} vượt ngưỡng hợp lý đã biết của TCB"
@@ -76,10 +76,7 @@ def test_stale_vci_2018_data_is_rejected():
         "2018-Q4": [4.06, 16.75, 25.46]
     })
     with patch("data_engine._extract_kbs_ratios", return_value={}), \
-         patch("vnstock.Vnstock") as mock_vnstock:
-        mock_instance = mock_vnstock.return_value
-        mock_v = mock_instance.stock.return_value
-        mock_v.finance.ratio.return_value = df_mock
+         patch("vnstock.api.financial.Finance.ratio", return_value=df_mock):
         ratios = get_financial_ratios("VCB")
         # P/B phải bị loại bỏ (None) vì 2018 quá cũ
         assert ratios.get("pb") is None

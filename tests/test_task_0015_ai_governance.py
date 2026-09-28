@@ -195,13 +195,14 @@ class TestProvenanceTracking:
                                                 "decision_tag": "TÍCH SẢN",
                                                 "position_size_nav": "5% NAV",
                                             }):
-                                                res = generate_quantamental_2pass_report("FPT")
-                                                assert "prompt_hash" in res
-                                                assert len(res["prompt_hash"]) == 64
-                                                assert "input_hash" in res
-                                                assert len(res["input_hash"]) == 64
-                                                assert res["model_id"] == MODEL_NAME
-                                                assert res["temperature"] == 0.0
+                                                with mock.patch("db_manager.save_quant_signal", return_value=123):
+                                                    res = generate_quantamental_2pass_report("FPT")
+                                                    assert "prompt_hash" in res
+                                                    assert len(res["prompt_hash"]) == 64
+                                                    assert "input_hash" in res
+                                                    assert len(res["input_hash"]) == 64
+                                                    assert res["model_id"] == MODEL_NAME
+                                                    assert res["temperature"] == 0.0
 
 
 class TestCalibrationHorizonAndScenarioBrier:

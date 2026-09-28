@@ -10,6 +10,7 @@ import io
 import json
 import logging
 import re
+import sys
 import urllib.request
 from datetime import datetime, timedelta
 from typing import Any
@@ -36,7 +37,11 @@ TAG_DIVIDEND = "CỔ TỨC"
 
 PATH_PORTFOLIO_JSON = "data/portfolio.json"
 PATH_WATCHLIST_JSON = "data/watchlist.json"
+PATH_LAST_KNOWN_PRICES_JSON = "data/last_known_prices.json"
 KEY_SECTOR_CLUSTER = "Cụm ngành"
+
+# Danh sách mã đã bị thanh lọc trong phiên để tránh bị Google Sheet nạp lại
+_SESSION_PRUNED_SYMBOLS: set[str] = set()
 
 
 # Cache bộ nhớ tạm để tránh spam request Google Sheets liên tục
@@ -392,26 +397,46 @@ def load_watchlist(filepath: str = PATH_WATCHLIST_JSON) -> list:
     """
     Đọc danh sách cổ phiếu đang theo dõi (Watchlist).
     Ưu tiên kéo từ Google Sheet (nếu có và dùng file mặc định), fallback sang watchlist.json.
+    Bảo lưu các mã tự động (is_auto: True) khi hợp nhất với dữ liệu Google Sheet.
     """
+    existing_items = []
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                existing_items = json.load(f) or []
+        except Exception:
+            existing_items = []
+
+    existing_auto_items = [it for it in existing_items if it.get("is_auto")]
+
     sheet_url = os.environ.get("GOOGLE_SHEET_URL", "").strip()
     if sheet_url and filepath == PATH_WATCHLIST_JSON:
         _, w_data = fetch_google_sheet_data(sheet_url)
         if w_data:
+            # Lọc bỏ các mã đã bị thanh lọc trong phiên hiện tại
+            sheet_manual_items = [
+                item for item in w_data
+                if item.get("symbol", "").upper().strip() not in _SESSION_PRUNED_SYMBOLS
+            ]
+            merged_watchlist = list(sheet_manual_items)
+            merged_symbols = {m.get("symbol", "").upper().strip() for m in merged_watchlist if m.get("symbol")}
+
+            # Giữ nguyên các mã tự động do bot phát hiện mà chưa có trong danh sách
+            for auto_item in existing_auto_items:
+                auto_sym = auto_item.get("symbol", "").upper().strip()
+                if auto_sym and auto_sym not in merged_symbols and auto_sym not in _SESSION_PRUNED_SYMBOLS:
+                    merged_watchlist.append(auto_item)
+                    merged_symbols.add(auto_sym)
+
             try:
-                with open(filepath, "w", encoding="utf-8") as f:
-                    json.dump(w_data, f, ensure_ascii=False, indent=2)
+                save_watchlist(merged_watchlist, filepath=filepath)
             except Exception:
                 pass
-            return w_data
+            return merged_watchlist
 
-    if not os.path.exists(filepath):
-        return []
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        logging.exception(f"Lỗi đọc {filepath}")
-        return []
+    if existing_items:
+        return existing_items
+    return []
 
 
 def save_portfolio(portfolio_data: list, filepath: str = PATH_PORTFOLIO_JSON):
@@ -526,11 +551,19 @@ def prune_unsuitable_watchlist(
             retained, pruned = _evaluate_watchlist_item_suitability(item, tech_map, prune_manual)
             if pruned:
                 pruned_items.append(pruned)
+                _SESSION_PRUNED_SYMBOLS.add(pruned["symbol"].upper().strip())
                 logging.info(f"🗑️ Đã thanh lọc {pruned['symbol']} khỏi Watchlist: {pruned['reason']}")
             elif retained:
                 retained_items.append(retained)
 
         save_watchlist(retained_items, filepath=filepath)
+
+        # Tự động đồng bộ ngược lên Google Sheet nếu có webhook cập nhật
+        if pruned_items and os.environ.get("GOOGLE_SHEET_UPDATE_URL"):
+            try:
+                update_google_sheet_watchlist(retained_items)
+            except Exception:
+                logging.exception("Lỗi khi đồng bộ Watchlist sau thanh lọc lên Google Sheet")
 
         if notify_discord and pruned_items:
             try:
@@ -673,7 +706,7 @@ def fetch_foreign_trading_flow(symbol: str) -> dict:
     }
 
     try:
-        from vnstock import Trading
+        from vnstock.api.trading import Trading
         t = Trading(symbol=sym_clean, source="VCI")
         pb = t.price_board([sym_clean])
         if pb is not None and not pb.empty:
@@ -798,20 +831,67 @@ def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> d
 
 _TECH_CACHE: dict[str, tuple[float, dict]] = {}
 _LAST_KNOWN_TECH_CACHE: dict[str, dict] = {}
-_LAST_KNOWN_PRICE_CACHE: dict[str, float] = {}
+
+
+def _load_persisted_last_known_prices() -> dict[str, float]:
+    """Tự động nạp thị giá hợp lệ gần nhất từ disk để container khởi động không bao giờ bị rỗng cache."""
+    if os.path.exists(PATH_LAST_KNOWN_PRICES_JSON):
+        try:
+            with open(PATH_LAST_KNOWN_PRICES_JSON, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return {k.upper().strip(): float(v) for k, v in data.items() if float(v) > 0}
+        except Exception as e:
+            logging.warning("Không thể đọc cache thị giá từ disk: %s", e)
+    return {}
+
+
+def _persist_last_known_prices() -> None:
+    """Lưu lại thị giá hợp lệ gần nhất ra disk để phục vụ các phiên khởi động kế tiếp."""
+    if os.environ.get("ENV") == "testing" or "pytest" in sys.modules:
+        return
+    try:
+        os.makedirs(os.path.dirname(PATH_LAST_KNOWN_PRICES_JSON), exist_ok=True)
+        with open(PATH_LAST_KNOWN_PRICES_JSON, "w", encoding="utf-8") as f:
+            json.dump(_LAST_KNOWN_PRICE_CACHE, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logging.warning("Không thể lưu cache thị giá ra disk: %s", e)
+
+
+_LAST_KNOWN_PRICE_CACHE: dict[str, float] = _load_persisted_last_known_prices()
 
 
 def get_last_known_price(symbol: str) -> float | None:
     """Lấy thị giá hợp lệ gần nhất từ bộ nhớ đệm (Last Known Price)."""
     sym_clean = symbol.upper().strip() if symbol else ""
-    return _LAST_KNOWN_PRICE_CACHE.get(sym_clean)
+    val = _LAST_KNOWN_PRICE_CACHE.get(sym_clean)
+    if val is None or val <= 0:
+        disk_data = _load_persisted_last_known_prices()
+        if disk_data.get(sym_clean):
+            _LAST_KNOWN_PRICE_CACHE[sym_clean] = disk_data[sym_clean]
+            return disk_data[sym_clean]
+    return val
 
 
 def set_last_known_price(symbol: str, price: float) -> None:
-    """Ghi nhận thị giá hợp lệ gần nhất cho mã cổ phiếu."""
+    """Ghi nhận thị giá hợp lệ gần nhất cho mã cổ phiếu và đồng bộ xuống disk."""
     sym_clean = symbol.upper().strip() if symbol else ""
     if sym_clean and price > 0:
         _LAST_KNOWN_PRICE_CACHE[sym_clean] = float(price)
+        _persist_last_known_prices()
+
+
+def _fetch_history_with_fallback(symbol: str, start_date: str, end_date: str, time_frame: str = "1D") -> pd.DataFrame:
+    """Fetch history from multiple providers with graceful fallback (VCI -> KBS -> MSN)."""
+    from vnstock.api.quote import Quote
+    for src in ["VCI", "KBS", "MSN"]:
+        try:
+            q = Quote(symbol=symbol, source=src)
+            df = q.history(start=start_date, end=end_date, interval=time_frame)
+            if df is not None and not df.empty:
+                return df.sort_values("time").reset_index(drop=True)
+        except Exception:
+            continue
+    return pd.DataFrame()
 
 
 def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool = True) -> dict:
@@ -832,14 +912,11 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             return c_data
 
     try:
-        from vnstock.api.quote import Quote
-        q = Quote(symbol=sym_clean, source="VCI")
-
         # Lấy ngày hiện tại và 120 ngày trước để đủ tính MA50 & RSI14 & ATR
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d")
 
-        df = q.history(start=start_date, end=end_date)
+        df = _fetch_history_with_fallback(sym_clean, start_date, end_date)
         if df is None or df.empty:
             logging.warning("Không lấy được dữ liệu nến mới cho %s", symbol)
             if sym_clean in _LAST_KNOWN_TECH_CACHE:
@@ -945,6 +1022,7 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
         _TECH_CACHE[cache_key] = (now, res)
         _LAST_KNOWN_TECH_CACHE[sym_clean] = res
         _LAST_KNOWN_PRICE_CACHE[sym_clean] = current_price
+        _persist_last_known_prices()
         return res
     except Exception:
         logging.exception("Lỗi khi lấy kỹ thuật mã %s", symbol)
@@ -967,8 +1045,6 @@ def fetch_stock_historical(
     """
     sym_clean = symbol.upper().strip()
     try:
-        from vnstock.api.quote import Quote
-        q = Quote(symbol=sym_clean, source="VCI")
         calc_end = end_date or datetime.now().strftime("%Y-%m-%d")
         if start_date:
             calc_start = start_date
@@ -976,10 +1052,9 @@ def fetch_stock_historical(
             days_back = max(int(limit * 2.5), 60)
             calc_start = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
-        df = q.history(start=calc_start, end=calc_end, interval=time_frame)
+        df = _fetch_history_with_fallback(sym_clean, calc_start, calc_end, time_frame=time_frame)
         if df is None or df.empty:
             return pd.DataFrame()
-        df = df.sort_values("time").reset_index(drop=True)
         if start_date is not None:
             return df.reset_index(drop=True)
         return df.tail(limit).reset_index(drop=True)
@@ -1013,12 +1088,12 @@ def fetch_corporate_dividends(symbol: str):
     Trả về DataFrame chứa danh sách cổ tức.
     """
     try:
-        from vnstock import Vnstock
-        stock = Vnstock().stock(symbol=symbol, source='VCI')
-        df = stock.company.dividends()
+        from vnstock.api.company import Company
+        c = Company(symbol=symbol, source="VCI")
+        df = c.events()
         return df
     except Exception:
-        logging.exception(f"Lỗi lấy thông tin cổ tức cho {symbol}")
+        logging.exception("Lỗi lấy thông tin cổ tức cho %s", symbol)
         return None
 
 
@@ -1094,9 +1169,9 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
         raw_curr_price = tech.get("current_price")
         sym_clean = symbol.upper().strip()
 
-        # Tuyến phòng thủ 1: Tìm trong bộ nhớ đệm Last Known Price
+        # Tuyến phòng thủ 1: Tìm trong bộ nhớ đệm Last Known Price (nạp sẵn từ disk/RAM)
         if raw_curr_price is None or raw_curr_price <= 0:
-            raw_curr_price = _LAST_KNOWN_PRICE_CACHE.get(sym_clean)
+            raw_curr_price = get_last_known_price(sym_clean)
 
         # Tuyến phòng thủ 2: Kéo 2 nến gần nhất từ fetch_stock_historical để lấy close
         if raw_curr_price is None or raw_curr_price <= 0:
@@ -1106,7 +1181,7 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
                     last_c = float(hist_df["close"].iloc[-1])
                     if last_c > 0:
                         raw_curr_price = last_c
-                        _LAST_KNOWN_PRICE_CACHE[sym_clean] = last_c
+                        set_last_known_price(sym_clean, last_c)
             except Exception:
                 pass
 
@@ -1115,7 +1190,7 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
             curr_price = cost_price
         else:
             curr_price = _parse_numeric(raw_curr_price, cost_price)
-            _LAST_KNOWN_PRICE_CACHE[sym_clean] = curr_price
+            set_last_known_price(sym_clean, curr_price)
 
         cost_value = volume * cost_price * 1000  # Đơn vị giá vnstock thường là nghìn VNĐ
         market_value = volume * curr_price * 1000
@@ -1203,13 +1278,24 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
         sym_clean = symbol.upper().strip()
 
         if raw_curr_price is None or raw_curr_price <= 0:
-            raw_curr_price = _LAST_KNOWN_PRICE_CACHE.get(sym_clean)
+            raw_curr_price = get_last_known_price(sym_clean)
+
+        if raw_curr_price is None or raw_curr_price <= 0:
+            try:
+                hist_df = fetch_stock_historical(symbol, limit=2)
+                if hist_df is not None and not hist_df.empty:
+                    last_c = float(hist_df["close"].iloc[-1])
+                    if last_c > 0:
+                        raw_curr_price = last_c
+                        set_last_known_price(sym_clean, last_c)
+            except Exception:
+                pass
 
         if raw_curr_price is None or raw_curr_price <= 0:
             curr_price = target_buy
         else:
             curr_price = _parse_numeric(raw_curr_price, target_buy)
-            _LAST_KNOWN_PRICE_CACHE[sym_clean] = curr_price
+            set_last_known_price(sym_clean, curr_price)
         diff_pct = ((curr_price - target_buy) / target_buy * 100) if target_buy > 0 else 0.0
 
         ff = tech.get("foreign_flow", {})
@@ -2153,9 +2239,9 @@ def get_shares_outstanding(ticker: str, as_of_date: str = None) -> float | None:
     _ = as_of_date
     sym = ticker.strip().upper()
     try:
-        from vnstock import Vnstock
-        v = Vnstock().stock(symbol=sym, source="VCI")
-        ov = v.company.overview()
+        from vnstock.api.company import Company
+        c = Company(symbol=sym, source="VCI")
+        ov = c.overview()
         if ov is not None and not ov.empty:
             row = ov.iloc[0]
             shares = row.get("issue_share") or row.get("shares_outstanding")
@@ -2193,7 +2279,7 @@ def compute_pb(ticker: str, as_of_date: str = None) -> float | None:
 
     # 1. Thử lấy giá thị trường thực tế khớp lệnh sàn HOSE
     try:
-        from vnstock import Trading
+        from vnstock.api.trading import Trading
         t = Trading(symbol=sym, source="VCI")
         pb_board = t.price_board([sym])
         if pb_board is not None and not pb_board.empty:
@@ -2257,9 +2343,9 @@ def _parse_kbs_ratio_row(item: str, val: Any) -> tuple[str, float | None] | None
 def _extract_kbs_ratios(symbol: str) -> dict:
     """Trích xuất dữ liệu tài chính mới nhất từ nguồn KBS."""
     try:
-        from vnstock import Vnstock
-        v = Vnstock().stock(symbol=symbol, source="KBS")
-        df = v.finance.ratio()
+        from vnstock.api.financial import Finance
+        f = Finance(symbol=symbol, source="KBS")
+        df = f.ratio()
         if df is None or df.empty:
             return {}
         cols = [c for c in df.columns if c not in ["item", "item_id", "item_en"]]
@@ -2323,9 +2409,9 @@ def get_financial_ratios(symbol: str) -> dict:
             }
 
         # Bước 2: Fallback VCI nếu KBS không khả dụng
-        from vnstock import Vnstock
-        v = Vnstock().stock(symbol=symbol, source="VCI")
-        df_ratio = v.finance.ratio()
+        from vnstock.api.financial import Finance
+        f = Finance(symbol=symbol, source="VCI")
+        df_ratio = f.ratio()
         if df_ratio is None or df_ratio.empty:
             return {}
 

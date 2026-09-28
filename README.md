@@ -1,4 +1,4 @@
-![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?logo=python&logoColor=white)
 ![CI/CD Pipeline](https://github.com/VinhTung1410/Stock-AI/actions/workflows/ci.yml/badge.svg)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=VinhTung1410_Stock-AI&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=VinhTung1410_Stock-AI)
 [![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=VinhTung1410_Stock-AI&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=VinhTung1410_Stock-AI)
@@ -9,251 +9,135 @@
 
 # Stock-AI 📈
 
-> A quantamental stock analysis system that eliminates LLM hallucination through deterministic hard gates — built for the Vietnam stock market.
+> **An institutional-grade quantamental stock analysis and trading governance system for the Vietnam Stock Exchange (HOSE/HNX) — combining deterministic financial engineering with veto-only AI governance.**
 
-**[🌐 Live Demo](https://stock-ai-recq.onrender.com/)** · **[🧭 AI Product Case Study](docs/PRODUCT_CASE_STUDY.md)** · **[📖 Architecture Docs](docs/PROJECT_STRUCTURE.md)** · **[📜 System Rules](docs/rule.md)**
-
----
-
-## The Problem
-
-Retail investors in Vietnam increasingly rely on AI (ChatGPT, Gemini) for stock analysis. But LLMs **hallucinate financial numbers** — a 15% ROE becomes 51%, a P/E of 8 becomes 18.
-
-Wrong numbers → wrong buy/sell signals → **real money lost**.
-
-## The Approach
-
-### "Python computes. AI only judges."
-
-Instead of asking an LLM to calculate financial metrics (where it will hallucinate), this system uses a **2-pass quantamental pipeline**:
-
-| Pass | Engine | Role |
-|---|---|---|
-| **Pass 1** | Deterministic Python | Compute F-Score, Z-Score, ATR, Kelly Criterion, Margin of Safety — all verified by code |
-| **Hard Gates** | Rule-based filter | Automatically **REJECT** buy signals if MoS < 8%, Risk/Reward < 1.5×, or Kelly ≤ 0 |
-| **Pass 2** | Gemini AI | Write the narrative report using **only** the verified numbers from Pass 1 |
-
-A regex-based sanitizer strips any remaining Chinese characters (a common Gemini artifact for Vietnamese content).
+**[🌐 Live Demo](https://stock-ai-recq.onrender.com/)** · **[🧭 Product Case Study](docs/PRODUCT_CASE_STUDY.md)** · **[📖 Architecture Docs](docs/PROJECT_STRUCTURE.md)** · **[📜 Engineering Workflow](docs/AI-workflow/GLOBAL/WORKFLOW.md)**
 
 ---
 
-## Architecture
+## 💡 Core Philosophy: *"Python Computes. AI Only Judges."*
+
+Large Language Models (LLMs) hallucinate financial ratios (e.g., misreading an 8% ROE as 28%). In financial markets, bad data leads to ruined portfolios.
+
+Stock-AI enforces **strict architectural separation**:
+1. **Pass 1 — Deterministic Python Engine**: Computes Piotroski F-Score, Altman Z-Score, 4-Archetype Intrinsic Valuation, Dynamic ATR, and Half-Kelly sizing with zero LLM involvement.
+2. **Hard Quantitative Gates**: Instantly **REJECTS** recommendations if Margin of Safety < 8%, Risk/Reward < 1.5×, or Kelly ≤ 0.
+3. **Pass 2 — Veto-Only AI Governance (Gemini, `temp=0.0`)**: Evaluates qualitative catalysts, corporate governance, and contrarian thesis breaker risks using **only** pre-verified numbers from Pass 1. The LLM cannot invent numbers or override quantitative gates; it only holds veto power.
+
+---
+
+## 🏗️ System Architecture
 
 ```mermaid
 flowchart TD
-    subgraph DataSources ["Data Sources"]
-        Vnstock["Vnstock API / VCI"] -->|OHLC, Volume, Financials| DataEngine["data_engine.py"]
-        GoogleNews["Google News RSS"] -->|Macro News 24h| DataEngine
-        PortfolioJSON[("data/portfolio.json")] <-->|Read / Write| DataEngine
+    subgraph MarketData ["Market and Fundamental Ingestion"]
+        VCI["Vnstock / VCI API"] --> DE["data_engine.py"]
+        RSS["Macro and Sector RSS News"] --> DE
     end
 
-    subgraph QuantCore ["Quantitative Core"]
-        DataEngine -->|OHLC & Financial Statements| QuantEngine["quant_engine.py"]
-        QuantEngine -->|Data Gate, F-Score, Z-Score, ATR| AIAnalyst["ai_analyst.py"]
-        QuantEngine -->|Hard Gates: MoS, Kelly, R:R| AIAnalyst
-        QuantEngine -->|F-Score & Data Gate Safety| TradingBot["trading_bot.py"]
+    subgraph DeterministicCore ["Pass 1: Deterministic Quantitative Engine"]
+        DE --> QE["quant_engine.py & quant_valuation.py"]
+        QE --> Gates["Hard Quantitative Risk Gates (MoS, Kelly, ADV20, R:R)"]
+        QE --> Conviction["4-Pillar Conviction Matrix (0-100 pts)"]
     end
 
-    subgraph UI ["User Interface — Streamlit"]
-        AppCore["app.py"] --> Tab1["Overview & Watchlist"]
-        AppCore --> Tab2["Market & Technical Charts"]
-        AppCore --> Tab3["Portfolio Management"]
-        AppCore --> Tab4["AI Strategy Analysis"]
-        AppCore --> Tab5["Alpha Tracker & Audit"]
-        Tab2 --> CompTV["TradingView Charts 60 FPS"]
-        Tab2 --> CompECharts["ECharts P/E & P/B Valuation"]
-        Tab4 -->|2-Pass Quant + CFA Report| AIAnalyst
-        Tab5 -->|Audit KPIs & Signal Inspector| DBManager["db_manager.py"]
+    subgraph AIGovernance ["Pass 2: AI Governance and PM Arbitration"]
+        Gates -->|Validated Context| AI["ai_analyst.py (Gemini temp=0.0)"]
+        AI --> Veto["Contrarian Veto & Thesis Breaker Check"]
+        Veto --> PM["PM Gatekeeper Arbitration (Deterministic Overrides)"]
     end
 
-    subgraph Audit ["Signal Lifecycle & Audit"]
-        AIAnalyst -->|Immutable Snapshot| DBManager
-        TradingBot -->|Save Buy Signals| DBManager
-        DBManager <-->|PostgreSQL REST API| Supabase[("Supabase Cloud DB")]
+    subgraph SignalIntegrity ["Signal Budget and Audit Trail"]
+        PM --> Budget["Signal Budget: Max 2 BUY/day, 5-Day Cooldown"]
+        Budget --> DB["db_manager.py (Supabase PostgreSQL)"]
+        DB --> Rec[("decision_records: 4-Tier Immutable Audit")]
+        DB --> Alpha["Holding-Period Benchmark Alpha vs VN-Index"]
     end
 
-    subgraph Automation ["24/7 Background Bot"]
-        TradingBot -->|Price Scan, Stop Loss, Anti-Chasing| DataEngine
-        TradingBot -->|Post-Market Audit 15:15| DBManager
-        TradingBot -->|ATO / Lunch / ATC Reports| Discord["Discord Alerts"]
-    end
-
-    subgraph Notification ["External Notification"]
-        Discord -->|Rich Embed + Smart Splitter| Channel["Discord Channel"]
-        Discord -->|Direct Message| DM["Discord Private DM"]
+    subgraph Interfaces ["Execution and Interfaces"]
+        Budget --> Bot["trading_bot.py (ATO, Lunch, ATC Scans)"]
+        Bot --> Discord["Discord Bot & Webhooks (Rich Embeds)"]
+        Rec --> UI["Streamlit Enterprise UI (5 Tabs, 60 FPS Charts)"]
     end
 ```
 
 ---
 
-## 🧭 Product & Engineering Case Study: Zero-Cost Scalable AI Architecture
+## ⚡ Key Capabilities
 
-> *Solving real-world signal overload and token explosion by bridging financial rigor with deterministic Python engineering.*
-
-When pilot users reported **recommendation fatigue (8 tickers/day + duplicate BSR alerts)** and financial domain experts proposed a computationally expensive **5-Agent Investment Committee (7 LLM calls per ticker)**, we resolved the conflict through an **AI Product & Technical Architecture overhaul**:
-
-* **Voice of Customer & Root Cause Analysis:** 
-  * *Perception Gap:* Explanatory `WATCH` and `CAUTION` tickers lacked visual distinction from actionable `BUY` alerts.
-  * *Pipeline Leak:* Separate screening threads lacked an atomic deduplication pass before dispatch.
-* **Engineering Trade-offs (The 80/20 Separation Principle):** 
-  * Delegated **80% of deterministic validation** (Piotroski F-Score, 4-Archetype Valuation, Cooldowns, Daily Budget) to pure Python (<15ms, $0.00 cost, 100% testable).
-  * Synthesized **20% qualitative debate** (Red Team Contrarian Challenge, Catalyst evaluation) into a **Single-Call Structured LLM Prompt** (+30% token delta only).
-* **Measurable Business & Product Outcomes:**
-  * 📉 **-75% Alert Fatigue:** Hard cap of Max 2 high-conviction BUY signals per day.
-  * 🛡️ **0% Duplicate Signals:** Guaranteed by strict atomic set deduplication gates with regression tests.
-  * 💰 **100% Zero-Cost Sustainability:** Operates entirely within Google Gemini Free Tier limits.
-
-👉 **[Read the Full AI Product Management Case Study & PRD/ADR (docs/PRODUCT_CASE_STUDY.md) →](docs/PRODUCT_CASE_STUDY.md)**
-
----
-
-## Key Features
-
-| Feature | Description |
-|---|---|
-| **Quantamental 2-Pass Engine** | Deterministic Python calculations + LLM narrative — CFA-aligned methodology |
-| **Piotroski F-Score (0–9)** | Financial health scoring across profitability, leverage, and efficiency |
-| **Altman Z-Score** | Bankruptcy risk assessment (Safe / Grey / Danger zones) |
-| **Kelly Criterion & MoS** | Optimal position sizing and margin of safety calculations |
-| **4-Archetype Valuation** | Tailored models for Banks, Cyclicals, Real Estate, and Growth stocks |
-| **TradingView Charts** | 60 FPS native charts · 8 timeframes · MACD, RSI, Bollinger Bands |
-| **P/E & P/B Valuation Charts** | Interactive ECharts with historical mean overlay and DataZoom |
-| **Signal Auditing (Alpha Tracker)** | Immutable snapshots in Supabase · Win Rate · Profit Factor · Alpha vs VN-Index |
-| **Discord Bot 24/7** | Automated monitoring with Rich Embeds · smart field splitting · DM alerts |
-| **Anti-Hallucination Defense** | 2-layer: system prompt rules + deterministic regex sanitizer |
-| **Anti-Chasing Filter** | Blocks buy signals when price hits ceiling (+6.85% HOSE limit) |
-| **GDKHQ Shield** | Prevents false stop-loss triggers during ex-dividend gap-downs |
-| **Signal Credibility Engine** | 4-pillar conviction scoring (≥70 for BUY) · 5-day cooldown · Max 2 BUY/day budget · Max 8 open positions guard |
-
----
-
-## 🛡️ Institutional Signal Credibility Engine
-
-To solve the **"Signal Overload Problem"** (where retail bots fire 4–5 unvetted buy signals per day, eroding credibility and inducing capital dilution), Stock-AI integrates an institutional quantitative risk layer:
-
-```mermaid
-flowchart TD
-    Candidate[Candidate Pool from News & Watchlist] --> ConvictionCalc[4-Pillar Conviction Scoring 0-100]
-    ConvictionCalc --> ScoreCheck{Conviction Score}
-    
-    ScoreCheck -->|< 55 pts| Reject[⛔ CAUTION / REJECT]
-    ScoreCheck -->|55 - 69 pts| Watch[🟡 WATCH_CONFIRMATION<br/>T+ Swing Radar / Base Building]
-    ScoreCheck -->|≥ 70 pts| CooldownCheck{In 5-Day Cooldown?}
-    
-    CooldownCheck -->|Yes| CooldownDowngrade[⏳ WATCH_CONFIRMATION<br/>Active 5-Day Cooldown]
-    CooldownCheck -->|No| PortGuard{Active Positions < 8?}
-    
-    PortGuard -->|Full ≥ 8| PortDowngrade[🛡️ WATCH_CONFIRMATION<br/>Awaiting Capital Recycling]
-    PortGuard -->|Available| BudgetCap{Daily Signal Budget<br/>Max 2 BUY / day}
-    
-    BudgetCap -->|Top 1-2| ApprovedBUY[🟢 RECOMMEND_BUY<br/>Initiate 5-Day Cooldown]
-    BudgetCap -->|Rank 3+| OverflowWatch[🎯 WATCH_CONFIRMATION<br/>Exceeds Daily Budget]
-```
-
-### 1. 4-Pillar Conviction Scoring Matrix (100 Points)
-| Pillar | Weight | Rationale & Defense |
-|---|:---:|---|
-| **Valuation & Margin of Safety** | **40 pts** | Prevents growth traps. Requires MoS $\ge 15\%$ for $30$ pts, $\ge 25\%$ for $40$ pts. Anchored to 4-archetype models. |
-| **Technical Confluence** | **25 pts** | Prevents "catching falling knives". Price $\ge \text{MA20}$, healthy RSI ($48-62$), $-15$ pts penalty if distribution trap detected. |
-| **Catalyst & Story** | **20 pts** | Validates market narrative (Verified earnings, dividend, macro, insider buying). |
-| **Liquidity & Smart Money Flow** | **15 pts** | Volume spike ($> 1.3\times \text{MA20}$) + Foreign institutional net buying. |
-
-### 2. Risk Controls & Budgeting
-* **70-Point High Conviction Gate**: A ticker must secure consensus across at least 3 out of 4 pillars to trigger a `RECOMMEND_BUY`.
-* **5-Day Cross-Day Cooldown**: Persisted across trading days (`data/.signal_cooldown.json`) to prevent daily alert spam for the same ticker.
-* **Daily Signal Budget (Max 2 BUYs/day)**: Excess high-conviction candidates are gracefully converted to `WATCH_CONFIRMATION` for the next session's watchlist.
-* **Portfolio Diversification Guard (Max 8 positions)**: Automatically caps maximum open concurrent positions to protect liquidity and portfolio NAV.
-
----
-
-## 💻 Interactive Live Dashboard & User Experience
-
-Stock-AI is deployed as a live cloud application accessible to recruiters, investors, and analysts:
-
-<div align="center">
-
-[![Live Demo](https://img.shields.io/badge/🚀_Live_Demo-stock--ai--recq.onrender.com-00C781?style=for-the-badge&logo=render&logoColor=white)](https://stock-ai-recq.onrender.com/)
-[![Cloud Architecture](https://img.shields.io/badge/Architecture-Streamlit_%2B_Supabase_%2B_Gemini-blue?style=for-the-badge)](https://stock-ai-recq.onrender.com/)
-
-</div>
-
-### Functional Modules & UI Architecture
-
-```mermaid
-graph TD
-    UI[🖥️ Streamlit Enterprise Dashboard]
-    UI --> Tab1[Tab 1: Portfolio & Risk Budgeting]
-    UI --> Tab2[Tab 2: 60 FPS TradingView & ECharts]
-    UI --> Tab3[Tab 3: Macro & Sector Intelligence]
-    UI --> Tab4[Tab 4: 2-Pass CFA Quantamental AI]
-    UI --> Tab5[Tab 5: Alpha Tracker & Signal Audit]
-
-    Tab1 --- T1_Desc["Real-time NAV, Multi-Asset Allocation, Trailing Stops"]
-    Tab2 --- T2_Desc["Lightweight Charts, MACD/RSI Overlays, Historical P/E & P/B Bands"]
-    Tab3 --- T3_Desc["Real-time CafeF RSS parsing & Catalyst Tagging Engine"]
-    Tab4 --- T4_Desc["Deterministic Python Gates + Gemini 2.1 Narrative"]
-    Tab5 --- T5_Desc["Regime Backtest v4.0, Paper Trading Shortfall, Post-Market Audit (15:15), MFE/MAE"]
-```
-
-| Tab / Module | Business Function (Technical BA Scope) | Quant & Analytical Value |
+| Pillar | Capability | Technical Details |
 |---|---|---|
-| **Tab 1: Overview & Portfolio** | Real-time NAV computation, P&L tracking, weighted entry prices, and dynamic trailing stop monitoring. | Capital preservation via deterministic risk budgeting based on market regime (Bull / Neutral / Correction / Risk-off). |
-| **Tab 2: Technical & Valuation Charts** | Embedded 60 FPS TradingView charts with 8 timeframes + Apache ECharts P/E & P/B historical valuation bands. | Confluence analysis: bridges technical timing with multi-year valuation percentile anchoring. |
-| **Tab 3: Macro Intelligence** | Automated real-time RSS ingestion with NLP keyword extraction for sector drivers and insider transactions. | Supplies catalyst signals for the 4-pillar conviction scoring engine. |
-| **Tab 4: AI Quantamental Analyst** | 2-Pass CFA-grade investment report generation with anti-hallucination sanitization. | Delivers institutional reports separating Fair Value (Intrinsic) from Price Target (Expected horizon). |
-| **Tab 5: Alpha Tracker & Backtest** | Immutable audit dashboard (Supabase) + Regime Backtest v4.0 (HOSE T+2.5, slippage, VN-Index benchmark) + Paper Trading shortfall tracker. | Computes cumulative Alpha vs VN-Index, Sharpe/Calmar, Win Rate, Profit Factor, Implementation Shortfall (bps), and MFE/MAE excursions. |
-
-> 🌐 **Note for International Recruiters:** The application consumes live market feeds from the Vietnam Stock Exchange (HOSE/HNX). While stock data and market narratives are localized to the Vietnamese market, the entire data engineering pipeline, valuation formulas (DCF, DDM, SOTP), risk management gates (Piotroski, Altman Z, Kelly, Cooldown), and test architecture adhere strictly to international CFA & Wall Street standards.
-
----
-
-## Tech Stack
-
-| Layer | Technologies |
-|---|---|
-| **Frontend** | Streamlit · TradingView Lightweight Charts · Apache ECharts |
-| **AI** | Google Gemini API (`gemini-3.5-flash-lite`) |
-| **Quantitative & Backtest** | Python · pandas · numpy · Regime Classification · Shortfall Framework |
-| **Database** | Supabase (PostgreSQL) — signal lifecycle & audit |
-| **Data Source** | vnstock (VCI) · Google News RSS |
-| **Alerts** | Discord Bot + Webhook (Rich Embed) |
-| **Deployment** | Render.com (Web Service + Background Worker) |
-| **Testing & CI/CD** | pytest (83%+ cov) · ruff · SonarQube Cloud (0 Code Smells) · pip-audit |
+| **Quantitative Rigor** | **Financial Health & Bankruptcy Scoring** | Full Piotroski F-Score (0–9) across profitability, leverage, and efficiency; Altman Z-Score (Safe/Grey/Distress). |
+| | **4-Archetype Intrinsic Valuation** | Dedicated valuation models tailored for Banks (P/B vs ROE), Cyclicals, Real Estate (RNAV), and Growth (DCF/DDM). |
+| | **Dynamic Risk & Position Sizing** | Dynamic ATR stop-loss clamping, Half-Kelly criterion, and HOSE 20-day liquidity tiering (ADV20). |
+| **Signal Credibility** | **4-Pillar Conviction Matrix** | Strict 100-point gate (Valuation 40%, Technical 25%, Catalyst 20%, Liquidity 15%). Buy threshold ≥ 70 pts. |
+| | **Budget & Overload Defense** | Hard cap of Max 2 BUY signals/day; 5-day ticker cooldown; maximum 8 concurrent open positions. |
+| | **Market Microstructure Shields** | **GDKHQ Shield** (ignores dividend gap-downs) + **Anti-Chasing Filter** (blocks buying at HOSE ceiling +6.85%). |
+| **Enterprise Audit** | **4-Tier Immutable Decision Records** | Cryptographic hash audit (`input_hash`, `prompt_hash`), provenance metadata, and database trigger mutation lock. |
+| | **Holding-Period Benchmark Alpha** | Computes true alpha against VN-Index for exact holding windows, tracking Win Rate and Profit Factor. |
+| **Exit Hypothesis Lab** | **4 Systematic Exit Policies** | Compares Trailing ATR, Time-Decay, Regime-Adaptive, and Macro-Stop exits using Paired Bootstrap ($B=1,000$). |
+| | **Spearman IC & FDR Screening** | Calculates Information Coefficient (IC) with Benjamini-Hochberg FDR filter to prune uninformative signals. |
 
 ---
 
-## Continuous Integration & Quality Gates
+## 🖥️ Interactive Web Dashboard & 24/7 Bot
 
-Every code change pushed to `main` is subjected to a 5-stage automated enterprise verification pipeline in GitHub Actions:
+The platform provides a 5-tab institutional analytics dashboard powered by Streamlit:
 
-```mermaid
-graph LR
-    Push[git push] --> Lint[1. Ruff Linter]
-    Push --> SecAudit[2. pip-audit CVE Scan]
-    Lint --> Test[3. Pytest 35+ Unit Tests]
-    Test --> Coverage[Generate coverage.xml 83%+]
-    Coverage --> Sonar[4. SonarQube Scan]
-    SecAudit --> Sonar
-    Sonar --> Gate{Quality Gate Passed?}
-    Gate -->|Yes| Deploy[5. Render.com Auto-Deploy]
-    Gate -->|No| Reject[❌ Block Deployment]
+* **Tab 1: Portfolio & Risk Budgeting** — Real-time NAV computation, asset allocation, regime-based risk budgets, and dynamic trailing stops.
+* **Tab 2: Technical & Valuation Charts** — Native 60 FPS TradingView Lightweight Charts (8 timeframes) + Apache ECharts historical P/E and P/B percentile bands.
+* **Tab 3: Macro & Sector Intelligence** — Real-time RSS ingestion with NLP keyword extraction for sector drivers, rate hikes, and insider transactions.
+* **Tab 4: AI Quantamental Analyst** — 2-Pass CFA-grade investment memos with anti-hallucination sanitization.
+* **Tab 5: Alpha Tracker & Exit Lab** — Immutable Supabase audit records, regime backtest v4.0 (HOSE T+2.5 accounting), and exit policy performance comparisons.
+
+**Automated 24/7 Trading Bot (`trading_bot.py`):**
+* Runs scheduled market scans at **ATO (08:45)**, **Noon (11:30)**, and **ATC (14:30)**.
+* Dispatches formatted Discord rich embeds and private DMs with automatic message splitting for large investment theses.
+
+---
+
+## 🛠️ Tech Stack
+
+* **Frontend**: Streamlit, TradingView Lightweight Charts, Apache ECharts.
+* **AI Core**: Google Gemini (`gemini-2.5-flash` / `gemini-1.5-flash`), `temp=0.0`, Pydantic deterministic parsing.
+* **Quantitative & Backtest**: Python 3.11+, pandas, numpy, scipy, statsmodels.
+* **Database & Storage**: Supabase (PostgreSQL), REST client, trigger-enforced immutable tables.
+* **Data Providers**: `vnstock`, CafeF RSS, Google News.
+* **Alerting**: Discord Webhooks & Bot API.
+* **CI/CD & Security**: GitHub Actions, Ruff, SonarCloud, Pytest, Pip-audit.
+
+---
+
+## 🧪 Testing & Enterprise Quality Gates
+
+Stock-AI adheres to rigorous institutional CI/CD and SonarCloud Quality Gate standards:
+
+```
+Total Test Cases : 289 passed (100% green)
+Execution Time   : ~25 - 30 seconds
+Coverage Target  : ≥ 80% on all core quantitative engines
+Linter / Style   : Ruff (PEP 8, I001 sorted imports, zero warnings)
+Code Smells      : 0 (Cognitive Complexity < 15, S8572 logging compliance)
+Database Guard   : Auto DB Test Shield in conftest.py (zero live DB pollution during tests)
 ```
 
-1. **Code Style & Linting (`ruff`)**: Strict PEP 8 enforcement, sorted imports (I001), zero unused imports, clean formatting.
-2. **Supply Chain Security (`pip-audit`)**: Continuous scanning of pinned dependencies against known CVE databases.
-3. **Quant Gates & Offline Tests (`pytest`)**: 35+ deterministic unit tests covering Piotroski F-Score (0-9), Altman Z-Score, ATR stop clamping, Margin of Safety, Kelly fractions, GDKHQ dividend gap protection, and anti-chasing filters (**83%+ test coverage**).
-4. **Code Quality & Security (`SonarQube Cloud`)**:
-   - **Security**: Grade A (0 Vulnerabilities, deterministic dependency locking)
-   - **Reliability**: Grade A (0 Bugs, linear non-backtracking parsing)
-   - **Maintainability**: Grade A (0 Code Smells, Cognitive Complexity < 15, zero string duplication)
-   - **Coverage Integration**: Automatic ingestion of `coverage.xml` test report.
-5. **Production Quality Gate (`Render.com`)**: Webhook deployment is only triggered after all previous gates pass with 100% green status.
+Run test suite locally:
+```bash
+# Run all unit and quantitative tests
+pytest tests/ -v
+
+# Run with coverage report
+pytest tests/ --cov=quant_engine --cov=data_gate --cov=backtest_engine
+
+# Run Ruff style & linting check
+ruff check .
+```
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
-### 1. Clone & Environment Setup
+### 1. Clone & Set Up Environment
 
 **Windows (PowerShell):**
 ```powershell
@@ -264,7 +148,7 @@ python -m venv $HOME\.venv
 pip install -r requirements.txt
 ```
 
-**macOS / Linux (Bash):**
+**macOS / Linux:**
 ```bash
 git clone https://github.com/VinhTung1410/Stock-AI.git
 cd Stock-AI
@@ -273,79 +157,53 @@ source ~/.venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure environment
+### 2. Configure Environment Variables
 
 ```bash
 cp .env.example .env
-# Edit .env with your API keys (see .env.example for all options)
+# Fill in GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY, DISCORD_WEBHOOK_URL
 ```
 
-### 3. Run the dashboard
+### 3. Launch Application
 
-- **Option A — 1-Click Launch (Windows):** Double-click [`scripts/run_dashboard.bat`](scripts/run_dashboard.bat) *(automatically sets UTF-8 and launches via Python engine)*.
-- **Option B — Command Line:**
-  ```powershell
+* **Web Dashboard**:
+  ```bash
   python -m streamlit run app.py
-  # Opens at http://localhost:8501
+  # Available at http://localhost:8501
   ```
-  *(Note: Running via `python -m streamlit` avoids Windows Application Control / SmartScreen policy blocks on standalone `.exe` binaries).*
+  *(Windows users can also double-click `scripts/run_dashboard.bat`)*
 
-### 4. Run tests & quality audit
-
-```bash
-pytest tests/ -m offline -v     # Unit tests (no API needed)
-pytest tests/ -v                # All tests (requires .env keys)
-ruff check .                    # Linter check (zero errors/warnings)
-```
+* **Background Monitoring Bot**:
+  ```bash
+  python trading_bot.py
+  ```
 
 ---
 
-## Cloud Deployment (Render.com)
-
-1. Push to GitHub: `git push origin main`
-2. Create a **Web Service** on [Render](https://dashboard.render.com/)
-3. Configure:
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `python run_cloud.py`
-4. Add environment variables from `.env.example`
-5. (Optional) Set up [UptimeRobot](https://uptimerobot.com) to ping every 5 minutes
-
----
-
-## Project Structure
+## 📁 Repository Structure
 
 ```
 Stock-AI/
-├── app.py                  # Streamlit entrypoint & UI orchestration
-├── backtest_engine.py      # Regime-based backtest engine (HOSE T+2.5, slippage, VN-Index benchmark)
-├── paper_trading.py        # Forward testing & implementation shortfall framework (bps)
-├── data_engine.py          # Data layer: vnstock, indicators, news, portfolio I/O
-├── quant_engine.py         # Deterministic quant: F-Score, Z-Score, ATR, Kelly, Hard Gates
-├── quant_valuation.py      # Fair value models: 4 archetypes + consensus anchoring
-├── quant_sanity_check.py   # Mathematical consistency auditor
-├── ai_analyst.py           # Gemini AI: 2-pass pipeline + anti-hallucination sanitizer
-├── discord_alerts.py       # Discord Rich Embed + DM + smart field splitter
-├── trading_bot.py          # 24/7 background monitor (Vietnam timezone)
-├── db_manager.py           # Supabase client: signal lifecycle & audit tracking
-├── run_cloud.py            # Dual-process runner for cloud deployment
-├── components/             # TradingView & ECharts visualization components
-├── tabs/                   # 5 Streamlit feature tabs (Overview, Charts, Macro, AI, Alpha Tracker)
-├── tests/                  # pytest test suites (35+ tests, offline + integration)
-├── data/                   # Portfolio & watchlist JSON data
-├── prompts/                # AI prompt templates
-├── docs/                   # Architecture docs & system rules
-└── scripts/                # Windows batch scripts & simulation tools
+├── app.py                      # Streamlit dashboard entrypoint
+├── trading_bot.py              # 24/7 background scanner & scheduler
+├── ai_analyst.py               # 2-Pass quantamental AI & PM gatekeeper
+├── quant_engine.py             # Deterministic metrics (F-Score, Z-Score, Kelly, Gates)
+├── quant_valuation.py          # 4-Archetype fair value valuation models
+├── data_engine.py              # Market data ingestion (vnstock, technicals, news)
+├── data_gate.py                # Input data freshness and corruption filter
+├── backtest_engine.py          # Regime-aware backtest engine (HOSE T+2.5 accounting)
+├── db_manager.py               # Supabase persistence & audit records
+├── components/                 # TradingView & ECharts visualizations
+├── tabs/                       # Streamlit UI tabs (Portfolio, Charts, Macro, AI, Alpha)
+├── migrations/                 # PostgreSQL migrations (0003_decision_records.sql)
+├── tests/                      # 289 deterministic unit & integration test cases
+│   ├── conftest.py             # Test configuration & automatic DB write shield
+│   └── test_task_*.py          # Task-aligned test suites (Task 1 to 16)
+└── docs/                       # Architecture diagrams, ADRs, and workflows
 ```
 
 ---
 
-## Documentation
+## 📄 License
 
-- **[Project Architecture](docs/PROJECT_STRUCTURE.md)** — Full module descriptions, data flow diagrams
-- **[System Rules](docs/rule.md)** — Quantamental conventions, language policies, defensive architecture
-
----
-
-## License
-
-MIT — see [LICENSE](LICENSE)
+Distributed under the **MIT License**. See `LICENSE` for more information.

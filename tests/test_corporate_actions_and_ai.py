@@ -10,27 +10,22 @@ pytestmark = pytest.mark.offline
 
 
 def test_fetch_corporate_dividends_success():
-    """Test lấy cổ tức thành công, mock Vnstock."""
-    with mock.patch("vnstock.Vnstock") as MockVnstock:
-        # Giả lập DataFrame trả về
-        mock_df = pd.DataFrame({
-            "ex_right_date": ["2026-09-21"],
-            "exercise_date": ["2026-10-15"],
-            "value": [2000]
-        })
-        mock_stock_instance = MockVnstock.return_value.stock.return_value
-        mock_stock_instance.company.dividends.return_value = mock_df
-        
+    """Test lấy cổ tức thành công, mock Company.events."""
+    mock_df = pd.DataFrame({
+        "exright_date": ["2026-09-21"],
+        "exercise_date": ["2026-10-15"],
+        "value": [2000]
+    })
+    with mock.patch("vnstock.api.company.Company.events", return_value=mock_df):
         df = fetch_corporate_dividends("FPT")
         assert df is not None
         assert len(df) == 1
-        assert df.iloc[0]["ex_right_date"] == "2026-09-21"
+        assert df.iloc[0]["exright_date"] == "2026-09-21"
 
 
 def test_fetch_corporate_dividends_exception():
     """Test lỗi lấy cổ tức."""
-    with mock.patch("vnstock.Vnstock") as MockVnstock:
-        MockVnstock.side_effect = Exception("Network Error")
+    with mock.patch("vnstock.api.company.Company.events", side_effect=Exception("Network Error")):
         df = fetch_corporate_dividends("FPT")
         assert df is None
 

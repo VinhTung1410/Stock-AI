@@ -84,6 +84,7 @@ jobs:
             --cov=quant_sanity_check \
             --cov=quant_valuation \
             --cov=data_gate \
+            --cov=data_engine \
             --cov=backtest_engine \
             --cov=regime_classifier \
             --cov=paper_trading \

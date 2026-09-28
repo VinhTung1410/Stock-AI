@@ -1,11 +1,11 @@
 [
   {
-    "symbol": "HPG",
+    "symbol": "MSR",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
   },
   {
-    "symbol": "MWG",
+    "symbol": "HAX",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
   },
@@ -25,12 +25,12 @@
     "note": "Theo dõi từ Google Sheet"
   },
   {
-    "symbol": "VHM",
+    "symbol": "TCB",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
   },
   {
-    "symbol": "BSR",
+    "symbol": "FMC",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
   },

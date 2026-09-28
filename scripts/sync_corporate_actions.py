@@ -10,7 +10,7 @@ from db_manager import get_supabase_client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-CANDIDATE_DATE_COLS = ("ex_right_date", "ngay_gdkhq", "exercise_date", "exDate")
+CANDIDATE_DATE_COLS = ("exright_date", "ex_right_date", "ngay_gdkhq", "exercise_date", "exDate")
 
 
 def _get_gdkhq_column(df):
