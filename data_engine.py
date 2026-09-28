@@ -2153,27 +2153,23 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
 def get_stock_chart_data(symbol: str) -> pd.DataFrame:
     """Kéo dữ liệu nến lịch sử 1 năm của 1 cổ phiếu để vẽ TradingView Chart."""
     try:
-        from vnstock.api.quote import Quote
-        q = Quote(symbol=symbol, source="VCI")
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-        df = q.history(start=start_date, end=end_date)
+        df = _fetch_history_with_fallback(symbol, start_date, end_date)
         if df is not None and not df.empty:
             df = df.sort_values("time").reset_index(drop=True)
         return df
     except Exception:
-        logging.exception(f"Lỗi khi lấy nến cho {symbol}")
+        logging.exception("Lỗi khi lấy nến cho %s", symbol)
         return pd.DataFrame()
 
 
 def get_vnindex_valuation_data() -> pd.DataFrame:
     """Lấy dữ liệu VNINDEX và tạo chuỗi định giá P/E, P/B thị trường thực tế."""
     try:
-        from vnstock.api.quote import Quote
-        q = Quote(symbol="VNINDEX", source="VCI")
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=600)).strftime("%Y-%m-%d")
-        df = q.history(start=start_date, end=end_date)
+        df = _fetch_history_with_fallback("VNINDEX", start_date, end_date)
         if df is not None and not df.empty:
             df = df.sort_values("time").reset_index(drop=True)
             latest_idx = df["close"].iloc[-1]

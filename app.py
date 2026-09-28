@@ -523,6 +523,9 @@ if active_tab == "Tổng quan & Watchlist":
 elif active_tab == "Thị trường & Biểu đồ Kỹ thuật":
     with st.spinner("Đang cập nhật chỉ số thị trường & nến kỹ thuật..."):
         df_vnindex = get_cached_vnindex_data()
+        if df_vnindex is None or df_vnindex.empty:
+            get_cached_vnindex_data.clear()
+            df_vnindex = get_vnindex_valuation_data()
         render_tab_market_and_charts(raw_portfolio, raw_watchlist=raw_watchlist, df_vnindex=df_vnindex)
 
 elif active_tab == "Quản lý Danh mục":

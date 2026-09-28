@@ -171,7 +171,7 @@ def render_tab_market_and_charts(raw_portfolio: list, raw_watchlist: list = None
 
     # 4. LẤY DỮ LIỆU NẾN & HIỂN THỊ TRADINGVIEW
     if selected_symbol == "VNINDEX":
-        df_chart = df_vnindex
+        df_chart = df_vnindex if (df_vnindex is not None and not df_vnindex.empty) else get_stock_chart_data("VNINDEX")
     else:
         df_chart = get_stock_chart_data(selected_symbol)
 
