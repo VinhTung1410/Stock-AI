@@ -1,9 +1,9 @@
 # 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF)
 
 **Tên dự án:** Stock-AI / AI Trading Bot  
-**Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-27  
+**Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-28  
 **Người yêu cầu (Client):** Tùng  
-**Phiên bản yêu cầu:** v5.6 — Tái Thiết Kế Giao Diện Stress Test, Nâng Cấp Thuật Toán Block Bootstrap & Quản Trị Rủi Ro Tổ Chức (Phase 6 — Stress Test Overhaul & Institutional Risk Governance)  
+**Phiên bản yêu cầu:** v6.0 — Tính Toàn Vẹn Bằng Chứng & Vòng Lặp Học Tập Khép Kín (Phase 7 — Evidence Integrity & Closed Learning Flywheel) — Bắt đầu TASK-0013  
 
 ---
 
@@ -14,6 +14,7 @@
   - Tích hợp thành công giao diện Tab 6 (Backtest Dashboard, Bảng số liệu Regime, Paper Trading).
   - Hoàn thiện luồng Web-to-Discord hook cho khuyến nghị MUA và cô lập 100% mock Discord trong bộ kiểm thử tự động (Zero Test Leakage).
   - Hoàn tất **Phase 0** (Tường lửa Disclaimer, Content Filter RSS, Heartbeat 08:30), **Phase 1** (Hạ tầng Bằng chứng Signal Lifecycle, ADR-0001 Lock Thresholds), **Phase 2** (Chốt chặn Ngành $\le 25\%$, Trượt giá động 60–75 bps, Cầu dao Gemini 12 RPM), **Phase 3** (Walk-Forward 3 chặng, Ma trận Stress 11 sự kiện khủng hoảng, Bộ quét Flash Crash, Bootstrap Sharpe CI $10,000$ lần), **Phase 4** (Thử nghiệm song song A/B Quant-Only vs Quant+AI, Chuẩn định Confidence Calibration & Brier Score), và **Phase 5** (Tối ưu danh mục Risk Parity, Phân rã Đa nhân tố Beta, Chốt lời từng phần 50% ở +12%).
+  - Hoàn tất **Phase 6a–6d** (Stationary Block Bootstrap bảo toàn cụm rủi ro thời gian, Đại tu UI Stress Test Subtab 4 với Paired Bar Chart và Risk Summary, Khoảng tin cậy 95% & Cảnh báo cỡ mẫu nhỏ N < 30, Định lượng chi phí bảo hiểm Sector Gate ROI).
 
 - **Định vị lại triết lý cốt lõi của Client & Ban Cố vấn Tài chính (Paradigm Shift):**
   1. **Bản chất của Backtest không phải là PnL tĩnh:** Mục tiêu tối thượng của backtest không phải là tìm kiếm một con số lợi nhuận (PnL/CAGR) đẹp nhân tạo hay phán xét bot đúng/sai một vài deal đơn lẻ, mà là **đo lường năng lực nương theo pha thị trường (Market Regime Alignment)**:
@@ -29,23 +30,20 @@
      [1. Macro Regime Gate] ──> [2. Smart Money Watchlist] ──> [3. Quant Trigger] ──> [4. Dynamic Risk Sizing] ──> [5. Execution]
      ```
 
-- **Mục tiêu phiên bản 5.2 – 5.5** *(đã hoàn thành)*:
-  - **Phase 0 — Tường lửa bảo mật & tuân thủ pháp lý** (xem Mục 3A, đã hoàn thành).
-  - **Phase 1 — Hạ tầng bằng chứng (Signal Lifecycle)** (xem Mục 3B, đã hoàn thành).
-  - **Phase 2 — Kiểm soát rủi ro & Bảo vệ danh mục (Risk Fixes)** (xem Mục 3C, đã hoàn thành).
-  - **Phase 3 — Nghiên cứu & Thẩm định Chuyên sâu (Walk-Forward, Stress Matrix, Bootstrap Sharpe CI)** (xem Mục 3D, đã hoàn thành).
-  - **Phase 4 — Thử nghiệm Song song A/B & Chuẩn định AI Confidence** (xem Mục 3E, đã hoàn thành).
-  - **Phase 5 — Tối ưu hóa Danh mục & Rủi ro Đuôi Nâng cao** (xem Mục 3F, đã hoàn thành).
+- **Mục tiêu phiên bản 5.2 – 5.6** *(đã hoàn thành Phase 0 — Phase 6a–d)*:
+  - Xem chi tiết tại Mục 3A → 3F.
 
-- **Mục tiêu phiên bản 5.6** *(hiện tại — Tái Thiết Kế Stress Test, Stationary Block Bootstrap & Quản Trị Rủi Ro Tổ Chức - Phase 6)*:
-  - **Phase 6a — Nâng cấp Thuật toán Monte Carlo sang Stationary Block Bootstrap:** Loại bỏ giả định độc lập I.I.D., bảo toàn các cụm lệnh thua lỗ liên tiếp khi khủng hoảng để lượng hóa chính xác rủi ro đuôi P95/P99.
-  - **Phase 6b — Tái Cấu Trúc Trực Quan Hóa & Phân Tầng Giao Diện Stress Test (UI Hierarchy):**
-    - Bổ sung *Risk Executive Summary* 4 thẻ đầu trang (MDD lịch sử tệ nhất, P99 Monte Carlo, Trạng thái Cash Mode, Cảnh báo cỡ mẫu).
-    - Thay thế bảng thô 8 cột bằng *Biểu đồ Cột Ngang Đôi (Paired Horizontal Bar Chart)* sắp xếp giảm dần theo mức độ sụt giảm VN-Index.
-    - Tự động liên kết (Auto-wire) chuỗi PnL từ kết quả backtest sang Monte Carlo mà không bắt người dùng nhập tay.
-  - **Phase 6c — Minh Bạch Hóa Thống Kê Điểm Ước Lượng (Effective N & Confidence Intervals):** Gắn khoảng tin cậy 95% và cảnh báo mẫu nhỏ `N < 30` vào các chỉ số KPI đơn lẻ (Sharpe, CAGR, Win Rate).
-  - **Phase 6d — Định Lượng "Chi Phí Bảo Hiểm" của Sector Gate:** Đo lường chi phí cơ hội (Upside hy sinh trong Bull Market) đối chiếu với mức độ bảo vệ vốn (MDD tránh được trong Khủng hoảng).
-  - **Phase 6e — Rà Soát Mỏ Neo Định Giá & Kiểm Soát Lão Hóa Dữ Liệu (Stale Data Governance):** Bổ sung timestamp `last_updated` và cảnh báo dữ liệu cũ quá 2 quý cho `INSTITUTIONAL_CONSENSUS_TARGETS`.
+- **Mục tiêu phiên bản 6.0** *(hiện tại — Bắt đầu TASK-0013: Vá Tính Toàn Vẹn Bằng Chứng & Khởi Động Phase 7 Evidence Integrity & Closed Learning Flywheel)*:
+  - **Triết lý cốt lõi: Sửa cái cân trước khi xây hệ thống đo.** Không để AI "học từ chính nó" (nguy cơ sụp đổ mô hình Model Collapse), mà để hệ thống học từ **Real Outcome của thị trường**.
+  - **Trọng tâm thực thi khẩn cấp — TASK-0013 (Mục 7.0a — 7.0g + ADR-0002):**
+    - `7.0a`: Sửa công thức tính Alpha chuẩn theo toàn bộ chu kỳ nắm giữ vị thế thay vì biến động 1 phiên.
+    - `7.0b`: Xây dựng hàm `replay_signal_path` idempotent và áp dụng quy tắc bảo thủ STOP trước TARGET khi chạm cùng ngày.
+    - `7.0c`: Vá dứt điểm Phase 6e — Quản trị tuổi thọ dữ liệu mỏ neo đồng thuận CTCK (> 180 ngày thì trọng số = 0).
+    - `7.0d`: Bổ sung cờ `mos_is_informative` để loại trừ các trường hợp MoS tính từ hệ số nhân cố định giả tạo.
+    - `7.0e`: Đấu nối dữ liệu tài chính thật vào Data Gate trong `scan_market_opportunities()`, trả về `INSUFFICIENT_DATA` khi thiếu.
+    - `7.0f`: Gắn nhãn UI minh bạch "Kiểm định thời điểm kỹ thuật" cho Backtest Quant Core.
+    - `7.0g`: Soạn thảo và ký duyệt `ADR-0002 "Reconciliation"` đối soát hằng số triển khai thực tế (`LOCKED_QUANT_THRESHOLDS`, Conviction $\ge 70$, trọng số 40/25/20/15, nguyên tắc AI chỉ hạ rủi ro).
+
 
 
 
@@ -655,6 +653,93 @@
 
 ---
 
+## 3G. TÍNH NĂNG CHI TIẾT PHIÊN BẢN v6.0 — TÍNH TOÀN VẸN BẰNG CHỨNG & VÒNG LẶP HỌC TẬP KHÉP KÍN (PHASE 7)
+
+> **Mục tiêu tối thượng:** Thiết lập quy trình học hỏi khép kín dựa trên bằng chứng thực tế (*Closed-Loop Decision Learning Pipeline with Outcome Attribution & Human-Approved Rule Evolution*).  
+> **4 Nguyên Tắc Sắt:**
+> 1. **Zero-Democracy Risk Gate:** Cổng quản trị rủi ro là chốt chặn xác định bằng code cứng (Hard Deterministic Gatekeeper trong Python), cấm AI biểu quyết hay làm mềm luật cắt lỗ.
+> 2. **Phân Định 3 Tầng Dữ Liệu:** Tách bạch tuyệt đối giữa **FACT** (thị trường & BCTC thật), **INFERENCE** (toán học định lượng do Python tính), và **HYPOTHESIS** (nhận định của LLM).
+> 3. **AI Chỉ Hạ Rủi Ro:** LLM chỉ được veto hoặc giảm size, tuyệt đối không được tự ý nâng size hay mở lệnh (`can_buy`).
+> 4. **Hệ Thống Đề Xuất, Con Người Phê Duyệt:** Không tự động hóa "Rule Upgrade". Mọi thay đổi luật chỉ qua ADR ký duyệt.
+
+---
+
+### 🔴 Phase 7.0 (TASK-0013): Vá Tính Toàn Vẹn Bằng Chứng (BẮT BUỘC Làm Trước)
+
+Mọi phân tích học máy và đo lường alpha sẽ trở thành "rác vào, rác ra" (Garbage In - Garbage Out) nếu thước đo bị sai. TASK-0013 tập trung vá triệt để 7 khiếm khuyết trong các module hiện có:
+
+#### 7.0a. Chuẩn Hóa Thước Đo Alpha Theo Chu Kỳ Nắm Giữ Vị Thế
+- **Vấn đề thực tế:** `update_daily_tracking()` trong `db_manager.py` tính `alpha = pnl_pct - vnindex_chg`, trong đó `vnindex_chg` là biến động giá của một phiên hôm nay, không phải biến động của VN-Index trong suốt thời gian nắm giữ cổ phiếu từ ngày mở vị thế.
+- **Yêu cầu kỹ thuật:**
+  - Viết lại công thức: $\text{Alpha} = \text{PnL}_{\text{trade}} - \text{Return}_{\text{VNINDEX}}(\text{entry\_date} \rightarrow \text{exit\_date})$.
+  - Lưu đồng thời `vnindex_pct_same_period` và `vn30_pct_same_period` vào `signal_lifecycle`.
+- **Định nghĩa Done:** Unit test với chuỗi 20 phiên có dữ liệu biến động VN-Index thật khớp 100% với tính toán đối soát bằng tay.
+
+#### 7.0b. Replay Đường Đi Lệnh Idempotent & Quy Tắc STOP Trước TARGET
+- **Vấn đề thực tế:**
+  1. Hàm audit hiện tại chỉ lấy giá High/Low của ngày chạy audit, nếu bot bị tắt hoặc bỏ lỡ một ngày thì lịch sử MFE/MAE bị mất vĩnh viễn (Audit không idempotent).
+  2. Khi trong cùng một phiên giá chạm cả Target lẫn Stop Loss, code hiện tại ưu tiên Target (thiên lệch lạc quan).
+  3. Bỏ qua quy chế T+2.5 khi xem xét thoát lệnh.
+- **Yêu cầu kỹ thuật:**
+  - Viết hàm `replay_signal_path(signal, ohlc_df)` tính toán lại toàn bộ đường đi vị thế từ ngày mở lệnh dựa trên dữ liệu lịch sử nến, cho phép audit chạy bù bất kỳ lúc nào mà vẫn cho ra kết quả nhất quán.
+  - Quy tắc bảo thủ: Nếu nến trong phiên có `High >= Target` và `Low <= Stop`, hệ thống bắt buộc ghi nhận chạm **STOP trước**.
+  - Đánh dấu cờ `t_plus_2_locked = True` nếu điều kiện thoát xuất hiện trước khi cổ phiếu khả dụng (T+2.5).
+- **Định nghĩa Done:** Chạy audit nhiều lần hoặc bỏ qua 3 ngày rồi chạy bù đều ra kết quả MFE/MAE/PnL trùng khớp 100%. Có test case chuyên biệt cho kịch bản cùng ngày chạm cả Target và Stop.
+
+#### 7.0c. Vá Dứt Điểm Phase 6e — Consensus Targets Quá Hạn trong Định Giá
+- **Vấn đề thực tế:** Hàm `check_institutional_target_freshness()` đã có nhưng `calculate_fair_value_and_mos()` chưa gọi. Các mục tiêu đồng thuận CTCK cũ quá 180 ngày (thậm chí từ 2024) vẫn bị trộn 40% vào Fair Value.
+- **Yêu cầu kỹ thuật:**
+  - Trong `calculate_fair_value_and_mos()`: Kiểm tra `age` của consensus target. Nếu `age > 180` ngày:
+    - Đặt trọng số của mỏ neo đồng thuận về $0$ (loại bỏ khỏi Fair Value).
+    - Không sử dụng mục tiêu đồng thuận làm `price_target`.
+    - Gán `confidence = "LOW"` và bật cờ `consensus_stale = True`.
+- **Định nghĩa Done:** Unit test chứng minh với dữ liệu consensus cũ, Fair Value chỉ tính dựa trên P/E, P/B nội tại và cờ cảnh báo `consensus_stale` được bật.
+
+#### 7.0d. Phân Định Biên An Toàn Thật vs Biên An Toàn Ảo (`mos_is_informative`)
+- **Vấn đề thực tế:** Cổ phiếu nhóm Growth hiện bị tính `fv_base = price * 1.18` khiến Biên an toàn $\text{MoS} \approx 15.25\%$ luôn luôn vượt qua ngưỡng $\ge 15\%$ của hệ thống, vô hiệu hóa hoàn toàn Cổng Định giá.
+- **Yêu cầu kỹ thuật:**
+  - Thêm cờ `mos_is_informative: bool` vào kết quả trả về của `calculate_fair_value_and_mos()`.
+  - Gán `mos_is_informative = False` khi Fair Value được suy diễn từ hệ số nhân cố định thay vì từ P/E, P/B lịch sử hoặc consensus tươi.
+  - Các bản ghi có `mos_is_informative = False` sẽ bị gắn cờ cảnh báo và loại khỏi tập dữ liệu hồi quy trọng số tương lai.
+- **Định nghĩa Done:** Cờ `mos_is_informative` xuất hiện minh bạch trong kết quả định giá và Decision Record.
+
+#### 7.0e. Cổng Thẩm Định Dữ Liệu Tài Chính Thật trong Quét Cơ Hội
+- **Vấn đề thực tế:** Hàm `scan_market_opportunities()` truyền tham số giả (`pe: 12.0`, `pb: 1.5`, `f_score: 7`, `z_score: 3.0`) vào `reconcile_data()`, làm tê liệt khả năng phát hiện cổ phiếu rác.
+- **Yêu cầu kỹ thuật:**
+  - Sử dụng dữ liệu tài chính thực từ `get_financial_ratios(symbol)`.
+  - Nếu thiếu dữ liệu tài chính hoặc dữ liệu quá hạn, hệ thống trả về mã trạng thái `INSUFFICIENT_DATA`, tuyệt đối cấm điền số mặc định để lọt lưới.
+- **Định nghĩa Done:** Test case xác nhận khi một mã cổ phiếu thiếu dữ liệu tài chính, nó bị loại bỏ khỏi danh sách khuyến nghị Mua kèm lý do rõ ràng.
+
+#### 7.0f. Định Vị Chuẩn Mực Kiểm Định Thời Điểm Kỹ Thuật cho Backtest Engine
+- **Vấn đề thực tế:** `generate_signals_by_strategy()` nhận các ngưỡng FA tĩnh và chỉ dùng Stop cứng −7%, chưa phản ánh đúng luật Live (Partial Lock +12%, ATR Trailing).
+- **Yêu cầu kỹ thuật:**
+  - Gắn nhãn UI minh bạch: *"Kiểm định thời điểm kỹ thuật (Technical timing test)"* cho Backtest Quant Core cho đến khi có dữ liệu BCTC point-in-time lịch sử.
+  - Nghiêm cấm trích dẫn số liệu backtest này làm bằng chứng khoa học cho hiệu quả của F-Score hay MoS.
+- **Định nghĩa Done:** Giao diện hiển thị đúng nhãn phân loại chuẩn mực CFA, loại bỏ hiểu lầm về độ chính xác FA trong backtest.
+
+#### 7.0g. Soạn Thảo & Ký Duyệt ADR-0002 "Reconciliation"
+- **Vấn đề thực tế:** Có sự không nhất quán giữa tài liệu ADR-0001 (khóa Conviction $\ge 55$) và code thực tế (yêu cầu Conviction $\ge 70$, trọng số 40/25/20/15).
+- **Yêu cầu kỹ thuật:**
+  - Soạn thảo văn kiện `ADR-0002`: Xác nhận phiên bản đang triển khai thực tế trong code (as-implemented) là phiên bản chuẩn.
+  - Khóa chặt nguyên tắc: "AI chỉ được hạ rủi ro, không bao giờ được nâng rủi ro"; quy định horizon chuẩn hóa 60 phiên; thiết lập test tự động so sánh hằng số `LOCKED_QUANT_THRESHOLDS` với ADR-0002.
+- **Định nghĩa Done:** File `ADR-0002` được đưa vào tài liệu dự án, bộ test tính toàn vẹn hằng số pass 100%.
+
+---
+
+### 🔵 Tổng Quan Các Bước Tiếp Theo Trong Phase 7 (TASK-0014 → TASK-0016)
+
+- **TASK-0014 (Mục 7a, 7b, 7f):**
+  - **7a:** Khởi tạo bảng `decision_records` lưu toàn bộ Universe Panel và lý do chi tiết cho các quyết định BUY, WATCH và REJECT theo 4 tầng (Fact, Inference, Opinion, Counterfactual ROI).
+  - **7b:** Hoàn thiện migration `0003_decision_records.sql` (PostgreSQL hợp lệ, trigger bất biến append-only).
+  - **7f:** Tách rời lõi Signal Engine (`SignalEvent`) khỏi `dispatcher.py` để test offline 100% không cần token Discord; dựng Subtab 5 UI Nhật ký Quyết định; thiết lập Evidence Kill Switch tự động giảm size khi Expectancy < 0.
+- **TASK-0015 (Mục 7c):**
+  - Thắt chặt AI Governance: Wrapper gọi Gemini tập trung kiểm soát 15 RPM và lọc Prompt Injection; cờ `pass1_parse_failed` cấm fallback về 25/50/25; khóa `temperature = 0`; hiệu chuẩn niềm tin AI trên horizon 60 phiên.
+- **TASK-0016 (Mục 7d, 7e):**
+  - **7d:** Exit Hypothesis Lab chạy replay offline so sánh 4 chiến lược thoát lệnh (A: Hiện tại +12%, B: R-Multiple, C: ATR Trailing, D: All-or-Nothing) bằng phương pháp Paired Bootstrap.
+  - **7e:** Kiểm định trọng số 4-Pillar Conviction qua tương quan hạng Spearman IC và hiệu chỉnh đa so sánh Benjamini–Hochberg trên tập $\ge 100$ quan sát.
+
+---
+
 ## 4. ĐỊNH HƯỚNG VÀ RÀNG BUỘC KỸ THUẬT (TECHNICAL CONSTRAINTS)
 
 
@@ -735,5 +820,18 @@
     - Bảng số liệu thô 8 cột không sắp xếp, danh sách ngày sập rời rạc, bắt người dùng copy-paste chuỗi PnL thủ công và thiếu kết luận đầu trang làm tê liệt khả năng ra quyết định nhanh. Dữ liệu dù tốt nhưng nếu thiếu phân tầng trực quan hóa (Information Hierarchy) thì vẫn không mang lại giá trị cho người dùng.
 25. **Rủi ro Điểm Yếu Đơn Lẻ Nguồn Dữ liệu (Single Data Provider Fragility):**
     - Toàn bộ pipeline hiện tại phụ thuộc duy nhất vào thư viện `vnstock` / nguồn VCI. Khi nguồn này gặp sự cố hoặc thay đổi cấu trúc bảng/API, toàn bộ hệ thống từ Data Gate, F-Score đến Backtest đều có nguy cơ tê liệt đồng thời. Cần lộ trình xây dựng cơ chế nguồn dự phòng (Fallback Data Provider) trong tương lai.
+
+*Bài học MỚI từ v5.6 → v6.0 — Khởi động Phase 7 & Đối soát Tính Toàn Vẹn Bằng Chứng:*
+26. **Lỗi "Đo Sai Chu Kỳ Lợi Suất" (Holding Period Alpha Distortion - 7.0a):**
+    - Lấy PnL cả vị thế trừ biến động VN-Index 1 phiên làm sai lệch toàn bộ báo cáo hiệu suất quỹ. Alpha chuẩn mực bắt buộc phải trừ lợi suất Benchmark trên đúng khoảng thời gian từ ngày vào đến ngày thoát lệnh.
+27. **Hiện tượng "Mất Dấu Dữ Liệu & Thiên Lệch Lạc Quan Cùng Ngày" (Audit Non-Idempotency & Same-Day Bias - 7.0b):**
+    - Bỏ lỡ ngày chạy audit làm mất lịch sử MFE/MAE vĩnh viễn; ưu tiên Target hơn Stop khi chạm cùng ngày tạo ra kết quả lạc quan giả tạo. Replay engine phải idempotent và xử lý bảo thủ (Stop trước).
+28. **Bẫy "Biên An Toàn Ảo" (Informative vs Pseudo Margin of Safety - 7.0d):**
+    - Dùng hệ số nhân cố định (1.18x) gán cho cổ phiếu tăng trưởng làm MoS luôn pass 15% mà không mang giá trị định giá. Phải gắn cờ `mos_is_informative` và loại bỏ khỏi hồi quy trọng số.
+29. **Ảo tưởng "Multi-Agent Debate & Fine-tune LLM" (LLM Multi-Agent & Fine-Tuning Fallacy):**
+    - Cố biến các phép tính toán học xác định thành văn bản để LLM tranh luận làm tăng chi phí và rủi ro hallucinate; fine-tune LLM trên tập dữ liệu quá nhỏ ($N \approx 100$) trong thị trường tài chính phi dừng (Non-Stationary) chắc chắn dẫn đến Catastrophic Forgetting. Hệ thống phải dùng code toán để tính toán và chỉ dùng LLM để bóc tách ngữ nghĩa tin tức.
+30. **Rủi ro Dữ liệu Giả trong Cổng Thẩm Định (Data Gate Phantom Defaults - 7.0e):**
+    - Truyền tham số mặc định P/E 12, P/B 1.5 khiến Data Gate bị mù trước các cổ phiếu rác thực tế. Thiếu dữ liệu bắt buộc phải trả về `INSUFFICIENT_DATA`.
+
 
 
