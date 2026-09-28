@@ -23,6 +23,23 @@ from data_engine import (
 )
 
 
+@pytest.fixture(autouse=True)
+def mock_default_financial_ratios():
+    """Autouse fixture providing fresh financial statements for offline test scans."""
+    curr_q = (datetime.now().month - 1) // 3 + 1
+    fin_data = {
+        "period": f"{datetime.now().year}-Q{curr_q}",
+        "latest_year": datetime.now().year,
+        "latest_quarter": curr_q,
+        "pe": 10.0,
+        "pb": 1.2,
+        "roe": 18.0,
+        "bvps": 25.0,
+    }
+    with patch("data_engine.get_financial_ratios", return_value=fin_data):
+        yield
+
+
 @pytest.mark.offline
 class TestConvictionScoring:
     """Validate 4-pillar conviction scoring and tier classification."""

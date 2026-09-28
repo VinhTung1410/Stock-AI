@@ -66,6 +66,10 @@ def dispatch_signal_event(event: SignalEvent) -> bool:
             f"[{SOURCE_DISPATCHER}] Conviction: {event.conviction_score:.1f} | "
             f"MoS: {event.mos_pct:+.1f}% | F-Score: {event.f_score}/9"
         )
+        quant_metrics = {
+            "mos_pct": event.mos_pct,
+            "f_score": event.f_score,
+        }
         success = send_trade_signal_alert(
             symbol=event.symbol,
             action=ACTION_BUY,
@@ -74,7 +78,7 @@ def dispatch_signal_event(event: SignalEvent) -> bool:
             target_price=event.target_price,
             stop_loss=event.stop_loss,
             conviction_score=event.conviction_score,
-            mos_pct=event.mos_pct,
+            quant_metrics=quant_metrics,
         )
         if success:
             LOGGER.info("Successfully dispatched SignalEvent for %s to Discord.", event.symbol)

@@ -15,7 +15,7 @@ def test_web_to_discord_hook_triggers_on_buy(monkeypatch):
     """Verify generate_quantamental_2pass_report triggers Discord DM alert when action is MUA."""
     captured_alerts = []
 
-    def mock_send_alert(symbol, action, current_price, trigger_reason, target_price=None, stop_loss=None):
+    def mock_send_alert(symbol, action, current_price, trigger_reason, target_price=None, stop_loss=None, **kwargs):
         captured_alerts.append({
             "symbol": symbol,
             "action": action,
@@ -23,10 +23,12 @@ def test_web_to_discord_hook_triggers_on_buy(monkeypatch):
             "target_price": target_price,
             "stop_loss": stop_loss,
             "trigger_reason": trigger_reason,
+            **kwargs,
         })
         return True
 
     monkeypatch.setattr("discord_alerts.send_trade_signal_alert", mock_send_alert)
+    monkeypatch.setattr("dispatcher.send_trade_signal_alert", mock_send_alert, raising=False)
 
     mock_client = mock.MagicMock()
     mock_resp = mock.MagicMock()
