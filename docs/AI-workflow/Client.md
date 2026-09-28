@@ -1,146 +1,43 @@
-# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF)
+# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 6.1
 
 **Tên dự án:** Stock-AI / AI Investment Decision & Research Platform  
-**Ngày tạo:** 2026-09-24 | **Cập nhật:** 2026-09-28  
-**Người yêu cầu (Client):** Tùng  
-**Phiên bản yêu cầu:** v6.1 — Hạ Tầng Bằng Chứng, Decision Record & Phân Tách Kiến Trúc (Phase 7 — TASK-0013 & TASK-0014)  
+**Phiên bản:** v6.1 — Decision Record Universe Panel, Migration 0003 & Dispatcher Decoupling (TASK-0014)  
+**Trọng tâm:** *"Không thêm tính năng mới. Xây hạ tầng bằng chứng (Evidence Integrity) và lưu vết TẠI SAO (WHY) cho toàn bộ Universe."*
 
 ---
 
-## 1. TỔNG QUAN DỰ ÁN (EXECUTIVE SUMMARY)
+## 1. MỤC TIÊU PHIÊN BẢN v6.1
 
-### 1.1. Kế Thừa Thành Quả Các Phiên Bản Trước (Phase 0 — Phase 6 Đã Hoàn Thành)
-Hệ thống đã vận hành ổn định các cơ chế nền tảng trong production:
-- **Tường lửa & An toàn (Phase 0):** Disclaimer pháp lý, RSS Sanitizer chống Prompt Injection, Heartbeat định kỳ 08:30.
-- **Hạ tầng Bằng chứng (Phase 1):** Bảng `signal_lifecycle` bất biến trên Supabase, tracking T+1/5/20, MFE/MAE, đối chuẩn VN-Index & VN30.
-- **Quản trị Rủi ro Danh mục (Phase 2):** Sector Concentration Gate (tối đa 3 mã/ngành), Dynamic Slippage theo ADV20 & trần/sàn, Rate Limit 15 RPM.
-- **Kiểm định Định lượng (Phase 3):** Walk-Forward 3 chặng (Train/Val/OOS), Ma trận Stress 11 khủng hoảng, Bootstrap Sharpe CI 10,000 lần với Effective Sample Size.
-- **Thử nghiệm AI & Phân rã Rủi ro (Phase 4 & 5):** A/B Testing Quant vs Quant+AI, Brier Score & 5-bucket AI calibration, Tối ưu hóa Risk Parity.
-- **Quản trị Rủi ro Khủng hoảng (Phase 6a–6d):** Stationary Block Bootstrap bảo toàn cụm rủi ro, Đại tu UI Stress Test Subtab 4 với Paired Bar Chart, Định lượng chi phí bảo hiểm Sector Gate ROI.
+1. **Chuẩn hóa tính toàn vẹn dữ liệu (TASK-0013 Prerequisite):**
+   - Sửa cách tính Alpha theo đúng chu kỳ nắm giữ vị thế (từ ngày mua tới ngày bán, không lấy biến động 1 phiên).
+   - Replay audit idempotent, quy tắc bảo thủ (chạm cả Target & Stop cùng ngày -> tính STOP trước), gắn cờ `t_plus_2_locked`.
+   - Loại bỏ mục tiêu consensus quá hạn > 180 ngày khỏi Fair Value, gắn cờ `mos_is_informative` phân định MoS thực chất.
+   - Data Gate dùng số liệu BCTC thật từ `get_financial_ratios()`, trả về `INSUFFICIENT_DATA` khi thiếu.
+   - Ký duyệt `ADR-0002` đối soát tham số live (Conviction >= 70, weights 40/25/20/15).
 
-### 1.2. Định Vị Triết Lý Cốt Lõi Phiên Bản v6.1 (Mindset Shift)
-> **"Không thêm tính năng. Xây bằng chứng."**  
-> *"Đừng để AI học từ chính nó (tránh bẫy Model Collapse), hãy để hệ thống học từ **Real Outcome của thị trường**."*  
-> **Định danh kỹ thuật:** *Closed-Loop Decision Learning Pipeline with Outcome Attribution & Human-Approved Rule Evolution.*
+2. **Lưu vết quyết định Universe Panel (TASK-0014):**
+   - Ghi nhận `DecisionRecord` cho toàn bộ các mã trong danh mục quét: **BUY**, **WATCH**, và **REJECT**.
+   - Bóc tách 4 tầng dữ liệu: **FACT** (giá, BCTC), **INFERENCE** (F-Score, Z-Score, RSI, MoS), **OPINION** (nhận định LLM), **COUNTERFACTUAL** (cổng từ chối chính, lý do từ chối để đo ROI của risk gate).
+   - Tạo migration `migrations/0003_decision_records.sql` (bảng `decision_records`, `decision_forward_returns` với trigger PostgreSQL cấm sửa/xóa).
 
-1. **Sửa cái cân trước khi xây hệ thống đo (TASK-0013):**
-   Vá dứt điểm 7 lỗi toàn vẹn bằng chứng (Alpha sai chu kỳ, audit không idempotent, consensus stale 727 ngày, MoS giả tạo, Data Gate nhận data mặc định, lệch pha ADR-0001).
-2. **Lưu vết TẠI SAO (WHY) cho toàn bộ Universe (TASK-0014):**
-   Ghi nhận đầy đủ Decision Record cho cả lệnh **BUY**, **WATCH** và **REJECT** (đo lường counterfactual ROI của từng cổng rủi ro).
-3. **Phân tách tối thiểu Kiến trúc Lõi ↔ Dispatcher (TASK-0014):**
-   Signal Engine trả về `SignalEvent` độc lập, test được 100% offline không cần token Discord. Module `dispatcher.py` chuyên trách gửi tin nhắn.
-4. **4 Nguyên Tắc Sắt Quản Trị Rủi Ro:**
-   - **Zero-Democracy Risk Gate:** Quản trị rủi ro là cổng chặn nhị phân cứng bằng code Python. Cấm LLM "tranh luận" hay "biểu quyết" làm mềm luật cắt lỗ.
-   - **Phân Định 3 Tầng Dữ Liệu:** Rạch ròi giữa **FACT** (thị trường & BCTC thật), **INFERENCE** (toán học định lượng do Python tính), và **HYPOTHESIS** (nhận định của LLM).
-   - **AI Chỉ Hạ Rủi Ro:** LLM chỉ có quyền veto hoặc giảm size, tuyệt đối không được tự ý nâng size hay mở lệnh (`can_buy`).
-   - **Hệ Thống Đề Xuất, Con Người Phê Duyệt:** Không tự động "Rule Upgrade". Mọi thay đổi luật chỉ qua ADR ký duyệt.
+3. **Phân tách Kiến trúc Signal Engine ↔ Presentation (TASK-0014):**
+   - `ai_analyst.py` chỉ làm nhiệm vụ phân tích logic và trả về `dataclass SignalEvent` độc lập, test được 100% offline.
+   - Module `dispatcher.py` chuyên trách định dạng Discord Embed và gửi Webhook/DM.
+   - Thêm Subtab 5 "Nhật Ký Quyết Định" trên Dashboard (`tabs/tab_alpha_tracker.py`) để tra cứu lịch sử quyết định BUY/WATCH/REJECT và biến động T+5, T+20.
+   - Tích hợp Evidence-Based Kill Switch: Tự động giảm 50% size khi Expectancy theo R của 20 vị thế gần nhất < 0.
 
 ---
 
-## 2. CHÂN DUNG NGƯỜI DÙNG (USER PERSONAS)
+## 2. NGUYÊN TẮC QUẢN TRỊ RỦI RO & BẢO TOÀN KIẾN TRÚC
 
-- **Nhóm 1 (Nhà đầu tư cá nhân / Client):**
-  - Cần biết chính xác: "Tại sao bot từ chối mua cổ phiếu này?", "Cổng Anti-Chasing đã cứu tôi bao nhiêu % lỗ?".
-  - Cần hệ thống minh bạch, có nhật ký quyết định (Decision Log) dễ tra cứu trên Dashboard.
-  - Cần cơ chế Cash Mode và Kill Switch tự động giảm quy mô vốn khi hiệu suất gần đây đi xuống.
-- **Nhóm 2 (Chuyên gia Quản lý Quỹ & Quant Researcher):**
-  - Đòi hỏi quy trình nghiên cứu có thể tái lập 100% (Reproducibility: code version, prompt hash, model id, temperature = 0).
-  - Cần dữ liệu Universe Panel toàn diện để chạy hồi quy Information Coefficient (IC) mà không bị thiên lệch sống sót (Survivorship Bias).
-  - Cần audit idempotent chạy lại bất kỳ lúc nào cũng cho ra cùng kết quả nhất quán.
+- **Zero-Democracy Risk Gate:** Cổng rủi ro là mã code Python nhị phân xác định, LLM tuyệt đối không được biểu quyết hay làm mềm luật cắt lỗ.
+- **AI Chỉ Giảm Rủi Ro:** LLM chỉ có quyền Veto (bác bỏ) hoặc giảm size, không được tự ý cấp quyền mua (`can_buy`).
+- **Phê Duyệt Có Kiểm Soát:** Mọi thay đổi về luật hay ngưỡng kích hoạt chỉ được cập nhật qua ADR có ký duyệt của con người.
 
 ---
 
-## 3. TÍNH NĂNG CHI TIẾT PHIÊN BẢN v6.1 (PHASE 7 — EVIDENCE INTEGRITY & FLYWHEEL)
+## 3. TIÊU CHUẨN KỸ THUẬT (QUALITY GATE)
 
-```
-┌──────────────────────────────────────────────────────────┐
-│  TẦNG 1: MARKET DATA & BCTC THẬT                         │
-└──────────────────────────┬───────────────────────────────┘
-                           ↓
-┌──────────────────────────────────────────────────────────┐
-│  TẦNG 2: HARD DEFENSIVE GATES (Python Deterministic)     │
-│  Macro Regime Gate · Stale Data Gate · Anti-Chasing      │
-└──────────────────────────┬───────────────────────────────┘
-                           ↓
-┌──────────────────────────────────────────────────────────┐
-│  TẦNG 3: QUANT DECISION & AI SEMANTIC                    │
-│  4-Pillar Conviction · Informative MoS · Gemini (Veto)   │
-└──────────────────────────┬───────────────────────────────┘
-                           ↓
-             dataclass SignalEvent (Offline Testable)
-                           ↓
-┌──────────────────────────────────────────────────────────┐
-│  TẦNG 4: SIGNAL LIFECYCLE & DECISION RECORDS             │
-│  BUY / WATCH / REJECT · Idempotent Replay · MFE / MAE    │
-└──────────────────────────┬───────────────────────────────┘
-                           ↓
-┌──────────────────────────────────────────────────────────┐
-│  TẦNG 5: DISPATCHER & UI (Downstream Consumers)          │
-│  dispatcher.py → Discord DM · Subtab 5 Decision Log UI   │
-└──────────────────────────────────────────────────────────┘
-```
-
----
-
-### 🔴 PHẦN 1: TASK-0013 — VÁ TÍNH TOÀN VẸN BẰNG CHỨNG (BẮT BUỘC LÀM TRƯỚC)
-
-| Hạng mục | Vấn đề hiện tại | Giải pháp kỹ thuật chuẩn hóa | Tiêu chí hoàn thành (Done) |
-|---|---|---|---|
-| **7.0a (Holding Alpha)** | `update_daily_tracking()` tính `alpha = pnl_pct - vnindex_chg` (1 phiên hôm nay, không phải cả chu kỳ). | Sửa thành: $\text{Alpha} = \text{PnL}_{\text{trade}} - \text{Return}_{\text{VNINDEX}}(T_{\text{in}} \rightarrow T_{\text{out}})$. Lưu `vnindex_pct_same_period`, `vn30_pct_same_period`. | Unit test chuỗi 20 phiên khớp 100% tính toán đối soát bằng tay. |
-| **7.0b (Idempotent Replay)** | Audit chỉ lấy High/Low ngày chạy; chạm cả Target và Stop cùng ngày thì ưu tiên Target (quá lạc quan); bỏ qua T+2.5. | Viết `replay_signal_path(signal, ohlc_df)` tính lại đường đi từ ngày vào; chạm cả 2 cùng ngày $\rightarrow$ **STOP trước**; cờ `t_plus_2_locked = True` nếu thoát trước T+2.5. | Chạy audit lại nhiều lần hoặc bù ngày đều ra kết quả trùng khớp 100%. |
-| **7.0c (Stale Consensus)** | Consensus targets CTCK cũ $> 180$ ngày (từ 2024) vẫn bị trộn 40% vào Fair Value (Phase 6e chưa khép kín). | Trong `calculate_fair_value_and_mos()`: nếu age $> 180$ ngày $\rightarrow$ trọng số consensus $= 0$, không làm target, gán `confidence = "LOW"`, bật cờ `consensus_stale = True`. | Test chứng minh dữ liệu consensus cũ bị loại khỏi Fair Value. |
-| **7.0d (Informative MoS)** | Cổ phiếu Growth bị tính `fv_base = price * 1.18` khiến MoS luôn ~15.25%, tự động pass cổng MoS $\ge 15\%$. | Thêm cờ `mos_is_informative: bool` (gán `False` khi FV suy diễn từ hệ số nhân cố định). Loại khỏi tập hồi quy trọng số. | Cờ xuất hiện minh bạch trong kết quả định giá và Decision Record. |
-| **7.0e (Real Data Gate)** | `scan_market_opportunities()` truyền tham số giả (P/E 12, P/B 1.5, F-Score 7, Z-Score 3.0) vào `reconcile_data()`. | Đấu nối dữ liệu thật từ `get_financial_ratios(symbol)`. Thiếu dữ liệu $\rightarrow$ trả về `INSUFFICIENT_DATA`, cấm điền mặc định. | Cổ phiếu thiếu số liệu tài chính bị loại bỏ kèm lý do rõ ràng. |
-| **7.0f (Backtest Label)** | `generate_signals_by_strategy()` nhận ngưỡng FA tĩnh và Stop cứng −7%, chưa phản ánh luật Live. | Gắn nhãn UI: *"Kiểm định thời điểm kỹ thuật (Technical timing test)"*. Cấm trích dẫn làm bằng chứng cho FA. | UI hiển thị đúng nhãn chuẩn mực CFA. |
-| **7.0g (ADR-0002)** | Lệch pha giữa ADR-0001 (Conviction $\ge 55$) và code live ($\ge 70$, trọng số 40/25/20/15). | Soạn thảo & ký duyệt `ADR-0002 "Reconciliation"` xác nhận phiên bản live là chuẩn. Thiết lập test tự động so sánh `LOCKED_QUANT_THRESHOLDS`. | File ADR-0002 được duyệt; unit test đối chiếu hằng số pass 100%. |
-
----
-
-### 🔵 PHẦN 2: TASK-0014 — DECISION RECORD, MIGRATION 0003 & DISPATCHER DECOUPLING
-
-#### 7a. Decision Record Schema & Universe Panel
-- **Phân định 4 tầng dữ liệu trong `decision_records`:**
-  1. **FACTS (Khách quan):** `symbol`, `price_asof`, `snapshot_price`, `fin_period`, `fin_published_date`, `session` (ATO/NOON/ATC), `adv20_shares`.
-  2. **INFERENCES (Toán học xác định):** `mos_pct`, `mos_is_informative`, `f_score`, `z_score`, `rsi14`, `vol_ratio`, `foreign_net_bil`, `allocated_size_pct`, `checks` (data_gate, macro_regime, anti_chasing, liquidity).
-  3. **HYPOTHESES / OPINIONS (LLM ngữ nghĩa):** `llm_raw_decision`, `final_decision`, `is_overridden`, `override_reason`, `prompt_hash`, `model_id`, `temperature = 0`, `input_hash`.
-  4. **COUNTERFACTUAL TRACKING (Đo ROI Cổng Rủi Ro):** Lưu `primary_rejection_gate` và `rejection_reasons` cho các lệnh **REJECT / WATCH**. Định lượng: *Anti-Chasing Gate giúp tránh bao nhiêu % drawdown?*
-- **Forward Returns:** Job batch cuối ngày tự động điền lợi suất thực tế T+1, T+3, T+5, T+10, T+20 kèm biến động VN-Index/VN30 cùng kỳ (throttle $\le 20$ req/phút).
-
-#### 7b. Hợp Nhất Cơ Sở Dữ Liệu (Migration `0003_decision_records.sql`)
-- Bổ sung cột còn thiếu cho `signal_lifecycle` (`t3_pct`, `t10_pct`, `decision_id`, `t_plus_2_locked`).
-- Tạo bảng `decision_records` (append-only) lưu toàn bộ quyết định BUY, WATCH, REJECT.
-- Tạo bảng `decision_forward_returns` theo dõi lợi suất tương lai.
-- Gắn trigger PostgreSQL `forbid_decision_mutation()` cấm tuyệt đối hành vi sửa/xóa bản ghi quyết định.
-
-#### 7f. Phân Tách Kiến Trúc Lõi ↔ Dispatcher & UI Nhật Ký Quyết Định
-- **Tách Signal Engine khỏi Bot:** `ai_analyst.py` chỉ tính toán và trả về `dataclass SignalEvent`. Module `dispatcher.py` độc lập chuyên trách format Embed và gửi Discord Webhook/DM. Lõi phân tích test được offline 100% mà không cần token Discord.
-- **UI Nhật Ký Quyết Định:** Bổ sung Subtab 5 trong `tabs/tab_alpha_tracker.py` cho phép lọc và đối soát toàn bộ quyết định BUY / WATCH / REJECT cùng lý do từ chối và diễn biến giá T+5, T+20.
-- **Evidence-Based Kill Switch:**
-  - Expectancy theo R của 20 lệnh gần nhất $< 0$ $\rightarrow$ Tự động hạ $50\%$ quy mô vị thế và bắn cảnh báo.
-  - AI lệch chuẩn (`check_ai_calibration`) $\rightarrow$ Tự động ngắt `ai_confidence` khỏi phân bổ Half-Kelly.
-  - Dữ liệu lỗi diện rộng $\rightarrow$ Kích hoạt `INSUFFICIENT_DATA`, đình chỉ toàn bộ lệnh BUY mới.
-
----
-
-## 4. ĐỊNH HƯỚNG VÀ RÀNG BUỘC KỸ THUẬT (TECHNICAL CONSTRAINTS)
-
-- **Bộ tiêu chuẩn chất lượng SonarCloud & Ruff:**
-  - Độ phức tạp nhận thức (Cognitive Complexity) của mọi hàm mới phải **$< 15$** (S3776).
-  - Xử lý ngoại lệ chuẩn: dùng `logging.exception("...")` trong khối except (S8572).
-  - Không trùng lặp chuỗi ký tự $\ge 3$ lần (S1192).
-  - Format và sort import tự động bằng `ruff check --fix` (Ruff I001).
-  - Độ bao phủ kiểm thử (Test Coverage) cho các module logic mới phải **$\ge 80\%$**.
-- **An toàn Môi trường Test:**
-  - 100% unit tests bắt buộc phải mock I/O bên ngoài (Discord, Gemini, Supabase, network).
-  - Tuân thủ nguyên tắc Zero Test Leakage.
-
----
-
-## 5. BÀI HỌC XƯƠNG MÁU VÀ CÁC CẠM BẪY PHẢI TRÁNH (CORE RISK LESSONS)
-
-1. **Lỗi Đo Sai Chu Kỳ Alpha (#26):** Không lấy biến động 1 phiên trừ PnL cả chu kỳ. Alpha phải đối chuẩn đúng khoảng thời gian từ ngày vào đến ngày thoát lệnh.
-2. **Thiên Lệch Lạc Quan Cùng Ngày & Audit Non-Idempotent (#27):** Khi cùng ngày chạm cả Target và Stop, bắt buộc xử lý bảo thủ (Stop trước). Replay audit phải chạy bù được bất kỳ lúc nào mà không làm lệch số liệu.
-3. **Bẫy Biên An Toàn Ảo (#28):** Hệ số nhân cố định gán cho cổ phiếu tăng trưởng làm MoS luôn pass giả tạo. Bắt buộc có cờ `mos_is_informative`.
-4. **Ảo Tưởng Multi-Agent Debate & Fine-Tune LLM (#29):** Không biến công thức toán thành văn bản để LLM cãi nhau; không fine-tune LLM trên tập dữ liệu quá nhỏ ($N \approx 100$) trong thị trường tài chính phi dừng. Dùng code toán để chặn rủi ro và chỉ dùng LLM bóc tách tin tức.
-5. **Dữ Liệu Giả trong Data Gate (#30):** Tuyệt đối không truyền tham số mặc định (P/E 12, P/B 1.5). Thiếu dữ liệu phải trả về `INSUFFICIENT_DATA`.
-6. **Điểm Yếu Đơn Lẻ Nguồn Dữ Liệu (#25):** Luôn chuẩn bị cơ chế fallback an toàn, không để bot crash khi API dữ liệu bên thứ ba gặp lỗi kết nối.
+- **SonarCloud:** Cognitive Complexity < 15 (S3776), `logging.exception()` trong except (S8572), không trùng lặp chuỗi >= 3 lần (S1192).
+- **Ruff:** Tự động sắp xếp import và định dạng code với `ruff check --fix .`.
+- **Test Coverage:** >= 80% cho toàn bộ logic mới; 100% I/O bên ngoài (Discord, Gemini, DB) phải được mock khi test.\n
