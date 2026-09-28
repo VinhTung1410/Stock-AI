@@ -183,7 +183,8 @@ def calculate_fair_value_and_mos(
     symbol: str,
     current_price: float,
     fin_dict: dict | None = None,
-    sector: str = ""
+    sector: str = "",
+    consensus_target: float | None = None,
 ) -> Dict[str, Any]:
     """Calculate fair value and margin of safety using archetype-specific models.
 
@@ -231,7 +232,10 @@ def calculate_fair_value_and_mos(
 
     # Lấy thông tin Consensus CTCK nếu có
     cons_data = INSTITUTIONAL_CONSENSUS_TARGETS.get(sym_clean, {})
-    cons_target = cons_data.get("consensus_target", 0.0)
+    if consensus_target is not None:
+        cons_target = float(consensus_target)
+    else:
+        cons_target = cons_data.get("consensus_target", 0.0)
     cons_source = cons_data.get("source", "N/A")
 
     confidence = "MEDIUM"
@@ -351,17 +355,31 @@ def calculate_fair_value_and_mos(
         fv_bull = round(current_price * 1.30, 2)
         price_target = round(min(fv_bull, fv_base * 1.12), 2)
 
-    # Nếu có mỏ neo Consensus từ CTCK lớn: Kết hợp trung vị và áp chiết khấu an toàn 15%
+    # Kiểm tra mỏ neo Consensus từ CTCK lớn (Task 7.0c)
+    consensus_stale = False
     if cons_target > 0:
-        discounted_consensus = round(cons_target * 0.85, 2)
-        fv_base = round((fv_base * 0.6) + (discounted_consensus * 0.4), 2)
-        fv_bear = round(min(fv_bear, fv_base * 0.85), 2)
-        fv_bull = round(max(fv_bull, cons_target), 2)
-        price_target = cons_target
+        freshness = check_institutional_target_freshness(sym_clean)
+        if freshness.get("is_stale", False):
+            consensus_stale = True
+            confidence = "LOW"
+            logging.warning("Consensus target của %s đã quá hạn (%s ngày), loại bỏ khỏi Fair Value.", sym_clean, freshness.get("age_days"))
+        else:
+            discounted_consensus = round(cons_target * 0.85, 2)
+            fv_base = round((fv_base * 0.6) + (discounted_consensus * 0.4), 2)
+            fv_bear = round(min(fv_bear, fv_base * 0.85), 2)
+            fv_bull = round(max(fv_bull, cons_target), 2)
+            price_target = cons_target
 
     # TÍNH TOÁN BIÊN AN TOÀN (MARGIN OF SAFETY - MOS %)
     # MOS = (Fair Value Base - Current Price) / Fair Value Base * 100%
     mos_pct = round(((fv_base - current_price) / fv_base) * 100, 2) if fv_base > 0 else 0.0
+
+    # Phân định MoS thực chất vs MoS suy diễn từ hệ số nhân giá cố định (Task 7.0d)
+    mos_is_informative = True
+    if archetype == "GROWTH_COMPOUNDER" and (cons_target <= 0 or consensus_stale):
+        mos_is_informative = False
+    elif archetype == "BANK" and (not pb or pb <= 0) and (cons_target <= 0 or consensus_stale):
+        mos_is_informative = False
 
     # Xếp loại mức độ hấp dẫn định giá
     if mos_pct >= 20.0:
@@ -382,10 +400,12 @@ def calculate_fair_value_and_mos(
         "fair_value_bull": fv_bull,
         "price_target": price_target,
         "mos_pct": mos_pct,
+        "mos_is_informative": mos_is_informative,
+        "consensus_stale": consensus_stale,
         "valuation_rating": val_rating,
         "valuation_method": valuation_method,
         "confidence": confidence,
         "consensus_target": cons_target,
         "consensus_source": cons_source,
-        "archetype": archetype
+        "archetype": archetype,
     }

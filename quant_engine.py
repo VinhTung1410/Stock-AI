@@ -1101,9 +1101,13 @@ LOCKED_QUANT_THRESHOLDS = {
     "mos_min_pct": 15.0,
     "z_score_min": 1.80,
     "rsi_max_entry": 70.0,
-    "conviction_min": 55.0,
+    "conviction_min": 55.0,  # Legacy key preserved for backward compatibility
+    "watch_conviction_min": 55.0,
+    "buy_conviction_min": 70.0,
     "adv20_absorption_max_pct": 0.10,
     "sector_exposure_max_pct": 0.25,
+    "pillar_weights": {"fa": 0.40, "ta": 0.25, "flow": 0.20, "macro_news": 0.15},
+    "adr_version": "ADR-0002",
 }
 
 RISK_FREE_HURDLE_RATE_PCT = 4.5  # Sàn lãi suất tiền gửi rủi ro thấp theo năm

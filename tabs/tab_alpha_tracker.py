@@ -238,11 +238,12 @@ def render_tab_alpha_tracker():
     </div>
     """, unsafe_allow_html=True)
 
-    subtab1, subtab2, subtab3, subtab4 = st.tabs([
+    subtab1, subtab2, subtab3, subtab4, subtab5 = st.tabs([
         "🎯 Kiểm Toán Tín Hiệu (Alpha Ledger)",
         "🚀 Backtest Lõi Định Lượng Theo Regime",
         "📝 Forward Testing (Paper Trading)",
         "🌪️ Kiểm Tra Áp Lực & Rủi Ro Đuôi (Stress Test)",
+        "📋 Nhật Ký Quyết Định (Decision Log)",
     ])
 
     with subtab1:
@@ -256,6 +257,9 @@ def render_tab_alpha_tracker():
 
     with subtab4:
         _render_stress_test_subtab()
+
+    with subtab5:
+        _render_decision_log_subtab()
 
 
 def _render_alpha_audit_subtab():
@@ -423,6 +427,7 @@ def _render_regime_backtest_subtab():
             ],
             index=0,
         )
+        st.caption("ℹ️ **Phân loại kiểm định:** *Kiểm định thời điểm kỹ thuật (Technical timing test)*. Thuật toán kiểm định thời điểm vào/ra kỹ thuật trên dữ liệu giá, không thay thế cho định giá FA.")
     with c_method:
         method = st.selectbox("Phương pháp phân loại Regime VN-Index", ["MA200_SLOPE", "MOMENTUM_VOLATILITY"])
 
@@ -882,6 +887,75 @@ def _render_stress_test_subtab():
 
     _render_monte_carlo_tail_risk_ui(trade_pnls)
     _render_sector_gate_insurance_roi_ui(sym_input)
+
+
+def _render_decision_log_subtab():
+    """Render Subtab 5: Universe Panel Decision Log (TASK-0014)."""
+    st.markdown("""
+    <div style="margin-bottom: 16px;">
+        <h3 style="margin: 0; color: #0f172a; font-weight: 700;">📋 Nhật Ký Quyết Định Toàn Universe (Decision Records & Counterfactual Log)</h3>
+        <p style="color: #64748b; font-size: 13.5px; margin-top: 4px;">
+            Lưu vết 100% quyết định <b>BUY, WATCH, REJECT</b>. Đo lường giá trị bảo vệ thực tế (Counterfactual ROI) của từng cổng rủi ro.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    from db_manager import check_evidence_kill_switch, get_decision_records
+
+    # Evidence Kill Switch Status Card
+    kill_data = check_evidence_kill_switch()
+    if kill_data.get("is_triggered"):
+        st.error(
+            f"🚨 **EVIDENCE KILL SWITCH ĐANG KÍCH HOẠT:** {kill_data.get('reason')} — "
+            f"Tự động cắt giảm {kill_data.get('size_reduction_pct')}% quy mô vị thế mở mới!"
+        )
+    else:
+        st.success(
+            f"🛡️ **Evidence Kill Switch:** Bình thường ({kill_data.get('reason')}, "
+            f"Expectancy: {kill_data.get('expectancy_r', 0.0):+.2f}R)"
+        )
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        f_dec = st.selectbox("Lọc Quyết Định:", ["TẤT CẢ", "BUY", "WATCH", "REJECT"], key="dec_log_dec")
+    with c2:
+        f_gate = st.selectbox(
+            "Lọc Cổng Từ Chối:",
+            ["TẤT CẢ", "DATA_GATE", "MACRO_REGIME", "ANTI_CHASING", "LIQUIDITY", "VALUATION", "AI_VETO", "COOLDOWN"],
+            key="dec_log_gate",
+        )
+    with c3:
+        f_sym = st.text_input("Tìm kiếm Mã CP:", key="dec_log_sym").upper().strip()
+
+    filters = {}
+    if f_dec != "TẤT CẢ":
+        filters["decision"] = f_dec
+    if f_gate != "TẤT CẢ":
+        filters["primary_rejection_gate"] = f_gate
+    if f_sym:
+        filters["symbol"] = f_sym
+
+    records = get_decision_records(filters=filters, limit=100)
+    if not records:
+        st.info("ℹ️ Chưa có bản ghi quyết định nào trên hệ thống hoặc không có bản ghi phù hợp với bộ lọc.")
+        return
+
+    df_dec = pd.DataFrame(records)
+    total = len(df_dec)
+    buys = len(df_dec[df_dec["decision"] == "BUY"]) if "decision" in df_dec.columns else 0
+    rejects = len(df_dec[df_dec["decision"] == "REJECT"]) if "decision" in df_dec.columns else 0
+    watches = len(df_dec[df_dec["decision"] == "WATCH"]) if "decision" in df_dec.columns else 0
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Tổng Quyết Định", total)
+    m2.metric("Lệnh BUY Được Cấp Phép", buys)
+    m3.metric("Lệnh Đưa Vào WATCH", watches)
+    pct_str = f"{rejects/total*100:.1f}% bị chặn" if total > 0 else None
+    m4.metric("Lệnh Bị REJECT", rejects, delta=pct_str, delta_color="inverse")
+
+    cols_to_show = [c for c in ["decision_id", "symbol", "session", "decision", "primary_rejection_gate", "created_at"] if c in df_dec.columns]
+    st.dataframe(df_dec[cols_to_show], width="stretch")
+
 
 
 

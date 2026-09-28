@@ -1,6 +1,7 @@
 import logging
 import os
 from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -183,6 +184,214 @@ def get_open_signals_count() -> int:
         return 0
 
 
+def calculate_holding_period_benchmark_return(
+    benchmark_symbol: str = "VNINDEX",
+    start_date: Any = None,
+    end_date: Any = None,
+    benchmark_df: Optional[pd.DataFrame] = None,
+    fallback_daily_chg: float = 0.0,
+) -> float:
+    """Calculate the cumulative return of a benchmark index over the exact holding period.
+
+    Args:
+        benchmark_symbol: Index ticker, e.g. "VNINDEX" or "VN30".
+        start_date: Entry date (string or datetime).
+        end_date: Exit date (string or datetime).
+        benchmark_df: Optional pre-fetched historical DataFrame with 'time' and 'close'.
+        fallback_daily_chg: Fallback return if historical data cannot be aligned.
+
+    Returns:
+        Holding period return in percent (e.g. 5.25 for +5.25%), rounded to 2 decimals.
+    """
+    if benchmark_df is None:
+        try:
+            from data_engine import fetch_index_historical
+
+            benchmark_df = fetch_index_historical(symbol=benchmark_symbol, limit=120)
+        except Exception:
+            logging.debug("Could not fetch index historical for %s", benchmark_symbol)
+
+    if benchmark_df is None or benchmark_df.empty or "close" not in benchmark_df.columns:
+        return round(float(fallback_daily_chg), 2)
+
+    df = benchmark_df.copy()
+    time_col = "time" if "time" in df.columns else ("date" if "date" in df.columns else None)
+    if time_col:
+        df[time_col] = pd.to_datetime(df[time_col], errors="coerce")
+        df = df.dropna(subset=[time_col]).sort_values(by=time_col)
+
+    if df.empty:
+        return round(float(fallback_daily_chg), 2)
+
+    try:
+        if isinstance(start_date, str):
+            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00")).date()
+        elif isinstance(start_date, datetime):
+            start_dt = start_date.date()
+        else:
+            start_dt = None
+    except Exception:
+        start_dt = None
+
+    try:
+        if isinstance(end_date, str):
+            end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00")).date()
+        elif isinstance(end_date, datetime):
+            end_dt = end_date.date()
+        else:
+            end_dt = None
+    except Exception:
+        end_dt = None
+
+    if start_dt and time_col:
+        df["dt_only"] = df[time_col].dt.date
+        sub_entry = df[df["dt_only"] >= start_dt]
+        entry_row = sub_entry.iloc[0] if not sub_entry.empty else df.iloc[0]
+        if end_dt:
+            sub_exit = df[df["dt_only"] <= end_dt]
+            exit_row = sub_exit.iloc[-1] if not sub_exit.empty else df.iloc[-1]
+        else:
+            exit_row = df.iloc[-1]
+    else:
+        entry_row = df.iloc[0]
+        exit_row = df.iloc[-1]
+
+    entry_close = float(entry_row["close"])
+    exit_close = float(exit_row["close"])
+    if entry_close <= 0:
+        return 0.0
+
+    return round(((exit_close - entry_close) / entry_close) * 100.0, 2)
+
+
+def replay_signal_path(
+    signal: dict,
+    ohlc_df: pd.DataFrame,
+    vnindex_df: Optional[pd.DataFrame] = None,
+    vn30_df: Optional[pd.DataFrame] = None,
+) -> dict:
+    """Idempotently re-evaluates the price trajectory of a signal from its entry date.
+
+    Implements conservative resolution:
+    - If in the same bar both target and stop are breached, STOP_LOSS is recorded first.
+    - Tags t_plus_2_locked = True if exit condition is reached before T+2.5 trading days.
+    - Returns updated MFE, MAE, T+ milestones, holding-period Alpha, and benchmark returns.
+    """
+    if ohlc_df is None or ohlc_df.empty:
+        return {"status": "NO_DATA", "pnl_pct": 0.0, "alpha_pct": 0.0}
+
+    df = ohlc_df.copy()
+    time_col = "time" if "time" in df.columns else ("date" if "date" in df.columns else None)
+    if time_col:
+        df[time_col] = pd.to_datetime(df[time_col], errors="coerce")
+        df = df.dropna(subset=[time_col]).sort_values(by=time_col)
+
+    entry_p = float(signal.get("entry_price", 0.0))
+    if entry_p <= 0 and not df.empty:
+        entry_p = float(df.iloc[0].get("open", df.iloc[0]["close"]))
+
+    target_p = float(signal.get("target_price") or (entry_p * 1.12))
+    stop_p = float(signal.get("stop_loss") or (entry_p * 0.93))
+
+    start_date = signal.get("created_at") or signal.get("entry_date")
+    if start_date and time_col:
+        try:
+            if isinstance(start_date, str):
+                s_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00")).date()
+            else:
+                s_dt = start_date.date()
+            df = df[df[time_col].dt.date >= s_dt]
+        except Exception:
+            pass
+
+    if df.empty:
+        return {"status": "EMPTY_RANGE", "pnl_pct": 0.0, "alpha_pct": 0.0}
+
+    mfe = entry_p
+    mae = entry_p
+    status = "OPEN"
+    exit_p = None
+    exit_idx = None
+    exit_date = None
+    t_marks: dict = {}
+
+    for idx, (_, row) in enumerate(df.iterrows()):
+        high_p = float(row.get("high", row["close"]))
+        low_p = float(row.get("low", row["close"]))
+        close_p = float(row["close"])
+        row_time = row[time_col] if time_col else None
+
+        mfe = round(max(mfe, high_p), 2)
+        mae = round(min(mae, low_p), 2)
+
+        if idx == 1:
+            t_marks["price_t1"] = close_p
+        elif idx == 3:
+            t_marks["price_t3"] = close_p
+        elif idx == 5:
+            t_marks["price_t5"] = close_p
+        elif idx == 10:
+            t_marks["price_t10"] = close_p
+        elif idx == 20:
+            t_marks["price_t20"] = close_p
+        elif idx == 60:
+            t_marks["price_t60"] = close_p
+
+        # Conservative Rule (7.0b): If BOTH stop and target are breached on same bar, STOP first
+        if low_p <= stop_p:
+            status = "STOP_LOSS"
+            exit_p = stop_p
+            exit_idx = idx
+            exit_date = str(row_time) if row_time else None
+            break
+        elif high_p >= target_p:
+            status = "TARGET_HIT"
+            exit_p = target_p
+            exit_idx = idx
+            exit_date = str(row_time) if row_time else None
+            break
+        elif idx >= 60:
+            status = "EXPIRED"
+            exit_p = close_p
+            exit_idx = idx
+            exit_date = str(row_time) if row_time else None
+            break
+
+    if status == "OPEN":
+        exit_p = float(df.iloc[-1]["close"])
+        exit_date = str(df.iloc[-1][time_col]) if time_col else None
+
+    # T+2.5 settlement lock check: exit before trading bar 2 is locked
+    t_plus_2_locked = bool(exit_idx is not None and exit_idx < 2)
+
+    pnl_pct = round(((exit_p - entry_p) / entry_p) * 100.0, 2) if entry_p > 0 else 0.0
+
+    # Calculate holding period benchmarks
+    vnindex_ret = calculate_holding_period_benchmark_return(
+        "VNINDEX", start_date=start_date, end_date=exit_date, benchmark_df=vnindex_df
+    )
+    vn30_ret = calculate_holding_period_benchmark_return(
+        "VN30", start_date=start_date, end_date=exit_date, benchmark_df=vn30_df
+    )
+    alpha_pct = round(pnl_pct - vnindex_ret, 2)
+
+    return {
+        "status": status,
+        "entry_price": entry_p,
+        "exit_price": exit_p,
+        "exit_date": exit_date,
+        "exit_bar": exit_idx,
+        "max_favorable_price": mfe,
+        "max_adverse_price": mae,
+        "actual_pnl_pct": pnl_pct,
+        "vnindex_pct_same_period": vnindex_ret,
+        "vn30_pct_same_period": vn30_ret,
+        "pnl_vs_vnindex": alpha_pct,
+        "t_plus_2_locked": t_plus_2_locked,
+        **t_marks,
+    }
+
+
 def update_daily_tracking() -> dict:
     """Post-market audit process (runs at 15:15 VN time).
 
@@ -252,7 +461,7 @@ def update_daily_tracking() -> dict:
         tracking_updates = {
             "updated_at": now_utc,
             "max_favorable_price": new_mfe,
-            "max_adverse_price": new_mae
+            "max_adverse_price": new_mae,
         }
 
         if days_elapsed >= 1 and tracking.get("price_t1") is None:
@@ -264,53 +473,62 @@ def update_daily_tracking() -> dict:
         if days_elapsed >= 60 and tracking.get("price_t60") is None:
             tracking_updates["price_t60"] = curr_p
 
-        # 2. KIỂM TRA ĐIỀU KIỆN ĐÓNG LỆNH (STATE TRANSITION)
+        # 2. KIỂM TRA ĐIỀU KIỆN ĐÓNG LỆNH (CONSERVATIVE STOP FIRST & HOLDING ALPHA)
         new_status = "OPEN"
         exit_price = None
         loss_attribution = None
+        pnl_pct = 0.0
 
-        # Ưu tiên 1: Chạm Chốt Lời (TARGET_HIT)
-        if high_p >= target_p:
-            new_status = "TARGET_HIT"
-            exit_price = target_p
-            pnl_pct = round(((target_p - entry_p) / entry_p) * 100, 2)
-            alpha_pct = round(pnl_pct - vnindex_chg, 2)
-
-        # Ưu tiên 2: Chạm Cắt Lỗ (STOP_LOSS)
-        elif low_p <= stop_p:
+        # Ưu tiên 1: Chạm Cắt Lỗ (STOP_LOSS) - Quy tắc bảo thủ 7.0b
+        if low_p <= stop_p:
             new_status = "STOP_LOSS"
             exit_price = stop_p
             pnl_pct = round(((stop_p - entry_p) / entry_p) * 100, 2)
-            alpha_pct = round(pnl_pct - vnindex_chg, 2)
-
-            # Bóc tách nguyên nhân thất bại (Loss Attribution)
-            if vnindex_chg <= -2.0:
-                loss_attribution = "MARKET_SYSTEMIC_CRASH"
-            elif item.get("f_score", 6) <= 4:
-                loss_attribution = "FUNDAMENTAL_DETERIORATION"
-            elif item.get("p_bull", 0.3) >= 0.65:
-                loss_attribution = "AI_OVERCONFIDENCE"
-            else:
-                loss_attribution = "TECHNICAL_FALSE_BREAKOUT"
-
-        # Ưu tiên 3: Hết hạn chu kỳ 60 ngày
+        elif high_p >= target_p:
+            new_status = "TARGET_HIT"
+            exit_price = target_p
+            pnl_pct = round(((target_p - entry_p) / entry_p) * 100, 2)
         elif days_elapsed >= 60:
             new_status = "EXPIRED"
             exit_price = curr_p
             pnl_pct = round(((curr_p - entry_p) / entry_p) * 100, 2)
-            alpha_pct = round(pnl_pct - vnindex_chg, 2)
             loss_attribution = "TIME_EXPIRED"
 
         if new_status != "OPEN":
+            # Task 7.0a: Tính Alpha chuẩn xác theo chu kỳ nắm giữ thực tế
+            vnindex_holding = calculate_holding_period_benchmark_return(
+                "VNINDEX", start_date=item.get("created_at"), end_date=now_utc, fallback_daily_chg=vnindex_chg
+            )
+            vn30_holding = calculate_holding_period_benchmark_return(
+                "VN30", start_date=item.get("created_at"), end_date=now_utc, fallback_daily_chg=vnindex_chg
+            )
+            alpha_pct = round(pnl_pct - vnindex_holding, 2)
+            t_plus_2_locked = bool(days_elapsed < 2.5)
+
+            if new_status == "STOP_LOSS":
+                if vnindex_holding <= -2.0:
+                    loss_attribution = "MARKET_SYSTEMIC_CRASH"
+                elif item.get("f_score", 6) <= 4:
+                    loss_attribution = "FUNDAMENTAL_DETERIORATION"
+                elif item.get("p_bull", 0.3) >= 0.65:
+                    loss_attribution = "AI_OVERCONFIDENCE"
+                else:
+                    loss_attribution = "TECHNICAL_FALSE_BREAKOUT"
+
             tracking_updates.update({
                 "status": new_status,
                 "exit_price": exit_price,
                 "exit_date": now_utc,
                 "actual_pnl_pct": pnl_pct,
                 "pnl_vs_vnindex": alpha_pct,
-                "loss_attribution": loss_attribution
+                "vnindex_pct_same_period": vnindex_holding,
+                "vn30_pct_same_period": vn30_holding,
+                "t_plus_2_locked": t_plus_2_locked,
+                "loss_attribution": loss_attribution,
             })
-            logging.info(f"🎯 POSITION {sym} CLOSED: Status = {new_status} | P/L = {pnl_pct:+.2f}% | Alpha = {alpha_pct:+.2f}%")
+            logging.info(
+                f"🎯 POSITION {sym} CLOSED: Status = {new_status} | P/L = {pnl_pct:+.2f}% | Alpha = {alpha_pct:+.2f}%"
+            )
 
         # Cập nhật Supabase
         if tracking_id:
@@ -500,4 +718,149 @@ def update_signal_lifecycle_exit(signal_id: str, exit_data: dict) -> dict | None
     except Exception:
         logging.exception("Lỗi khi cập nhật exit cho signal lifecycle")
         return None
+
+
+def save_decision_record(record: dict) -> str | None:
+    """Save an immutable decision record (BUY, WATCH, REJECT) to Supabase decision_records."""
+    client = get_supabase_client()
+    if not client:
+        return None
+
+    symbol = record.get("symbol", "").upper().strip()
+    session = record.get("session", "NOON")
+    decision = record.get("decision", "REJECT").upper()
+    now_str = datetime.now(VN_TZ).strftime("%Y%m%d_%H%M%S")
+    decision_id = record.get("decision_id") or f"DEC_{symbol}_{now_str}"
+
+    row = {
+        "decision_id": decision_id,
+        "symbol": symbol,
+        "session": session,
+        "decision": decision,
+        "primary_rejection_gate": record.get("primary_rejection_gate"),
+        "rejection_reasons": record.get("rejection_reasons", []),
+        "facts": record.get("facts", {}),
+        "inferences": record.get("inferences", {}),
+        "opinions": record.get("opinions", {}),
+        "counterfactual": record.get("counterfactual", {}),
+    }
+
+    try:
+        res = client.table("decision_records").insert(row).execute()
+        if res.data:
+            logging.info("Saved decision record %s for %s (%s)", decision_id, symbol, decision)
+            return decision_id
+        return None
+    except Exception:
+        logging.exception("Failed to insert decision record for %s", symbol)
+        return None
+
+
+def get_decision_records(filters: Optional[dict] = None, limit: int = 50) -> list[dict]:
+    """Query decision records with optional filters."""
+    client = get_supabase_client()
+    if not client:
+        return []
+
+    try:
+        query = client.table("decision_records").select("*").order("created_at", desc=True).limit(limit)
+        if filters:
+            if filters.get("symbol"):
+                query = query.eq("symbol", filters["symbol"].upper().strip())
+            if filters.get("decision"):
+                query = query.eq("decision", filters["decision"].upper())
+            if filters.get("session"):
+                query = query.eq("session", filters["session"].upper())
+            if filters.get("primary_rejection_gate"):
+                query = query.eq("primary_rejection_gate", filters["primary_rejection_gate"])
+        res = query.execute()
+        return res.data or []
+    except Exception:
+        logging.exception("Error querying decision records")
+        return []
+
+
+def update_decision_forward_returns(decision_id: str, returns_data: dict) -> bool:
+    """Save or update forward returns for a decision record."""
+    client = get_supabase_client()
+    if not client:
+        return False
+
+    row = {
+        "decision_id": decision_id,
+        "symbol": returns_data.get("symbol", ""),
+        "snapshot_price": float(returns_data.get("snapshot_price", 0.0)),
+        "t1_return_pct": returns_data.get("t1_return_pct"),
+        "t3_return_pct": returns_data.get("t3_return_pct"),
+        "t5_return_pct": returns_data.get("t5_return_pct"),
+        "t10_return_pct": returns_data.get("t10_return_pct"),
+        "t20_return_pct": returns_data.get("t20_return_pct"),
+        "vnindex_t5_pct": returns_data.get("vnindex_t5_pct"),
+        "vnindex_t20_pct": returns_data.get("vnindex_t20_pct"),
+    }
+
+    try:
+        res = client.table("decision_forward_returns").upsert(row, on_conflict="decision_id").execute()
+        return bool(res.data)
+    except Exception:
+        logging.exception("Error saving forward returns for %s", decision_id)
+        return False
+
+
+def check_evidence_kill_switch(lookback_trades: int = 20) -> dict:
+    """Evaluate recent closed trades to verify if Expectancy R < 0.
+
+    If Expectancy is negative, triggers the Kill Switch: reduces position size by 50%
+    and issues an alert.
+    """
+    client = get_supabase_client()
+    default_res = {
+        "is_triggered": False,
+        "expectancy_r": 0.0,
+        "sample_size": 0,
+        "size_reduction_pct": 0.0,
+        "reason": "OK",
+    }
+    if not client:
+        return default_res
+
+    try:
+        res = (
+            client.table("signal_lifecycle")
+            .select("r_multiple, pnl_pct, status")
+            .in_("status", ["TARGET_HIT", "STOP_LOSS", "EXPIRED", "CLOSED"])
+            .order("created_at", desc=True)
+            .limit(lookback_trades)
+            .execute()
+        )
+        trades = res.data or []
+        if len(trades) < 5:
+            default_res["reason"] = f"Insufficient sample size ({len(trades)} < 5)"
+            return default_res
+
+        r_vals = [float(t["r_multiple"]) for t in trades if t.get("r_multiple") is not None]
+        if not r_vals:
+            return default_res
+
+        avg_r = sum(r_vals) / len(r_vals)
+        if avg_r < 0.0:
+            return {
+                "is_triggered": True,
+                "expectancy_r": round(avg_r, 3),
+                "sample_size": len(r_vals),
+                "size_reduction_pct": 50.0,
+                "reason": f"Negative Expectancy ({avg_r:+.2f}R across last {len(r_vals)} trades)",
+            }
+
+        return {
+            "is_triggered": False,
+            "expectancy_r": round(avg_r, 3),
+            "sample_size": len(r_vals),
+            "size_reduction_pct": 0.0,
+            "reason": "Expectancy positive",
+        }
+    except Exception:
+        logging.exception("Error evaluating evidence kill switch")
+        return default_res
+
 

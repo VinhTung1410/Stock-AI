@@ -250,6 +250,45 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   5. Bổ sung `last_updated: "2024-10-01"` vào 100% mục trong `INSTITUTIONAL_CONSENSUS_TARGETS` và triển khai `check_institutional_target_freshness()` trong `quant_valuation.py` tự động cảnh báo dữ liệu cũ quá 180 ngày.
 - **Hệ quả:** Hệ thống đạt chuẩn mực thẩm định của quỹ đầu tư định lượng tổ chức (Institutional Quant Due Diligence Standard), loại bỏ thiên lệch lạc quan của mô phỏng I.I.D., phân tầng trực quan hóa rõ ràng và minh bạch hóa chi phí bảo vệ vốn.
 
+---
+
+### [ADR-017] Vá Tính Toàn Vẹn Bằng Chứng, Holding-Period Alpha, Replay Idempotent & Đối Soát Tham Số ADR-0002 (TASK-0013)
+- **Ngày quyết định:** 2026-09-28
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề (The Broken Scale Trap):**
+  1. Alpha đo lệch chu kỳ: Lấy biến động 1 phiên của VN-Index trừ cho PnL toàn bộ chu kỳ nắm giữ của vị thế.
+  2. Audit không idempotent: Chỉ lấy giá ngày chạy; chạm cả Target và Stop cùng ngày thì ưu tiên Target (quá lạc quan); bỏ qua quy chế T+2.5.
+  3. Mỏ neo consensus quá hạn (> 180 ngày) vẫn bị trộn 40% vào Fair Value.
+  4. Cổ phiếu Growth bị tính giá trị nội tại bằng cách nhân 1.18x làm MoS luôn pass giả tạo (~15.25%).
+  5. Data Gate nhận tham số mặc định giả (P/E 12, P/B 1.5, F-Score 7, Z-Score 3.0) trong opportunity scanner.
+  6. Lệch pha giữa ADR-0001 (ghi Conviction >= 55) và code live thực thi (yêu cầu >= 70 cho lệnh BUY).
+- **Quyết định lựa chọn:**
+  1. Triển khai `calculate_holding_period_benchmark_return()`: Tính chuẩn Alpha $T_{\text{in}} \rightarrow T_{\text{out}}$ đối chiếu cả VN-Index và VN30.
+  2. Xây dựng hàm `replay_signal_path()`: Bảo đảm tính idempotent 100%, quy tắc bảo thủ (STOP_LOSS trước TARGET_HIT khi cùng ngày chạm cả hai), và gắn cờ `t_plus_2_locked`.
+  3. Tích hợp `check_institutional_target_freshness()` vào `calculate_fair_value_and_mos()`: Consensus quá hạn > 180 ngày bị de-weight về 0, hạ confidence xuống LOW, bật cờ `consensus_stale = True`.
+  4. Bổ sung cờ `mos_is_informative: bool`: Gán False cho các mã tính FV từ hệ số nhân cố định.
+  5. Đấu nối số liệu BCTC thật từ `get_financial_ratios()` vào `scan_market_opportunities()`, trả về `INSUFFICIENT_DATA` khi thiếu.
+  6. Ban hành `ADR-0002`: Đóng băng hằng số `LOCKED_QUANT_THRESHOLDS` (Buy Conviction >= 70, Watch >= 55, trọng số 40/25/20/15, AI Veto Only) và thiết lập unit test đối chiếu tự động.
+- **Hệ quả:** Thước đo định lượng được sửa chuẩn xác tuyệt đối, loại bỏ toàn bộ dữ liệu giả tạo và ảo tưởng hiệu suất.
+
+---
+
+### [ADR-018] Nhật Ký Quyết Định Universe Panel, Migration 0003, Phân Tách Dispatcher & Evidence Kill Switch (TASK-0014)
+- **Ngày quyết định:** 2026-09-28
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  1. Thiếu lưu vết lý do TẠI SAO từ chối: Hệ thống chỉ lưu các lệnh BUY phát đi, không lưu các mã bị loại bỏ (REJECT) hoặc đưa vào theo dõi (WATCH), làm mất khả năng đo lường Counterfactual ROI của từng cổng rủi ro.
+  2. Bện chặt phân tích với hiển thị: `ai_analyst.py` vừa suy luận vừa gọi trực tiếp Discord alert, gây khó khăn cho việc kiểm thử tự động offline.
+  3. Thiếu nhật ký quyết định trên giao diện người dùng.
+- **Quyết định lựa chọn:**
+  1. Chuẩn hóa schema `DecisionRecord` phân định 4 tầng: FACTS (giá, BCTC), INFERENCES (MoS, F-Score, RSI), OPINIONS (nhận định LLM), COUNTERFACTUAL (cổng từ chối chính, lý do từ chối).
+  2. Ban hành Migration `0003_decision_records.sql`: Bổ sung cột cho `signal_lifecycle`, tạo bảng `decision_records`, bảng `decision_forward_returns` với trigger PostgreSQL bất biến `forbid_decision_mutation()`.
+  3. Tách kiến trúc: Tạo module `dispatcher.py` độc lập chuyên trách gửi Discord. `ai_analyst.py` tạo và trả về `dataclass SignalEvent` độc lập, test được offline 100% không cần token Discord.
+  4. Xây dựng Subtab 5 "Nhật Ký Quyết Định" trên Dashboard (`tabs/tab_alpha_tracker.py`) tra cứu toàn bộ lịch sử BUY/WATCH/REJECT và cổng từ chối.
+  5. Tích hợp `check_evidence_kill_switch()`: Tự động cắt giảm 50% quy mô vị thế mở mới khi Expectancy theo R của 20 lệnh gần nhất < 0.
+- **Hệ quả:** Hệ thống đạt chuẩn closed-loop learning hoàn chỉnh, kiểm toán toàn diện lý do ra quyết định trên toàn bộ Universe và tự động bảo vệ vốn khi kỳ vọng toán học suy giảm.
+
+
 
 
 

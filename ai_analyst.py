@@ -1124,23 +1124,33 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
     except Exception:
         logging.exception("Không thể lưu snapshot tín hiệu vào Supabase")
 
-    # TỰ ĐỘNG PHÁT CẢNH BÁO MUA VÀO DISCORD DM CỦA CLIENT (WEB-TO-DISCORD HOOK)
+    # TỰ ĐỘNG ĐIỀU PHỐI TÍN HIỆU QUA DISPATCHER (TASK-0014 DECOUPLING)
     action_state = str(hard_gates.get("action_state", "")).upper()
-    if "MUA" in action_state or "BUY" in action_state:
-        try:
-            from discord_alerts import send_trade_signal_alert
-            trigger_reason = f"[WEB AI ANALYST] {hard_gates.get('decision_tag', '')} | MoS: {hard_gates.get('mos_pct', 0.0):+.2f}% | F-Score: {f_score_res.get('score', 0)}/9"
-            send_trade_signal_alert(
-                symbol=symbol,
-                action="MUA",
-                current_price=curr_price,
-                trigger_reason=trigger_reason,
-                target_price=hard_gates.get("price_target"),
-                stop_loss=hard_gates.get("stop_loss"),
-            )
-            logging.info(f"🚀 Đã bắn thông báo MUA Web của {symbol} vào Discord DM!")
-        except Exception:
-            logging.exception("Lỗi khi bắn cảnh báo MUA từ Web vào Discord DM")
+    signal_event = None
+    try:
+        from dispatcher import SignalEvent, dispatch_signal_event
+
+        trigger_reason = (
+            f"[WEB AI ANALYST] {hard_gates.get('decision_tag', '')} | "
+            f"MoS: {hard_gates.get('mos_pct', 0.0):+.2f}% | "
+            f"F-Score: {f_score_res.get('score', 0)}/9"
+        )
+        signal_event = SignalEvent(
+            symbol=symbol,
+            action="MUA" if ("MUA" in action_state or "BUY" in action_state) else action_state,
+            current_price=curr_price,
+            target_price=hard_gates.get("price_target"),
+            stop_loss=hard_gates.get("stop_loss"),
+            trigger_reason=trigger_reason,
+            conviction_score=float(hard_gates.get("conviction_score", 0.0)),
+            mos_pct=float(hard_gates.get("mos_pct", 0.0)),
+            f_score=int(f_score_res.get("score", 0)),
+        )
+        if "MUA" in action_state or "BUY" in action_state:
+            dispatch_signal_event(signal_event)
+            logging.info("🚀 Đã chuyển giao SignalEvent MUA của %s cho dispatcher!", symbol)
+    except Exception:
+        logging.exception("Lỗi khi điều phối SignalEvent qua dispatcher")
 
     return {
         "status": "SUCCESS",
@@ -1148,7 +1158,8 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
         "hard_gates": hard_gates,
         "f_score": f_score_res,
         "z_score": z_score_res,
-        "data_gate": gate
+        "data_gate": gate,
+        "signal_event": signal_event,
     }
 
 

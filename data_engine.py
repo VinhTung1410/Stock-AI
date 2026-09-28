@@ -1734,19 +1734,43 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             val_conf = val_res.get("confidence", "MEDIUM")
             p_target = val_res.get("price_target") or round(fv * 1.05, 2)
 
-            # --- PHASE 0: DATA RECONCILIATION GATE (100% PYTHON DETERMINISTIC) ---
+            # --- PHASE 0: DATA RECONCILIATION GATE (TASK 7.0e: NO FAKE DEFAULTS) ---
+            fin_ratios = get_financial_ratios(sym)
+            if not fin_ratios or not fin_ratios.get("period"):
+                return {
+                    "symbol": sym,
+                    "sector": sector,
+                    "status": "INSUFFICIENT_DATA",
+                    "conviction_score": 0.0,
+                    "conviction_tier": "CRITICAL",
+                    "setup_type": "⛔ THIẾU SỐ LIỆU TÀI CHÍNH (INSUFFICIENT_DATA)",
+                    "story_tag": "THIẾU DỮ LIỆU",
+                    "story": "Không thể tải báo cáo tài chính hoặc thiếu chỉ số cơ bản",
+                    "current_price": curr_price,
+                    "fair_value": fv,
+                    "mos_pct": mos_pct,
+                    "valuation_method": val_method,
+                    "confidence": "LOW",
+                    "data_quality": "CRITICAL",
+                    "data_quality_score": 0.0,
+                    "data_badge": "THIẾU BCTC",
+                    "gate_passed": False,
+                    "target_price": p_target,
+                    "stop_loss": round(curr_price * 0.93, 2),
+                }
+
             from data_gate import reconcile_data
+
             reconcile_res = reconcile_data(
                 symbol=sym,
                 tech_data=tech,
                 fin_data={
+                    **fin_ratios,
                     "mos_pct": mos_pct,
-                    "f_score": val_res.get("f_score", 7),
-                    "z_score": val_res.get("z_score", 3.0),
-                    "pe": 12.0,
-                    "pb": 1.5
+                    "f_score": val_res.get("f_score"),
+                    "z_score": val_res.get("z_score"),
                 },
-                news=[cat_info] if cat_info else []
+                news=[cat_info] if cat_info else [],
             )
 
             # Hard gate reject if price conflict or statutory exchange breach detected
@@ -1944,7 +1968,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
     # Tách nhóm kết quả ban đầu
     buy_candidates = [r for r in all_results if r["status"] == "RECOMMEND_BUY"]
     watch_picks = [r for r in all_results if r["status"] == "WATCH_CONFIRMATION"]
-    caution_picks = [r for r in all_results if r["status"] == "CAUTION_TRAP"]
+    caution_picks = [r for r in all_results if r["status"] in ("CAUTION_TRAP", "INSUFFICIENT_DATA")]
 
     # 1. COOLDOWN FILTER (5-DAY): Deduplicate consecutive buy signals on the same symbol
     eligible_buys = []
