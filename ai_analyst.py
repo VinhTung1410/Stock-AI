@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -10,6 +11,11 @@ try:
 except ImportError:
     pass
 from google import genai
+
+try:
+    from google.genai import types
+except ImportError:
+    types = None
 
 from data_engine import evaluate_portfolio, fetch_macro_news, load_portfolio
 from quant_engine import evaluate_holding_position, evaluate_market_regime
@@ -104,6 +110,35 @@ def sanitize_ai_text(text: str) -> str:
     return text.strip()
 
 
+PROMPT_INJECTION_PATTERNS = [
+    r"ignore\s+(all\s+)?(previous|prior|earlier)\s+instructions",
+    r"disregard\s+(all\s+)?(above|previous|prior|earlier)\s+(instructions|rules)",
+    r"bỏ\s+qua\s+(toàn\s+bộ\s+)?(các\s+)?(hướng\s+dẫn|chỉ\s+dẫn|quy\s+tắc)\s+trước",
+    r"system\s+prompt(\s+override|\s*:\s*reveal)?",
+    r"override\s+risk\s+gate",
+    r"khuyến\s+nghị\s+mua\s+bất\s+kể",
+    r"act\s+as\s+(an?\s+unrestricted|rogue|an?\s+analyst)",
+    r"you\s+are\s+now\s+in\s+developer\s+mode",
+]
+
+
+def sanitize_prompt_input(text: str) -> str:
+    """Sanitize external text (news headlines, user notes) to prevent prompt injection."""
+    if not text:
+        return ""
+    clean_text = text
+    for pat in PROMPT_INJECTION_PATTERNS:
+        clean_text = re.sub(pat, "[FILTERED_INJECTION_ATTEMPT]", clean_text, flags=re.IGNORECASE)
+    return clean_text
+
+
+def compute_sha256(data: str | bytes) -> str:
+    """Compute SHA-256 hex digest for audit trail provenance."""
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    return hashlib.sha256(data).hexdigest()
+
+
 _GEMINI_RATE_TRACKER: dict = {"calls": [], "limit_hit": False}
 MAX_GEMINI_CALLS_PER_MINUTE: int = 12
 
@@ -142,6 +177,7 @@ def call_gemini(client, prompt: str, max_retries: int = 3, retry_delay: float = 
     """
     Gọi Gemini API với System Language Rule tích hợp sẵn ở cả đầu và cuối prompt,
     tích hợp cơ chế retry tự động chống timeout/rate-limit,
+    khóa cứng temperature = 0.0 bảo đảm tính ổn định và tái lập kiểm toán,
     sau đó tự động lọc qua sanitize_ai_text để đảm bảo đầu ra sạch 100%.
     """
     import time
@@ -150,13 +186,14 @@ def call_gemini(client, prompt: str, max_retries: int = 3, retry_delay: float = 
         raise RuntimeError("Gemini API rate limit buffer reached (12 RPM). Cooldown activated.")
 
     full_prompt = f"{SYSTEM_LANGUAGE_RULE}\n\n{prompt}\n\n{SYSTEM_LANGUAGE_RULE}"
+    config = types.GenerateContentConfig(temperature=0.0) if types else None
     last_err = None
     for attempt in range(1, max_retries + 1):
         try:
-            response = client.models.generate_content(
-                model=MODEL_NAME,
-                contents=full_prompt
-            )
+            kwargs = {"model": MODEL_NAME, "contents": full_prompt}
+            if config is not None:
+                kwargs["config"] = config
+            response = client.models.generate_content(**kwargs)
             return sanitize_ai_text(response.text)
         except Exception as e:
             last_err = e
@@ -172,16 +209,18 @@ async def async_call_gemini(client, prompt: str, max_retries: int = 3, retry_del
     """
     Gọi Gemini API bất đồng bộ (asyncio) qua client.aio.models.generate_content.
     Tích hợp cơ chế retry tự động với exponential backoff không block event loop.
+    Khóa cứng temperature = 0.0 bảo đảm tính ổn định và tái lập kiểm toán.
     """
     import asyncio
     full_prompt = f"{SYSTEM_LANGUAGE_RULE}\n\n{prompt}\n\n{SYSTEM_LANGUAGE_RULE}"
+    config = types.GenerateContentConfig(temperature=0.0) if types else None
     last_err = None
     for attempt in range(1, max_retries + 1):
         try:
-            response = await client.aio.models.generate_content(
-                model=MODEL_NAME,
-                contents=full_prompt
-            )
+            kwargs = {"model": MODEL_NAME, "contents": full_prompt}
+            if config is not None:
+                kwargs["config"] = config
+            response = await client.aio.models.generate_content(**kwargs)
             return sanitize_ai_text(response.text)
         except Exception as e:
             last_err = e
@@ -876,29 +915,49 @@ def _check_data_gate_or_refuse(symbol: str, tech_data: dict, fin_data: dict) -> 
     }, gate
 
 
-def _parse_pass1_probabilities(raw_text: str) -> tuple[float, float, float, dict]:
-    """Parse scenario probabilities (bull, base, bear) and rationales from Pass 1 LLM response."""
-    try:
-        json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
-        prob_dict = json.loads(json_match.group(0)) if json_match else json.loads(raw_text)
+def _parse_pass1_probabilities(raw_text: str) -> tuple[float, float, float, dict, bool]:
+    """Parse scenario probabilities (bull, base, bear) and rationales from Pass 1 LLM response.
 
-        p_bull = float(prob_dict.get("P_bull", 0.25))
-        p_base = float(prob_dict.get("P_base", 0.50))
-        p_bear = float(prob_dict.get("P_bear", 0.25))
+    Returns:
+        (p_bull, p_base, p_bear, prob_dict, pass1_parse_failed)
+    """
+    try:
+        json_match = re.search(r'\{.*\}', raw_text or "", re.DOTALL)
+        if not json_match:
+            raise ValueError("Không tìm thấy cấu trúc JSON trong phản hồi LLM")
+        prob_dict = json.loads(json_match.group(0))
+
+        if not isinstance(prob_dict, dict):
+            raise ValueError("Dữ liệu parse được không phải dictionary")
+
+        if not all(k in prob_dict for k in ("P_bull", "P_base", "P_bear")):
+            raise ValueError("Thiếu trường xác suất P_bull, P_base hoặc P_bear")
+
+        p_bull = float(prob_dict["P_bull"])
+        p_base = float(prob_dict["P_base"])
+        p_bear = float(prob_dict["P_bear"])
+
+        if min(p_bull, p_base, p_bear) < 0:
+            raise ValueError("Xác suất kịch bản không được âm")
+
         total_p = p_bull + p_base + p_bear
-        if total_p > 0:
-            p_bull /= total_p
-            p_base /= total_p
-            p_bear /= total_p
-        return p_bull, p_base, p_bear, prob_dict
+        if total_p <= 0:
+            raise ValueError("Tổng xác suất kịch bản phải lớn hơn 0")
+
+        p_bull /= total_p
+        p_base /= total_p
+        p_bear /= total_p
+
+        prob_dict["pass1_parse_failed"] = False
+        return p_bull, p_base, p_bear, prob_dict, False
     except Exception as e:
-        logging.warning(f"Fallback xác suất Lượt 1 do lỗi parse JSON: {e}")
-        fallback_dict = {
-            "rationale_bull": "Tăng trưởng doanh thu và mở rộng thị phần tích cực.",
-            "rationale_base": "Duy trì nhịp vận động kinh doanh và định giá ổn định.",
-            "rationale_bear": "Áp lực điều chỉnh theo thị trường chung hoặc chi phí vốn tăng.",
+        logging.warning("Lỗi parse xác suất Lượt 1 (Fail-Safe kích hoạt): %s", e)
+        failed_dict = {
+            "error": str(e),
+            "pass1_parse_failed": True,
+            "raw_text": (raw_text or "")[:200],
         }
-        return 0.25, 0.50, 0.25, fallback_dict
+        return 0.0, 0.0, 0.0, failed_dict, True
 
 
 def generate_quantamental_2pass_report(symbol: str) -> dict:
@@ -942,7 +1001,12 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     tr_str = f"⚠️ CẢNH BÁO BẪY: {tr.get('warning_msg')}" if tr.get("is_trap") else "✅ Không phát hiện bẫy nguy hiểm."
     adv_str = f"{tech_data.get('adv20_billion', 0):.2f} tỷ/phiên" if tech_data.get('adv20_billion') else "N/A"
 
-    news_brief = "\n".join([f"- [{n.get('tag', n.get('keyword', 'TIN')).upper()}] {n.get('title', '')}" for n in (news_items or [])[:5]]) if news_items else "Không có tin tức đột biến."
+    sanitized_news = []
+    for n in (news_items or [])[:5]:
+        tag = (n.get("tag") or n.get("keyword") or "TIN").upper()
+        title = sanitize_prompt_input(n.get("title", ""))
+        sanitized_news.append(f"- [{tag}] {title}")
+    news_brief = "\n".join(sanitized_news) if sanitized_news else "Không có tin tức đột biến."
 
     pass1_prompt = f"""Bạn là Quản lý Quỹ Lượng hóa (Quantamental Portfolio Manager).
 Hãy đọc các dữ liệu thị trường và tin tức sau của mã **{symbol}**:
@@ -973,8 +1037,30 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
 }}
 ```"""
 
-    pass1_resp = client.models.generate_content(model=MODEL_NAME, contents=pass1_prompt)
-    p_bull, p_base, p_bear, prob_dict = _parse_pass1_probabilities(pass1_resp.text.strip())
+    pass1_raw_text = call_gemini(client, pass1_prompt)
+    p_bull, p_base, p_bear, prob_dict, parse_failed = _parse_pass1_probabilities(pass1_raw_text)
+
+    if parse_failed:
+        logging.warning("Pass 1 parse failed for %s. Refusing to open position (Fail-Safe Gate).", symbol)
+        refusal_msg = "⛔ TỪ CHỐI MỞ VỊ THẾ: LỖI PARSE XÁC SUẤT PASS 1 (JSON KHÔNG HỢP LỆ)"
+        return {
+            "status": "PASS1_PARSE_FAILED",
+            "symbol": symbol,
+            "can_buy": False,
+            "action_state": "TỪ CHỐI (LỖI PARSE PASS 1)",
+            "decision_tag": refusal_msg,
+            "position_size_nav": "0% NAV",
+            "primary_rejection_gate": "AI_PASS1_PARSE_GATE",
+            "rejection_reasons": ["Lỗi cấu trúc phản hồi Pass 1 không thể parse xác suất"],
+            "pass1_parse_failed": True,
+            "prob_dict": prob_dict,
+            "report_text": refusal_msg,
+            "data_gate": gate,
+            "prompt_hash": compute_sha256(pass1_prompt),
+            "input_hash": compute_sha256(f"{symbol}_{curr_price}_{fin_data.get('period')}"),
+            "model_id": MODEL_NAME,
+            "temperature": 0.0,
+        }
 
     # -------------------------------------------------------------
     # BƯỚC 4: PYTHON TÍNH TOÁN HÀNG RÀO QUYẾT ĐỊNH ĐỊNH LƯỢNG
@@ -996,6 +1082,9 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
     # -------------------------------------------------------------
     # BƯỚC 5: LƯỢT 2 (LLM VIẾT BÁO CÁO TRANH BIỆN ĐỊNH CHẾ HOÀN CHỈNH)
     # -------------------------------------------------------------
+    mos_val = hard_gates.get("mos_pct")
+    mos_str = f"{mos_val:+.2f}%" if isinstance(mos_val, (int, float)) else "0.00%"
+
     pass2_prompt = f"""<ROLE>
 Bạn là Giám đốc Phân tích Đầu tư Lượng hóa (Senior Quantamental Research Director / CFA).
 Toàn bộ số liệu định lượng dưới đây ĐÃ ĐƯỢC HỆ THỐNG PYTHON TÍNH TOÁN XÁC THỰC. Bạn TUYỆT ĐỐI KHÔNG ĐƯỢC THAY ĐỔI BẤT KỲ CON SỐ NÀO.
@@ -1014,7 +1103,7 @@ Bạn sẽ tổ chức một màn TRANH BIỆN ĐỐI KHÁNG (Adversarial Debate
 - Giá mục tiêu 3 kịch bản: Bull = {val_triangle['price_bull']}k | Base = {val_triangle['price_base']}k | Bear = {val_triangle['price_bear']}k
 - Xác suất kịch bản đã gán: Bull = {p_bull*100:.1f}% | Base = {p_base*100:.1f}% | Bear = {p_bear*100:.1f}%
 - Giá trị kỳ vọng toán học (Expected Value - EV): {hard_gates.get('ev')} k VND
-- Biên an toàn định lượng (Margin of Safety - MoS): {hard_gates.get('mos_pct'):+.2f}%
+- Biên an toàn định lượng (Margin of Safety - MoS): {mos_str}
 - Ngưỡng cắt lỗ Stop-Loss: {hard_gates.get('stop_loss')} k VND (Mức rủi ro Downside: -{hard_gates.get('downside_pct')}%)
 - Tỷ lệ Lãi / Lỗ R (Risk/Reward): {hard_gates.get('risk_reward')}x
 - Tiêu chuẩn phân bổ Kelly Criterion (f*): {hard_gates.get('kelly_f')}
@@ -1041,7 +1130,7 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
 ### 🎯 I. TÓM TẮT ĐIỀU HÀNH (EXECUTIVE DECISION - THEO HÀNG RÀO PYTHON)
 - **Khuyến nghị chính thức:** {hard_gates.get('decision_tag')}
 - **Giá trị kỳ vọng (Expected Value - EV):** {hard_gates.get('ev')} k VND
-- **Biên an toàn định lượng (Margin of Safety):** {hard_gates.get('mos_pct'):+.2f}%
+- **Biên an toàn định lượng (Margin of Safety):** {mos_str}
 - **Vùng giá mua gom tối ưu:** [Đề xuất vùng giá hợp lý dựa trên mốc Base và MA20] k VND
 - **Ngưỡng cắt lỗ dứt khoát (Stop-Loss):** {hard_gates.get('stop_loss')} k VND (Mức rủi ro Downside: -{hard_gates.get('downside_pct')}%)
 - **Tỷ lệ Risk / Reward (R:R):** {hard_gates.get('risk_reward')}x
@@ -1055,7 +1144,7 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
 - **Altman Z-Score:** {z_score_res['z_score']} ({z_score_res['icon']} {z_score_res['zone']})
 - **Trụ cột 1 (Dữ liệu):** 🟢 ĐẦY ĐỦ / ĐẠT CHUẨN DATA GATE (Thanh khoản {gate.get('daily_value_billion')} tỷ/phiên)
 - **Trụ cột 2 (Cơ bản & Sinh lời):** [🟢 Tốt / 🟡 Trung bình / 🔴 Suy giảm] (ROE {fin_data.get('roe')}%, Nợ/Vốn {fin_data.get('debt_equity')})
-- **Trụ cột 3 (Định giá & Biên an toàn):** [🟢 Hấp dẫn / 🟡 Hợp lý / 🔴 Bẫy chu kỳ/Đắt] (MoS {hard_gates.get('mos_pct'):+.2f}%)
+- **Trụ cột 3 (Định giá & Biên an toàn):** [🟢 Hấp dẫn / 🟡 Hợp lý / 🔴 Bẫy chu kỳ/Đắt] (MoS {mos_str})
 - **Trụ cột 4 (Kỹ thuật & Xu hướng):** [🟢 Uptrend / 🟡 Chờ tích lũy / 🔴 Gãy MA20] ({tech_data.get('status_ma20')})
 - **Trụ cột 5 (Hành vi Dòng tiền & Khối ngoại):** [🟢 Gom hàng / 🟡 Cạn kiệt / 🔴 Phân phối / Xả ròng] ({ff_str})
 - **Trụ cột 6 (Mức độ Rủi ro & Bẫy tin):** [🟢 Thấp / 🟡 Cảnh báo bẫy / 🔴 Cao] ({tr_str})
@@ -1084,7 +1173,7 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
 - **🟢 Kịch bản Lạc quan (Bull Case):** Giá {val_triangle['price_bull']}k | Xác suất: {p_bull*100:.1f}% | Điều kiện: {prob_dict.get('rationale_bull')}
 - **🟡 Kịch bản Cơ sở (Base Case):** Giá {val_triangle['price_base']}k | Xác suất: {p_base*100:.1f}% | Điều kiện: {prob_dict.get('rationale_base')}
 - **🔴 Kịch bản Tiêu cực (Bear Case):** Giá {val_triangle['price_bear']}k | Xác suất: {p_bear*100:.1f}% | Điều kiện: {prob_dict.get('rationale_bear')}
-➔ **Giá trị kỳ vọng toán học (EV):** {hard_gates.get('ev')} k VND | **Biên an toàn (MoS):** {hard_gates.get('mos_pct'):+.2f}%
+➔ **Giá trị kỳ vọng toán học (EV):** {hard_gates.get('ev')} k VND | **Biên an toàn (MoS):** {mos_str}
 
 ---
 ### 🔍 V. KIỂM TRA CHÉO & PHÁN QUYẾT HỘI ĐỒNG LƯỢNG HÓA
@@ -1152,6 +1241,9 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
     except Exception:
         logging.exception("Lỗi khi điều phối SignalEvent qua dispatcher")
 
+    prompt_hash = compute_sha256(pass2_prompt)
+    input_hash = compute_sha256(f"{symbol}_{curr_price}_{fin_data.get('period')}")
+
     return {
         "status": "SUCCESS",
         "report_text": final_report,
@@ -1160,6 +1252,10 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
         "z_score": z_score_res,
         "data_gate": gate,
         "signal_event": signal_event,
+        "prompt_hash": prompt_hash,
+        "input_hash": input_hash,
+        "model_id": MODEL_NAME,
+        "temperature": 0.0,
     }
 
 
@@ -1257,7 +1353,7 @@ def _format_committee_prompt_context(
 
     news_text = "Không có tin đột biến."
     if news_items:
-        news_text = "; ".join([n.get("title", "") for n in news_items[:3] if n.get("title")])
+        news_text = "; ".join([sanitize_prompt_input(n.get("title", "")) for n in news_items[:3] if n.get("title")])
 
     f_raw = f_score_res.get("score")
     if f_raw is not None:
@@ -1415,16 +1511,18 @@ def arbitrate_pm_decision(
     f_score: Optional[int] = None,
     z_zone: str = ZONE_SAFE,
     recommendation_allowed: bool = True,
-    trap_warning: bool = False
+    trap_warning: bool = False,
+    can_buy: bool = True,
 ) -> Tuple[str, bool, str]:
-    """Deterministic Institutional PM Arbitration Gate.
+    """Deterministic Institutional PM Arbitration Gate (Veto-Only Architecture).
 
     Enforces quantitative and risk gates over LLM decision:
     1. If Data Gate recommendation not allowed -> INSUFFICIENT_DATA
-    2. If Thesis Breaker triggered (F-Score < 4 or Z-Score Red or Trap) -> AVOID
-    3. If FA Bullish but TA Bearish and raw is STRONG_OPPORTUNITY -> WAIT_BETTER_ENTRY
-    4. If FA Bearish but TA Bullish and raw is BUY-side -> RISK_ELEVATED
-    5. If Red Team downside > 25% and raw is BUY-side -> WATCHLIST
+    2. If Quant Core can_buy is False -> Veto any BUY-side attempt down to WATCHLIST
+    3. If Thesis Breaker triggered (F-Score < 4 or Z-Score Red or Trap) -> AVOID
+    4. If FA Bullish but TA Bearish and raw is STRONG_OPPORTUNITY -> WAIT_BETTER_ENTRY
+    5. If FA Bearish but TA Bullish and raw is BUY-side -> RISK_ELEVATED
+    6. If Red Team downside > 25% and raw is BUY-side -> WATCHLIST
 
     Returns:
         tuple of (final_decision, is_overridden, override_reason)
@@ -1435,6 +1533,9 @@ def arbitrate_pm_decision(
 
     if not recommendation_allowed:
         return STATE_INSUFFICIENT_DATA, True, "Data Gate từ chối khuyến nghị do dữ liệu đóng băng hoặc bất thường"
+
+    if not can_buy and decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
+        return STATE_WATCHLIST, True, "Veto-Only: Quant Core từ chối mở lệnh mua, LLM bị cấm khuyến nghị BUY"
 
     if _check_thesis_breaker(f_score, z_zone, trap_warning) and decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
         return STATE_AVOID, True, "Thesis Breaker kích hoạt: Sức khỏe tài chính suy kiệt hoặc bẫy giá nguy hiểm"
@@ -1510,12 +1611,19 @@ def _prepare_smart_committee_context(
         news_items=news_items
     )
 
+    prompt_hash = compute_sha256(prompt)
+    curr_p = tech_data.get("current_price", 0.0) if tech_data else 0.0
+    period_str = fin_data.get("period", "") if fin_data else ""
+    input_hash = compute_sha256(f"{sym}_{curr_p}_{period_str}")
+
     context_meta = {
         "symbol": sym,
         "gate_res": gate_res,
         "val_res": val_res,
         "f_score": f_score_res,
-        "z_score": z_score_res
+        "z_score": z_score_res,
+        "prompt_hash": prompt_hash,
+        "input_hash": input_hash,
     }
     return None, prompt, context_meta
 
@@ -1543,7 +1651,11 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
             "f_score": context_meta["f_score"],
             "z_score": context_meta["z_score"],
             "report_text": f"⚠️ Lỗi kết nối AI khi phân tích cổ phiếu **{sym}**: {error}",
-            "error": str(error)
+            "error": str(error),
+            "prompt_hash": context_meta.get("prompt_hash"),
+            "input_hash": context_meta.get("input_hash"),
+            "model_id": MODEL_NAME,
+            "temperature": 0.0,
         }
 
     raw_decision = _extract_pm_decision(report_text)
@@ -1553,6 +1665,7 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
     f_res = context_meta.get("f_score") or {}
     z_res = context_meta.get("z_score") or {}
 
+    can_buy = gate_res.get("recommendation_allowed", True) and not gate_res.get("is_trap", False)
     final_decision, is_overridden, override_reason = arbitrate_pm_decision(
         raw_decision=raw_decision,
         fa_view=views.get("fa_view", "NEUTRAL"),
@@ -1560,7 +1673,8 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         red_team_downside=red_downside,
         f_score=f_res.get("score"),
         z_zone=z_res.get("zone", ZONE_SAFE),
-        recommendation_allowed=gate_res.get("recommendation_allowed", True)
+        recommendation_allowed=gate_res.get("recommendation_allowed", True),
+        can_buy=can_buy,
     )
 
     return {
@@ -1578,7 +1692,11 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         "val_res": val_res,
         "f_score": context_meta["f_score"],
         "z_score": context_meta["z_score"],
-        "report_text": report_text
+        "report_text": report_text,
+        "prompt_hash": context_meta.get("prompt_hash") or compute_sha256(report_text or ""),
+        "input_hash": context_meta.get("input_hash") or compute_sha256(sym),
+        "model_id": MODEL_NAME,
+        "temperature": 0.0,
     }
 
 

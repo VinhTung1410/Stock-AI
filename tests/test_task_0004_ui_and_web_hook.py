@@ -35,8 +35,13 @@ def test_web_to_discord_hook_triggers_on_buy(monkeypatch):
     mock_resp.text = '{"P_bull": 0.5, "P_base": 0.3, "P_bear": 0.2, "rationale_bull": "Tốt", "rationale_base": "Bình thường", "rationale_bear": "Xấu"}'
     mock_client.models.generate_content.return_value = mock_resp
 
+    def mock_call_gemini(client, prompt, **kwargs):
+        if "Pass 1" in prompt or "P_bull" in prompt or "JSON" in prompt:
+            return '{"P_bull": 0.5, "P_base": 0.3, "P_bear": 0.2, "rationale_bull": "Tốt", "rationale_base": "Bình thường", "rationale_bear": "Xấu"}'
+        return "AI Institutional CFA Report Text"
+
     with mock.patch("ai_analyst.get_ai_client", return_value=mock_client):
-        with mock.patch("ai_analyst.call_gemini", return_value="AI Institutional CFA Report Text"):
+        with mock.patch("ai_analyst.call_gemini", side_effect=mock_call_gemini):
             with mock.patch("data_engine.fetch_stock_technical", return_value={"current_price": 33.0, "rsi14": 55.0, "status_ma20": "TRÊN MA20", "adv20_billion": 10.0}):
                 with mock.patch("data_engine.get_financial_ratios", return_value={"pe": 7.5, "pb": 1.1, "roe": 22.0, "debt_equity": 0.5}):
                     with mock.patch("data_engine.fetch_macro_news", return_value=[]):

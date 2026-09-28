@@ -12,7 +12,8 @@ Capabilities:
 """
 
 import logging
-from typing import Any, Dict, Final, List
+from datetime import datetime, timedelta
+from typing import Any, Dict, Final, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -1435,14 +1436,63 @@ def _build_calibration_warning(
     return True, True, ""
 
 
+def _filter_trades_by_horizon(
+    trades: list[dict[str, Any]],
+    horizon_days: Optional[int],
+    as_of_date: Optional[Any] = None,
+) -> list[dict[str, Any]]:
+    """Filter trades within horizon window (in calendar/trading days)."""
+    if not horizon_days or horizon_days <= 0 or not trades:
+        return trades
+
+    ref_date = datetime.now().date()
+    if as_of_date:
+        if isinstance(as_of_date, str):
+            try:
+                ref_date = datetime.strptime(as_of_date[:10], "%Y-%m-%d").date()
+            except ValueError:
+                pass
+        elif isinstance(as_of_date, datetime):
+            ref_date = as_of_date.date()
+
+    cutoff_date = ref_date - timedelta(days=int(horizon_days * 1.5))
+    filtered = []
+    for t in trades:
+        if not isinstance(t, dict):
+            continue
+        days_ago = t.get("days_ago") or t.get("days_elapsed")
+        if days_ago is not None:
+            try:
+                if float(days_ago) <= horizon_days:
+                    filtered.append(t)
+                continue
+            except (ValueError, TypeError):
+                pass
+
+        d_str = t.get("exit_date") or t.get("trading_date") or t.get("date") or t.get("entry_date")
+        if d_str:
+            try:
+                t_date = datetime.strptime(str(d_str)[:10], "%Y-%m-%d").date()
+                if t_date >= cutoff_date:
+                    filtered.append(t)
+                continue
+            except ValueError:
+                pass
+        filtered.append(t)
+    return filtered
+
+
 def check_ai_calibration(
     trades: list[dict[str, Any]],
     min_observations_per_bucket: int = 3,
     max_acceptable_gap: float = 0.15,
+    horizon_days: Optional[int] = 60,
+    as_of_date: Optional[Any] = None,
 ) -> dict[str, Any]:
-    """Kiểm tra độ chuẩn định (Calibration) của AI Confidence (Phase 4b).
+    """Kiểm tra độ chuẩn định (Calibration) của AI Confidence (Phase 4b / 7c).
 
     Bóc tách tỷ lệ thắng thực tế so với độ tin cậy được AI công bố.
+    Neo theo chu kỳ horizon_days (mặc định 60 phiên giao dịch).
     Nếu uncalibrated (lệch chuẩn > 15%), Hard Block không đưa ai_confidence vào Kelly sizing.
     """
     if not trades:
@@ -1455,11 +1505,22 @@ def check_ai_calibration(
             "warning": "Không có dữ liệu giao dịch để kiểm định độ chuẩn định của AI.",
         }
 
+    effective_trades = _filter_trades_by_horizon(trades, horizon_days, as_of_date)
+    if not effective_trades:
+        return {
+            "buckets": {},
+            "is_calibrated": False,
+            "allow_kelly_sizing": False,
+            "brier_score": None,
+            "total_evaluated_trades": 0,
+            "warning": f"Không có dữ liệu giao dịch nào trong chu kỳ {horizon_days} phiên.",
+        }
+
     buckets: dict[str, list[int]] = {b: [] for b in CALIBRATION_BUCKET_NAMES}
     conf_vals: list[float] = []
     win_vals: list[int] = []
 
-    for row in trades:
+    for row in effective_trades:
         extracted = _extract_trade_confidence(row)
         if extracted is None:
             continue
@@ -1501,6 +1562,103 @@ def check_ai_calibration(
         "brier_score": brier_score,
         "total_evaluated_trades": len(win_vals),
         "warning": warn,
+        "horizon_days": horizon_days,
+    }
+
+
+def calibrate_scenario_probabilities(
+    scenarios: list[dict[str, Any]],
+    horizon_days: int = 60,
+    min_observations: int = 5,
+    max_acceptable_gap: float = 0.15,
+) -> dict[str, Any]:
+    """Hiệu chuẩn phân phối xác suất kịch bản Pass 1 (P_bull, P_base, P_bear) theo chu kỳ 60 phiên (Phase 7c).
+
+    So sánh xác suất gán trước với kết quả kịch bản thực tế ('BULL', 'BASE', 'BEAR').
+    Tính Brier Score kịch bản và độ lệch (gap) từng nhánh kịch bản.
+    """
+    if not scenarios:
+        return {
+            "is_calibrated": False,
+            "brier_score": None,
+            "total_evaluated": 0,
+            "horizon_days": horizon_days,
+            "gaps": {},
+            "warning": "Không có dữ liệu kịch bản để hiệu chuẩn.",
+        }
+
+    valid_items = []
+    for sc in scenarios:
+        if not isinstance(sc, dict):
+            continue
+        outcome = str(sc.get("actual_outcome") or sc.get("outcome") or "").upper().strip()
+        if outcome in ("BULL", "BASE", "BEAR"):
+            valid_items.append(sc)
+
+    if len(valid_items) < min_observations:
+        return {
+            "is_calibrated": False,
+            "brier_score": None,
+            "total_evaluated": len(valid_items),
+            "horizon_days": horizon_days,
+            "gaps": {},
+            "warning": f"Chưa đủ dữ liệu quan sát trong chu kỳ {horizon_days} phiên (có {len(valid_items)}/{min_observations} mẫu).",
+        }
+
+    brier_scores = []
+    p_bulls, p_bases, p_bears = [], [], []
+    y_bulls, y_bases, y_bears = [], [], []
+
+    for item in valid_items:
+        pb = float(item.get("P_bull", item.get("p_bull", 0.33)))
+        pbase = float(item.get("P_base", item.get("p_base", 0.34)))
+        pbear = float(item.get("P_bear", item.get("p_bear", 0.33)))
+        tot = pb + pbase + pbear
+        if tot > 0:
+            pb, pbase, pbear = pb / tot, pbase / tot, pbear / tot
+
+        outcome = str(item.get("actual_outcome") or item.get("outcome") or "").upper().strip()
+        yb = 1.0 if outcome == "BULL" else 0.0
+        ybase = 1.0 if outcome == "BASE" else 0.0
+        ybear = 1.0 if outcome == "BEAR" else 0.0
+
+        p_bulls.append(pb)
+        p_bases.append(pbase)
+        p_bears.append(pbear)
+        y_bulls.append(yb)
+        y_bases.append(ybase)
+        y_bears.append(ybear)
+
+        b_i = (pb - yb) ** 2 + (pbase - ybase) ** 2 + (pbear - ybear) ** 2
+        brier_scores.append(b_i)
+
+    mean_brier = round(float(np.mean(brier_scores)), 4)
+    n = float(len(valid_items))
+    gap_bull = round(abs(float(np.mean(p_bulls)) - (sum(y_bulls) / n)), 4)
+    gap_base = round(abs(float(np.mean(p_bases)) - (sum(y_bases) / n)), 4)
+    gap_bear = round(abs(float(np.mean(p_bears)) - (sum(y_bears) / n)), 4)
+    max_gap = max(gap_bull, gap_base, gap_bear)
+
+    is_calibrated = (max_gap <= max_acceptable_gap) and (mean_brier <= 0.40)
+    warning = ""
+    if not is_calibrated:
+        warning = (
+            f"Phân phối xác suất kịch bản AI bị lệch chuẩn chu kỳ {horizon_days} phiên "
+            f"(Max gap: {max_gap:.1%}, Brier: {mean_brier:.4f}). Cảnh báo rủi ro mô hình."
+        )
+
+    return {
+        "is_calibrated": is_calibrated,
+        "brier_score": mean_brier,
+        "total_evaluated": len(valid_items),
+        "horizon_days": horizon_days,
+        "gaps": {
+            "bull_gap": gap_bull,
+            "base_gap": gap_base,
+            "bear_gap": gap_bear,
+            "max_gap": max_gap,
+        },
+        "warning": warning,
     }
 
 

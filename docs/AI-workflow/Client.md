@@ -26,6 +26,13 @@
    - Thêm Subtab 5 "Nhật Ký Quyết Định" trên Dashboard (`tabs/tab_alpha_tracker.py`) để tra cứu lịch sử quyết định BUY/WATCH/REJECT và biến động T+5, T+20.
    - Tích hợp Evidence-Based Kill Switch: Tự động giảm 50% size khi Expectancy theo R của 20 vị thế gần nhất < 0.
 
+4. **Thắt chặt AI Governance & Kiểm Soát Gọi Gemini (TASK-0015):**
+   - **Veto Only:** LLM chỉ có quyền Veto hoặc giảm vị thế; quyền cấp phép mua (`can_buy`) và sizing Half-Kelly phụ thuộc 100% vào Quant Core.
+   - **Wrapper tập trung & làm sạch Prompt Injection:** Gom toàn bộ các lệnh gọi Gemini qua wrapper kiểm soát 15 RPM, vệ sinh đầu vào tin tức/văn bản.
+   - **Fail-Safe Parser Pass 1:** Parse lỗi Pass 1 lập tức bật cờ `pass1_parse_failed` và từ chối mở vị thế (cấm fallback 25/50/25).
+   - **Độ ổn định & Tái lập:** Khóa cứng `temperature = 0.0`, lưu đầy đủ `prompt_hash`, `input_hash`, `model_id`.
+   - **Calibration Horizon 60 phiên:** Hiệu chuẩn xác suất kịch bản Pass 1 và AI confidence theo chu kỳ 60 phiên giao dịch (khớp vòng đời EXPIRED).
+
 ---
 
 ## 2. NGUYÊN TẮC QUẢN TRỊ RỦI RO & BẢO TOÀN KIẾN TRÚC

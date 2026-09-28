@@ -288,7 +288,22 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   5. Tích hợp `check_evidence_kill_switch()`: Tự động cắt giảm 50% quy mô vị thế mở mới khi Expectancy theo R của 20 lệnh gần nhất < 0.
 - **Hệ quả:** Hệ thống đạt chuẩn closed-loop learning hoàn chỉnh, kiểm toán toàn diện lý do ra quyết định trên toàn bộ Universe và tự động bảo vệ vốn khi kỳ vọng toán học suy giảm.
 
+---
 
-
-
-
+### [ADR-019] AI Governance & Tối Ưu Hóa Kiến Trúc 3 Tầng: Veto-Only, Wrapper Tập Trung, Fail-Safe Parser & 60-Session Calibration Horizon (TASK-0015)
+- **Ngày quyết định:** 2026-09-28
+- **Người tham gia:** Client (Tùng), PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề (AI Vulnerability & Pseudo-Probabilities):**
+  1. Pass 1 trong `generate_quantamental_2pass_report` gọi trực tiếp `client.models.generate_content`, bỏ qua wrapper tập trung, retry logic, bộ đệm rate-limit (15 RPM) và bộ lọc prompt injection.
+  2. Nguy cơ Fallback xác suất giả: Khi LLM trả về JSON lỗi hoặc rác, hàm `_parse_pass1_probabilities` âm thầm fallback về gán `0.25, 0.50, 0.25` kèm lý lẽ bịa đặt, khiến hệ thống tiếp tục tính toán EV và có thể mở vị thế mua trên dữ liệu rác.
+  3. Thiếu kiểm soát Veto-Only cứng: LLM không bao giờ được phép tự ý lật ngược trạng thái `can_buy = False` của Quant Core thành `BUY` hoặc tự nâng size Half-Kelly.
+  4. Thiếu tính tái lập (Reproducibility & Provenance): Các cuộc gọi LLM chưa khóa cứng `temperature = 0.0`, chưa lưu hash kiểm toán `prompt_hash` (SHA-256) và `input_hash` (SHA-256).
+  5. Chu kỳ hiệu chuẩn AI (Calibration Horizon): Đánh giá độ lệch chuẩn (Calibration Gap) của AI cần neo theo đúng chu kỳ 60 phiên giao dịch (khớp vòng đời EXPIRED).
+- **Quyết định lựa chọn:**
+  1. Gom 100% lệnh gọi Gemini về wrapper tập trung `call_gemini` / `async_call_gemini` với `temperature = 0.0` qua `types.GenerateContentConfig`, rate limit buffer 15 RPM.
+  2. Bổ sung `sanitize_prompt_input()` lọc toàn bộ đầu vào tin tức, ghi chú người dùng khỏi các mẫu tấn công Prompt Injection phổ biến.
+  3. Tái cấu trúc `_parse_pass1_probabilities` thành Fail-Safe Parser: lỗi JSON lập tức bật cờ `pass1_parse_failed = True`, kích hoạt trạng thái từ chối (`can_buy = False`, `position_size_nav = "0% NAV"`, `action_state = "TỪ CHỐI (LỖI PARSE PASS 1)"`), cấm tuyệt đối fallback xác suất giả 25/50/25.
+  4. Đính kèm siêu dữ liệu kiểm toán định chế: `prompt_hash`, `input_hash`, `model_id`, `temperature = 0.0` vào kết quả phân tích và Decision Record.
+  5. Thiết lập `check_ai_calibration(horizon_days=60)` và `calibrate_scenario_probabilities(horizon_days=60)`: Lọc dữ liệu giao dịch và phân phối xác suất kịch bản theo chu kỳ 60 phiên giao dịch, tính toán Brier Score và Calibration Gap cho từng kịch bản Bull/Base/Bear.
+  6. Triển khai trọn bộ 13 unit tests chuyên biệt trong `tests/test_task_0015_ai_governance.py` bảo đảm 100% pass và SonarCloud clean.
+- **Hệ quả:** Hệ thống đóng băng hoàn toàn rủi ro ảo giác từ AI, bảo đảm tính tất định và khả năng tái lập kiểm toán toán học, bảo vệ vốn tuyệt đối trước mọi sự cố sập cấu trúc của LLM.
