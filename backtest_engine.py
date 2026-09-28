@@ -1042,7 +1042,7 @@ def scan_market_stress_events(
         for idx, dd in zip(close.index[mask_dd], roll_dd[mask_dd])
     ]
 
-    unique_dates = {d["date"] for d in drop_pts} | {d["date"] for d in drop_pts}
+    unique_dates = {d["date"] for d in drop_pts} | {d["date"] for d in drop_pcts}
 
     return {
         "drop_50pts_days": drop_pts,
