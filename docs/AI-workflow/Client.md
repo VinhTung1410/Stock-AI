@@ -1,8 +1,8 @@
-# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 6.1.1
+# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 6.2
 
 **Tên dự án:** Stock-AI / AI Investment Decision & Research Platform  
-**Phiên bản:** v6.1.1 — Bản vá Khắc phục Lỗ hổng Hệ thống Báo cáo Phiên ATC & Chuẩn hóa Single Source of Truth VN-Index (TASK-0017)  
-**Trọng tâm:** *"Khắc phục triệt để hiện tượng điểm số VN-Index bị trả về 0.00, thiếu mức độ chênh lệch điểm số thực tế, và loại bỏ sự bất nhất quán về tỷ trọng phân bổ vốn (Sáng khuyến nghị 50/50, Chiều lại báo 30/70)."*
+**Phiên bản:** v6.2 — Wiring Institutional Evidence Framework & Kill Switch  
+**Trọng tâm:** *"Khắc phục triệt để các lỗi và tích hợp hệ thống lưu vết vĩnh viễn (Immutable Evidence) cho mọi quyết định, gắn hệ thống Kill Switch chặn chuỗi lệnh thua liên tiếp."*
 
 ---
 

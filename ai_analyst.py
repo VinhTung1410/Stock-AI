@@ -923,6 +923,19 @@ def _check_data_gate_or_refuse(symbol: str, tech_data: dict, fin_data: dict) -> 
         return None, gate
 
     reason_str = " | ".join(gate["reasons"])
+    
+    try:
+        from db_manager import save_decision_record
+        save_decision_record({
+            "symbol": symbol,
+            "decision": "REJECT",
+            "primary_rejection_gate": "LIQUIDITY" if "Thanh khoản" in reason_str else "DATA_GATE",
+            "facts": {"market_price": tech_data.get("current_price", 0.0)},
+            "rejection_reasons": gate["reasons"]
+        })
+    except Exception:
+        logging.exception("Không thể lưu decision_records khi bị loại ở Data Gate")
+
     refusal_report = (
         f"======================================================\n"
         f"⛔ **TỪ CHỐI KHUYẾN NGHỊ: DỮ LIỆU KHÔNG ĐẠT CHUẨN AN TOÀN QUỸ**\n"
@@ -1069,6 +1082,19 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
     if parse_failed:
         logging.warning("Pass 1 parse failed for %s. Refusing to open position (Fail-Safe Gate).", symbol)
         refusal_msg = "⛔ TỪ CHỐI MỞ VỊ THẾ: LỖI PARSE XÁC SUẤT PASS 1 (JSON KHÔNG HỢP LỆ)"
+        
+        try:
+            from db_manager import save_decision_record
+            save_decision_record({
+                "symbol": symbol,
+                "decision": "REJECT",
+                "primary_rejection_gate": "AI_PASS1_PARSE_GATE",
+                "rejection_reasons": ["Lỗi cấu trúc phản hồi Pass 1 không thể parse xác suất"],
+                "facts": {"market_price": curr_price}
+            })
+        except Exception:
+            logging.exception("Không thể lưu decision_records khi bị loại ở Pass 1")
+
         return {
             "status": "PASS1_PARSE_FAILED",
             "symbol": symbol,
@@ -1209,6 +1235,33 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
 </OUTPUT_FORMAT>"""
 
     final_report = call_gemini(client, pass2_prompt)
+    
+    # LƯU IMMUTABLE DECISION RECORD TRƯỚC TIÊN
+    action_state = str(hard_gates.get("action_state", "")).upper()
+    is_buy = "MUA" in action_state or "BUY" in action_state
+    decision_type = "BUY" if is_buy else ("WATCH" if "WATCH" in action_state or "THEO DÕI" in action_state else "REJECT")
+    
+    decision_id = None
+    try:
+        from db_manager import save_decision_record
+        decision_id = save_decision_record({
+            "symbol": symbol,
+            "decision": decision_type,
+            "primary_rejection_gate": None if is_buy else ("AI_COMMITTEE_WATCH" if decision_type == "WATCH" else "AI_COMMITTEE_REJECT"),
+            "facts": {
+                "market_price": curr_price,
+                "ev": hard_gates.get("ev"),
+                "mos_pct": hard_gates.get("mos_pct"),
+                "decision_tag": hard_gates.get("decision_tag")
+            },
+            "inferences": {
+                "p_bull": p_bull,
+                "p_base": p_base,
+                "p_bear": p_bear
+            }
+        })
+    except Exception:
+        logging.exception("Không thể lưu decision_records")
 
     # TỰ ĐỘNG LƯU SNAPSHOT BẤT BIẾN VÀO SUPABASE (SIGNAL LIFECYCLE)
     try:
@@ -1226,6 +1279,7 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
             z_score_res=z_score_res,
             prob_dict=prob_dict,
             model_version=f"{MODEL_NAME}-v2.1",
+            decision_id=decision_id,
             input_snapshot={
                 "pe": pe,
                 "pb": pb,

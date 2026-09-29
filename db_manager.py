@@ -52,7 +52,8 @@ def save_quant_signal(
     z_score_res: dict = None,
     prob_dict: dict = None,
     model_version: str = "gemini-flash-v2.1",
-    input_snapshot: dict = None
+    input_snapshot: dict = None,
+    decision_id: str = None
 ) -> int:
     """Save an immutable signal snapshot to Supabase when a buy/sell signal fires.
 
@@ -116,9 +117,24 @@ def save_quant_signal(
             "max_adverse_price": mkt_price
         }).execute()
 
+        # Lưu bản ghi vòng đời tín hiệu (Phase 3)
+        try:
+            save_signal_lifecycle({
+                "signal_id": signal_id,
+                "decision_id": decision_id,
+                "symbol": symbol,
+                "entry_price": entry_price,
+                "f_score": f_score_res.get("score", 0),
+                "mos_pct": hard_gates.get("mos_pct", 0.0),
+                "initial_target_price": target_price,
+                "initial_stop_price": stop_loss,
+            })
+        except Exception:
+            logging.exception("Lỗi khi lưu signal_lifecycle")
+
         logging.info(f"✅ ĐÃ LƯU SNAPSHOT TÍN HIỆU {symbol} (ID: {signal_id}) VÀO SUPABASE THÀNH CÔNG!")
         return signal_id
-    except Exception as e:
+    except Exception:
         logging.exception("Lỗi khi lưu tín hiệu vào Supabase")
         return None
 
@@ -529,6 +545,23 @@ def update_daily_tracking() -> dict:
             logging.info(
                 f"🎯 POSITION {sym} CLOSED: Status = {new_status} | P/L = {pnl_pct:+.2f}% | Alpha = {alpha_pct:+.2f}%"
             )
+
+            # Cập nhật thông tin Exit cho signal_lifecycle (Phase 3)
+            try:
+                r_multiple = None
+                if item.get("stop_loss") and item.get("entry_price"):
+                    risk_pct = abs(item["entry_price"] - item["stop_loss"]) / item["entry_price"] * 100
+                    r_multiple = round(pnl_pct / risk_pct, 2) if risk_pct > 0 else 0.0
+
+                update_signal_lifecycle_exit(str(sig_id), {
+                    "status": new_status,
+                    "exit_price": float(exit_price),
+                    "pnl_pct": float(pnl_pct),
+                    "r_multiple": float(r_multiple) if r_multiple is not None else None,
+                    "loss_attribution": loss_attribution
+                })
+            except Exception:
+                logging.exception("Lỗi khi update_signal_lifecycle_exit")
 
         # Cập nhật Supabase
         if tracking_id:

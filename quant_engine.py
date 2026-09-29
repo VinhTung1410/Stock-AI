@@ -922,6 +922,20 @@ def evaluate_decision_hard_gates(
         decision_tag = "🟡 THEO DÕI (Hàng rào định lượng chưa đủ điều kiện kích hoạt Mua)"
         position_size_nav = "0% NAV"
 
+    # =========================================================================
+    # KIỂM TRA KILL SWITCH TỪ EVIDENCE DATABASE (PHASE 4)
+    # =========================================================================
+    try:
+        if can_buy:
+            from db_manager import check_evidence_kill_switch
+            ks_res = check_evidence_kill_switch(lookback_trades=20)
+            if ks_res.get("is_triggered"):
+                decision_tag = f"{decision_tag} ⚠️ [KILL SWITCH KÍCH HOẠT: Expectancy R {ks_res.get('expectancy_r')}]"
+                position_size_nav = f"{position_size_nav} (Yêu cầu giảm 50% quy mô do chuỗi lệnh thua)"
+    except Exception as e:
+        import logging
+        logging.exception("Lỗi khi kiểm tra Kill Switch")
+
     return {
         "ev": ev,
         "fair_value": fair_value,
