@@ -13,7 +13,14 @@ if sys.platform == "win32":
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from ai_analyst import generate_portfolio_analysis
-from data_engine import evaluate_portfolio, evaluate_watchlist, fetch_macro_news, load_portfolio, load_watchlist
+from data_engine import (
+    evaluate_portfolio,
+    evaluate_watchlist,
+    fetch_macro_news,
+    fetch_stock_technical,
+    load_portfolio,
+    load_watchlist,
+)
 from discord_alerts import format_portfolio_embed, send_discord_dm, send_discord_webhook
 
 load_dotenv()
@@ -38,9 +45,10 @@ def run_afternoon_simulation():
 
     print("📰 1. Thu thập tin tức CafeF & dữ liệu đóng cửa kết phiên...", flush=True)
     news = fetch_macro_news(limit=10, tracked_symbols=tracked_symbols)
+    vnindex_tech = fetch_stock_technical("VNINDEX")
 
     print("🧠 2. AI Gemini Flash tổng kết phiên & đánh giá sức khỏe danh mục...", flush=True)
-    afternoon_ai_text = generate_portfolio_analysis(df_eval, news, watchlist_df=df_wl)
+    afternoon_ai_text = generate_portfolio_analysis(df_eval, news, watchlist_df=df_wl, vnindex_tech=vnindex_tech)
 
     afternoon_embed = format_portfolio_embed(
         df_eval,

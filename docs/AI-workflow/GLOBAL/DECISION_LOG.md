@@ -330,3 +330,28 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
      - Bật cảnh báo `INSUFFICIENT_SAMPLE` khi quy mô mẫu $N < 100$, ngăn ngừa việc tối ưu hóa vội vàng khi thiếu dữ liệu.
   3. Tạo bộ unit tests chuyên biệt `tests/test_task_0016_exit_lab_and_ic.py` (12 tests) đạt 100% pass, đưa toàn bộ suite lên 289 tests xanh.
 - **Hệ quả:** Hoàn tất trọn vẹn Phase 7 trong lộ trình `stock_ai_roadmap.md`, thiết lập nền tảng khoa học dữ liệu và thống kê định chế vững chắc cho toàn bộ hệ thống Stock-AI.
+
+---
+
+### DECISION-0017: Bản vá Khắc phục Lỗ hổng Hệ thống Báo cáo Phiên ATC & Chuẩn hóa Single Source of Truth VN-Index (TASK-0017 - Hotfix v6.1.1)
+- **Ngày:** 2026-09-29
+- **Trạng thái:** `APPROVED / IMPLEMENTED`
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề (ATC Report Data Integrity & Allocation Conflict):**
+  1. VN-Index trả về `0.00 điểm`: Hàm `generate_portfolio_analysis()` trong `ai_analyst.py` nhận `vnindex_tech=None` nhưng không có cơ chế auto-fetch fallback như báo cáo ATO, khiến prompt Gemini nhận điểm số 0.00.
+  2. Thiếu Delta điểm số: `fetch_stock_technical()` chỉ tính `change_pct` (%), thiếu số điểm tăng/giảm tuyệt đối ($\Delta \text{Điểm}$) và khoảng cách MA20/MA50, khiến phân tích kỹ thuật thiếu chiều sâu định lượng.
+  3. Xung đột tỷ lệ Tiền/Cổ phiếu: Sáng (ATO) báo 50/50 từ `quant_engine`, Chiều (ATC) lại hardcode `stock_pct: 70% / cash_pct: 30%` tại dòng 341 `ai_analyst.py`, vi phạm nguyên tắc Single Source of Truth (SSOT).
+- **Quyết định lựa chọn:**
+  1. **Chuẩn hóa tính toán Delta trong `data_engine.py`:**
+     - Bổ sung `diff_points` ($P_{\text{close}} - P_{\text{ref}}$), `diff_ma20`, `diff_ma50` vào `fetch_stock_technical()`.
+     - Tích hợp nạp và đồng bộ hóa bộ nhớ đệm `_LAST_KNOWN_TECH_CACHE` xuống disk (`data/last_known_tech.json`) phòng thủ chống rớt mạng / lỗi API.
+  2. **Tái cấu trúc `generate_portfolio_analysis()` trong `ai_analyst.py`:**
+     - Tự động gọi `fetch_stock_technical("VNINDEX")` khi `vnindex_tech` bị thiếu hoặc rỗng.
+     - Xóa bỏ hoàn toàn dict hardcode 70/30, hợp nhất 100% với `quant_engine.evaluate_market_regime()` (SSOT).
+     - Đưa thông số kỹ thuật VN-Index (Điểm số, $\Delta$ Điểm, % thay đổi, MA20, MA50, RSI) vào Section 0 và Section I của prompt.
+  3. **Tối ưu hóa `trading_bot.py` & Scripts:**
+     - Pre-fetch `vnindex_tech` một lần trong `trigger_scheduled_report` và truyền vào các hàm phân tích AI.
+  4. **Kiểm thử & Chất lượng:**
+     - Tạo bộ test chuyên biệt `tests/test_task_0017_atc_report_fixes.py` (5 tests PASSED 100%), toàn bộ suite đạt 299 tests PASSED.
+     - `ruff check . --output-format=github` đạt exit code 0.
+- **Hệ quả:** Báo cáo ATC và ATO đồng bộ 100% về tỷ trọng danh mục và điểm số chỉ số vĩ mô; loại bỏ hoàn toàn hiện tượng 0.00 điểm và xung đột khuyến nghị.

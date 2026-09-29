@@ -38,6 +38,7 @@ TAG_DIVIDEND = "CỔ TỨC"
 PATH_PORTFOLIO_JSON = "data/portfolio.json"
 PATH_WATCHLIST_JSON = "data/watchlist.json"
 PATH_LAST_KNOWN_PRICES_JSON = "data/last_known_prices.json"
+PATH_LAST_KNOWN_TECH_JSON = "data/last_known_tech.json"
 KEY_SECTOR_CLUSTER = "Cụm ngành"
 
 # Danh sách mã đã bị thanh lọc trong phiên để tránh bị Google Sheet nạp lại
@@ -830,7 +831,33 @@ def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> d
 
 
 _TECH_CACHE: dict[str, tuple[float, dict]] = {}
-_LAST_KNOWN_TECH_CACHE: dict[str, dict] = {}
+
+
+def _load_persisted_last_known_tech() -> dict[str, dict]:
+    """Tự động nạp dữ liệu kỹ thuật gần nhất từ disk để container khởi động không bị rỗng cache."""
+    if os.path.exists(PATH_LAST_KNOWN_TECH_JSON):
+        try:
+            with open(PATH_LAST_KNOWN_TECH_JSON, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return {k.upper().strip(): v for k, v in data.items() if isinstance(v, dict)}
+        except Exception:
+            logging.exception("Không thể đọc cache kỹ thuật từ disk")
+    return {}
+
+
+def _persist_last_known_tech() -> None:
+    """Lưu lại dữ liệu kỹ thuật hợp lệ gần nhất ra disk để phục vụ các phiên khởi động kế tiếp."""
+    if os.environ.get("ENV") == "testing" or "pytest" in sys.modules:
+        return
+    try:
+        os.makedirs(os.path.dirname(PATH_LAST_KNOWN_TECH_JSON), exist_ok=True)
+        with open(PATH_LAST_KNOWN_TECH_JSON, "w", encoding="utf-8") as f:
+            json.dump(_LAST_KNOWN_TECH_CACHE, f, ensure_ascii=False, indent=2)
+    except Exception:
+        logging.exception("Không thể lưu cache kỹ thuật ra disk")
+
+
+_LAST_KNOWN_TECH_CACHE: dict[str, dict] = _load_persisted_last_known_tech()
 
 
 def _load_persisted_last_known_prices() -> dict[str, float]:
@@ -938,6 +965,7 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
         current_price = float(latest["close"])
         prev_close = float(prev["close"])
         change_pct = ((current_price - prev_close) / prev_close) * 100 if prev_close else 0.0
+        diff_points = round(current_price - prev_close, 2) if prev_close else 0.0
 
         high = float(latest.get("high", current_price))
         low = float(latest.get("low", current_price))
@@ -949,6 +977,8 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
 
         ma20 = float(latest["MA20"]) if pd.notnull(latest["MA20"]) else None
         ma50 = float(latest["MA50"]) if pd.notnull(latest["MA50"]) else None
+        diff_ma20 = round(current_price - ma20, 2) if ma20 else 0.0
+        diff_ma50 = round(current_price - ma50, 2) if ma50 else 0.0
         rsi14 = float(latest["RSI14"]) if pd.notnull(latest["RSI14"]) else None
         vol = float(latest["volume"])
         vol_ma20 = float(latest["VOL_MA20"]) if pd.notnull(latest["VOL_MA20"]) else vol
@@ -988,7 +1018,7 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
 
         # Tính giá trần / sàn ước lượng (HOSE ±7%, HNX ±10%)
         # Mặc định an toàn cho HOSE: 6.8% - 7.0%
-        ref_price = prev_close
+        ref_price = round(prev_close, 2) if prev_close else current_price
         ceiling_price = round(ref_price * 1.069, 2) if ref_price else current_price
         floor_price = round(ref_price * 0.931, 2) if ref_price else current_price
         is_ceiling = (current_price >= ceiling_price * 0.998) or (change_pct >= 6.7)
@@ -999,6 +1029,9 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             "date": str(latest["time"]),
             "current_price": current_price,
             "ref_price": ref_price,
+            "diff_points": diff_points,
+            "diff_ma20": diff_ma20,
+            "diff_ma50": diff_ma50,
             "ceiling_price": ceiling_price,
             "floor_price": floor_price,
             "is_ceiling": is_ceiling,
@@ -1011,6 +1044,7 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             "ma50": round(ma50, 2) if ma50 else None,
             "status_ma20": status_ma20,
             "rsi14": round(rsi14, 1) if rsi14 else None,
+            "rsi": round(rsi14, 1) if rsi14 else 50.0,
             "volume": int(vol),
             "vol_ratio": round(vol_ratio, 2),
             "adv20_billion": adv20_billion,
@@ -1023,6 +1057,7 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
         _LAST_KNOWN_TECH_CACHE[sym_clean] = res
         _LAST_KNOWN_PRICE_CACHE[sym_clean] = current_price
         _persist_last_known_prices()
+        _persist_last_known_tech()
         return res
     except Exception:
         logging.exception("Lỗi khi lấy kỹ thuật mã %s", symbol)

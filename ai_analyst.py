@@ -333,20 +333,43 @@ def generate_portfolio_analysis(
     from quant_engine import evaluate_market_regime
     client = get_ai_client()
 
+    # Kéo số liệu VN-Index thực tế nếu chưa được truyền vào hoặc rỗng
+    if not vnindex_tech:
+        try:
+            from data_engine import fetch_stock_technical
+            vnindex_tech = fetch_stock_technical("VNINDEX")
+        except Exception:
+            logging.exception("Không thể lấy dữ liệu kỹ thuật VN-Index cho báo cáo tổng kết phiên")
+            vnindex_tech = {}
+
+    idx_price = vnindex_tech.get("current_price", 0.0) if vnindex_tech else 0.0
+    idx_diff = vnindex_tech.get("diff_points", 0.0) if vnindex_tech else 0.0
+    idx_chg = vnindex_tech.get("change_pct", 0.0) if vnindex_tech else 0.0
+    idx_ma20 = vnindex_tech.get("ma20", 0.0) if vnindex_tech else 0.0
+    idx_ma50 = vnindex_tech.get("ma50", 0.0) if vnindex_tech else 0.0
+    idx_rsi = vnindex_tech.get("rsi14", vnindex_tech.get("rsi", 0.0)) if vnindex_tech else 0.0
+    idx_status = vnindex_tech.get("status_ma20", "") if vnindex_tech else ""
+
+    regime_data = evaluate_market_regime(vnindex_tech)
+    session_title, time_intro, price_ref_label = _build_session_timing_meta(session_label)
+
     quant_eval_str = _build_portfolio_quant_summary(portfolio_df)
     portfolio_str = portfolio_df.to_string(index=False) if portfolio_df is not None and not portfolio_df.empty else "Chưa có dữ liệu."
     watchlist_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else ""
     news_str = _format_news_summary(news_items, limit=8)
-    
-    regime_data = evaluate_market_regime(vnindex_tech) if vnindex_tech else {"tag": "N/A", "stock_pct": "70%", "cash_pct": "30%", "max_stock_nav": 100, "bias": "Neutral"}
-    session_title, time_intro, price_ref_label = _build_session_timing_meta(session_label)
 
     prompt = f"""Bạn là Giám đốc Quản trị Rủi ro & Chiến lược Danh mục Đầu tư (Senior Portfolio Manager) theo trường phái Value-First + Technical Timing.
 {time_intro}
 
+=== 0. THÔNG SỐ THỊ TRƯỜNG & RISK BUDGETING (VN-INDEX) ===
+- Điểm số đóng cửa phiên gần nhất: {idx_price:.2f} điểm (thay đổi: {idx_diff:+.2f} điểm, tương ứng {idx_chg:+.2f}%)
+- Đường MA20 ngày: {idx_ma20:.2f} điểm ({idx_status}) | Đường MA50 ngày: {idx_ma50:.2f} điểm | RSI(14): {idx_rsi}
+- TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME): {regime_data['tag']}
+- TỶ TRỌNG PHÂN BỔ ĐỀ XUẤT (THEO RISK BUDGET): Cổ phiếu {regime_data['stock_pct']} | Tiền mặt {regime_data['cash_pct']} (Hạn mức tối đa: {regime_data['max_stock_nav']}% NAV)
+- ĐỊNH HƯỚNG QUẢN TRỊ RỦI RO: {regime_data.get('bias', 'Thận trọng')}
+
 === 1. TÍNH TOÁN ĐỊNH LƯỢNG TẤT ĐỊNH CỦA HỆ THỐNG PYTHON CHO DANH MỤC ===
 {quant_eval_str}
-- TỶ TRỌNG PHÂN BỔ ĐỀ XUẤT (THEO RISK BUDGET): Cổ phiếu {regime_data['stock_pct']} | Tiền mặt {regime_data['cash_pct']} (Hạn mức tối đa: {regime_data['max_stock_nav']}% NAV)
 
 === 2. BẢNG TRẠNG THÁI GIAO DỊCH THỰC TẾ ===
 {portfolio_str}
@@ -370,16 +393,17 @@ QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM (MATHEMATICAL SANITY RULES):
    - Câu hỏi 2: Cổ phiếu nào còn rẻ, cổ phiếu nào chạm định giá? (Tham chiếu Fair Value và Margin of Safety).
    - Câu hỏi 3: Vị thế nào cần chốt lời từng phần và nâng Trailing Stop? (Nêu rõ mốc giá cụ thể do Python đã tính).
    - Câu hỏi 4: Vị thế nào bị suy giảm luận điểm (Thesis Breaker) cần dứt khoát cơ cấu?
-   - Câu hỏi 5: Tỷ trọng tiền mặt hiện tại đã an toàn chưa? Đề xuất tỷ lệ Tiền/Cổ phiếu tối ưu dựa trên Risk Budgeting.
+   - Câu hỏi 5: Tỷ trọng tiền mặt hiện tại đã an toàn chưa? Đề xuất tỷ lệ Tiền/Cổ phiếu tối ưu dựa trên Risk Budgeting (Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']}).
 
 Yêu cầu trình bày báo cáo tổng kết phiên:
 **I. {session_title} & ĐÁNH GIÁ 5 CÂU HỎI CỐT TỬ**
+- Phân tích kỹ thuật VN-Index: Điểm số đóng cửa phiên gần nhất ở mức **{idx_price:.2f} điểm** (thay đổi **{idx_diff:+.2f} điểm**, tương ứng **{idx_chg:+.2f}%**). Đường MA20 tại {idx_ma20:.2f} điểm, đường MA50 tại {idx_ma50:.2f} điểm, chỉ số RSI(14) đạt {idx_rsi}.
 BẮT BUỘC sử dụng đúng định dạng danh sách dưới đây, không được bỏ sót câu nào:
 - **Câu hỏi 1 (Nguyên nhân biến động):** [Trả lời ngắn gọn]
 - **Câu hỏi 2 (Định giá & MoS):** [Trả lời ngắn gọn]
 - **Câu hỏi 3 (Chốt lời & Trailing Stop):** [Trả lời ngắn gọn]
 - **Câu hỏi 4 (Thesis Breaker):** [Trả lời ngắn gọn]
-- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** [Trả lời ngắn gọn dựa trên tỷ lệ Tiền mặt đề xuất]
+- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** [Trả lời ngắn gọn dựa trên tỷ lệ Tiền mặt đề xuất: Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']}]
 
 **II. CHI TIẾT DANH MỤC & HÀNH ĐỘNG QUẢN TRỊ RỦI RO**
 - Trình bày từng mã đang nắm giữ:
@@ -393,7 +417,7 @@ BẮT BUỘC sử dụng đúng định dạng danh sách dưới đây, không 
 - Đánh giá động thái mua/bán ròng và tin tức CafeF hôm nay.
 
 **IV. KẾ HOẠCH HÀNH ĐỘNG CHO PHIÊN KẾ TIẾP**
-- Tỷ trọng phân bổ đề xuất: % Tiền mặt / % Cổ phiếu.
+- Tỷ trọng phân bổ đề xuất: % Tiền mặt / % Cổ phiếu (Khớp tỷ lệ: Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']}).
 - Điều kiện thị trường để kích hoạt giải ngân mới.
 
 Định dạng Discord/Web:
@@ -428,14 +452,16 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
             from data_engine import fetch_stock_technical
             vnindex_tech = fetch_stock_technical("VNINDEX")
         except Exception:
+            logging.exception("Không thể lấy dữ liệu kỹ thuật VN-Index cho báo cáo chiến lược đầu ngày")
             vnindex_tech = {}
 
-    idx_price = vnindex_tech.get("current_price", 0.0)
-    idx_chg = vnindex_tech.get("change_pct", 0.0)
-    idx_ma20 = vnindex_tech.get("ma20", 0.0)
-    idx_ma50 = vnindex_tech.get("ma50", 0.0)
-    idx_rsi = vnindex_tech.get("rsi14", 0.0)
-    idx_status = vnindex_tech.get("status_ma20", "")
+    idx_price = vnindex_tech.get("current_price", 0.0) if vnindex_tech else 0.0
+    idx_diff = vnindex_tech.get("diff_points", 0.0) if vnindex_tech else 0.0
+    idx_chg = vnindex_tech.get("change_pct", 0.0) if vnindex_tech else 0.0
+    idx_ma20 = vnindex_tech.get("ma20", 0.0) if vnindex_tech else 0.0
+    idx_ma50 = vnindex_tech.get("ma50", 0.0) if vnindex_tech else 0.0
+    idx_rsi = vnindex_tech.get("rsi14", vnindex_tech.get("rsi", 0.0)) if vnindex_tech else 0.0
+    idx_status = vnindex_tech.get("status_ma20", "") if vnindex_tech else ""
 
     # Đánh giá Market Regime & Ngân sách Rủi ro Đa biến (Risk Budgeting)
     regime_data = evaluate_market_regime(vnindex_tech)
@@ -444,7 +470,7 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
     w_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else "Chưa có mã trong Watchlist."
 
     idx_context = f"""=== 0. DỮ LIỆU THỊ TRƯỜNG & RISK BUDGETING (CẬP NHẬT TỨC THỜI) ===
-- Điểm số đóng cửa phiên gần nhất: {idx_price:.2f} điểm (Thay đổi: {idx_chg:+.2f}%)
+- Điểm số đóng cửa phiên gần nhất: {idx_price:.2f} điểm (Thay đổi: {idx_diff:+.2f} điểm, tương ứng {idx_chg:+.2f}%)
 - Đường MA20 ngày: {idx_ma20:.2f} điểm (Trạng thái: {idx_status})
 - Đường MA50 ngày: {idx_ma50:.2f} điểm | RSI(14): {idx_rsi}
 - TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME): {regime_data['tag']}

@@ -85,6 +85,7 @@ jobs:
             --cov=quant_valuation \
             --cov=data_gate \
             --cov=data_engine \
+            --cov=ai_analyst \
             --cov=backtest_engine \
             --cov=regime_classifier \
             --cov=paper_trading \

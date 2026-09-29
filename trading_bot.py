@@ -583,12 +583,26 @@ def trigger_scheduled_report(report_type: str, title_desc: str):
         df_wl = evaluate_watchlist(watchlist) if watchlist else None
         news = fetch_macro_news(limit=10, tracked_symbols=[p["symbol"] for p in portfolio] + [w["symbol"] for w in watchlist])
 
+        # Pre-fetch VN-Index technical data once for reports
+        try:
+            from data_engine import fetch_stock_technical
+            vnindex_tech = fetch_stock_technical("VNINDEX")
+        except Exception:
+            logging.exception("Lỗi kéo dữ liệu kỹ thuật VN-Index trong trigger_scheduled_report")
+            vnindex_tech = None
+
         if "08:45" in report_type or "ATO" in report_type:
             opportunities = scan_market_opportunities(extra_symbols=[w["symbol"] for w in watchlist])
-            ai_text = generate_morning_strategy_report(df_eval, df_wl, opportunities, news)
+            ai_text = generate_morning_strategy_report(df_eval, df_wl, opportunities, news, vnindex_tech=vnindex_tech)
         else:
             session_lbl = "NOON" if any(k in report_type for k in ["11:30", "TRƯA", "SÁNG"]) else "ATC"
-            ai_text = generate_portfolio_analysis(df_eval, news, watchlist_df=df_wl, session_label=session_lbl)
+            ai_text = generate_portfolio_analysis(
+                df_eval,
+                news,
+                watchlist_df=df_wl,
+                vnindex_tech=vnindex_tech,
+                session_label=session_lbl
+            )
 
         embed = format_portfolio_embed(df_eval, ai_text, report_type=report_type)
 

@@ -1,39 +1,45 @@
-# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 6.1
+# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 6.1.1
 
 **Tên dự án:** Stock-AI / AI Investment Decision & Research Platform  
-**Phiên bản:** v6.1 — Decision Record Universe Panel, Migration 0003 & Dispatcher Decoupling (TASK-0014)  
-**Trọng tâm:** *"Không thêm tính năng mới. Xây hạ tầng bằng chứng (Evidence Integrity) và lưu vết TẠI SAO (WHY) cho toàn bộ Universe."*
+**Phiên bản:** v6.1.1 — Bản vá Khắc phục Lỗ hổng Hệ thống Báo cáo Phiên ATC & Chuẩn hóa Single Source of Truth VN-Index (TASK-0017)  
+**Trọng tâm:** *"Khắc phục triệt để hiện tượng điểm số VN-Index bị trả về 0.00, thiếu mức độ chênh lệch điểm số thực tế, và loại bỏ sự bất nhất quán về tỷ trọng phân bổ vốn (Sáng khuyến nghị 50/50, Chiều lại báo 30/70)."*
 
 ---
 
-## 1. MỤC TIÊU PHIÊN BẢN v6.1
+## 1. MỤC TIÊU PHIÊN BẢN v6.1 & BẢN VÁ v6.1.1
 
-1. **Chuẩn hóa tính toàn vẹn dữ liệu (TASK-0013 Prerequisite):**
+1. **Bản vá Khắc phục Lỗ hổng Báo cáo Phiên ATC (TASK-0017 - Hotfix v6.1.1):**
+   - **Khắc phục VN-Index 0.00 điểm:** Bổ sung cơ chế auto-fetch fallback `fetch_stock_technical("VNINDEX")` và sử dụng `_LAST_KNOWN_TECH_CACHE["VNINDEX"]` khi gọi `generate_portfolio_analysis()` nếu `vnindex_tech` bị thiếu hoặc API gặp sự cố.
+   - **Chuẩn hóa tính toán Delta điểm số & khoảng cách MA:** Bổ sung trường `diff_points` ($P_{\text{close}} - P_{\text{ref}}$), `diff_ma20`, `diff_ma50` trong `data_engine.fetch_stock_technical()` và truyền đầy đủ vào Prompt Gemini để phân tích chi tiết biến động điểm số thực tế.
+   - **Xóa bỏ xung đột tỷ lệ Tiền/Cổ phiếu (Single Source of Truth):** Loại bỏ hoàn toàn dict hardcode `stock_pct: 70% / cash_pct: 30%` tại `ai_analyst.py:341`, hợp nhất 100% việc tính toán tỷ trọng sang `quant_engine.evaluate_market_regime()`, đảm bảo sự đồng nhất tuyệt đối giữa phiên Sáng (ATO) và Chiều (ATC).
+   - **Tối ưu hóa API Calling tại Trading Bot:** Tại `trading_bot.trigger_scheduled_report()`, chủ động kéo `vnindex_tech = fetch_stock_technical("VNINDEX")` một lần và truyền tham số trực tiếp vào `generate_portfolio_analysis()` để tối ưu độ trễ.
+
+2. **Chuẩn hóa tính toàn vẹn dữ liệu (TASK-0013 Prerequisite):**
    - Sửa cách tính Alpha theo đúng chu kỳ nắm giữ vị thế (từ ngày mua tới ngày bán, không lấy biến động 1 phiên).
    - Replay audit idempotent, quy tắc bảo thủ (chạm cả Target & Stop cùng ngày -> tính STOP trước), gắn cờ `t_plus_2_locked`.
    - Loại bỏ mục tiêu consensus quá hạn > 180 ngày khỏi Fair Value, gắn cờ `mos_is_informative` phân định MoS thực chất.
    - Data Gate dùng số liệu BCTC thật từ `get_financial_ratios()`, trả về `INSUFFICIENT_DATA` khi thiếu.
    - Ký duyệt `ADR-0002` đối soát tham số live (Conviction >= 70, weights 40/25/20/15).
 
-2. **Lưu vết quyết định Universe Panel (TASK-0014):**
+3. **Lưu vết quyết định Universe Panel (TASK-0014):**
    - Ghi nhận `DecisionRecord` cho toàn bộ các mã trong danh mục quét: **BUY**, **WATCH**, và **REJECT**.
    - Bóc tách 4 tầng dữ liệu: **FACT** (giá, BCTC), **INFERENCE** (F-Score, Z-Score, RSI, MoS), **OPINION** (nhận định LLM), **COUNTERFACTUAL** (cổng từ chối chính, lý do từ chối để đo ROI của risk gate).
    - Tạo migration `migrations/0003_decision_records.sql` (bảng `decision_records`, `decision_forward_returns` với trigger PostgreSQL cấm sửa/xóa).
 
-3. **Phân tách Kiến trúc Signal Engine ↔ Presentation (TASK-0014):**
+4. **Phân tách Kiến trúc Signal Engine ↔ Presentation (TASK-0014):**
    - `ai_analyst.py` chỉ làm nhiệm vụ phân tích logic và trả về `dataclass SignalEvent` độc lập, test được 100% offline.
    - Module `dispatcher.py` chuyên trách định dạng Discord Embed và gửi Webhook/DM.
    - Thêm Subtab 5 "Nhật Ký Quyết Định" trên Dashboard (`tabs/tab_alpha_tracker.py`) để tra cứu lịch sử quyết định BUY/WATCH/REJECT và biến động T+5, T+20.
    - Tích hợp Evidence-Based Kill Switch: Tự động giảm 50% size khi Expectancy theo R của 20 vị thế gần nhất < 0.
 
-4. **Thắt chặt AI Governance & Kiểm Soát Gọi Gemini (TASK-0015):**
+5. **Thắt chặt AI Governance & Kiểm Soát Gọi Gemini (TASK-0015):**
    - **Veto Only:** LLM chỉ có quyền Veto hoặc giảm vị thế; quyền cấp phép mua (`can_buy`) và sizing Half-Kelly phụ thuộc 100% vào Quant Core.
    - **Wrapper tập trung & làm sạch Prompt Injection:** Gom toàn bộ các lệnh gọi Gemini qua wrapper kiểm soát 15 RPM, vệ sinh đầu vào tin tức/văn bản.
    - **Fail-Safe Parser Pass 1:** Parse lỗi Pass 1 lập tức bật cờ `pass1_parse_failed` và từ chối mở vị thế (cấm fallback 25/50/25).
    - **Độ ổn định & Tái lập:** Khóa cứng `temperature = 0.0`, lưu đầy đủ `prompt_hash`, `input_hash`, `model_id`.
    - **Calibration Horizon 60 phiên:** Hiệu chuẩn xác suất kịch bản Pass 1 và AI confidence theo chu kỳ 60 phiên giao dịch (khớp vòng đời EXPIRED).
 
-5. **Exit Hypothesis Lab & Conviction Weights Statistical Validation (TASK-0016):**
+6. **Exit Hypothesis Lab & Conviction Weights Statistical Validation (TASK-0016):**
    - **Exit Hypothesis Lab (Chế độ chỉ báo cáo nghiên cứu):**
      + So sánh song song 4 chiến lược chốt lời/cắt lỗ (A: Hiện tại +12% chốt 50% dời BE; B: R-Multiple +2R chốt 50% dời +0.5R; C: ATR Trailing 2.5x; D: All-or-Nothing đến Target 2).
      + Đánh giá bằng phương pháp **Paired Bootstrap** (1,000 resamples), đối chiếu Expectancy theo R ($\text{PnL}/R$), Win Rate, Max Drawdown.
@@ -51,6 +57,7 @@
 - **Zero-Democracy Risk Gate:** Cổng rủi ro là mã code Python nhị phân xác định, LLM tuyệt đối không được biểu quyết hay làm mềm luật cắt lỗ.
 - **AI Chỉ Giảm Rủi Ro:** LLM chỉ có quyền Veto (bác bỏ) hoặc giảm size, không được tự ý cấp quyền mua (`can_buy`).
 - **Phê Duyệt Có Kiểm Soát:** Mọi thay đổi về luật hay ngưỡng kích hoạt chỉ được cập nhật qua ADR có ký duyệt của con người.
+- **Single Source of Truth (SSOT):** Mọi tham số phân bổ tỷ trọng (stock_pct, cash_pct) và market regime phải bắt nguồn duy nhất từ `quant_engine.evaluate_market_regime()`.
 
 ---
 
