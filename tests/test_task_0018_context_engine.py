@@ -317,6 +317,7 @@ class TestDispatcherAndAiAnalystIntegration:
                 "current_price": 30.0,
                 "ref_price": 29.5,
                 "change_pct": 1.7,
+                "close": 30.0,
                 "ma20": 29.0,
                 "ma50": 28.0,
                 "rsi14": 55.0,
@@ -328,7 +329,7 @@ class TestDispatcherAndAiAnalystIntegration:
             }
             fin_data = {
                 "symbol": "FPT",
-                "period": "2024-Q2",
+                "period": "Q2/2026",
                 "roe": 0.25,
                 "net_margin": 0.18,
                 "debt_to_equity": 0.4
