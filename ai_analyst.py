@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import re
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 try:
     from dotenv import load_dotenv
@@ -358,6 +358,10 @@ def generate_portfolio_analysis(
     watchlist_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else ""
     news_str = _format_news_summary(news_items, limit=8)
 
+    from context_engine import build_context_prompt_snippet, load_market_context
+    market_ctx = load_market_context()
+    ctx_snippet = build_context_prompt_snippet(market_ctx, code_regime=regime_data.get("tag"))
+
     prompt = f"""Bạn là Giám đốc Quản trị Rủi ro & Chiến lược Danh mục Đầu tư (Senior Portfolio Manager) theo trường phái Value-First + Technical Timing.
 {time_intro}
 
@@ -367,7 +371,7 @@ def generate_portfolio_analysis(
 - TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME): {regime_data['tag']}
 - TỶ TRỌNG PHÂN BỔ ĐỀ XUẤT (THEO RISK BUDGET): Cổ phiếu {regime_data['stock_pct']} | Tiền mặt {regime_data['cash_pct']} (Hạn mức tối đa: {regime_data['max_stock_nav']}% NAV)
 - ĐỊNH HƯỚNG QUẢN TRỊ RỦI RO: {regime_data.get('bias', 'Thận trọng')}
-
+{ctx_snippet}
 === 1. TÍNH TOÁN ĐỊNH LƯỢNG TẤT ĐỊNH CỦA HỆ THỐNG PYTHON CHO DANH MỤC ===
 {quant_eval_str}
 
@@ -1137,6 +1141,20 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
     mos_val = hard_gates.get("mos_pct")
     mos_str = f"{mos_val:+.2f}%" if isinstance(mos_val, (int, float)) else "0.00%"
 
+    from context_engine import (
+        build_context_prompt_snippet,
+        check_regime_conflict,
+        load_market_context,
+    )
+    market_ctx = load_market_context()
+    has_regime_conflict = False
+    if market_ctx.is_valid:
+        has_regime_conflict, _ = check_regime_conflict(
+            code_regime=tech_data.get("status_ma20", ""),
+            analyst_regime=market_ctx.market_regime_analyst
+        )
+    ctx_snippet = build_context_prompt_snippet(market_ctx, code_regime=tech_data.get("status_ma20"))
+
     pass2_prompt = f"""<ROLE>
 Bạn là Giám đốc Phân tích Đầu tư Lượng hóa (Senior Quantamental Research Director / CFA).
 Toàn bộ số liệu định lượng dưới đây ĐÃ ĐƯỢC HỆ THỐNG PYTHON TÍNH TOÁN XÁC THỰC. Bạn TUYỆT ĐỐI KHÔNG ĐƯỢC THAY ĐỔI BẤT KỲ CON SỐ NÀO.
@@ -1167,6 +1185,7 @@ Bạn sẽ tổ chức một màn TRANH BIỆN ĐỐI KHÁNG (Adversarial Debate
   + Bear: {prob_dict.get('rationale_bear')}
 - Bối cảnh tin tức mới nhất:
 {news_brief}
+{ctx_snippet}
 </CONTEXT>
 
 <CONSTRAINTS>
@@ -1314,6 +1333,10 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
             conviction_score=float(hard_gates.get("conviction_score", 0.0)),
             mos_pct=float(hard_gates.get("mos_pct", 0.0)),
             f_score=int(f_score_res.get("score", 0)),
+            analyst_context_used=market_ctx.is_valid,
+            regime_conflict=has_regime_conflict,
+            context_source_file=market_ctx.source_file if market_ctx.is_valid else None,
+            context_date=market_ctx.date if market_ctx.is_valid else None,
         )
         if "MUA" in action_state or "BUY" in action_state:
             dispatch_signal_event(signal_event)
@@ -1336,6 +1359,10 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
         "input_hash": input_hash,
         "model_id": MODEL_NAME,
         "temperature": 0.0,
+        "analyst_context_used": market_ctx.is_valid,
+        "regime_conflict": has_regime_conflict,
+        "context_source_file": market_ctx.source_file if market_ctx.is_valid else None,
+        "context_date": market_ctx.date if market_ctx.is_valid else None,
     }
 
 
@@ -1402,10 +1429,14 @@ def _format_committee_prompt_context(
     val_res: dict,
     f_score_res: dict,
     z_score_res: dict,
-    news_items: list
+    news_items: list,
+    market_context: Any = None
 ) -> str:
     """Format prompt string for smart compressed investment committee analysis."""
+    from context_engine import build_context_prompt_snippet
     from data_gate import format_data_quality_badge
+
+    ctx_snippet = build_context_prompt_snippet(market_context) if market_context else ""
 
     curr_price = float(tech_data.get("current_price", 0.0))
     ma20_val = tech_data.get("ma20")
@@ -1481,6 +1512,7 @@ Dựa trên MA20={ma20_str}, RSI={rsi_str}, Vol={vol_str}:
 === BƯỚC 3: ĐÁNH GIÁ VĨ MÔ & XÚC TÁC ===
 - Chất xúc tác có đủ mạnh không và đã phản ánh vào thị giá chưa (Already Priced-in)?
 - Đánh giá MACRO VIEW: SUPPORTIVE / NEUTRAL / NEGATIVE
+{ctx_snippet}
 
 === BƯỚC 4: RED TEAM — TỰ PHẢN BIỆN (3 CÂU BẮT BUỘC) ===
 1. Điểm YẾU NHẤT trong luận điểm đầu tư này là gì?
@@ -1681,6 +1713,15 @@ def _prepare_smart_committee_context(
     f_score_res = calculate_piotroski_f_score(fin_data)
     z_score_res = calculate_altman_z_score(fin_data)
 
+    from context_engine import check_regime_conflict, load_market_context
+    market_ctx = load_market_context()
+    has_regime_conflict = False
+    if market_ctx.is_valid:
+        has_regime_conflict, _ = check_regime_conflict(
+            code_regime=tech_data.get("status_ma20", "") if tech_data else "",
+            analyst_regime=market_ctx.market_regime_analyst
+        )
+
     prompt = _format_committee_prompt_context(
         sym=sym,
         tech_data=tech_data,
@@ -1688,7 +1729,8 @@ def _prepare_smart_committee_context(
         val_res=val_res,
         f_score_res=f_score_res,
         z_score_res=z_score_res,
-        news_items=news_items
+        news_items=news_items,
+        market_context=market_ctx
     )
 
     prompt_hash = compute_sha256(prompt)
@@ -1704,6 +1746,8 @@ def _prepare_smart_committee_context(
         "z_score": z_score_res,
         "prompt_hash": prompt_hash,
         "input_hash": input_hash,
+        "market_context": market_ctx,
+        "regime_conflict": has_regime_conflict,
     }
     return None, prompt, context_meta
 
@@ -1713,6 +1757,9 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
     gate_res = context_meta["gate_res"]
     val_res = context_meta["val_res"]
     sym = context_meta["symbol"]
+    market_ctx = context_meta.get("market_context")
+    ctx_valid = market_ctx.is_valid if market_ctx else False
+    regime_conflict = context_meta.get("regime_conflict", False)
 
     if error is not None:
         return {
@@ -1736,6 +1783,10 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
             "input_hash": context_meta.get("input_hash"),
             "model_id": MODEL_NAME,
             "temperature": 0.0,
+            "analyst_context_used": ctx_valid,
+            "regime_conflict": regime_conflict,
+            "context_source_file": market_ctx.source_file if ctx_valid else None,
+            "context_date": market_ctx.date if ctx_valid else None,
         }
 
     raw_decision = _extract_pm_decision(report_text)
@@ -1777,6 +1828,10 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         "input_hash": context_meta.get("input_hash") or compute_sha256(sym),
         "model_id": MODEL_NAME,
         "temperature": 0.0,
+        "analyst_context_used": ctx_valid,
+        "regime_conflict": regime_conflict,
+        "context_source_file": market_ctx.source_file if ctx_valid else None,
+        "context_date": market_ctx.date if ctx_valid else None,
     }
 
 

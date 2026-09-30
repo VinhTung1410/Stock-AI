@@ -1,0 +1,33 @@
+{
+  "date": "2026-09-30",
+  "source": "TCBS",
+  "source_file": "20260930_BC_PTKT.pdf",
+  "extracted_at": "2026-09-30T18:52:43.611201+00:00",
+  "market_regime_analyst": "DOWNTREND",
+  "sentiment": "BEARISH",
+  "vnindex_close": 1768.6,
+  "vnindex_change_pts": -9.1,
+  "vnindex_change_pct": -0.5,
+  "vnindex_support_zones": [],
+  "vnindex_resistance_zones": [],
+  "focus_sectors": [
+    "Bất động sản",
+    "Dầu khí",
+    "Vật liệu",
+    "Tiện ích",
+    "Điện, nước & xăng dầu khí đốt",
+    "Dịch vụ tài chính",
+    "Bán lẻ",
+    "Ngân hàng"
+  ],
+  "risk_keywords": [
+    "áp lực điều chỉnh",
+    "bán ròng",
+    "sắc đỏ"
+  ],
+  "buy_signals": [],
+  "sell_signals": [
+    "CMG"
+  ],
+  "raw_summary": "Phiên giao dịch ngày 30/09 mở cửa với tâm lý tương đối tích cực, VN-Index tạo một khoảng trống tăng giá 7 điểm sau ATO. Dòng tiền đổ mạnh vào nhóm cổ phiếu vốn hóa lớn, giúp VN-Index tăng tới 7 điểm trong phiên sáng, tuy nhiên áp lực chốt lời nhanh chóng gia tăng khiến chỉ số chìm trong sắc đỏ. Sau giờ nghỉ trưa, tâm lý thị trường có phần tiêu cực, áp lực điều chỉnh khiến VN-Index giảm tới 19 điểm so với mốc tham chiếu, lực cầu bắt đáy có thời điểm xuất hiện tuy vậy không đủ để chỉ số lấy lại sắc xanh vào cuối phiên. Trong bối cảnh đó, một số cổ phiếu nhóm ngành Vật liệu và Tiện ích như VGC, PTB, NT2, PC1 ngược chiều tăng điểm tích cực. Kết thúc phiên giao dịch ngày 30/09, VN-Index đóng cửa tại 1,768.6 điểm, giảm 9.1 điểm (tương đương 0.5%).Thanh khoản thị trường đạt 641 triệu cổ phiếu khớ"
+}

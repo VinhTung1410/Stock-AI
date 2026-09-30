@@ -21,7 +21,10 @@ def prevent_accidental_db_writes(request):
         yield
         return
 
-    with patch("db_manager.save_quant_signal", return_value=999999), \
-         patch("db_manager.save_decision_record", return_value=True), \
-         patch("db_manager.save_signal_lifecycle", return_value=True):
+    try:
+        with patch("db_manager.save_quant_signal", return_value=999999), \
+             patch("db_manager.save_decision_record", return_value=True), \
+             patch("db_manager.save_signal_lifecycle", return_value=True):
+            yield
+    except ImportError:
         yield

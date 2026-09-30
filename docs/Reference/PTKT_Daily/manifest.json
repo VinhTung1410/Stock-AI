@@ -1,0 +1,13 @@
+{
+  "last_updated": "2026-09-30T18:52:43.614605+00:00",
+  "files": [
+    {
+      "filename": "20260930_BC_PTKT.pdf",
+      "type": "PTKT_DAILY",
+      "date": "2026-09-30",
+      "source": "TCBS",
+      "processed": true,
+      "context_output": "data/market_context.json"
+    }
+  ]
+}

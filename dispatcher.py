@@ -37,6 +37,10 @@ class SignalEvent:
     decision_id: Optional[str] = None
     timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     metadata: Dict[str, Any] = field(default_factory=dict)
+    analyst_context_used: bool = False
+    regime_conflict: bool = False
+    context_source_file: Optional[str] = None
+    context_date: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert SignalEvent to standard dictionary."""

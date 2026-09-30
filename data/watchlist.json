@@ -5,17 +5,7 @@
     "note": "Theo dõi từ Google Sheet"
   },
   {
-    "symbol": "HAX",
-    "target_buy": 0.0,
-    "note": "Theo dõi từ Google Sheet"
-  },
-  {
     "symbol": "VIC",
-    "target_buy": 0.0,
-    "note": "Theo dõi từ Google Sheet"
-  },
-  {
-    "symbol": "VCB",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
   },
@@ -30,12 +20,12 @@
     "note": "Theo dõi từ Google Sheet"
   },
   {
-    "symbol": "FMC",
+    "symbol": "PVD",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
   },
   {
-    "symbol": "PVD",
+    "symbol": "GVR",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
   }

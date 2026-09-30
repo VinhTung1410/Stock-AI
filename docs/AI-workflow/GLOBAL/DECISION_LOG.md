@@ -355,3 +355,36 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
      - Tạo bộ test chuyên biệt `tests/test_task_0017_atc_report_fixes.py` (5 tests PASSED 100%), toàn bộ suite đạt 299 tests PASSED.
      - `ruff check . --output-format=github` đạt exit code 0.
 - **Hệ quả:** Báo cáo ATC và ATO đồng bộ 100% về tỷ trọng danh mục và điểm số chỉ số vĩ mô; loại bỏ hoàn toàn hiện tượng 0.00 điểm và xung đột khuyến nghị.
+
+---
+
+### [ADR-021] Tích Hợp Daily Analyst Report Pipeline & Context Engine (TCBS) với Regime Arbitration & Zero-Fabrication (TASK-0018 / v6.3)
+- **Ngày quyết định:** 2026-09-30
+- **Trạng thái:** `APPROVED / IMPLEMENTED`
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề (Market Context Integration & Zero-Fabrication Rigor):**
+  1. Thiếu tầng bối cảnh thị trường chuyên gia (Macro & Sentiment Context): AI Analyst và Portfolio Manager phân tích chỉ dựa trên số liệu thuần Python, bỏ lỡ các nhận định vĩ mô, ngành tâm điểm và dòng tiền cá mập từ báo cáo phân tích kỹ thuật (BC PTKT) hàng ngày của TCBS.
+  2. Cấu trúc tài liệu tham chiếu chưa được phân loại và quản lý trạng thái: Trộn lẫn báo cáo doanh nghiệp, vĩ mô và giao dịch nội bộ; thiếu cơ chế theo dõi file nào đã nạp context.
+  3. Nguy cơ ảo giác và sáng tác dữ liệu (Hallucination/Fabrication): Báo cáo CTCK là nguồn INFERENCE bậc cao. Tuyệt đối không được sáng tác hay suy diễn số liệu ngoài văn bản PDF.
+  4. Xung đột xu hướng (Regime Conflict): Chuyên gia CTCK có thể nhận định chủ quan khác với xu hướng tính từ MA200 định lượng (`regime_classifier.py`). Cần trọng tài phân xử tất định.
+- **Quyết định lựa chọn:**
+  1. **Tái cấu trúc và Quản lý Manifest (`docs/Reference/`):**
+     - Phân loại 5 nhóm: `PTKT_Daily/`, `Stock_Analysis/`, `Insider_Trading/`, `Macro/`, `Archive/`.
+     - Tự động duy trì `manifest.json` theo dõi trạng thái `processed`, ngày báo cáo, và đường dẫn file context.
+  2. **Pipeline Trích xuất Dữ liệu Sạch (`scripts/parse_daily_reports.py`):**
+     - Ứng dụng `PyMuPDF` trích xuất văn bản từ PDF báo cáo hàng ngày mới nhất.
+     - Trích xuất chuẩn hóa: Ngày, Nguồn TCBS, Xu hướng, Điểm số/Delta VN-Index, Ngành tâm điểm, Từ khóa rủi ro, Tín hiệu Mua/Bán CTCK, và Đoạn tóm tắt diễn biến.
+     - Tuân thủ nguyên tắc Zero-Fabrication: Trường không có trong văn bản mặc định là `[]` hoặc `"UNKNOWN"`, tuyệt đối không bịa đặt số liệu.
+     - Xuất dữ liệu ra `data/market_context.json`.
+  3. **Module Context Engine (`context_engine.py`):**
+     - Định nghĩa dataclass `MarketContext` và hàm `load_market_context()`.
+     - Chốt chặn Fail-Safe: File thiếu, file hỏng hoặc stale date tự động chuyển về `is_valid = False` (Non-blocking, không bao giờ làm sập hệ thống).
+     - Trọng tài Xung đột Regime (`check_regime_conflict()`): Code MA200 (FACT) luôn luôn thắng nhận định CTCK (INFERENCE). Nếu Code báo UPTREND nhưng Chuyên gia báo DOWNTREND -> Bật cờ xung đột và giảm 50% quy mô vị thế đề xuất để phòng thủ; nếu Code báo DOWNTREND nhưng Chuyên gia báo UPTREND -> Giữ nguyên Cash Mode, cấm mở mua.
+     - Hàm `build_context_prompt_snippet()` đóng gói thông tin xúc tích kèm cảnh báo quản trị để inject vào prompt LLM.
+  4. **Tích hợp Kiến trúc & Lưu vết Kiểm toán:**
+     - Tạo migration `migrations/0004_analyst_context.sql` bổ sung 4 trường vào `decision_records`: `analyst_context_used`, `regime_conflict`, `context_source_file`, `context_date`.
+     - Mở rộng `SignalEvent` trong `dispatcher.py` và luồng phân tích trong `ai_analyst.py`.
+  5. **Kiểm thử & Tiêu chuẩn Chất lượng:**
+     - Xây dựng 24 unit tests chuyên biệt trong `tests/test_task_0018_context_engine.py` (23 passed, 1 env-skip).
+     - `ruff check . --output-format=github` đạt exit code 0.
+- **Hệ quả:** Bổ sung trọn vẹn tầng ngữ cảnh thị trường hàng ngày từ TCBS cho AI Analyst mà vẫn giữ vững 100% tính toàn vẹn và kỷ luật thép của Quant Gate; hoàn tất thành công Phase 8 (v6.3).

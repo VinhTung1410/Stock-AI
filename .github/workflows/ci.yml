@@ -89,6 +89,8 @@ jobs:
             --cov=backtest_engine \
             --cov=regime_classifier \
             --cov=paper_trading \
+            --cov=context_engine \
+            --cov=dispatcher \
             --cov-report=term \
             --cov-report=xml \
             --tb=short

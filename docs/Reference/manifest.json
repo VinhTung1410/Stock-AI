@@ -1,0 +1,52 @@
+{
+  "last_updated": "2026-09-30T18:52:43.613571+00:00",
+  "files": [
+    {
+      "filename": "20260930_BC_PTKT.pdf",
+      "relative_path": "PTKT_Daily/20260930_BC_PTKT.pdf",
+      "type": "PTKT_DAILY",
+      "date": "2026-09-30",
+      "source": "TCBS",
+      "processed": true,
+      "context_output": "data/market_context.json"
+    },
+    {
+      "filename": "20260928_BSR_Bao_cao_phan_tich_lan_dau.pdf",
+      "relative_path": "Stock_Analysis/20260928_BSR_Bao_cao_phan_tich_lan_dau.pdf",
+      "type": "STOCK_ANALYSIS",
+      "ticker": "BSR",
+      "date": "2026-09-28",
+      "source": "TCBS",
+      "processed": false,
+      "context_output": null
+    },
+    {
+      "filename": "20260929_VIC_Bao_cao_phan_tich_lan_dau.pdf",
+      "relative_path": "Stock_Analysis/20260929_VIC_Bao_cao_phan_tich_lan_dau.pdf",
+      "type": "STOCK_ANALYSIS",
+      "ticker": "VIC",
+      "date": "2026-09-29",
+      "source": "TCBS",
+      "processed": false,
+      "context_output": null
+    },
+    {
+      "filename": "20260929_Giao_dich_noi_bo_nganh_Cang_va_Van_tai_bien.pdf",
+      "relative_path": "Insider_Trading/20260929_Giao_dich_noi_bo_nganh_Cang_va_Van_tai_bien.pdf",
+      "type": "INSIDER_TRADING",
+      "date": "2026-09-29",
+      "source": "TCBS",
+      "processed": false,
+      "context_output": null
+    },
+    {
+      "filename": "20260930_Giao_dich_noi_bo_nganh_Ban_le.pdf",
+      "relative_path": "Insider_Trading/20260930_Giao_dich_noi_bo_nganh_Ban_le.pdf",
+      "type": "INSIDER_TRADING",
+      "date": "2026-09-30",
+      "source": "TCBS",
+      "processed": false,
+      "context_output": null
+    }
+  ]
+}
