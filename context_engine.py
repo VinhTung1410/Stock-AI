@@ -139,16 +139,31 @@ def check_regime_conflict(code_regime: str, analyst_regime: str) -> Tuple[bool, 
     is_analyst_down = REGIME_DOWNTREND in a_norm or STATUS_BEARISH in a_norm or "ĐIỀU CHỈNH" in a_norm
 
     if is_code_up and is_analyst_down:
-        return True, (
-            "XUNG ĐỘT REGIME: Code MA200 báo UPTREND nhưng Chuyên gia TCBS cảnh báo Giảm/Điều chỉnh. "
-            "Hệ thống tự động kích hoạt cờ giảm 50% quy mô vị thế đề xuất để phòng thủ."
-        )
+        from datetime import datetime
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        should_penalize = track_regime_hysteresis(True, today_str)
+        
+        if should_penalize:
+            return True, (
+                "XUNG ĐỘT REGIME: Code MA200 báo UPTREND nhưng Chuyên gia TCBS cảnh báo Giảm/Điều chỉnh. "
+                "Hệ thống tự động kích hoạt cờ giảm 50% quy mô vị thế đề xuất để phòng thủ (Xung đột kéo dài >= 2 phiên)."
+            )
+        else:
+            return True, (
+                "XUNG ĐỘT REGIME: Code MA200 báo UPTREND nhưng Chuyên gia TCBS cảnh báo Giảm/Điều chỉnh. "
+                "Đây là phiên đầu tiên cảnh báo, chưa kích hoạt phạt 50% quy mô vị thế (chờ xác nhận phiên tiếp theo)."
+            )
 
     if is_code_down and is_analyst_up:
+        # DOWNTREND vs UPTREND is an absolute rule, always locks cash mode
         return True, (
             "XUNG ĐỘT REGIME: Code MA200 báo DOWNTREND nhưng Chuyên gia TCBS nhận định Tăng. "
             "Quy tắc Zero-Democracy: Code toán học thắng tuyệt đối, giữ nguyên 100% Cash Mode, cấm mở mua."
         )
+
+    from datetime import datetime
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    track_regime_hysteresis(False, today_str)
 
     if REGIME_SIDEWAYS in c_norm and (REGIME_ACCUMULATION in a_norm or REGIME_SIDEWAYS in a_norm):
         return False, "ĐỒNG THUẬN REGIME: Thị trường đi ngang / tích lũy theo nhận định cả hai nguồn."
@@ -157,6 +172,46 @@ def check_regime_conflict(code_regime: str, analyst_regime: str) -> Tuple[bool, 
         return False, "ĐỒNG THUẬN REGIME: Xu hướng định lượng và nhận định chuyên gia thống nhất."
 
     return False, "Trạng thái thị trường không phát hiện xung đột trực diện."
+
+
+def track_regime_hysteresis(is_conflict: bool, today_str: str) -> bool:
+    """
+    Theo dõi cờ xung đột Regime (Hysteresis).
+    Chỉ kích hoạt hình phạt (giảm 50% vị thế) nếu xung đột duy trì liên tiếp >= 2 phiên.
+    """
+    import json
+    import os
+    
+    file_path = "data/regime_hysteresis.json"
+    history = {"consecutive_days": 0, "last_date": "", "last_conflict_date": ""}
+    
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        except Exception:
+            pass
+            
+    if history.get("last_date") == today_str:
+        return history.get("consecutive_days", 0) >= 2
+        
+    if is_conflict:
+        history["consecutive_days"] = history.get("consecutive_days", 0) + 1
+        history["last_conflict_date"] = today_str
+    else:
+        history["consecutive_days"] = 0
+        
+    history["last_date"] = today_str
+    
+    try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=2)
+    except Exception:
+        pass
+        
+    return history.get("consecutive_days", 0) >= 2
+
 
 
 def build_context_prompt_snippet(context: MarketContext, code_regime: Optional[str] = None) -> str:

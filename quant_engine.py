@@ -14,7 +14,7 @@ Capabilities:
 import logging
 import math
 from datetime import datetime, timedelta
-from typing import Any, Dict, Final, List, Optional
+from typing import Any, Final, Optional
 
 import numpy as np
 import pandas as pd
@@ -23,205 +23,37 @@ from quant_valuation import calculate_fair_value_and_mos
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-
-def calculate_atr(df_history: pd.DataFrame, period: int = 14) -> float:
-    """Calculate Average True Range reflecting actual price volatility.
-
-    Args:
-        df_history: OHLC DataFrame with 'high', 'low', 'close' columns.
-        period: ATR lookback window (default: 14).
-
-    Returns:
-        ATR value rounded to 2 decimals, or 0.0 on insufficient data.
-    """
-    try:
-        if df_history is None or len(df_history) < period:
-            return 0.0
-
-        df = df_history.copy()
-        high = df["high"]
-        low = df["low"]
-        close = df["close"].shift(1)
-
-        tr1 = high - low
-        tr2 = (high - close).abs()
-        tr3 = (low - close).abs()
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-        atr = tr.rolling(window=period).mean().iloc[-1]
-        return round(float(atr), 2) if pd.notnull(atr) else 0.0
-    except Exception as e:
-        logging.warning(f"Lỗi khi tính ATR: {e}")
-        return 0.0
-
+# Re-exported from sub-modules for backwards compatibility
+from indicators import (  # noqa: F401
+    _get_f_score_rating,
+    calculate_100_point_score,
+    calculate_altman_z_score,
+    calculate_atr,
+    calculate_factor_exposures,
+    calculate_piotroski_f_score,
+    calculate_valuation_triangle,
+    evaluate_smart_money_flow,
+)
+from portfolio_guard import (  # noqa: F401
+    MAX_POSITIONS_PER_SECTOR,
+    _cap_and_redistribute_weights,
+    _redistribute_uncapped_weights,
+    calculate_drawdown_controlled_sizing,
+    check_adv20_liquidity_absorption,
+    check_portfolio_concentration,
+    check_sector_concentration,
+    evaluate_holding_position,
+    evaluate_partial_profit_lock,
+    optimize_portfolio_risk_parity,
+)
 
 ACTION_ACCUMULATE = "🟢 TÍCH LŨY"
 
 
-def _get_f_score_rating(score: int) -> str:
-    """Return institutional qualitative rating based on Piotroski F-Score."""
-    if score >= 8:
-        return "XUẤT SẮC"
-    if score >= 6:
-        return "TỐT"
-    if score >= 4:
-        return "TRUNG BÌNH"
-    return "YẾU / RỦI RO"
 
 
-def calculate_piotroski_f_score(fin_dict: dict) -> dict:
-    """Score financial health using Piotroski F-Score model (0-9 scale).
-
-    Evaluates three pillars:
-    - Profitability (max 4 pts): ROA, cash flow, ROE, net margin
-    - Leverage / Liquidity (max 3 pts): D/E, current ratio, financial leverage
-    - Operating Efficiency (max 2 pts): gross margin, ROIC
-
-    Args:
-        fin_dict: Financial data with keys: roe, roa, debt_equity,
-                  current_ratio, gross_margin, net_margin, p_cf, roic.
-
-    Returns:
-        Dict with 'score' (0-9), 'max_score', 'rating', and 'breakdown'.
-    """
-    # Support precomputed f_score if breakdown fields are absent
-    if fin_dict and fin_dict.get("f_score") is not None and not any(k in fin_dict for k in ("roa", "current_ratio", "debt_equity")):
-        raw_s = int(fin_dict["f_score"])
-        return {
-            "score": raw_s,
-            "max_score": 9,
-            "rating": _get_f_score_rating(raw_s),
-            "breakdown": {"precomputed": raw_s}
-        }
-
-    fin_dict = fin_dict or {}
-    score = 0
-    breakdown = {}
-
-    roe = fin_dict.get("roe")
-    roa = fin_dict.get("roa")
-    debt_equity = fin_dict.get("debt_equity")
-    current_ratio = fin_dict.get("current_ratio")
-    gross_margin = fin_dict.get("gross_margin")
-    net_margin = fin_dict.get("net_margin")
-    p_cf = fin_dict.get("p_cf")
-
-    # 1. Khả năng sinh lời (Profitability: Max 4 điểm)
-    # F1: ROA dương
-    f1 = 1 if roa and roa > 0 else 0
-    score += f1
-    breakdown["ROA_duong"] = f1
-
-    # F2: Dòng tiền hoạt động dương (dựa trên P/CF > 0)
-    f2 = 1 if p_cf and p_cf > 0 else 0
-    score += f2
-    breakdown["Dong_tien_HDKD_duong"] = f2
-
-    # F3: ROE khả quan (ROE > 10%)
-    f3 = 1 if roe and roe >= 10.0 else 0
-    score += f3
-    breakdown["ROE_tren_10pct"] = f3
-
-    # F4: Biên lợi nhuận ròng tích cực (> 5%)
-    f4 = 1 if net_margin and net_margin >= 5.0 else 0
-    score += f4
-    breakdown["Bien_LN_rong_tich_cuc"] = f4
-
-    # 2. Đòn bẩy & Thanh khoản (Leverage/Liquidity: Max 3 điểm)
-    # F5: Nợ / Vốn chủ an toàn (< 1.5)
-    f5 = 1 if debt_equity is not None and debt_equity < 1.5 else 0
-    score += f5
-    breakdown["No_vay_an_toan"] = f5
-
-    # F6: Hệ số thanh toán hiện hành khỏe (> 1.2)
-    f6 = 1 if current_ratio and current_ratio >= 1.2 else 0
-    score += f6
-    breakdown["Thanh_toan_hien_hanh_khoe"] = f6
-
-    # F7: Đòn bẩy nợ thấp hoặc không quá phụ thuộc vốn vay (< 2.5)
-    fin_leverage = fin_dict.get("financial_leverage")
-    f7 = 1 if fin_leverage and fin_leverage < 2.5 else 0
-    score += f7
-    breakdown["Don_bay_vua_phai"] = f7
-
-    # 3. Hiệu quả hoạt động (Operating Efficiency: Max 2 điểm)
-    # F8: Biên lợi nhuận gộp dày (> 15%)
-    f8 = 1 if gross_margin and gross_margin >= 15.0 else 0
-    score += f8
-    breakdown["Bien_LN_gop_tot"] = f8
-
-    # F9: ROIC tích cực (> 8%)
-    roic = fin_dict.get("roic")
-    f9 = 1 if roic and roic >= 8.0 else 0
-    score += f9
-    breakdown["ROIC_tren_8pct"] = f9
-
-    return {
-        "score": score,
-        "max_score": 9,
-        "rating": _get_f_score_rating(score),
-        "breakdown": breakdown
-    }
 
 
-def calculate_altman_z_score(fin_dict: dict) -> dict:
-    """Estimate Altman Z''-Score for emerging markets (bankruptcy risk).
-
-    Z'' = 6.56*X1 + 3.26*X2 + 6.72*X3 + 1.05*X4
-    - Z >= 2.90: Safe Zone (green)
-    - 1.23 <= Z < 2.90: Grey Zone (caution)
-    - Z < 1.23: Distress Zone (red)
-
-    Args:
-        fin_dict: Financial data with keys: roa, debt_equity, current_ratio.
-
-    Returns:
-        Dict with 'z_score', 'zone' description, and 'icon' emoji.
-    """
-    if not fin_dict:
-        return {"z_score": None, "zone": "Chưa đủ dữ liệu", "icon": "⚪"}
-
-    # Support precomputed z_score if breakdown fields are absent
-    if fin_dict.get("z_score") is not None and not any(k in fin_dict for k in ("roa", "debt_equity")):
-        raw_z = float(fin_dict["z_score"])
-        if raw_z >= 2.90:
-            zone = "VÙNG XANH (An toàn tài chính cao)"
-            color = "🟢"
-        elif raw_z >= 1.80:
-            zone = "VÙNG XÁM (Thận trọng / Đòn bẩy vừa)"
-            color = "🟡"
-        else:
-            zone = "VÙNG ĐỎ (Cảnh báo rủi ro kiệt quệ)"
-            color = "🔴"
-        return {"z_score": raw_z, "zone": zone, "icon": color}
-    try:
-        roa = (fin_dict.get("roa") or 0.0) / 100.0
-        debt_equity = fin_dict.get("debt_equity") or 1.5
-        current_ratio = fin_dict.get("current_ratio") or 1.2
-        equity_ratio = 1.0 / (1.0 + debt_equity) if debt_equity >= 0 else 0.5
-
-        # Ước lượng các thành phần
-        x1 = min(max((current_ratio - 1.0) * 0.2, -0.5), 0.5)  # Vốn lưu động ròng / Tổng tài sản
-        x2 = max(roa * 0.8, -0.3)  # Lợi nhuận giữ lại / Tổng tài sản
-        x3 = max(roa * 1.1, -0.3)  # EBIT / Tổng tài sản
-        x4 = max(equity_ratio, 0.1)  # Vốn chủ sở hữu / Tổng nợ phải trả
-
-        z = (6.56 * x1) + (3.26 * x2) + (6.72 * x3) + (1.05 * x4) + 1.5
-        z = round(float(z), 2)
-
-        if z >= 2.90:
-            zone = "VÙNG XANH (An toàn tài chính cao)"
-            color = "🟢"
-        elif z >= 1.80:
-            zone = "VÙNG XÁM (Thận trọng / Đòn bẩy vừa)"
-            color = "🟡"
-        else:
-            zone = "VÙNG ĐỎ (Cảnh báo rủi ro kiệt quệ)"
-            color = "🔴"
-
-        return {"z_score": z, "zone": zone, "icon": color}
-    except Exception as e:
-        logging.warning(f"Lỗi khi tính Z-Score: {e}")
-        return {"z_score": 2.2, "zone": "VÙNG XÁM", "icon": "🟡"}
 
 
 def check_data_gate(symbol: str, tech_dict: dict, fin_dict: dict, min_adv20_billion: float = 2.0) -> dict:
@@ -275,34 +107,6 @@ def check_data_gate(symbol: str, tech_dict: dict, fin_dict: dict, min_adv20_bill
     }
 
 
-def calculate_valuation_triangle(current_price: float, pe: float = None, pb: float = None, sector: str = "") -> dict:
-    """
-    Tam giác định giá 3 kịch bản:
-    - Bull Price: Vùng đỉnh định giá hoặc chu kỳ tăng trưởng tích cực (+20% đến +25%).
-    - Base Price: Giá trị hợp lý dựa trên P/E & P/B bình quân dài hạn (+8% đến +15%).
-    - Bear Price: Vùng hỗ trợ cứng / đáy định giá lịch sử (-12% đến -18%).
-    """
-    if not current_price or current_price <= 0:
-        return {"price_bull": 0.0, "price_base": 0.0, "price_bear": 0.0}
-
-    # Bẫy chu kỳ (Thép, Hóa chất, Dầu khí): Nếu P/E quá thấp (< 6.0), không được nhân hệ số tăng trưởng cao
-    is_cyclical = any(s in sector.lower() for s in ["thép", "dầu khí", "hóa chất", "phân bón", "vận tải biển"])
-    if is_cyclical and pe and pe < 6.0:
-        # Cảnh báo đỉnh lợi nhuận chu kỳ -> Biên độ tăng khiêm tốn, rủi ro giảm cao hơn
-        price_bull = round(current_price * 1.15, 2)
-        price_base = round(current_price * 1.02, 2)
-        price_bear = round(current_price * 0.78, 2)
-    else:
-        price_bull = round(current_price * 1.25, 2)
-        price_base = round(current_price * 1.10, 2)
-        price_bear = round(current_price * 0.85, 2)
-
-    return {
-        "price_bull": price_bull,
-        "price_base": price_base,
-        "price_bear": price_bear,
-        "is_cyclical": is_cyclical
-    }
 
 
 def evaluate_market_regime(
@@ -485,269 +289,8 @@ def calculate_weighted_entry_and_rr(
     }
 
 
-def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict | None = None) -> dict:
-    """Evaluate an existing portfolio position and recommend action.
-
-    Core rules:
-    - Profitable positions (P/L > 0): use trailing stop, NEVER label as 'cut loss'.
-    - Trailing stop is always clamped below current price (validation invariant).
-    - Losing positions: value investments use thesis breaker; trades use technical stop.
-
-    Args:
-        row: Position data with 'symbol', 'avg_price', 'volume'.
-        tech_data: Technical data with 'current_price', 'atr', 'ma20'.
-        fin_dict: Optional financial data for enhanced evaluation.
-
-    Returns:
-        Dict with 'action', 'trailing_stop'/'stop_loss', 'pl_pct', 'detail', etc.
-    """
-    symbol = row.get("symbol", "")
-    entry_price = float(row.get("avg_price", 0.0))
-    curr_price = float(tech_data.get("current_price") or row.get("market_price", entry_price))
-    volume = int(row.get("volume", 0))
-
-    pl_val = (curr_price - entry_price) * volume * 1000
-    pl_pct = ((curr_price - entry_price) / entry_price * 100) if entry_price > 0 else 0.0
-
-    atr = float(tech_data.get("atr") or tech_data.get("atr14") or 0.0)
-    ma20 = float(tech_data.get("ma20") or curr_price)
-
-    # 1. KỊCH BẢN VỊ THẾ CÓ LÃI (P/L > 0)
-    if pl_pct > 0:
-        # Ngưỡng trần tối đa cho Trailing Stop (Bắt buộc nhỏ hơn Current Price ít nhất 3.5% - 4.5%)
-        max_allowed_stop = round(curr_price * 0.96, 2)
-
-        # Tính toán mốc Trailing Stop lý tưởng
-        if pl_pct >= 15.0:
-            # Lãi lớn (>= 15%): Nâng trailing stop khóa lợi nhuận (tối thiểu entry * 1.05 hoặc bám MA20)
-            candidate_stop = max(
-                entry_price * 1.06,
-                (curr_price - (1.2 * atr)) if atr > 0 else (curr_price * 0.95),
-                ma20 * 0.98
-            )
-        elif pl_pct >= 5.0:
-            # Lãi vừa (5% - 15%): Khóa lãi hòa vốn + chi phí (entry * 1.02)
-            candidate_stop = max(
-                entry_price * 1.02,
-                (curr_price - (1.5 * atr)) if atr > 0 else (curr_price * 0.94)
-            )
-        else:
-            # Lãi nhẹ (< 5%): Hòa vốn
-            candidate_stop = entry_price
-
-        # VALIDATION CLAMP BẮT BUỘC: Trailing Stop PHẢI < curr_price
-        trailing_stop = min(candidate_stop, max_allowed_stop)
-        trailing_stop = round(float(trailing_stop), 2)
-
-        if pl_pct >= 20.0:
-            action = "🟢 BẢO VỆ THÀNH QUẢ / HIỆN THỰC HÓA LỢI NHUẬN"
-            detail = (
-                f"Cổ phiếu đang có tỷ suất sinh lời xuất sắc (+{pl_pct:.1f}%). "
-                f"Khuyến nghị: Hiện thực hóa 30-50% lợi nhuận, nâng mốc Trailing Stop lên {trailing_stop:.2f}k "
-                f"để gồng lãi phần còn lại mà không sợ mất thành quả."
-            )
-        elif pl_pct >= 8.0:
-            action = "🟢 TIẾP TỤC NẮM GIỮ / NÂNG TRAILING STOP"
-            detail = (
-                f"Vị thế lãi tốt (+{pl_pct:.1f}%). Khuyến nghị: Tiếp tục gồng lãi xu hướng, "
-                f"đặt mốc Trailing Stop chặn lãi cứng tại {trailing_stop:.2f}k. Nếu giá vi phạm thủng mốc này mới chốt."
-            )
-        else:
-            action = "🟢 NẮM GIỮ / THEO DÕI ĐÀ TĂNG"
-            detail = (
-                f"Vị thế có lãi nhẹ (+{pl_pct:.1f}%). Tiếp tục nắm giữ, "
-                f"đặt mốc chặn lãi hòa vốn tại {trailing_stop:.2f}k."
-            )
-
-        return {
-            "symbol": symbol,
-            "status": "PROFITABLE",
-            "entry_price": entry_price,
-            "curr_price": curr_price,
-            "pl_pct": round(pl_pct, 2),
-            "pl_val": round(pl_val, 0),
-            "action": action,
-            "detail": detail,
-            "trailing_stop": trailing_stop,
-            "is_profit": True,
-            "thesis_breaker": "N/A (Vị thế đang thắng thế, không có rủi ro vỡ luận điểm)"
-        }
-
-    # 2. KỊCH BẢN VỊ THẾ ĐANG LỖ (P/L <= 0)
-    else:
-        loss_pct = abs(pl_pct)
-        # Tính Stop-loss kỹ thuật
-        if atr and atr > 0:
-            tech_stop = curr_price - (2.0 * atr)
-            stop_loss = max(tech_stop, entry_price * 0.93)
-        else:
-            stop_loss = entry_price * 0.93
-
-        # Đảm bảo Stop-loss < curr_price
-        stop_loss = min(round(float(stop_loss), 2), round(curr_price * 0.97, 2))
-
-        # Kiểm tra Thesis Breaker (Luận điểm đầu tư cơ bản)
-        thesis_intact = True
-        thesis_msg = "Luận điểm tăng trưởng doanh nghiệp cốt lõi vẫn được bảo toàn."
-
-        if fin_dict:
-            f_score = calculate_piotroski_f_score(fin_dict).get("score", 6)
-            z_data = calculate_altman_z_score(fin_dict)
-            if f_score < 4 or "ĐỎ" in z_data.get("zone", ""):
-                thesis_intact = False
-                thesis_msg = "CẢNH BÁO: BCTC suy giảm nghiêm trọng hoặc đòn bẩy quá cao (Thesis Breaker bị kích hoạt!)."
-
-        if thesis_intact:
-            if loss_pct <= 5.0:
-                action = "🟡 THEO DÕI BIẾN ĐỘNG / GIỮ VỊ THẾ DÀI HẠN"
-                detail = (
-                    f"Khoản lỗ nhẹ (-{loss_pct:.1f}%) nằm trong biên độ dao động thông thường của thị trường. "
-                    f"Luận điểm giá trị vẫn nguyên vẹn. Không hoảng loạn cắt lỗ máy móc."
-                )
-            elif loss_pct <= 8.0:
-                action = "🟡 QUẢN TRỊ RỦI RO / QUAN SÁT NGƯỠNG HỖ TRỢ"
-                detail = (
-                    f"Lỗ -{loss_pct:.1f}%. Nếu là vị thế lướt sóng T+, kích hoạt kỷ luật Stop-Loss tại {stop_loss:.2f}k. "
-                    f"Nếu là danh mục đầu tư giá trị, kiểm tra mốc cân bằng mới trước khi ra quyết định gom thêm."
-                )
-            else:
-                action = "🔴 CẮT LỖ KỸ THUẬT HOẶC HẠ TỶ TRỌNG"
-                detail = (
-                    f"Mức sụt giảm sâu (-{loss_pct:.1f}%). Khuyến nghị dứt khoát hạ tỷ trọng bảo vệ vốn, "
-                    f"ngưỡng Stop-loss đã bị vi phạm tại {stop_loss:.2f}k."
-                )
-        else:
-            action = "🔴 THOÁT VỊ THẾ (THESIS BREAKER KÍCH HOẠT)"
-            detail = f"Lỗ -{loss_pct:.1f}%. {thesis_msg} Cần dứt khoát cơ cấu thoát vốn sang mã có cơ bản vượt trội."
-
-        return {
-            "symbol": symbol,
-            "status": "LOSS",
-            "entry_price": entry_price,
-            "curr_price": curr_price,
-            "pl_pct": round(pl_pct, 2),
-            "pl_val": round(pl_val, 0),
-            "action": action,
-            "detail": detail,
-            "stop_loss": stop_loss,
-            "is_profit": False,
-            "thesis_breaker": thesis_msg
-        }
 
 
-def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_data: dict) -> dict:
-    """
-    THANG ĐIỂM ĐỊNH LƯỢNG 100 ĐIỂM (100-POINT QUANT SCORE) THEO 4 TRỤ CỘT:
-    1. Cơ bản & Sức khỏe tài chính (Fundamental & Health): Max 35 điểm
-    2. Định giá & Biên an toàn (Valuation & MoS): Max 30 điểm
-    3. Kỹ thuật & Xu hướng (Technical & Momentum): Max 20 điểm
-    4. Dòng tiền lớn & Quản trị rủi ro (Smart Flow & Risk): Max 15 điểm
-    """
-    scores = {}
-
-    # --- Trụ cột 1: Sức khỏe tài chính (Max 35) ---
-    f_res = calculate_piotroski_f_score(fin_dict)
-    f_pts = min(round((f_res.get("score", 5) / 9.0) * 18, 1), 18.0)  # Max 18đ
-
-    z_res = calculate_altman_z_score(fin_dict)
-    z_val = z_res.get("z_score", 2.0)
-    z_pts = 10.0 if z_val >= 2.9 else (6.0 if z_val >= 1.8 else 2.0)  # Max 10đ
-
-    roe = (fin_dict.get("roe") or 0.0) if fin_dict else 0.0
-    roe_pts = 7.0 if roe >= 18.0 else (5.0 if roe >= 12.0 else (3.0 if roe >= 8.0 else 1.0)) # Max 7đ
-    pillar_fundamental = round(f_pts + z_pts + roe_pts, 1)
-    scores["pillar_fundamental"] = pillar_fundamental
-
-    # --- Trụ cột 2: Định giá & Biên an toàn (Max 30) ---
-    mos_pct = mos_data.get("mos_pct", 0.0) if mos_data else 0.0
-    if mos_pct >= 25.0:
-        mos_pts = 30.0
-    elif mos_pct >= 18.0:
-        mos_pts = 25.0
-    elif mos_pct >= 12.0:
-        mos_pts = 20.0
-    elif mos_pct >= 5.0:
-        mos_pts = 14.0
-    elif mos_pct >= 0.0:
-        mos_pts = 8.0
-    else:
-        mos_pts = 2.0  # Quá đắt
-    scores["pillar_valuation"] = mos_pts
-
-    # --- Trụ cột 3: Kỹ thuật & Xu hướng (Max 20) ---
-    curr = tech_data.get("current_price", 0.0)
-    ma20 = tech_data.get("ma20", curr)
-    rsi = tech_data.get("rsi", 50.0)
-    vol = tech_data.get("volume", 0)
-    vol_ma20 = tech_data.get("vol_ma20", vol)
-
-    tech_pts = 0.0
-    # Nằm trên MA20
-    if curr >= ma20:
-        tech_pts += 8.0
-    elif curr >= ma20 * 0.98:
-        tech_pts += 4.0
-
-    # RSI lành mạnh (45 - 65)
-    if 48.0 <= rsi <= 65.0:
-        tech_pts += 7.0
-    elif 40.0 <= rsi < 48.0:
-        tech_pts += 5.0
-    elif 65.0 < rsi <= 75.0:
-        tech_pts += 3.0
-    else:
-        tech_pts += 1.0
-
-    # Khối lượng có tín hiệu hấp thụ
-    if vol_ma20 > 0 and vol >= vol_ma20 * 1.1:
-        tech_pts += 5.0
-    else:
-        tech_pts += 3.0
-    scores["pillar_technical"] = round(tech_pts, 1)
-
-    # --- Trụ cột 4: Dòng tiền lớn & Thanh khoản (Max 15) ---
-    flow_pts = 0.0
-    foreign = tech_data.get("foreign_flow") or {}
-    f_net = foreign.get("net_val_bil", 0.0)
-    if f_net > 5.0:
-        flow_pts += 8.0
-    elif f_net >= -10.0:
-        flow_pts += 5.0
-    else:
-        flow_pts += 1.0  # Bị xả mạnh
-
-    adv20 = tech_data.get("adv20_billion", 10.0)
-    if adv20 >= 30.0:
-        flow_pts += 7.0
-    elif adv20 >= 10.0:
-        flow_pts += 5.0
-    elif adv20 >= 2.0:
-        flow_pts += 3.0
-    else:
-        flow_pts += 0.0
-    scores["pillar_smart_flow"] = round(flow_pts, 1)
-
-    total_score = round(pillar_fundamental + mos_pts + tech_pts + flow_pts, 1)
-
-    if total_score >= 80.0:
-        rating = "XUẤT SẮC (Ưu tiên giải ngân lớn / Tích lũy chủ lực)"
-        grade = "A+"
-    elif total_score >= 68.0:
-        rating = "TỐT (Đạt chuẩn tích lũy từng phần)"
-        grade = "A"
-    elif total_score >= 55.0:
-        rating = "TRUNG BÌNH (Theo dõi thêm, chờ giá chiết khấu)"
-        grade = "B"
-    else:
-        rating = "YẾU / RỦI RO (Không đạt tiêu chí giải ngân)"
-        grade = "C"
-
-    return {
-        "total_score": total_score,
-        "grade": grade,
-        "rating": rating,
-        "breakdown": scores
-    }
 
 
 def evaluate_decision_hard_gates(
@@ -963,153 +506,12 @@ def evaluate_decision_hard_gates(
     }
 
 
-def check_portfolio_concentration(
-    candidates: List[Dict[str, Any]],
-    max_per_sector: int = 1
-) -> Dict[str, Any]:
-    """Audit candidate recommendations against sector concentration.
-
-    Retains the highest conviction candidate per sector in approved list,
-    and downgrades duplicate sector candidates to Watchlist with a concentration alert.
-
-    Returns:
-        dict with 'approved_candidates', 'downgraded_candidates', 'warnings'.
-    """
-    if not candidates:
-        return {"approved_candidates": [], "downgraded_candidates": [], "warnings": []}
-
-    sector_counts: Dict[str, int] = {}
-    approved = []
-    downgraded = []
-    warnings = []
-
-    def _conviction_score(c: Dict[str, Any]) -> float:
-        mos = float(c.get("mos_pct") or 0.0)
-        rr = float(c.get("risk_reward") or 1.0)
-        f_val = c.get("f_score")
-        f_score = float(f_val) if f_val is not None else 5.0
-        return mos + (rr * 5.0) + (f_score * 2.0)
-
-    sorted_candidates = sorted(candidates, key=_conviction_score, reverse=True)
-
-    for item in sorted_candidates:
-        sym = item.get("symbol", "UNKNOWN")
-        sector = (item.get("sector") or "OTHER").strip().upper()
-        current_count = sector_counts.get(sector, 0)
-
-        if current_count < max_per_sector:
-            sector_counts[sector] = current_count + 1
-            approved.append(item)
-        else:
-            downgraded_item = dict(item)
-            downgraded_item["action_state"] = "🟡 THEO DÕI"
-            downgraded_item["position_size_nav"] = "0% NAV (Dự phòng)"
-            downgraded_item["decision_tag"] = (
-                f"🟡 THEO DÕI / DỰ PHÒNG (Cảnh báo tập trung danh mục: Đã có mã ngành {sector})"
-            )
-            downgraded.append(downgraded_item)
-            warnings.append(
-                f"Tập trung ngành {sector}: Mã {sym} được chuyển sang danh mục dự phòng "
-                f"để tránh rủi ro đồng pha danh mục."
-            )
-
-    return {
-        "approved_candidates": approved,
-        "downgraded_candidates": downgraded,
-        "warnings": warnings
-    }
 
 
-def calculate_drawdown_controlled_sizing(
-    half_kelly_f: float,
-    consecutive_losses: int = 0,
-    current_drawdown_pct: float = 0.0,
-    max_cap_pct: float = 0.20,
-) -> tuple[float, str]:
-    """Calculate adaptive position size based on Half-Kelly, losing streaks, and drawdown.
-
-    Rules:
-    - If consecutive_losses >= 2 or current_drawdown_pct >= 5.0%:
-      Reduce position size by 50% (Half-Size Defense) to prevent revenge trading.
-    - Caps position sizing at max_cap_pct (default: 20%).
-    """
-    if half_kelly_f <= 0:
-        return 0.0, "KELLY_NON_POSITIVE"
-
-    base_size = min(half_kelly_f, max_cap_pct)
-
-    if consecutive_losses >= 2 or current_drawdown_pct >= 5.0:
-        defensive_size = round(base_size * 0.5, 4)
-        return defensive_size, "DRAWDOWN_DEFENSE_HALF_SIZE"
-
-    return round(base_size, 4), "STANDARD_HALF_KELLY"
 
 
-def check_adv20_liquidity_absorption(
-    order_val_vnd: float,
-    adv20_vnd: float,
-    max_absorption_pct: float = 0.10,
-) -> tuple[bool, float, str]:
-    """Verify that order size does not exceed maximum ADV20 liquidity absorption limit.
-
-    Args:
-        order_val_vnd: Target order value in VND.
-        adv20_vnd: Average daily trading value over 20 days in VND.
-        max_absorption_pct: Maximum allowed absorption percentage (default: 10%).
-
-    Returns:
-        tuple (is_passed, allowed_order_val_vnd, reason)
-    """
-    if adv20_vnd <= 0:
-        return False, 0.0, "ADV20_ZERO_OR_NEGATIVE"
-
-    max_allowed = adv20_vnd * max_absorption_pct
-    if order_val_vnd > max_allowed:
-        return False, round(max_allowed, 2), "EXCEEDS_MAX_ADV20_ABSORPTION"
-
-    return True, round(order_val_vnd, 2), "LIQUIDITY_ABSORPTION_OK"
 
 
-def evaluate_smart_money_flow(
-    foreign_flow: dict | None = None,
-    prop_flow: dict | None = None,
-    heavy_sell_threshold_bil: float = -20.0,
-    accumulation_threshold_bil: float = 15.0,
-) -> dict:
-    """Evaluate institutional smart money flow from Foreign and Proprietary trading.
-
-    Returns:
-        dict containing institutional status, flags, and recommendation guidance.
-    """
-    net_foreign = float(foreign_flow.get("net_val_bil", 0.0)) if foreign_flow else 0.0
-    net_prop = float(prop_flow.get("net_val_bil", 0.0)) if prop_flow else 0.0
-    total_net = net_foreign + net_prop
-
-    heavy_selling = (net_foreign < heavy_sell_threshold_bil) or (total_net < heavy_sell_threshold_bil)
-    strong_accumulation = (net_foreign > accumulation_threshold_bil) or (total_net > accumulation_threshold_bil)
-
-    if heavy_selling:
-        status = "INSTITUTIONAL_HEAVY_DISTRIBUTION"
-        buy_allowed = False
-        reason = "Khối ngoại / Tự doanh đang bán ròng quy mô lớn (> 20 tỷ VNĐ)."
-    elif strong_accumulation:
-        status = "INSTITUTIONAL_STRONG_ACCUMULATION"
-        buy_allowed = True
-        reason = "Dòng tiền tổ chức mua ròng mạnh mẽ, hỗ trợ đà tăng giá."
-    else:
-        status = "INSTITUTIONAL_NEUTRAL"
-        buy_allowed = True
-        reason = "Dòng tiền tổ chức ở mức cân bằng, không có áp lực bán đột biến."
-
-    return {
-        "status": status,
-        "net_foreign_bil": round(net_foreign, 2),
-        "net_prop_bil": round(net_prop, 2),
-        "total_net_bil": round(total_net, 2),
-        "heavy_selling": heavy_selling,
-        "buy_allowed": buy_allowed,
-        "reason": reason,
-    }
 
 
 LOCKED_QUANT_THRESHOLDS = {
@@ -1229,48 +631,9 @@ def calculate_signal_performance_metrics(
 
 
 
-MAX_POSITIONS_PER_SECTOR: int = 3
 MAX_SECTOR_WEIGHT_PCT: float = 25.0
 
 
-def check_sector_concentration(
-    new_symbol: str,
-    current_portfolio: list,
-    sector_map: dict | None = None,
-) -> tuple[bool, str]:
-    """Kiểm tra chốt chặn tập trung ngành (Sector Concentration Gate - Phase 2a).
-
-    Quy tắc:
-    - Tối đa MAX_POSITIONS_PER_SECTOR (3) vị thế cùng ngành trong danh mục 8-10 mã.
-    - Trả về tuple (is_allowed, reason).
-    """
-    if not new_symbol:
-        return False, "INVALID_SYMBOL"
-
-    if not current_portfolio:
-        return True, "SECTOR_CONCENTRATION_OK"
-
-    from data_engine import SECTOR_MAP
-    s_map = sector_map if sector_map is not None else SECTOR_MAP
-
-    sym_clean = new_symbol.upper().strip()
-    new_sector = s_map.get(sym_clean, "Khác")
-
-    same_sector_count = 0
-    for item in current_portfolio:
-        p_sym = str(item.get("symbol", item.get("Mã CP", ""))).upper().strip()
-        if p_sym and s_map.get(p_sym, "Khác") == new_sector:
-            same_sector_count += 1
-
-    if same_sector_count >= MAX_POSITIONS_PER_SECTOR:
-        reason = (
-            f"Sector Gate Blocked: Ngành '{new_sector}' đã đạt giới hạn "
-            f"{same_sector_count}/{MAX_POSITIONS_PER_SECTOR} vị thế tối đa. "
-            f"Từ chối mở thêm vị thế cho {sym_clean} để chống rủi ro tương quan chùm."
-        )
-        return False, reason
-
-    return True, "SECTOR_CONCENTRATION_OK"
 
 
 def bootstrap_sharpe_ci(
@@ -1875,171 +1238,15 @@ def calculate_sector_gate_insurance_roi(
     }
 
 
-def _redistribute_uncapped_weights(
-    remaining_keys: set[str],
-    fixed_weights: dict[str, float],
-    inv_vols: dict[str, float],
-    weights: dict[str, float],
-) -> None:
-    rem_weight_budget = 1.0 - sum(fixed_weights.values())
-    rem_inv_sum = sum(inv_vols[k] for k in remaining_keys)
-    if rem_inv_sum > 0:
-        for k in remaining_keys:
-            weights[k] = rem_weight_budget * (inv_vols[k] / rem_inv_sum)
-    else:
-        eq_share = rem_weight_budget / len(remaining_keys)
-        for k in remaining_keys:
-            weights[k] = eq_share
-
-
-def _cap_and_redistribute_weights(
-    clean_vols: dict[str, float],
-    inv_vols: dict[str, float],
-    weights: dict[str, float],
-    effective_cap: float,
-) -> dict[str, float]:
-    fixed_weights: dict[str, float] = {}
-    remaining_keys = set(clean_vols.keys())
-
-    for _ in range(len(clean_vols)):
-        exceeded = [k for k in remaining_keys if weights[k] > effective_cap + 1e-6]
-        if not exceeded:
-            break
-        for k in exceeded:
-            fixed_weights[k] = effective_cap
-            remaining_keys.remove(k)
-
-        if not remaining_keys:
-            break
-
-        _redistribute_uncapped_weights(remaining_keys, fixed_weights, inv_vols, weights)
-
-    for k, fw in fixed_weights.items():
-        weights[k] = fw
-    return weights
-
-
-def optimize_portfolio_risk_parity(
-    volatilities: dict[str, float],
-    max_weight: float = 0.25,
-) -> dict[str, float]:
-    """Phân bổ tỷ trọng đóng góp rủi ro ngang bằng theo nghịch đảo biến động (Phase 5b).
-
-    Bảo đảm cổ phiếu rủi ro cao không chi phối toàn bộ danh mục, áp dụng trần max_weight.
-    """
-    if not volatilities:
-        return {}
-
-    clean_vols = {k: max(float(v), 0.001) for k, v in volatilities.items() if float(v) >= 0}
-    if not clean_vols:
-        return {}
-
-    effective_cap = max(max_weight, 1.0 / len(clean_vols))
-    inv_vols = {k: 1.0 / v for k, v in clean_vols.items()}
-    sum_inv = sum(inv_vols.values())
-    weights = {k: v / sum_inv for k, v in inv_vols.items()}
-
-    weights = _cap_and_redistribute_weights(clean_vols, inv_vols, weights, effective_cap)
-
-    # Final normalization & hard cap verification
-    tot = sum(weights.values())
-    if tot > 0:
-        weights = {k: min(w / tot, effective_cap) for k, w in weights.items()}
-
-    tot2 = sum(weights.values())
-    return {k: round(w / tot2, 4) for k, w in weights.items()}
 
 
 
-def calculate_factor_exposures(
-    asset_returns: pd.Series | list[float],
-    market_returns: pd.Series | list[float],
-    sector_returns: pd.Series | list[float] | None = None,
-) -> dict[str, Any]:
-    """Phân rã đa nhân tố lợi suất theo Market Beta và Sector Beta (Phase 5c)."""
-    s_asset = pd.Series(asset_returns, dtype=float).dropna()
-    s_market = pd.Series(market_returns, dtype=float).dropna()
-
-    if len(s_asset) < 3 or len(s_market) < 3:
-        return {
-            "market_beta": 1.0,
-            "market_r2": 0.0,
-            "sector_beta": None,
-            "idiosyncratic_alpha_pct": 0.0,
-        }
-
-    # Căn chỉnh độ dài chuỗi
-    n_min = min(len(s_asset), len(s_market))
-    r_a = s_asset.iloc[-n_min:].to_numpy()
-    r_m = s_market.iloc[-n_min:].to_numpy()
-
-    var_m = float(np.var(r_m, ddof=1))
-    if var_m > 1e-12:
-        cov_am = float(np.cov(r_a, r_m)[0, 1])
-        market_beta = round(cov_am / var_m, 2)
-        corr_m = float(np.corrcoef(r_a, r_m)[0, 1])
-        market_r2 = round(corr_m ** 2, 3)
-    else:
-        market_beta = 1.0
-        market_r2 = 0.0
-
-    sector_beta = None
-    if sector_returns is not None:
-        s_sector = pd.Series(sector_returns, dtype=float).dropna()
-        if len(s_sector) >= n_min:
-            r_s = s_sector.iloc[-n_min:].to_numpy()
-            var_s = float(np.var(r_s, ddof=1))
-            if var_s > 1e-12:
-                cov_as = float(np.cov(r_a, r_s)[0, 1])
-                sector_beta = round(cov_as / var_s, 2)
-
-    # Idiosyncratic Alpha (Lợi suất vượt trội riêng biệt hàng năm sau điều chỉnh beta)
-    excess_annual = (np.mean(r_a) - (market_beta * np.mean(r_m))) * 252.0 * 100.0
-
-    return {
-        "market_beta": market_beta,
-        "market_r2": market_r2,
-        "sector_beta": sector_beta,
-        "idiosyncratic_alpha_pct": round(float(excess_annual), 2),
-    }
 
 
-def evaluate_partial_profit_lock(
-    entry_price: float,
-    current_high: float,
-    current_price: float,
-    target_profit_pct: float = 12.0,
-) -> dict[str, Any]:
-    """Đánh giá chiến lược Chốt lời từng phần và dời stop lên break-even (Phase 5d)."""
-    if entry_price <= 0:
-        return {
-            "partial_take_profit": False,
-            "lock_fraction": 0.0,
-            "new_stop_price": None,
-            "status": "INVALID_ENTRY_PRICE",
-        }
 
-    max_gain_pct = ((current_high - entry_price) / entry_price) * 100.0
-    current_pnl_pct = ((current_price - entry_price) / entry_price) * 100.0
 
-    if max_gain_pct >= target_profit_pct:
-        return {
-            "partial_take_profit": True,
-            "lock_fraction": 0.50,
-            "new_stop_price": round(entry_price, 2),
-            "max_gain_pct": round(max_gain_pct, 2),
-            "current_pnl_pct": round(current_pnl_pct, 2),
-            "status": "TARGET_1_REACHED_BREAKEVEN_LOCKED",
-        }
 
-    return {
-        "partial_take_profit": False,
-        "lock_fraction": 0.0,
-        "new_stop_price": None,
-        "max_gain_pct": round(max_gain_pct, 2),
-        "current_pnl_pct": round(current_pnl_pct, 2),
-        "status": "TRAIL_IN_PROGRESS",
-    }
+
 
 
 # =============================================================================

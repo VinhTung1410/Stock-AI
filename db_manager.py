@@ -783,6 +783,17 @@ def save_decision_record(record: dict) -> str | None:
         "inferences": record.get("inferences", {}),
         "opinions": record.get("opinions", {}),
         "counterfactual": record.get("counterfactual", {}),
+        
+        # Phiên bản 6.3 - Analyst Context Tracking (Migration 0004)
+        "analyst_context_used": record.get("analyst_context_used", False),
+        "regime_conflict": record.get("regime_conflict", False),
+        "context_source_file": record.get("context_source_file"),
+        "context_date": record.get("context_date"),
+        
+        # Phiên bản 6.4 - Audit Fields (Migration 0005)
+        "prompt_version": record.get("prompt_version"),
+        "model_version": record.get("model_version"),
+        "raw_response": record.get("raw_response"),
     }
 
     try:

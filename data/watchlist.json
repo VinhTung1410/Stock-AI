@@ -1,10 +1,5 @@
 [
   {
-    "symbol": "MSR",
-    "target_buy": 0.0,
-    "note": "Theo dõi từ Google Sheet"
-  },
-  {
     "symbol": "VIC",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
@@ -16,16 +11,6 @@
   },
   {
     "symbol": "TCB",
-    "target_buy": 0.0,
-    "note": "Theo dõi từ Google Sheet"
-  },
-  {
-    "symbol": "PVD",
-    "target_buy": 0.0,
-    "note": "Theo dõi từ Google Sheet"
-  },
-  {
-    "symbol": "GVR",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
   }

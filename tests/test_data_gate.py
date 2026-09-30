@@ -37,7 +37,7 @@ class TestDataReconciliationGate:
             "z_score": 3.2,
             "pe": 12.0,
             "pb": 1.8,
-            "latest_quarter": 1,
+            "latest_quarter": max(1, (datetime.now().month - 1) // 3),
             "latest_year": datetime.now().year
         }
         news = [

@@ -61,19 +61,26 @@ Stock - learning/
 │                               # - Quantitative performance metrics query (Hit Rate, Profit Factor, Expectancy, ESS, Alpha)
 │                               # - Cross-day cooldown verification (`check_symbol_recent_signal`)
 │
-├── quant_engine.py             # 📐 DETERMINISTIC QUANTITATIVE CORE (Python Engine)
+├── quant_engine.py             # 📐 DETERMINISTIC QUANTITATIVE CORE (Facade Hub)
+│                               # - Re-export Hub: Maintains backward compatibility for downstream modules.
 │                               # - Data Gate: Recency validation & minimum liquidity filter (ADV20)
-│                               # - Piotroski F-Score (0-9): Fundamental financial health scoring
-│                               # - Altman Z-Score: Bankruptcy probability classification (Safe / Grey / Distress)
-│                               # - ATR(14) Volatility Stop-Loss: Dynamic volatility-based risk thresholds
-│                               # - Hard Gates: Expected Value, Margin of Safety (MoS), Half-Kelly Criterion
-│                               # - Sector Concentration Guard: Max 3 positions or ≤ 25% NAV per economic sector
+│                               # - Hard Gates: Expected Value, Margin of Safety (MoS)
 │                               # - Statistical Significance: Bootstrap Sharpe CI (10,000 resamples, p-value, ESS)
 │                               # - Scientific Efficacy: Dual-arm A/B comparison (`ARM_QUANT_ONLY` vs `ARM_QUANT_AI`)
 │                               # - AI Calibration & Safety Breaker: Brier Score, Reliability Curve, demotion on gap > 0.15
 │                               # - Monte Carlo Tail Risk Engine: 2,000 resamples, P95/P99 Drawdown, P(DD > 15%)
-│                               # - Portfolio Optimization: Risk Parity / Equal Risk Contribution (25% single-stock cap)
 │                               # - Multi-Factor Beta: OLS Market Beta, Sector Beta & Idiosyncratic Alpha
+│
+├── indicators.py               # 📊 FINANCIAL INDICATORS & SCORING METRICS
+│                               # - Piotroski F-Score (0-9): Fundamental financial health scoring (w/ Bank/RE Exceptions)
+│                               # - Altman Z-Score: Bankruptcy probability classification (Safe / Grey / Distress)
+│                               # - ATR(14) Volatility Stop-Loss: Dynamic volatility-based risk thresholds
+│
+├── portfolio_guard.py          # 🛡️ POSITION SIZING & RISK MANAGEMENT
+│                               # - Half-Kelly Criterion Sizing with Hard-Cap (Max 15% NAV per position)
+│                               # - Drawdown Breaker: Hard stop opening positions if Portfolio Drawdown > 10%
+│                               # - Sector Concentration Guard: Max 3 positions or ≤ 25% NAV per economic sector
+│                               # - Portfolio Optimization: Risk Parity / Equal Risk Contribution
 │                               # - Trade Execution: Partial Profit Lock (50% at +12%), Breakeven stop (+0.3%), Trailing stop
 │
 ├── quant_valuation.py          # 🎯 4-ARCHETYPE VALUATION ENGINE

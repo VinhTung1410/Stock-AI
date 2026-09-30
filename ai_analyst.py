@@ -1277,7 +1277,14 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
                 "p_bull": p_bull,
                 "p_base": p_base,
                 "p_bear": p_bear
-            }
+            },
+            "analyst_context_used": market_ctx.is_valid,
+            "regime_conflict": has_regime_conflict,
+            "context_source_file": market_ctx.source_file if market_ctx.is_valid else None,
+            "context_date": market_ctx.date if market_ctx.is_valid else None,
+            "prompt_version": "v6.4",
+            "model_version": MODEL_NAME,
+            "raw_response": final_report,
         })
     except Exception:
         logging.exception("Không thể lưu decision_records")

@@ -714,7 +714,7 @@ def fetch_foreign_trading_flow(symbol: str) -> dict:
 
     try:
         from vnstock.api.trading import Trading
-        t = Trading(symbol=sym_clean, source="tcbs")
+        t = Trading(symbol=sym_clean, source="VCI")
         pb = t.price_board([sym_clean])
         if pb is not None and not pb.empty:
             row = pb.iloc[0]
@@ -1130,7 +1130,7 @@ def fetch_corporate_dividends(symbol: str):
     """
     try:
         from vnstock.api.company import Company
-        c = Company(symbol=symbol, source="tcbs")
+        c = Company(symbol=symbol, source="VCI")
         df = c.events()
         return df
     except Exception:
@@ -2277,7 +2277,7 @@ def get_shares_outstanding(ticker: str, as_of_date: str = None) -> float | None:
     sym = ticker.strip().upper()
     try:
         from vnstock.api.company import Company
-        c = Company(symbol=sym, source="tcbs")
+        c = Company(symbol=sym, source="VCI")
         ov = c.overview()
         if ov is not None and not ov.empty:
             row = ov.iloc[0]
@@ -2317,7 +2317,7 @@ def compute_pb(ticker: str, as_of_date: str = None) -> float | None:
     # 1. Thử lấy giá thị trường thực tế khớp lệnh sàn HOSE
     try:
         from vnstock.api.trading import Trading
-        t = Trading(symbol=sym, source="tcbs")
+        t = Trading(symbol=sym, source="VCI")
         pb_board = t.price_board([sym])
         if pb_board is not None and not pb_board.empty:
             r = pb_board.iloc[0]
@@ -2381,7 +2381,7 @@ def _extract_kbs_ratios(symbol: str) -> dict:
     """Trích xuất dữ liệu tài chính mới nhất từ nguồn KBS."""
     try:
         from vnstock.api.financial import Finance
-        f = Finance(symbol=symbol, source="tcbs")
+        f = Finance(symbol=symbol, source="VCI")
         df = f.ratio()
         if df is None or df.empty:
             return {}
@@ -2447,7 +2447,7 @@ def get_financial_ratios(symbol: str) -> dict:
 
         # Bước 2: Fallback VCI nếu KBS không khả dụng
         from vnstock.api.financial import Finance
-        f = Finance(symbol=symbol, source="tcbs")
+        f = Finance(symbol=symbol, source="VCI")
         df_ratio = f.ratio()
         if df_ratio is None or df_ratio.empty:
             return {}
