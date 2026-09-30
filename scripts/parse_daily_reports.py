@@ -12,7 +12,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import pymupdf
+try:
+    import pymupdf
+except ImportError:
+    try:
+        import fitz as pymupdf
+    except ImportError:
+        pymupdf = None
 
 LOGGER = logging.getLogger(__name__)
 
@@ -34,6 +40,8 @@ REGIME_UPTREND = "UPTREND"
 
 def extract_text_from_pdf(pdf_path: Path) -> List[str]:
     """Đọc toàn bộ các trang PDF và trả về danh sách text từng trang."""
+    if pymupdf is None:
+        raise ImportError("pymupdf is not installed. Please install via: pip install pymupdf")
     pages_text: List[str] = []
     doc = pymupdf.open(str(pdf_path))
     try:
