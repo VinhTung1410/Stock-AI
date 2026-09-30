@@ -10,6 +10,12 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+# Guard against Windows AppLocker / WDAC blocking pyarrow DLL
+try:
+    import pyarrow.compute  # noqa: F401
+except (ImportError, Exception):
+    sys.modules["pyarrow"] = None
+
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -147,13 +153,16 @@ def _trigger_all_reports() -> None:
     print("📤 4. PHÁT VÀ BẮN BÁO CÁO NGUYÊN NGÀY VỀ DISCORD DM & WEBHOOK")
     print("-" * 60)
 
-    print("\n[BÁO CÁO 1] 🍱 Tạo và gửi BÁO CÁO PHIÊN TRƯA (11:30) - 5 CÂU HỎI CHIẾN LƯỢC...")
+    print("\n[BÁO CÁO 1] 🌅 Tạo và gửi BÁO CÁO CHIẾN LƯỢC ĐẦU NGÀY (08:45 ATO)...")
+    trigger_scheduled_report("08:45", "BÁO CÁO CHIẾN LƯỢC ĐẦU NGÀY ATO (08:45)")
+
+    print("\n[BÁO CÁO 2] 🍱 Tạo và gửi BÁO CÁO PHIÊN TRƯA (11:30) - 5 CÂU HỎI CHIẾN LƯỢC...")
     trigger_scheduled_report("11:30", "BÁO CÁO CHIẾN LƯỢC PHIÊN TRƯA (CHIẾN LƯỢC V3 - 5 CÂU HỎI)")
 
-    print("\n[BÁO CÁO 2] 📊 Tạo và gửi BÁO CÁO TỔNG KẾT PHIÊN ATC (14:45)...")
+    print("\n[BÁO CÁO 3] 📊 Tạo và gửi BÁO CÁO TỔNG KẾT PHIÊN ATC (14:45)...")
     trigger_scheduled_report("14:45", "BÁO CÁO TỔNG KẾT PHIÊN ATC (CHIẾN LƯỢC V3)")
 
-    print("\n[BÁO CÁO 3] 🎯 Tạo và gửi BÁO CÁO KIỂM TOÁN TÍN HIỆU ALPHA (15:15)...")
+    print("\n[BÁO CÁO 4] 🎯 Tạo và gửi BÁO CÁO KIỂM TOÁN TÍN HIỆU ALPHA (15:15)...")
     trigger_post_market_audit()
 
 

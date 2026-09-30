@@ -15,6 +15,12 @@ import urllib.request
 from datetime import datetime, timedelta
 from typing import Any
 
+# Guard against Windows AppLocker / WDAC blocking pyarrow DLL
+try:
+    import pyarrow.compute  # noqa: F401
+except (ImportError, Exception):
+    sys.modules["pyarrow"] = None
+
 import feedparser
 import pandas as pd
 import requests

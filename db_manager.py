@@ -4,6 +4,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
+# Guard against Windows AppLocker / WDAC blocking pyarrow DLL
+try:
+    import pyarrow.compute  # noqa: F401
+except (ImportError, Exception):
+    import sys
+    sys.modules["pyarrow"] = None
+
 import pandas as pd
 
 try:

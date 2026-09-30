@@ -19,6 +19,13 @@ from datetime import datetime
 from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
+# Guard against Windows AppLocker / WDAC blocking pyarrow DLL
+try:
+    import pyarrow.compute  # noqa: F401
+except (ImportError, Exception):
+    import sys
+    sys.modules["pyarrow"] = None
+
 import pandas as pd
 
 from ai_analyst import generate_morning_strategy_report, generate_portfolio_analysis
