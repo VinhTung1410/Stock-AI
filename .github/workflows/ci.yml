@@ -91,6 +91,9 @@ jobs:
             --cov=paper_trading \
             --cov=context_engine \
             --cov=dispatcher \
+            --cov=indicators \
+            --cov=portfolio_guard \
+            --cov=db_manager \
             --cov-report=term \
             --cov-report=xml \
             --tb=short

@@ -49,6 +49,45 @@ def _get_f_score_rating(score: int) -> str:
     return "YẾU / RỦI RO"
 
 
+def _calc_profitability_points(fin_dict: dict, breakdown: dict) -> int:
+    roa = fin_dict.get("roa")
+    p_cf = fin_dict.get("p_cf")
+    roe = fin_dict.get("roe")
+    net_margin = fin_dict.get("net_margin")
+
+    f1 = 1 if roa and roa > 0 else 0
+    f2 = 1 if p_cf and p_cf > 0 else 0
+    f3 = 1 if roe and roe >= 10.0 else 0
+    f4 = 1 if net_margin and net_margin >= 5.0 else 0
+
+    breakdown["ROA_duong"] = f1
+    breakdown["Dong_tien_HDKD_duong"] = f2
+    breakdown["ROE_tren_10pct"] = f3
+    breakdown["Bien_LN_rong_tich_cuc"] = f4
+    return f1 + f2 + f3 + f4
+
+
+def _calc_leverage_and_efficiency_points(fin_dict: dict, breakdown: dict) -> int:
+    debt_equity = fin_dict.get("debt_equity")
+    current_ratio = fin_dict.get("current_ratio")
+    fin_leverage = fin_dict.get("financial_leverage")
+    gross_margin = fin_dict.get("gross_margin")
+    roic = fin_dict.get("roic")
+
+    f5 = 1 if debt_equity is not None and debt_equity < 1.5 else 0
+    f6 = 1 if current_ratio and current_ratio >= 1.2 else 0
+    f7 = 1 if fin_leverage and fin_leverage < 2.5 else 0
+    f8 = 1 if gross_margin and gross_margin >= 15.0 else 0
+    f9 = 1 if roic and roic >= 8.0 else 0
+
+    breakdown["No_vay_an_toan"] = f5
+    breakdown["Thanh_toan_hien_hanh_khoe"] = f6
+    breakdown["Don_bay_vua_phai"] = f7
+    breakdown["Bien_LN_gop_tot"] = f8
+    breakdown["ROIC_tren_8pct"] = f9
+    return f5 + f6 + f7 + f8 + f9
+
+
 def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
     """Score financial health using Piotroski F-Score model (0-9 scale).
 
@@ -56,13 +95,6 @@ def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
     - Profitability (max 4 pts): ROA, cash flow, ROE, net margin
     - Leverage / Liquidity (max 3 pts): D/E, current ratio, financial leverage
     - Operating Efficiency (max 2 pts): gross margin, ROIC
-
-    Args:
-        fin_dict: Financial data with keys: roe, roa, debt_equity,
-                  current_ratio, gross_margin, net_margin, p_cf, roic.
-
-    Returns:
-        Dict with 'score' (0-9), 'max_score', 'rating', and 'breakdown'.
     """
     if sector in ["Ngân hàng", "Bất động sản"]:
         return {
@@ -72,7 +104,6 @@ def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
             "breakdown": {}
         }
 
-    # Support precomputed f_score if breakdown fields are absent
     if fin_dict and fin_dict.get("f_score") is not None and not any(k in fin_dict for k in ("roa", "current_ratio", "debt_equity")):
         raw_s = int(fin_dict["f_score"])
         return {
@@ -83,66 +114,8 @@ def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
         }
 
     fin_dict = fin_dict or {}
-    score = 0
     breakdown = {}
-
-    roe = fin_dict.get("roe")
-    roa = fin_dict.get("roa")
-    debt_equity = fin_dict.get("debt_equity")
-    current_ratio = fin_dict.get("current_ratio")
-    gross_margin = fin_dict.get("gross_margin")
-    net_margin = fin_dict.get("net_margin")
-    p_cf = fin_dict.get("p_cf")
-
-    # 1. Khả năng sinh lời (Profitability: Max 4 điểm)
-    # F1: ROA dương
-    f1 = 1 if roa and roa > 0 else 0
-    score += f1
-    breakdown["ROA_duong"] = f1
-
-    # F2: Dòng tiền hoạt động dương (dựa trên P/CF > 0)
-    f2 = 1 if p_cf and p_cf > 0 else 0
-    score += f2
-    breakdown["Dong_tien_HDKD_duong"] = f2
-
-    # F3: ROE khả quan (ROE > 10%)
-    f3 = 1 if roe and roe >= 10.0 else 0
-    score += f3
-    breakdown["ROE_tren_10pct"] = f3
-
-    # F4: Biên lợi nhuận ròng tích cực (> 5%)
-    f4 = 1 if net_margin and net_margin >= 5.0 else 0
-    score += f4
-    breakdown["Bien_LN_rong_tich_cuc"] = f4
-
-    # 2. Đòn bẩy & Thanh khoản (Leverage/Liquidity: Max 3 điểm)
-    # F5: Nợ / Vốn chủ an toàn (< 1.5)
-    f5 = 1 if debt_equity is not None and debt_equity < 1.5 else 0
-    score += f5
-    breakdown["No_vay_an_toan"] = f5
-
-    # F6: Hệ số thanh toán hiện hành khỏe (> 1.2)
-    f6 = 1 if current_ratio and current_ratio >= 1.2 else 0
-    score += f6
-    breakdown["Thanh_toan_hien_hanh_khoe"] = f6
-
-    # F7: Đòn bẩy nợ thấp hoặc không quá phụ thuộc vốn vay (< 2.5)
-    fin_leverage = fin_dict.get("financial_leverage")
-    f7 = 1 if fin_leverage and fin_leverage < 2.5 else 0
-    score += f7
-    breakdown["Don_bay_vua_phai"] = f7
-
-    # 3. Hiệu quả hoạt động (Operating Efficiency: Max 2 điểm)
-    # F8: Biên lợi nhuận gộp dày (> 15%)
-    f8 = 1 if gross_margin and gross_margin >= 15.0 else 0
-    score += f8
-    breakdown["Bien_LN_gop_tot"] = f8
-
-    # F9: ROIC tích cực (> 8%)
-    roic = fin_dict.get("roic")
-    f9 = 1 if roic and roic >= 8.0 else 0
-    score += f9
-    breakdown["ROIC_tren_8pct"] = f9
+    score = _calc_profitability_points(fin_dict, breakdown) + _calc_leverage_and_efficiency_points(fin_dict, breakdown)
 
     return {
         "score": score,
@@ -152,6 +125,14 @@ def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
     }
 
 
+def _resolve_z_zone(z: float) -> tuple[str, str]:
+    if z >= 2.90:
+        return "VÙNG XANH (An toàn tài chính cao)", "🟢"
+    if z >= 1.80:
+        return "VÙNG XÁM (Thận trọng / Đòn bẩy vừa)", "🟡"
+    return "VÙNG ĐỎ (Cảnh báo rủi ro kiệt quệ)", "🔴"
+
+
 def calculate_altman_z_score(fin_dict: dict, sector: str = "") -> dict:
     """Estimate Altman Z''-Score for emerging markets (bankruptcy risk).
 
@@ -159,12 +140,6 @@ def calculate_altman_z_score(fin_dict: dict, sector: str = "") -> dict:
     - Z >= 2.90: Safe Zone (green)
     - 1.23 <= Z < 2.90: Grey Zone (caution)
     - Z < 1.23: Distress Zone (red)
-
-    Args:
-        fin_dict: Financial data with keys: roa, debt_equity, current_ratio.
-
-    Returns:
-        Dict with 'z_score', 'zone' description, and 'icon' emoji.
     """
     if sector in ["Ngân hàng", "Bất động sản"]:
         return {"z_score": 3.0, "zone": "VÙNG XANH (Ngoại lệ ngành đặc thù)", "icon": "🟢"}
@@ -172,64 +147,39 @@ def calculate_altman_z_score(fin_dict: dict, sector: str = "") -> dict:
     if not fin_dict:
         return {"z_score": None, "zone": "Chưa đủ dữ liệu", "icon": "⚪"}
 
-    # Support precomputed z_score if breakdown fields are absent
     if fin_dict.get("z_score") is not None and not any(k in fin_dict for k in ("roa", "debt_equity")):
         raw_z = float(fin_dict["z_score"])
-        if raw_z >= 2.90:
-            zone = "VÙNG XANH (An toàn tài chính cao)"
-            color = "🟢"
-        elif raw_z >= 1.80:
-            zone = "VÙNG XÁM (Thận trọng / Đòn bẩy vừa)"
-            color = "🟡"
-        else:
-            zone = "VÙNG ĐỎ (Cảnh báo rủi ro kiệt quệ)"
-            color = "🔴"
+        zone, color = _resolve_z_zone(raw_z)
         return {"z_score": raw_z, "zone": zone, "icon": color}
+
     try:
         roa = (fin_dict.get("roa") or 0.0) / 100.0
         debt_equity = fin_dict.get("debt_equity") or 1.5
         current_ratio = fin_dict.get("current_ratio") or 1.2
         equity_ratio = 1.0 / (1.0 + debt_equity) if debt_equity >= 0 else 0.5
 
-        # Ước lượng các thành phần
-        x1 = min(max((current_ratio - 1.0) * 0.2, -0.5), 0.5)  # Vốn lưu động ròng / Tổng tài sản
-        x2 = max(roa * 0.8, -0.3)  # Lợi nhuận giữ lại / Tổng tài sản
-        x3 = max(roa * 1.1, -0.3)  # EBIT / Tổng tài sản
-        x4 = max(equity_ratio, 0.1)  # Vốn chủ sở hữu / Tổng nợ phải trả
+        x1 = min(max((current_ratio - 1.0) * 0.2, -0.5), 0.5)
+        x2 = max(roa * 0.8, -0.3)
+        x3 = max(roa * 1.1, -0.3)
+        x4 = max(equity_ratio, 0.1)
 
-        z = (6.56 * x1) + (3.26 * x2) + (6.72 * x3) + (1.05 * x4) + 1.5
-        z = round(float(z), 2)
-
-        if z >= 2.90:
-            zone = "VÙNG XANH (An toàn tài chính cao)"
-            color = "🟢"
-        elif z >= 1.80:
-            zone = "VÙNG XÁM (Thận trọng / Đòn bẩy vừa)"
-            color = "🟡"
-        else:
-            zone = "VÙNG ĐỎ (Cảnh báo rủi ro kiệt quệ)"
-            color = "🔴"
-
+        z = round(float((6.56 * x1) + (3.26 * x2) + (6.72 * x3) + (1.05 * x4) + 1.5), 2)
+        zone, color = _resolve_z_zone(z)
         return {"z_score": z, "zone": zone, "icon": color}
-    except Exception as e:
-        logging.warning(f"Lỗi khi tính Z-Score: {e}")
+    except Exception:
+        logging.exception("Lỗi khi tính Z-Score")
         return {"z_score": 2.2, "zone": "VÙNG XÁM", "icon": "🟡"}
 
 
 def calculate_valuation_triangle(current_price: float, pe: float = None, pb: float = None, sector: str = "") -> dict:
-    """
-    Tam giác định giá 3 kịch bản:
-    - Bull Price: Vùng đỉnh định giá hoặc chu kỳ tăng trưởng tích cực (+20% đến +25%).
-    - Base Price: Giá trị hợp lý dựa trên P/E & P/B bình quân dài hạn (+8% đến +15%).
-    - Bear Price: Vùng hỗ trợ cứng / đáy định giá lịch sử (-12% đến -18%).
-    """
+    """Tam giác định giá 3 kịch bản dựa trên P/E & P/B bình quân và chu kỳ ngành."""
     if not current_price or current_price <= 0:
         return {"price_bull": 0.0, "price_base": 0.0, "price_bear": 0.0}
 
-    # Bẫy chu kỳ (Thép, Hóa chất, Dầu khí): Nếu P/E quá thấp (< 6.0), không được nhân hệ số tăng trưởng cao
     is_cyclical = any(s in sector.lower() for s in ["thép", "dầu khí", "hóa chất", "phân bón", "vận tải biển"])
-    if is_cyclical and pe and pe < 6.0:
-        # Cảnh báo đỉnh lợi nhuận chu kỳ -> Biên độ tăng khiêm tốn, rủi ro giảm cao hơn
+    is_cyclical_peak = is_cyclical and ((pe is not None and pe < 6.0) or (pb is not None and pb < 0.8))
+
+    if is_cyclical_peak:
         price_bull = round(current_price * 1.15, 2)
         price_base = round(current_price * 1.02, 2)
         price_bear = round(current_price * 0.78, 2)
@@ -246,46 +196,48 @@ def calculate_valuation_triangle(current_price: float, pe: float = None, pb: flo
     }
 
 
-def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_data: dict) -> dict:
-    """
-    THANG ĐIỂM ĐỊNH LƯỢNG 100 ĐIỂM (100-POINT QUANT SCORE) THEO 4 TRỤ CỘT:
-    1. Cơ bản & Sức khỏe tài chính (Fundamental & Health): Max 35 điểm
-    2. Định giá & Biên an toàn (Valuation & MoS): Max 30 điểm
-    3. Kỹ thuật & Xu hướng (Technical & Momentum): Max 20 điểm
-    4. Dòng tiền lớn & Quản trị rủi ro (Smart Flow & Risk): Max 15 điểm
-    """
-    scores = {}
-
-    # --- Trụ cột 1: Sức khỏe tài chính (Max 35) ---
+def _score_fundamental_pillar(fin_dict: dict) -> float:
     f_res = calculate_piotroski_f_score(fin_dict)
-    f_pts = min(round((f_res.get("score", 5) / 9.0) * 18, 1), 18.0)  # Max 18đ
+    f_pts = min(round((f_res.get("score", 5) / 9.0) * 18, 1), 18.0)
 
     z_res = calculate_altman_z_score(fin_dict)
     z_val = z_res.get("z_score", 2.0)
-    z_pts = 10.0 if z_val >= 2.9 else (6.0 if z_val >= 1.8 else 2.0)  # Max 10đ
+    if z_val >= 2.9:
+        z_pts = 10.0
+    elif z_val >= 1.8:
+        z_pts = 6.0
+    else:
+        z_pts = 2.0
 
     roe = (fin_dict.get("roe") or 0.0) if fin_dict else 0.0
-    roe_pts = 7.0 if roe >= 18.0 else (5.0 if roe >= 12.0 else (3.0 if roe >= 8.0 else 1.0)) # Max 7đ
-    pillar_fundamental = round(f_pts + z_pts + roe_pts, 1)
-    scores["pillar_fundamental"] = pillar_fundamental
+    if roe >= 18.0:
+        roe_pts = 7.0
+    elif roe >= 12.0:
+        roe_pts = 5.0
+    elif roe >= 8.0:
+        roe_pts = 3.0
+    else:
+        roe_pts = 1.0
 
-    # --- Trụ cột 2: Định giá & Biên an toàn (Max 30) ---
+    return round(f_pts + z_pts + roe_pts, 1)
+
+
+def _score_valuation_pillar(mos_data: dict) -> float:
     mos_pct = mos_data.get("mos_pct", 0.0) if mos_data else 0.0
     if mos_pct >= 25.0:
-        mos_pts = 30.0
-    elif mos_pct >= 18.0:
-        mos_pts = 25.0
-    elif mos_pct >= 12.0:
-        mos_pts = 20.0
-    elif mos_pct >= 5.0:
-        mos_pts = 14.0
-    elif mos_pct >= 0.0:
-        mos_pts = 8.0
-    else:
-        mos_pts = 2.0  # Quá đắt
-    scores["pillar_valuation"] = mos_pts
+        return 30.0
+    if mos_pct >= 18.0:
+        return 25.0
+    if mos_pct >= 12.0:
+        return 20.0
+    if mos_pct >= 5.0:
+        return 14.0
+    if mos_pct >= 0.0:
+        return 8.0
+    return 2.0
 
-    # --- Trụ cột 3: Kỹ thuật & Xu hướng (Max 20) ---
+
+def _score_technical_pillar(tech_data: dict) -> float:
     curr = tech_data.get("current_price", 0.0)
     ma20 = tech_data.get("ma20", curr)
     rsi = tech_data.get("rsi", 50.0)
@@ -293,13 +245,11 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
     vol_ma20 = tech_data.get("vol_ma20", vol)
 
     tech_pts = 0.0
-    # Nằm trên MA20
     if curr >= ma20:
         tech_pts += 8.0
     elif curr >= ma20 * 0.98:
         tech_pts += 4.0
 
-    # RSI lành mạnh (45 - 65)
     if 48.0 <= rsi <= 65.0:
         tech_pts += 7.0
     elif 40.0 <= rsi < 48.0:
@@ -309,14 +259,14 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
     else:
         tech_pts += 1.0
 
-    # Khối lượng có tín hiệu hấp thụ
     if vol_ma20 > 0 and vol >= vol_ma20 * 1.1:
         tech_pts += 5.0
     else:
         tech_pts += 3.0
-    scores["pillar_technical"] = round(tech_pts, 1)
+    return round(tech_pts, 1)
 
-    # --- Trụ cột 4: Dòng tiền lớn & Thanh khoản (Max 15) ---
+
+def _score_flow_pillar(tech_data: dict) -> float:
     flow_pts = 0.0
     foreign = tech_data.get("foreign_flow") or {}
     f_net = foreign.get("net_val_bil", 0.0)
@@ -325,7 +275,7 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
     elif f_net >= -10.0:
         flow_pts += 5.0
     else:
-        flow_pts += 1.0  # Bị xả mạnh
+        flow_pts += 1.0
 
     adv20 = tech_data.get("adv20_billion", 10.0)
     if adv20 >= 30.0:
@@ -334,30 +284,40 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
         flow_pts += 5.0
     elif adv20 >= 2.0:
         flow_pts += 3.0
-    else:
-        flow_pts += 0.0
-    scores["pillar_smart_flow"] = round(flow_pts, 1)
+    return round(flow_pts, 1)
+
+
+def _get_100_point_grade_and_rating(total_score: float) -> tuple[str, str]:
+    if total_score >= 80.0:
+        return "A+", "XUẤT SẮC (Ưu tiên giải ngân lớn / Tích lũy chủ lực)"
+    if total_score >= 68.0:
+        return "A", "TỐT (Đạt chuẩn tích lũy từng phần)"
+    if total_score >= 55.0:
+        return "B", "TRUNG BÌNH (Theo dõi thêm, chờ giá chiết khấu)"
+    return "C", "YẾU / RỦI RO (Không đạt tiêu chí giải ngân)"
+
+
+def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_data: dict) -> dict:
+    """THANG ĐIỂM ĐỊNH LƯỢNG 100 ĐIỂM (100-POINT QUANT SCORE) THEO 4 TRỤ CỘT."""
+    pillar_fundamental = _score_fundamental_pillar(fin_dict)
+    mos_pts = _score_valuation_pillar(mos_data)
+    tech_pts = _score_technical_pillar(tech_data)
+    flow_pts = _score_flow_pillar(tech_data)
 
     total_score = round(pillar_fundamental + mos_pts + tech_pts + flow_pts, 1)
-
-    if total_score >= 80.0:
-        rating = "XUẤT SẮC (Ưu tiên giải ngân lớn / Tích lũy chủ lực)"
-        grade = "A+"
-    elif total_score >= 68.0:
-        rating = "TỐT (Đạt chuẩn tích lũy từng phần)"
-        grade = "A"
-    elif total_score >= 55.0:
-        rating = "TRUNG BÌNH (Theo dõi thêm, chờ giá chiết khấu)"
-        grade = "B"
-    else:
-        rating = "YẾU / RỦI RO (Không đạt tiêu chí giải ngân)"
-        grade = "C"
+    grade, rating = _get_100_point_grade_and_rating(total_score)
 
     return {
+        "symbol": symbol.upper().strip() if symbol else "",
         "total_score": total_score,
         "grade": grade,
         "rating": rating,
-        "breakdown": scores
+        "breakdown": {
+            "pillar_fundamental": pillar_fundamental,
+            "pillar_valuation": mos_pts,
+            "pillar_technical": tech_pts,
+            "pillar_smart_flow": flow_pts,
+        }
     }
 
 

@@ -1258,15 +1258,23 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
     # LƯU IMMUTABLE DECISION RECORD TRƯỚC TIÊN
     action_state = str(hard_gates.get("action_state", "")).upper()
     is_buy = "MUA" in action_state or "BUY" in action_state
-    decision_type = "BUY" if is_buy else ("WATCH" if "WATCH" in action_state or "THEO DÕI" in action_state else "REJECT")
-    
+    if is_buy:
+        decision_type = "BUY"
+        primary_gate = None
+    elif "WATCH" in action_state or "THEO DÕI" in action_state:
+        decision_type = "WATCH"
+        primary_gate = "AI_COMMITTEE_WATCH"
+    else:
+        decision_type = "REJECT"
+        primary_gate = "AI_COMMITTEE_REJECT"
+
     decision_id = None
     try:
         from db_manager import save_decision_record
         decision_id = save_decision_record({
             "symbol": symbol,
             "decision": decision_type,
-            "primary_rejection_gate": None if is_buy else ("AI_COMMITTEE_WATCH" if decision_type == "WATCH" else "AI_COMMITTEE_REJECT"),
+            "primary_rejection_gate": primary_gate,
             "facts": {
                 "market_price": curr_price,
                 "ev": hard_gates.get("ev"),
@@ -1701,6 +1709,24 @@ def _prepare_smart_committee_context(
             f"• **Lý do từ chối:** {conflicts}\n\n"
             "⚠️ **Khuyến cáo:** Hệ thống Data Reconciliation Gate (Phase 0) từ chối phân tích cổ phiếu có dữ liệu bị sai lệch, giá âm hoặc vi phạm biên độ quy chế để bảo vệ vốn nhà đầu tư!"
         )
+        try:
+            from db_manager import save_decision_record
+            save_decision_record({
+                "symbol": sym,
+                "decision": "REJECT",
+                "primary_rejection_gate": "DATA_GATE",
+                "rejection_reasons": gate_res.get("conflicting_data", ["Xung đột dữ liệu giá hoặc vi phạm quy chế sàn"]),
+                "facts": {
+                    "market_price": tech_data.get("current_price", 0.0) if tech_data else 0.0,
+                    "data_quality": gate_res.get("data_quality", "CRITICAL"),
+                    "quality_score": gate_res.get("quality_score", 0.0),
+                },
+                "model_version": MODEL_NAME,
+                "raw_response": refusal_report,
+            })
+        except Exception:
+            logging.exception("Không thể lưu decision_records khi bị loại ở Smart Committee Data Gate")
+
         rejection_res = {
             "status": "DATA_GATE_REJECTED",
             "symbol": sym,
@@ -1755,8 +1781,65 @@ def _prepare_smart_committee_context(
         "input_hash": input_hash,
         "market_context": market_ctx,
         "regime_conflict": has_regime_conflict,
+        "tech_data": tech_data,
     }
     return None, prompt, context_meta
+
+
+def _save_smart_committee_record(
+    context_meta: dict,
+    final_decision: str,
+    raw_decision: str,
+    views: dict,
+    is_overridden: bool,
+    override_reason: str,
+    report_text: str
+) -> None:
+    try:
+        from db_manager import save_decision_record
+        dec_str = str(final_decision or "").upper()
+        if "MUA" in dec_str or "BUY" in dec_str:
+            dec_type = "BUY"
+            prim_gate = None
+        elif "THEO DÕI" in dec_str or "WATCH" in dec_str:
+            dec_type = "WATCH"
+            prim_gate = "AI_COMMITTEE_WATCH"
+        else:
+            dec_type = "REJECT"
+            prim_gate = "AI_COMMITTEE_REJECT"
+
+        sym = context_meta["symbol"]
+        gate_res = context_meta["gate_res"]
+        market_ctx = context_meta.get("market_context")
+        ctx_valid = market_ctx.is_valid if market_ctx else False
+        tech_data = context_meta.get("tech_data") or {}
+
+        save_decision_record({
+            "symbol": sym,
+            "decision": dec_type,
+            "primary_rejection_gate": prim_gate,
+            "facts": {
+                "market_price": tech_data.get("current_price", 0.0),
+                "quality_score": gate_res.get("quality_score", 100.0),
+                "data_quality": gate_res.get("data_quality", "HIGH"),
+            },
+            "inferences": {
+                "pm_decision": final_decision,
+                "raw_pm_decision": raw_decision,
+                "fa_view": views.get("fa_view", "NEUTRAL"),
+                "ta_view": views.get("ta_view", "NEUTRAL"),
+                "is_overridden": is_overridden,
+                "override_reason": override_reason,
+            },
+            "analyst_context_used": ctx_valid,
+            "regime_conflict": context_meta.get("regime_conflict", False),
+            "context_source_file": market_ctx.source_file if ctx_valid else None,
+            "context_date": market_ctx.date if ctx_valid else None,
+            "model_version": MODEL_NAME,
+            "raw_response": report_text,
+        })
+    except Exception:
+        logging.exception("Không thể lưu decision_records cho Smart Committee response %s", context_meta.get("symbol"))
 
 
 def _build_committee_response(context_meta: dict, report_text: str = None, error: Exception = None) -> dict:
@@ -1813,6 +1896,16 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         z_zone=z_res.get("zone", ZONE_SAFE),
         recommendation_allowed=gate_res.get("recommendation_allowed", True),
         can_buy=can_buy,
+    )
+
+    _save_smart_committee_record(
+        context_meta,
+        final_decision,
+        raw_decision,
+        views,
+        is_overridden,
+        override_reason,
+        report_text,
     )
 
     return {

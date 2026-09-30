@@ -114,19 +114,24 @@ def _normalize_regime_str(regime_str: Optional[str]) -> str:
     return str(regime_str or "").strip().upper()
 
 
-def check_regime_conflict(code_regime: str, analyst_regime: str) -> Tuple[bool, str]:
-    """
-    Arbitrates conflict between quantitative code regime (FACT) and analyst report (INFERENCE).
+def _handle_uptrend_conflict() -> Tuple[bool, str]:
+    from datetime import datetime
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    should_penalize = track_regime_hysteresis(True, today_str)
 
-    Rules:
-    - Code UPTREND vs Analyst DOWNTREND/BEARISH/CORRECTION:
-      -> Conflict! Action: Cut position size by 50% for defense.
-    - Code DOWNTREND vs Analyst UPTREND/BULLISH:
-      -> Conflict! Action: Code always wins; 100% Cash Mode remains locked.
-    - Code SIDEWAYS vs Analyst ACCUMULATION/SIDEWAYS/NEUTRAL:
-      -> Compatible, no conflict.
-    - Matching regimes -> No conflict.
-    """
+    if should_penalize:
+        return True, (
+            "XUNG ĐỘT REGIME: Code MA200 báo UPTREND nhưng Chuyên gia TCBS cảnh báo Giảm/Điều chỉnh. "
+            "Hệ thống tự động kích hoạt cờ giảm 50% quy mô vị thế đề xuất để phòng thủ (Xung đột kéo dài >= 2 phiên)."
+        )
+    return True, (
+        "XUNG ĐỘT REGIME: Code MA200 báo UPTREND nhưng Chuyên gia TCBS cảnh báo Giảm/Điều chỉnh. "
+        "Đây là phiên đầu tiên cảnh báo, chưa kích hoạt phạt 50% quy mô vị thế (chờ xác nhận phiên tiếp theo)."
+    )
+
+
+def check_regime_conflict(code_regime: str, analyst_regime: str) -> Tuple[bool, str]:
+    """Arbitrates conflict between quantitative code regime (FACT) and analyst report (INFERENCE)."""
     c_norm = _normalize_regime_str(code_regime)
     a_norm = _normalize_regime_str(analyst_regime)
 
@@ -139,23 +144,9 @@ def check_regime_conflict(code_regime: str, analyst_regime: str) -> Tuple[bool, 
     is_analyst_down = REGIME_DOWNTREND in a_norm or STATUS_BEARISH in a_norm or "ĐIỀU CHỈNH" in a_norm
 
     if is_code_up and is_analyst_down:
-        from datetime import datetime
-        today_str = datetime.now().strftime("%Y-%m-%d")
-        should_penalize = track_regime_hysteresis(True, today_str)
-        
-        if should_penalize:
-            return True, (
-                "XUNG ĐỘT REGIME: Code MA200 báo UPTREND nhưng Chuyên gia TCBS cảnh báo Giảm/Điều chỉnh. "
-                "Hệ thống tự động kích hoạt cờ giảm 50% quy mô vị thế đề xuất để phòng thủ (Xung đột kéo dài >= 2 phiên)."
-            )
-        else:
-            return True, (
-                "XUNG ĐỘT REGIME: Code MA200 báo UPTREND nhưng Chuyên gia TCBS cảnh báo Giảm/Điều chỉnh. "
-                "Đây là phiên đầu tiên cảnh báo, chưa kích hoạt phạt 50% quy mô vị thế (chờ xác nhận phiên tiếp theo)."
-            )
+        return _handle_uptrend_conflict()
 
     if is_code_down and is_analyst_up:
-        # DOWNTREND vs UPTREND is an absolute rule, always locks cash mode
         return True, (
             "XUNG ĐỘT REGIME: Code MA200 báo DOWNTREND nhưng Chuyên gia TCBS nhận định Tăng. "
             "Quy tắc Zero-Democracy: Code toán học thắng tuyệt đối, giữ nguyên 100% Cash Mode, cấm mở mua."

@@ -475,7 +475,7 @@ def evaluate_decision_hard_gates(
             if ks_res.get("is_triggered"):
                 decision_tag = f"{decision_tag} ⚠️ [KILL SWITCH KÍCH HOẠT: Expectancy R {ks_res.get('expectancy_r')}]"
                 position_size_nav = f"{position_size_nav} (Yêu cầu giảm 50% quy mô do chuỗi lệnh thua)"
-    except Exception as e:
+    except Exception:
         import logging
         logging.exception("Lỗi khi kiểm tra Kill Switch")
 

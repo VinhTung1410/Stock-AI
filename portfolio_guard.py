@@ -8,22 +8,138 @@ from indicators import calculate_altman_z_score, calculate_piotroski_f_score
 
 MAX_POSITIONS_PER_SECTOR: int = 3
 
+def _evaluate_profitable_holding(
+    symbol: str,
+    entry_price: float,
+    curr_price: float,
+    volume: int,
+    pl_pct: float,
+    pl_val: float,
+    atr: float,
+    ma20: float,
+) -> dict:
+    max_allowed_stop = round(curr_price * 0.96, 2)
+    if pl_pct >= 15.0:
+        candidate_stop = max(
+            entry_price * 1.06,
+            (curr_price - (1.2 * atr)) if atr > 0 else (curr_price * 0.95),
+            ma20 * 0.98
+        )
+    elif pl_pct >= 5.0:
+        candidate_stop = max(
+            entry_price * 1.02,
+            (curr_price - (1.5 * atr)) if atr > 0 else (curr_price * 0.94)
+        )
+    else:
+        candidate_stop = entry_price
+
+    trailing_stop = min(candidate_stop, max_allowed_stop)
+    trailing_stop = round(float(trailing_stop), 2)
+
+    if pl_pct >= 20.0:
+        action = "🟢 BẢO VỆ THÀNH QUẢ / HIỆN THỰC HÓA LỢI NHUẬN"
+        detail = (
+            f"Cổ phiếu đang có tỷ suất sinh lời xuất sắc (+{pl_pct:.1f}%). "
+            f"Khuyến nghị: Hiện thực hóa 30-50% lợi nhuận, nâng mốc Trailing Stop lên {trailing_stop:.2f}k "
+            f"để gồng lãi phần còn lại mà không sợ mất thành quả."
+        )
+    elif pl_pct >= 8.0:
+        action = "🟢 TIẾP TỤC NẮM GIỮ / NÂNG TRAILING STOP"
+        detail = (
+            f"Vị thế lãi tốt (+{pl_pct:.1f}%). Khuyến nghị: Tiếp tục gồng lãi xu hướng, "
+            f"đặt mốc Trailing Stop chặn lãi cứng tại {trailing_stop:.2f}k. Nếu giá vi phạm thủng mốc này mới chốt."
+        )
+    else:
+        action = "🟢 NẮM GIỮ / THEO DÕI ĐÀ TĂNG"
+        detail = (
+            f"Vị thế có lãi nhẹ (+{pl_pct:.1f}%). Tiếp tục nắm giữ, "
+            f"đặt mốc chặn lãi hòa vốn tại {trailing_stop:.2f}k."
+        )
+
+    return {
+        "symbol": symbol,
+        "status": "PROFITABLE",
+        "entry_price": entry_price,
+        "curr_price": curr_price,
+        "pl_pct": round(pl_pct, 2),
+        "pl_val": round(pl_val, 0),
+        "action": action,
+        "detail": detail,
+        "trailing_stop": trailing_stop,
+        "is_profit": True,
+        "thesis_breaker": "N/A (Vị thế đang thắng thế, không có rủi ro vỡ luận điểm)"
+    }
+
+
+def _evaluate_losing_holding(
+    symbol: str,
+    entry_price: float,
+    curr_price: float,
+    volume: int,
+    pl_pct: float,
+    pl_val: float,
+    atr: float,
+    fin_dict: dict | None,
+    sector: str,
+) -> dict:
+    loss_pct = abs(pl_pct)
+    if atr and atr > 0:
+        tech_stop = curr_price - (2.0 * atr)
+        stop_loss = max(tech_stop, entry_price * 0.93)
+    else:
+        stop_loss = entry_price * 0.93
+
+    stop_loss = min(round(float(stop_loss), 2), round(curr_price * 0.97, 2))
+
+    thesis_intact = True
+    thesis_msg = "Luận điểm tăng trưởng doanh nghiệp cốt lõi vẫn được bảo toàn."
+
+    if fin_dict:
+        f_score = calculate_piotroski_f_score(fin_dict, sector).get("score", 6)
+        z_data = calculate_altman_z_score(fin_dict, sector)
+        if f_score < 4 or "ĐỎ" in z_data.get("zone", ""):
+            thesis_intact = False
+            thesis_msg = "CẢNH BÁO: BCTC suy giảm nghiêm trọng hoặc đòn bẩy quá cao (Thesis Breaker bị kích hoạt!)."
+
+    if not thesis_intact:
+        action = "🔴 THOÁT VỊ THẾ (THESIS BREAKER KÍCH HOẠT)"
+        detail = f"Lỗ -{loss_pct:.1f}%. {thesis_msg} Cần dứt khoát cơ cấu thoát vốn sang mã có cơ bản vượt trội."
+    elif loss_pct <= 5.0:
+        action = "🟡 THEO DÕI BIẾN ĐỘNG / GIỮ VỊ THẾ DÀI HẠN"
+        detail = (
+            f"Khoản lỗ nhẹ (-{loss_pct:.1f}%) nằm trong biên độ dao động thông thường của thị trường. "
+            f"Luận điểm giá trị vẫn nguyên vẹn. Không hoảng loạn cắt lỗ máy móc."
+        )
+    elif loss_pct <= 8.0:
+        action = "🟡 QUẢN TRỊ RỦI RO / QUAN SÁT NGƯỠNG HỖ TRỢ"
+        detail = (
+            f"Lỗ -{loss_pct:.1f}%. Nếu là vị thế lướt sóng T+, kích hoạt kỷ luật Stop-Loss tại {stop_loss:.2f}k. "
+            f"Nếu là danh mục đầu tư giá trị, kiểm tra mốc cân bằng mới trước khi ra quyết định gom thêm."
+        )
+    else:
+        action = "🔴 CẮT LỖ KỸ THUẬT HOẶC HẠ TỶ TRỌNG"
+        detail = (
+            f"Mức sụt giảm sâu (-{loss_pct:.1f}%). Khuyến nghị dứt khoát hạ tỷ trọng bảo vệ vốn, "
+            f"ngưỡng Stop-loss đã bị vi phạm tại {stop_loss:.2f}k."
+        )
+
+    return {
+        "symbol": symbol,
+        "status": "LOSS",
+        "entry_price": entry_price,
+        "curr_price": curr_price,
+        "pl_pct": round(pl_pct, 2),
+        "pl_val": round(pl_val, 0),
+        "action": action,
+        "detail": detail,
+        "stop_loss": stop_loss,
+        "is_profit": False,
+        "thesis_breaker": thesis_msg
+    }
+
+
 def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict | None = None, sector: str = "") -> dict:
-    """Evaluate an existing portfolio position and recommend action.
-
-    Core rules:
-    - Profitable positions (P/L > 0): use trailing stop, NEVER label as 'cut loss'.
-    - Trailing stop is always clamped below current price (validation invariant).
-    - Losing positions: value investments use thesis breaker; trades use technical stop.
-
-    Args:
-        row: Position data with 'symbol', 'avg_price', 'volume'.
-        tech_data: Technical data with 'current_price', 'atr', 'ma20'.
-        fin_dict: Optional financial data for enhanced evaluation.
-
-    Returns:
-        Dict with 'action', 'trailing_stop'/'stop_loss', 'pl_pct', 'detail', etc.
-    """
+    """Evaluate an existing portfolio position and recommend action."""
     symbol = row.get("symbol", "")
     entry_price = float(row.get("avg_price", 0.0))
     curr_price = float(tech_data.get("current_price") or row.get("market_price", entry_price))
@@ -35,127 +151,13 @@ def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict | None 
     atr = float(tech_data.get("atr") or tech_data.get("atr14") or 0.0)
     ma20 = float(tech_data.get("ma20") or curr_price)
 
-    # 1. KỊCH BẢN VỊ THẾ CÓ LÃI (P/L > 0)
     if pl_pct > 0:
-        # Ngưỡng trần tối đa cho Trailing Stop (Bắt buộc nhỏ hơn Current Price ít nhất 3.5% - 4.5%)
-        max_allowed_stop = round(curr_price * 0.96, 2)
-
-        # Tính toán mốc Trailing Stop lý tưởng
-        if pl_pct >= 15.0:
-            # Lãi lớn (>= 15%): Nâng trailing stop khóa lợi nhuận (tối thiểu entry * 1.05 hoặc bám MA20)
-            candidate_stop = max(
-                entry_price * 1.06,
-                (curr_price - (1.2 * atr)) if atr > 0 else (curr_price * 0.95),
-                ma20 * 0.98
-            )
-        elif pl_pct >= 5.0:
-            # Lãi vừa (5% - 15%): Khóa lãi hòa vốn + chi phí (entry * 1.02)
-            candidate_stop = max(
-                entry_price * 1.02,
-                (curr_price - (1.5 * atr)) if atr > 0 else (curr_price * 0.94)
-            )
-        else:
-            # Lãi nhẹ (< 5%): Hòa vốn
-            candidate_stop = entry_price
-
-        # VALIDATION CLAMP BẮT BUỘC: Trailing Stop PHẢI < curr_price
-        trailing_stop = min(candidate_stop, max_allowed_stop)
-        trailing_stop = round(float(trailing_stop), 2)
-
-        if pl_pct >= 20.0:
-            action = "🟢 BẢO VỆ THÀNH QUẢ / HIỆN THỰC HÓA LỢI NHUẬN"
-            detail = (
-                f"Cổ phiếu đang có tỷ suất sinh lời xuất sắc (+{pl_pct:.1f}%). "
-                f"Khuyến nghị: Hiện thực hóa 30-50% lợi nhuận, nâng mốc Trailing Stop lên {trailing_stop:.2f}k "
-                f"để gồng lãi phần còn lại mà không sợ mất thành quả."
-            )
-        elif pl_pct >= 8.0:
-            action = "🟢 TIẾP TỤC NẮM GIỮ / NÂNG TRAILING STOP"
-            detail = (
-                f"Vị thế lãi tốt (+{pl_pct:.1f}%). Khuyến nghị: Tiếp tục gồng lãi xu hướng, "
-                f"đặt mốc Trailing Stop chặn lãi cứng tại {trailing_stop:.2f}k. Nếu giá vi phạm thủng mốc này mới chốt."
-            )
-        else:
-            action = "🟢 NẮM GIỮ / THEO DÕI ĐÀ TĂNG"
-            detail = (
-                f"Vị thế có lãi nhẹ (+{pl_pct:.1f}%). Tiếp tục nắm giữ, "
-                f"đặt mốc chặn lãi hòa vốn tại {trailing_stop:.2f}k."
-            )
-
-        return {
-            "symbol": symbol,
-            "status": "PROFITABLE",
-            "entry_price": entry_price,
-            "curr_price": curr_price,
-            "pl_pct": round(pl_pct, 2),
-            "pl_val": round(pl_val, 0),
-            "action": action,
-            "detail": detail,
-            "trailing_stop": trailing_stop,
-            "is_profit": True,
-            "thesis_breaker": "N/A (Vị thế đang thắng thế, không có rủi ro vỡ luận điểm)"
-        }
-
-    # 2. KỊCH BẢN VỊ THẾ ĐANG LỖ (P/L <= 0)
-    else:
-        loss_pct = abs(pl_pct)
-        # Tính Stop-loss kỹ thuật
-        if atr and atr > 0:
-            tech_stop = curr_price - (2.0 * atr)
-            stop_loss = max(tech_stop, entry_price * 0.93)
-        else:
-            stop_loss = entry_price * 0.93
-
-        # Đảm bảo Stop-loss < curr_price
-        stop_loss = min(round(float(stop_loss), 2), round(curr_price * 0.97, 2))
-
-        # Kiểm tra Thesis Breaker (Luận điểm đầu tư cơ bản)
-        thesis_intact = True
-        thesis_msg = "Luận điểm tăng trưởng doanh nghiệp cốt lõi vẫn được bảo toàn."
-
-        if fin_dict:
-            f_score = calculate_piotroski_f_score(fin_dict, sector).get("score", 6)
-            z_data = calculate_altman_z_score(fin_dict, sector)
-            if f_score < 4 or "ĐỎ" in z_data.get("zone", ""):
-                thesis_intact = False
-                thesis_msg = "CẢNH BÁO: BCTC suy giảm nghiêm trọng hoặc đòn bẩy quá cao (Thesis Breaker bị kích hoạt!)."
-
-        if thesis_intact:
-            if loss_pct <= 5.0:
-                action = "🟡 THEO DÕI BIẾN ĐỘNG / GIỮ VỊ THẾ DÀI HẠN"
-                detail = (
-                    f"Khoản lỗ nhẹ (-{loss_pct:.1f}%) nằm trong biên độ dao động thông thường của thị trường. "
-                    f"Luận điểm giá trị vẫn nguyên vẹn. Không hoảng loạn cắt lỗ máy móc."
-                )
-            elif loss_pct <= 8.0:
-                action = "🟡 QUẢN TRỊ RỦI RO / QUAN SÁT NGƯỠNG HỖ TRỢ"
-                detail = (
-                    f"Lỗ -{loss_pct:.1f}%. Nếu là vị thế lướt sóng T+, kích hoạt kỷ luật Stop-Loss tại {stop_loss:.2f}k. "
-                    f"Nếu là danh mục đầu tư giá trị, kiểm tra mốc cân bằng mới trước khi ra quyết định gom thêm."
-                )
-            else:
-                action = "🔴 CẮT LỖ KỸ THUẬT HOẶC HẠ TỶ TRỌNG"
-                detail = (
-                    f"Mức sụt giảm sâu (-{loss_pct:.1f}%). Khuyến nghị dứt khoát hạ tỷ trọng bảo vệ vốn, "
-                    f"ngưỡng Stop-loss đã bị vi phạm tại {stop_loss:.2f}k."
-                )
-        else:
-            action = "🔴 THOÁT VỊ THẾ (THESIS BREAKER KÍCH HOẠT)"
-            detail = f"Lỗ -{loss_pct:.1f}%. {thesis_msg} Cần dứt khoát cơ cấu thoát vốn sang mã có cơ bản vượt trội."
-
-        return {
-            "symbol": symbol,
-            "status": "LOSS",
-            "entry_price": entry_price,
-            "curr_price": curr_price,
-            "pl_pct": round(pl_pct, 2),
-            "pl_val": round(pl_val, 0),
-            "action": action,
-            "detail": detail,
-            "stop_loss": stop_loss,
-            "is_profit": False,
-            "thesis_breaker": thesis_msg
-        }
+        return _evaluate_profitable_holding(
+            symbol, entry_price, curr_price, volume, pl_pct, pl_val, atr, ma20
+        )
+    return _evaluate_losing_holding(
+        symbol, entry_price, curr_price, volume, pl_pct, pl_val, atr, fin_dict, sector
+    )
 
 
 def check_portfolio_concentration(

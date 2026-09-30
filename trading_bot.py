@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 # Guard against Windows AppLocker / WDAC blocking pyarrow DLL
 try:
     import pyarrow.compute  # noqa: F401
-except (ImportError, Exception):
+except Exception:
     import sys
     sys.modules["pyarrow"] = None
 

@@ -97,7 +97,7 @@ def extract_vnindex_summary(text: str) -> Dict[str, Any]:
             LOGGER.exception("Lỗi khi ép kiểu số liệu VN-Index")
 
     # Trích xuất đoạn văn diễn biến phiên
-    summary_match = re.search(r"(Phiên giao dịch ngày.*?)(HNX-Index|\(5\) Cá mập|\Z)", text, re.DOTALL)
+    summary_match = re.search(r"(Phiên giao dịch ngày.+?)(?:HNX-Index|\(5\) Cá mập|$)", text, re.DOTALL)
     if summary_match:
         raw_text = summary_match.group(1).strip()
         cleaned_summary = " ".join(raw_text.split())
@@ -179,7 +179,7 @@ def extract_buy_sell_signals(pages_text: List[str]) -> tuple[List[str], List[str
     if "Không có tín hiệu MUA" in full_text:
         buy_signals = []
     else:
-        buy_block = re.search(r"Danh mục cổ phiếu có tín hiệu MUA(.*?)(Danh mục cổ phiếu có tín hiệu BÁN|\Z)", full_text, re.DOTALL)
+        buy_block = re.search(r"Danh mục cổ phiếu có tín hiệu MUA(.+?)(?:Danh mục cổ phiếu có tín hiệu BÁN|$)", full_text, re.DOTALL)
         if buy_block:
             tickers = re.findall(r"\b[A-Z]{3}\b", buy_block.group(1))
             buy_signals = [t for t in tickers if t not in ["TCB", "VND", "MUA", "BAN", "NAV", "RSI", "MACD"]]
@@ -188,7 +188,7 @@ def extract_buy_sell_signals(pages_text: List[str]) -> tuple[List[str], List[str
     if "Không có tín hiệu BÁN" in full_text:
         sell_signals = []
     else:
-        sell_block = re.search(r"Danh mục cổ phiếu có tín hiệu BÁN(.*?)(Diễn giải|\(4\)|\Z)", full_text, re.DOTALL)
+        sell_block = re.search(r"Danh mục cổ phiếu có tín hiệu BÁN(.+?)(?:Diễn giải|\(4\)|$)", full_text, re.DOTALL)
         if sell_block:
             tickers = re.findall(r"\b[A-Z]{3}\b", sell_block.group(1))
             # Lọc bỏ stop words
@@ -204,7 +204,6 @@ def parse_tcbs_daily_report(pdf_path: Path) -> Dict[str, Any]:
         raise ValueError(f"Không thể đọc text từ PDF: {pdf_path}")
 
     first_page = pages_text[0]
-    full_text = "\n".join(pages_text)
 
     report_date = parse_date_from_filename_or_text(pdf_path.name, first_page)
     summary_data = extract_vnindex_summary(first_page)
@@ -272,7 +271,7 @@ def run_parse_daily_pipeline(
         LOGGER.warning("Thư mục %s không tồn tại", ptkt_dir)
         return None
 
-    pdf_files = sorted(list(ptkt_dir.glob("*.pdf")), key=lambda p: p.name, reverse=True)
+    pdf_files = sorted(ptkt_dir.glob("*.pdf"), key=lambda p: p.name, reverse=True)
     if not pdf_files:
         LOGGER.warning("Không tìm thấy file PDF nào trong %s", ptkt_dir)
         return None

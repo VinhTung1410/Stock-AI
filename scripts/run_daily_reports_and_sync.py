@@ -13,7 +13,7 @@ if sys.platform == "win32":
 # Guard against Windows AppLocker / WDAC blocking pyarrow DLL
 try:
     import pyarrow.compute  # noqa: F401
-except (ImportError, Exception):
+except Exception:
     sys.modules["pyarrow"] = None
 
 # Add parent directory to path
