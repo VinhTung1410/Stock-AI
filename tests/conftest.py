@@ -1,4 +1,5 @@
 """Stock-AI test suite configuration."""
+
 import os
 import sys
 from unittest.mock import patch
@@ -28,9 +29,11 @@ def prevent_accidental_db_writes(request):
         return
 
     try:
-        with patch("db_manager.save_quant_signal", return_value=999999), \
-             patch("db_manager.save_decision_record", return_value=True), \
-             patch("db_manager.save_signal_lifecycle", return_value=True):
+        with (
+            patch("db_manager.save_quant_signal", return_value=999999),
+            patch("db_manager.save_decision_record", return_value=True),
+            patch("db_manager.save_signal_lifecycle", return_value=True),
+        ):
             yield
     except ImportError:
         yield

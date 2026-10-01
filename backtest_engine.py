@@ -175,7 +175,7 @@ def check_hose_ceiling_unfilled(
 
 def calculate_slippage_price(price: float, is_buy: bool, slippage_bps: float) -> float:
     """Apply adverse slippage in basis points to theoretical price."""
-    bps_factor = (slippage_bps / 10000.0)
+    bps_factor = slippage_bps / 10000.0
     if is_buy:
         return price * (1.0 + bps_factor)
     return price * (1.0 - bps_factor)
@@ -214,10 +214,9 @@ def calculate_dynamic_slippage_bps(
     if adv20_billion > 0:
         order_pct_adv = order_size_billion / adv20_billion
         if order_pct_adv > 0.05:
-            base_bps *= (1.0 + order_pct_adv * 3.0)
+            base_bps *= 1.0 + order_pct_adv * 3.0
 
     return min(round(base_bps, 2), 200.0)
-
 
 
 def can_execute_t_plus_2(entry_idx: int, current_idx: int) -> bool:
@@ -614,8 +613,6 @@ def generate_signals_by_strategy(
     )
 
 
-
-
 class RegimeBacktestEngine:
     """Deterministic Simulation Engine executing long-only strategies on Vietnam market."""
 
@@ -650,7 +647,7 @@ class RegimeBacktestEngine:
         active_trade.mfe_pct = max(active_trade.mfe_pct, pnl_from_entry)
         active_trade.mae_pct = min(active_trade.mae_pct, pnl_from_entry)
 
-        stop_loss_hit = (pnl_from_entry <= -7.0)
+        stop_loss_hit = pnl_from_entry <= -7.0
         is_exit = (curr_sig == -1) or stop_loss_hit or (i == total_bars - 1)
 
         if not (can_execute_t_plus_2(entry_idx, i) and is_exit):
@@ -718,7 +715,7 @@ class RegimeBacktestEngine:
 
         entry_val = fill_entry * shares
         entry_fee = entry_val * self.fee_rate
-        cash -= (entry_val + entry_fee)
+        cash -= entry_val + entry_fee
 
         active_trade = TradeRecord(
             symbol=symbol,
@@ -809,13 +806,10 @@ class RegimeBacktestEngine:
 
         for i in range(total_bars):
             curr_date = df_price.index[i]
-            bar_ctx = self._resolve_bar_context(
-                i, close, open_p, signals, regimes, enforce_regime_gate
-            )
+            bar_ctx = self._resolve_bar_context(i, close, open_p, signals, regimes, enforce_regime_gate)
 
             active_trade, cash, entry_idx = self._execute_bar_transition(
-                i, curr_date, bar_ctx, (active_trade, cash, entry_idx),
-                total_bars, adv20, symbol, trades
+                i, curr_date, bar_ctx, (active_trade, cash, entry_idx), total_bars, adv20, symbol, trades
             )
 
             curr_close = bar_ctx[0]
@@ -1339,7 +1333,13 @@ def simulate_exit_policy(
 def _compute_policy_summary(results: list[dict[str, Any]]) -> dict[str, Any]:
     """Helper calculating performance summary for a policy result set."""
     if not results:
-        return {"expectancy_r": 0.0, "win_rate_pct": 0.0, "total_pnl_pct": 0.0, "max_drawdown_pct": 0.0, "avg_bars": 0.0}
+        return {
+            "expectancy_r": 0.0,
+            "win_rate_pct": 0.0,
+            "total_pnl_pct": 0.0,
+            "max_drawdown_pct": 0.0,
+            "avg_bars": 0.0,
+        }
     r_vals = [r["r_multiple"] for r in results]
     pnl_vals = [r["pnl_pct"] for r in results]
     bars = [r["holding_bars"] for r in results]
@@ -1442,6 +1442,3 @@ def run_exit_hypothesis_lab(
         "policies": summaries,
         "paired_bootstrap": paired_bootstrap_res,
     }
-
-
-

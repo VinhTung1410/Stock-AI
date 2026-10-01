@@ -10,6 +10,7 @@ Tests cover:
 - Market regime risk budgeting
 - Full portfolio sanity check engine
 """
+
 import pandas as pd
 import pytest
 
@@ -54,9 +55,7 @@ class TestTrailingStop:
         pos = evaluate_holding_position(row, tech_data)
 
         # Trailing stop must be < current price
-        assert pos["trailing_stop"] < 12.80, (
-            f"Trailing Stop ({pos['trailing_stop']}) >= Current (12.80)"
-        )
+        assert pos["trailing_stop"] < 12.80, f"Trailing Stop ({pos['trailing_stop']}) >= Current (12.80)"
         # Must be clamped to at most 96% of current price
         assert pos["trailing_stop"] <= round(12.80 * 0.96, 2)
 
@@ -66,9 +65,7 @@ class TestTrailingStop:
 
         pos = evaluate_holding_position(row, tech_data)
 
-        assert "cắt lỗ" not in pos["detail"].lower(), (
-            "Profitable position must not use 'cut loss' wording"
-        )
+        assert "cắt lỗ" not in pos["detail"].lower(), "Profitable position must not use 'cut loss' wording"
         assert "cắt lỗ" not in pos["action"].lower()
 
 
@@ -93,9 +90,7 @@ class TestValueVsTechnical:
 
         assert "TRÁNH BẪY" not in gate["decision_tag"]
         assert "BẪY" not in gate["decision_tag"]
-        assert "THEO DÕI" in gate["action_state"], (
-            f"Expected WATCH state, got: {gate['action_state']}"
-        )
+        assert "THEO DÕI" in gate["action_state"], f"Expected WATCH state, got: {gate['action_state']}"
 
 
 @pytest.mark.offline
@@ -105,9 +100,7 @@ class TestValuation:
     def test_vic_uses_sotp_methodology(self):
         val = calculate_fair_value_and_mos("VIC", current_price=42.0)
 
-        assert "SOTP" in val.get("valuation_method", ""), (
-            "VIC (real estate conglomerate) must use SOTP/RNAV model"
-        )
+        assert "SOTP" in val.get("valuation_method", ""), "VIC (real estate conglomerate) must use SOTP/RNAV model"
         assert val.get("confidence") in ["HIGH", "MEDIUM", "LOW"]
         assert val.get("price_target") is not None
 
@@ -139,26 +132,28 @@ class TestSanityCheckEngine:
     """Run the full sanity check engine on a mock portfolio."""
 
     def test_clean_portfolio_passes(self):
-        df_portfolio = pd.DataFrame([
-            {
-                "symbol": "MSB",
-                "market_price": 12.80,
-                "avg_cost": 12.42,
-                "pnl_pct": 3.06,
-                "trailing_stop": 12.28,
-                "action": "NẮM GIỮ",
-                "note": "Bảo toàn lợi nhuận, nâng trailing stop lên 12.28k.",
-            },
-            {
-                "symbol": "FPT",
-                "market_price": 135.0,
-                "avg_cost": 130.0,
-                "pnl_pct": 3.85,
-                "trailing_stop": 129.5,
-                "action": "NẮM GIỮ",
-                "note": "Xu hướng tăng duy trì tốt.",
-            },
-        ])
+        df_portfolio = pd.DataFrame(
+            [
+                {
+                    "symbol": "MSB",
+                    "market_price": 12.80,
+                    "avg_cost": 12.42,
+                    "pnl_pct": 3.06,
+                    "trailing_stop": 12.28,
+                    "action": "NẮM GIỮ",
+                    "note": "Bảo toàn lợi nhuận, nâng trailing stop lên 12.28k.",
+                },
+                {
+                    "symbol": "FPT",
+                    "market_price": 135.0,
+                    "avg_cost": 130.0,
+                    "pnl_pct": 3.85,
+                    "trailing_stop": 129.5,
+                    "action": "NẮM GIỮ",
+                    "note": "Xu hướng tăng duy trì tốt.",
+                },
+            ]
+        )
 
         all_passed, issues, _ = run_full_portfolio_sanity_check(df_portfolio)
         assert all_passed is True, f"Sanity check failed: {issues}"

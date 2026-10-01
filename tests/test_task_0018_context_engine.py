@@ -58,15 +58,19 @@ class TestManifestManagement:
     def test_update_manifests_after_processing(self, tmp_path):
         dummy_manifest = tmp_path / "manifest.json"
         dummy_manifest.write_text(
-            json.dumps({
-                "last_updated": "2026-09-30T00:00:00Z",
-                "files": [{"filename": "sample.pdf", "processed": False, "context_output": None}]
-            }),
-            encoding="utf-8"
+            json.dumps(
+                {
+                    "last_updated": "2026-09-30T00:00:00Z",
+                    "files": [{"filename": "sample.pdf", "processed": False, "context_output": None}],
+                }
+            ),
+            encoding="utf-8",
         )
 
-        with mock.patch("scripts.parse_daily_reports.DEFAULT_MANIFEST_FILE", dummy_manifest), \
-             mock.patch("scripts.parse_daily_reports.DEFAULT_PTKT_MANIFEST", dummy_manifest):
+        with (
+            mock.patch("scripts.parse_daily_reports.DEFAULT_MANIFEST_FILE", dummy_manifest),
+            mock.patch("scripts.parse_daily_reports.DEFAULT_PTKT_MANIFEST", dummy_manifest),
+        ):
             update_manifests_after_processing("sample.pdf", Path("data/market_context.json"))
 
         updated_data = json.loads(dummy_manifest.read_text(encoding="utf-8"))
@@ -253,7 +257,7 @@ class TestPromptSnippetFormatting:
             buy_signals=[],
             sell_signals=["CMG"],
             raw_summary="VN-Index chịu áp lực bán ròng mạnh.",
-            is_valid=True
+            is_valid=True,
         )
 
         snippet = build_context_prompt_snippet(ctx, code_regime="UPTREND")
@@ -279,7 +283,7 @@ class TestDispatcherAndAiAnalystIntegration:
             analyst_context_used=True,
             regime_conflict=True,
             context_source_file="20260930_BC_PTKT.pdf",
-            context_date="2026-09-30"
+            context_date="2026-09-30",
         )
         data = event.to_dict()
         assert data["analyst_context_used"] is True
@@ -292,18 +296,22 @@ class TestDispatcherAndAiAnalystIntegration:
             from ai_analyst import analyze_stock_with_smart_committee
         except ImportError as err:
             if "pyarrow" in str(err) or "_compute" in str(err):
-                pytest.skip("Bỏ qua trên môi trường local do Windows AppLocker chặn pyarrow DLL. CI/CD Linux sẽ thực thi 100%.")
+                pytest.skip(
+                    "Bỏ qua trên môi trường local do Windows AppLocker chặn pyarrow DLL. CI/CD Linux sẽ thực thi 100%."
+                )
             raise
 
-        with mock.patch("ai_analyst.call_gemini") as mock_call_gemini, \
-             mock.patch("context_engine.load_market_context") as mock_load_ctx:
+        with (
+            mock.patch("ai_analyst.call_gemini") as mock_call_gemini,
+            mock.patch("context_engine.load_market_context") as mock_load_ctx,
+        ):
             mock_load_ctx.return_value = MarketContext(
                 date="2026-09-30",
                 source="TCBS",
                 source_file="20260930_BC_PTKT.pdf",
                 market_regime_analyst="DOWNTREND",
                 sentiment="BEARISH",
-                is_valid=True
+                is_valid=True,
             )
             mock_call_gemini.return_value = (
                 "=== BƯỚC 1: ĐÁNH GIÁ CƠ BẢN ===\nFA VIEW: BULLISH\n"
@@ -325,17 +333,13 @@ class TestDispatcherAndAiAnalystIntegration:
                 "status_ma20": "UPTREND",
                 "adv20_billion": 50.0,
                 "foreign_flow": {"net_vol": 100000},
-                "trap_info": {"is_trap": False}
+                "trap_info": {"is_trap": False},
             }
-            fin_data = {
-                "symbol": "FPT",
-                "period": "Q2/2026",
-                "roe": 0.25,
-                "net_margin": 0.18,
-                "debt_to_equity": 0.4
-            }
+            fin_data = {"symbol": "FPT", "period": "Q2/2026", "roe": 0.25, "net_margin": 0.18, "debt_to_equity": 0.4}
 
-            res = analyze_stock_with_smart_committee(symbol="FPT", tech_data=tech_data, fin_data=fin_data, news_items=[])
+            res = analyze_stock_with_smart_committee(
+                symbol="FPT", tech_data=tech_data, fin_data=fin_data, news_items=[]
+            )
             assert res["status"] == "SUCCESS"
             assert res["analyst_context_used"] is True
             assert res["regime_conflict"] is True  # Code UPTREND vs TCBS DOWNTREND

@@ -276,4 +276,3 @@ def test_breakdown_by_regime_with_unaligned_benchmark_and_regimes():
     assert REGIME_SIDEWAYS in breakdown
     assert breakdown[REGIME_UPTREND]["total_trades"] == 1
     assert breakdown[REGIME_DOWNTREND]["total_trades"] == 0
-

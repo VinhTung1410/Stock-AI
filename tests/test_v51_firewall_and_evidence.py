@@ -153,20 +153,20 @@ class TestPhase1EvidenceAndQuantMetrics:
             {
                 "entry_price": 100.0,
                 "initial_stop_price": 95.0,  # 5% initial risk
-                "stop_loss_price": 98.0,     # Trailed stop (should NOT affect R-multiple)
-                "pnl_pct": 10.0,             # R = 10 / 5 = +2.0 R
+                "stop_loss_price": 98.0,  # Trailed stop (should NOT affect R-multiple)
+                "pnl_pct": 10.0,  # R = 10 / 5 = +2.0 R
             },
             {
                 "entry_price": 50.0,
                 "initial_stop_price": 46.0,  # 8% initial risk
                 "stop_loss_price": 46.0,
-                "pnl_pct": -8.0,             # R = -8 / 8 = -1.0 R
+                "pnl_pct": -8.0,  # R = -8 / 8 = -1.0 R
             },
             {
                 "entry_price": 80.0,
                 "initial_stop_price": 76.0,  # 5% initial risk
                 "stop_loss_price": 76.0,
-                "pnl_pct": 15.0,             # R = 15 / 5 = +3.0 R
+                "pnl_pct": 15.0,  # R = 15 / 5 = +3.0 R
             },
         ]
         metrics = calculate_signal_performance_metrics(trades, cagr_pct=18.5, sharpe_ratio=1.4)
@@ -179,7 +179,7 @@ class TestPhase1EvidenceAndQuantMetrics:
         # Avg R = (2.0 + (-1.0) + 3.0) / 3 = 4.0 / 3 = 1.33
         assert round(metrics["avg_r_multiple"], 2) == 1.33
         assert metrics["meets_hurdle_rate"] is True  # 18.5% > 4.5%
-        assert metrics["acceptable_sharpe"] is True   # 1.4 >= 0.5
+        assert metrics["acceptable_sharpe"] is True  # 1.4 >= 0.5
         assert metrics["statistically_reliable"] is False  # 3 < 30
 
     def test_effective_sample_size_calculation(self):

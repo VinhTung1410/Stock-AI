@@ -7,6 +7,7 @@ import requests
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -31,10 +32,7 @@ def send_discord_dm(content: str = None, embeds: list = None) -> bool:
         logging.warning("Chưa cấu hình DISCORD_BOT_TOKEN hoặc DISCORD_USER_ID trong .env!")
         return False
 
-    headers = {
-        "Authorization": f"Bot {DISCORD_BOT_TOKEN}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Bot {DISCORD_BOT_TOKEN}", "Content-Type": "application/json"}
 
     try:
         # Bước 1: Mở kênh DM với User ID
@@ -42,7 +40,7 @@ def send_discord_dm(content: str = None, embeds: list = None) -> bool:
             "https://discord.com/api/v10/users/@me/channels",
             headers=headers,
             json={"recipient_id": DISCORD_USER_ID},
-            timeout=10
+            timeout=10,
         )
         if dm_res.status_code != 200:
             logging.error(f"Lỗi khi mở kênh DM: {dm_res.status_code} - {dm_res.text}")
@@ -66,7 +64,7 @@ def send_discord_dm(content: str = None, embeds: list = None) -> bool:
                     f"https://discord.com/api/v10/channels/{channel_id}/messages",
                     headers=headers,
                     json={"embeds": [emb]},
-                    timeout=10
+                    timeout=10,
                 )
                 if msg_res.status_code not in [200, 201]:
                     logging.error(f"Lỗi khi gửi Embed DM: {msg_res.status_code} - {msg_res.text}")
@@ -75,13 +73,13 @@ def send_discord_dm(content: str = None, embeds: list = None) -> bool:
 
         if content:
             # Tự động chia nhỏ tin nhắn nếu dài hơn 1900 ký tự (tránh giới hạn 2000 ký tự của Discord)
-            chunks = [content[i:i+1900] for i in range(0, len(content), 1900)]
+            chunks = [content[i : i + 1900] for i in range(0, len(content), 1900)]
             for chunk in chunks:
                 msg_res = requests.post(
                     f"https://discord.com/api/v10/channels/{channel_id}/messages",
                     headers=headers,
                     json={"content": chunk},
-                    timeout=10
+                    timeout=10,
                 )
                 if msg_res.status_code not in [200, 201]:
                     logging.error(f"Lỗi khi gửi text DM: {msg_res.status_code} - {msg_res.text}")
@@ -130,7 +128,7 @@ def send_discord_webhook(content: str = None, embeds: list = None) -> bool:
 
 def send_discord_message(content: str = None, embeds: list = None) -> bool:
     """
-    Gửi thông báo tự động: Ưu tiên gửi qua Webhook vào Kênh chung nếu có, 
+    Gửi thông báo tự động: Ưu tiên gửi qua Webhook vào Kênh chung nếu có,
     nếu không có Webhook thì fallback gửi vào tin nhắn riêng (DM), không bao giờ gửi trùng 2 lần.
     """
     if DISCORD_WEBHOOK_URL:
@@ -140,7 +138,6 @@ def send_discord_message(content: str = None, embeds: list = None) -> bool:
     else:
         logging.warning("Chưa cấu hình cả Webhook lẫn Bot Token trong .env!")
         return False
-
 
 
 def _slice_long_content(content: str, max_chars: int = 1000) -> list[str]:
@@ -180,10 +177,12 @@ def split_ai_summary_into_fields(ai_summary: str) -> list:
     """
     try:
         from ai_analyst import sanitize_ai_text
+
         ai_summary = sanitize_ai_text(ai_summary)
     except Exception:
         pass
     import re
+
     clean_text = ai_summary.replace("### ", "").replace("## ", "").strip()
     raw_lines = clean_text.split("\n")
 
@@ -194,7 +193,7 @@ def split_ai_summary_into_fields(ai_summary: str) -> list:
 
     # Regex nhận diện tiêu đề mục lớn & tiểu mục (hỗ trợ số La Mã I-X hoặc ký tự A-D kèm emoji đầu/sau, in đậm markdown)
     # Hỗ trợ dấu ':' trong tiêu đề như (11:30) mà không bị cắt cụt
-    header_pattern = re.compile(r'^[#*>\s]*(?:[^\w\s]{1,3}\s*)?((?:[IVX]+|[A-D])\.\s+[^\n*]+)', re.IGNORECASE)
+    header_pattern = re.compile(r"^[#*>\s]*(?:[^\w\s]{1,3}\s*)?((?:[IVX]+|[A-D])\.\s+[^\n*]+)", re.IGNORECASE)
 
     for line in raw_lines:
         line_s = line.strip()
@@ -322,57 +321,71 @@ def _format_execution_fields(
 ) -> list[dict[str, Any]]:
     fields = []
     if entry_range and len(entry_range) == 2:
-        fields.append({
-            "name": "🎯 Vùng gom mua tối ưu",
-            "value": f"`{entry_range[0]:,.2f} - {entry_range[1]:,.2f} k VND`",
-            "inline": True,
-        })
+        fields.append(
+            {
+                "name": "🎯 Vùng gom mua tối ưu",
+                "value": f"`{entry_range[0]:,.2f} - {entry_range[1]:,.2f} k VND`",
+                "inline": True,
+            }
+        )
     else:
-        fields.append({
-            "name": "💵 Thị giá hiện tại",
-            "value": f"`{current_price:,.2f} k VND`",
-            "inline": True,
-        })
+        fields.append(
+            {
+                "name": "💵 Thị giá hiện tại",
+                "value": f"`{current_price:,.2f} k VND`",
+                "inline": True,
+            }
+        )
 
     if target_price:
         t1_label = "🚀 Giá mục tiêu T1" if target_price_t2 else "🚀 Giá mục tiêu (Target)"
         t1_pct = ((target_price - current_price) / current_price) * 100 if current_price > 0 else 0.0
-        fields.append({
-            "name": t1_label,
-            "value": f"`{target_price:,.2f} k` (**{t1_pct:+.1f}%**)",
-            "inline": True,
-        })
+        fields.append(
+            {
+                "name": t1_label,
+                "value": f"`{target_price:,.2f} k` (**{t1_pct:+.1f}%**)",
+                "inline": True,
+            }
+        )
 
     if target_price_t2:
         t2_pct = ((target_price_t2 - current_price) / current_price) * 100 if current_price > 0 else 0.0
-        fields.append({
-            "name": "💎 Giá mục tiêu T2 (Fair Value)",
-            "value": f"`{target_price_t2:,.2f} k` (**{t2_pct:+.1f}%**)",
-            "inline": True,
-        })
+        fields.append(
+            {
+                "name": "💎 Giá mục tiêu T2 (Fair Value)",
+                "value": f"`{target_price_t2:,.2f} k` (**{t2_pct:+.1f}%**)",
+                "inline": True,
+            }
+        )
 
     if stop_loss:
         sl_pct = ((stop_loss - current_price) / current_price) * 100 if current_price > 0 else 0.0
-        fields.append({
-            "name": "🛡️ Ngưỡng cắt lỗ (Stop Loss)",
-            "value": f"`{stop_loss:,.2f} k` (**{sl_pct:+.1f}%**)",
-            "inline": True,
-        })
+        fields.append(
+            {
+                "name": "🛡️ Ngưỡng cắt lỗ (Stop Loss)",
+                "value": f"`{stop_loss:,.2f} k` (**{sl_pct:+.1f}%**)",
+                "inline": True,
+            }
+        )
 
     if risk_reward:
         rr_icon = "⭐" if risk_reward >= 2.0 else "⚠️"
-        fields.append({
-            "name": f"{rr_icon} Tỷ lệ R:R",
-            "value": f"`{risk_reward:.2f}x` (Chuẩn Quỹ ≥ 2.0x)",
-            "inline": True,
-        })
+        fields.append(
+            {
+                "name": f"{rr_icon} Tỷ lệ R:R",
+                "value": f"`{risk_reward:.2f}x` (Chuẩn Quỹ ≥ 2.0x)",
+                "inline": True,
+            }
+        )
 
     if position_size_nav:
-        fields.append({
-            "name": "⚖️ Tỷ trọng đề xuất (Half-Kelly)",
-            "value": f"`{position_size_nav}`",
-            "inline": True,
-        })
+        fields.append(
+            {
+                "name": "⚖️ Tỷ trọng đề xuất (Half-Kelly)",
+                "value": f"`{position_size_nav}`",
+                "inline": True,
+            }
+        )
 
     return fields
 
@@ -385,11 +398,13 @@ def _format_quant_fields(
     fields = []
     if conviction_score is not None:
         tier_label = "💎 HIGH CONVICTION" if conviction_score >= 70 else "🎯 MEDIUM CONVICTION"
-        fields.append({
-            "name": "⭐ Điểm tin cậy (Conviction)",
-            "value": f"**{conviction_score:.0f}/100** ({tier_label})",
-            "inline": True,
-        })
+        fields.append(
+            {
+                "name": "⭐ Điểm tin cậy (Conviction)",
+                "value": f"**{conviction_score:.0f}/100** ({tier_label})",
+                "inline": True,
+            }
+        )
 
     if quant_metrics:
         f_score = quant_metrics.get("f_score")
@@ -411,18 +426,22 @@ def _format_quant_fields(
             metrics_items.append(f"• **RSI(14):** `{rsi_val:.1f}`")
 
         if metrics_items:
-            fields.append({
-                "name": "🔬 Bảo chứng Định lượng (Quant Proof)",
-                "value": "\n".join(metrics_items),
-                "inline": False,
-            })
+            fields.append(
+                {
+                    "name": "🔬 Bảo chứng Định lượng (Quant Proof)",
+                    "value": "\n".join(metrics_items),
+                    "inline": False,
+                }
+            )
 
     if trigger_reason:
-        fields.append({
-            "name": "🎯 Lý do kích hoạt",
-            "value": f"`{trigger_reason}`",
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": "🎯 Lý do kích hoạt",
+                "value": f"`{trigger_reason}`",
+                "inline": False,
+            }
+        )
 
     return fields
 
@@ -437,18 +456,22 @@ def _format_thesis_fields(
             cat_text = "\n".join([f"• {c}" for c in catalysts])
         else:
             cat_text = str(catalysts)
-        fields.append({
-            "name": "💡 Luận điểm Xúc tác (Catalysts)",
-            "value": cat_text[:1000],
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": "💡 Luận điểm Xúc tác (Catalysts)",
+                "value": cat_text[:1000],
+                "inline": False,
+            }
+        )
 
     if thesis_breaker:
-        fields.append({
-            "name": "⚠️ Kịch bản Vô hiệu hóa (Thesis Breaker)",
-            "value": f"`{thesis_breaker[:500]}`",
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": "⚠️ Kịch bản Vô hiệu hóa (Thesis Breaker)",
+                "value": f"`{thesis_breaker[:500]}`",
+                "inline": False,
+            }
+        )
     return fields
 
 
@@ -489,15 +512,19 @@ def send_trade_signal_alert(
         risk_reward=risk_reward,
         position_size_nav=position_size_nav,
     )
-    fields.extend(_format_quant_fields(
-        quant_metrics=quant_metrics,
-        trigger_reason=trigger_reason,
-        conviction_score=conviction_score,
-    ))
-    fields.extend(_format_thesis_fields(
-        catalysts=catalysts,
-        thesis_breaker=thesis_breaker,
-    ))
+    fields.extend(
+        _format_quant_fields(
+            quant_metrics=quant_metrics,
+            trigger_reason=trigger_reason,
+            conviction_score=conviction_score,
+        )
+    )
+    fields.extend(
+        _format_thesis_fields(
+            catalysts=catalysts,
+            thesis_breaker=thesis_breaker,
+        )
+    )
 
     embed = {
         "title": f"{icon} [DM RIÊNG] TÍN HIỆU {action_str}: {symbol.upper()}",
@@ -516,7 +543,9 @@ def send_trade_signal_alert(
     if DISCORD_BOT_TOKEN and DISCORD_USER_ID:
         return send_discord_dm(embeds=[embed])
     else:
-        logging.warning("Chưa cấu hình DISCORD_BOT_TOKEN hoặc DISCORD_USER_ID để gửi DM! Tạm thời fallback sang Webhook...")
+        logging.warning(
+            "Chưa cấu hình DISCORD_BOT_TOKEN hoặc DISCORD_USER_ID để gửi DM! Tạm thời fallback sang Webhook..."
+        )
         return send_discord_webhook(embeds=[embed])
 
 
@@ -567,8 +596,8 @@ def send_regime_circuit_breaker_alert(
         "**HÀNH ĐỘNG BẮT BUỘC (CASH MODE):**\n"
         "• Khóa 100% lệnh mua mới để tránh rủi ro 'bắt dao rơi'.\n"
         "• Ưu tiên bảo toàn vốn, hạ margin và kích hoạt Stop Loss dứt khoát nếu vi phạm."
-        if is_downtrend else
-        "**HÀNH ĐỘNG:**\n"
+        if is_downtrend
+        else "**HÀNH ĐỘNG:**\n"
         "• Thị trường đã lấy lại xu hướng tăng/cân bằng. Mở lại luồng quét cơ hội mua theo định lượng."
     )
     vn_info = f" (VN-Index: `{vnindex_price:,.1f}`)" if vnindex_price else ""
@@ -675,7 +704,6 @@ def send_gemini_rate_limit_alert(current_rpm: int, dropped_symbols: list = None)
         return send_discord_dm(content=content, embeds=[embed])
     else:
         return send_discord_webhook(content=content, embeds=[embed])
-
 
 
 def _format_pruned_item_stats(curr_p: float, rsi: Any, mos: Any) -> str:

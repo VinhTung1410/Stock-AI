@@ -135,9 +135,7 @@ class TestPortfolioGuard:
         assert reason == "EXCEEDS_MAX_ADV20_ABSORPTION"
 
         # Order within limit
-        passed, allowed, reason = check_adv20_liquidity_absorption(
-            order_val_vnd=80_000_000, adv20_vnd=1_000_000_000
-        )
+        passed, allowed, reason = check_adv20_liquidity_absorption(order_val_vnd=80_000_000, adv20_vnd=1_000_000_000)
         assert passed is True
         assert allowed == 80_000_000
 

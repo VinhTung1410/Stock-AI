@@ -46,7 +46,9 @@ def run_simulation():
     opportunities = scan_market_opportunities(extra_symbols=tracked_symbols)
     for o in opportunities:
         status_tag = "✅ MUA" if o["status"] == "RECOMMEND_BUY" else "⚠️ THẬN TRỌNG"
-        print(f"  {status_tag} {o['symbol']} ({o.get('sector')}): {o.get('setup_type')} | Thị giá: {o['current_price']}k | Xúc tác: [{o.get('story_tag')}]")
+        print(
+            f"  {status_tag} {o['symbol']} ({o.get('sector')}): {o.get('setup_type')} | Thị giá: {o['current_price']}k | Xúc tác: [{o.get('story_tag')}]"
+        )
 
     print("\n📰 2. Thu thập tin tức vĩ mô & doanh nghiệp CafeF...")
     news = fetch_macro_news(limit=10, tracked_symbols=tracked_symbols)
@@ -56,9 +58,7 @@ def run_simulation():
 
     # Format embed for 08:45
     morning_embed = format_portfolio_embed(
-        df_eval,
-        morning_ai_text,
-        report_type="🌅 KHUYẾN NGHỊ ĐẦU NGÀY (08:45 - 11/09)"
+        df_eval, morning_ai_text, report_type="🌅 KHUYẾN NGHỊ ĐẦU NGÀY (08:45 - 11/09)"
     )
 
     print("\n📤 4. Bắn báo cáo 08:45 vào Discord (Kênh chung & DM cá nhân)...")
@@ -84,9 +84,7 @@ def run_simulation():
     afternoon_ai_text = generate_portfolio_analysis(df_eval, news, watchlist_df=df_wl)
 
     afternoon_embed = format_portfolio_embed(
-        df_eval,
-        afternoon_ai_text,
-        report_type="📊 BÁO CÁO TỔNG KẾT KẾT PHIÊN (15:00 - 11/09)"
+        df_eval, afternoon_ai_text, report_type="📊 BÁO CÁO TỔNG KẾT KẾT PHIÊN (15:00 - 11/09)"
     )
 
     print("📤 2. Bắn báo cáo 15:00 vào Discord (Kênh chung & DM cá nhân)...", flush=True)
@@ -103,7 +101,6 @@ def run_simulation():
     with open("report_afternoon_1500.md", "w", encoding="utf-8") as f:
         f.write("# BÁO CÁO TỔNG KẾT KẾT PHIÊN GIAO DỊCH (15:00 - 11/09)\n\n")
         f.write(afternoon_ai_text)
-
 
 
 if __name__ == "__main__":

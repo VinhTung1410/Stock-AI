@@ -103,7 +103,9 @@ class TestPhase5dPartialProfitLock:
 
     def test_partial_profit_lock_not_triggered(self):
         """When gain is below target_profit_pct (12%), partial take profit is False."""
-        res = evaluate_partial_profit_lock(entry_price=20.0, current_high=21.5, current_price=21.0, target_profit_pct=12.0)
+        res = evaluate_partial_profit_lock(
+            entry_price=20.0, current_high=21.5, current_price=21.0, target_profit_pct=12.0
+        )
         assert res["partial_take_profit"] is False
         assert res["lock_fraction"] == 0.0
         assert res["new_stop_price"] is None
@@ -111,7 +113,9 @@ class TestPhase5dPartialProfitLock:
 
     def test_partial_profit_lock_triggered(self):
         """When gain reaches or exceeds 12%, lock 50% profit and move stop to break-even."""
-        res = evaluate_partial_profit_lock(entry_price=20.0, current_high=23.0, current_price=22.4, target_profit_pct=12.0)
+        res = evaluate_partial_profit_lock(
+            entry_price=20.0, current_high=23.0, current_price=22.4, target_profit_pct=12.0
+        )
         assert res["partial_take_profit"] is True
         assert res["lock_fraction"] == 0.50
         assert res["new_stop_price"] == 20.0

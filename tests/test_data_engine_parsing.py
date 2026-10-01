@@ -46,12 +46,14 @@ class TestDataEngineParsing:
         assert "cost_price" in normalized.columns
 
     def test_parse_sheet_portfolio(self):
-        df = pd.DataFrame({
-            "symbol": ["FPT", "INVALID", "HPG"],
-            "volume": ["1,000", "500", "0"],
-            "cost_price": ["95.5", "20.0", "28.0"],
-            "note": ["Core holding", "Skip", "Zero vol"],
-        })
+        df = pd.DataFrame(
+            {
+                "symbol": ["FPT", "INVALID", "HPG"],
+                "volume": ["1,000", "500", "0"],
+                "cost_price": ["95.5", "20.0", "28.0"],
+                "note": ["Core holding", "Skip", "Zero vol"],
+            }
+        )
         portfolio = _parse_sheet_portfolio(df)
         assert len(portfolio) == 1
         assert portfolio[0]["symbol"] == "FPT"
@@ -59,24 +61,28 @@ class TestDataEngineParsing:
         assert portfolio[0]["cost_price"] == 95.5
 
     def test_parse_sheet_watchlist(self):
-        df = pd.DataFrame([
-            ["MSB", "14.5", "Chờ mua giá tốt"],
-            ["INVALID_CODE", "10.0", "Bỏ qua"],
-        ])
+        df = pd.DataFrame(
+            [
+                ["MSB", "14.5", "Chờ mua giá tốt"],
+                ["INVALID_CODE", "10.0", "Bỏ qua"],
+            ]
+        )
         watchlist = _parse_sheet_watchlist(df)
         assert len(watchlist) == 1
         assert watchlist[0]["symbol"] == "MSB"
         assert watchlist[0]["target_buy"] == 14.5
 
     def test_split_csv_rows(self):
-        df = pd.DataFrame({
-            "symbol": ["FPT", "SSI"],
-            "volume": ["1000", "0"],
-            "cost_price": ["90.0", "30.0"],
-            "target_buy": ["0", "28.5"],
-            "type": ["HOLDING", "WATCH"],
-            "note": ["Lãi tốt", "Theo dõi"],
-        })
+        df = pd.DataFrame(
+            {
+                "symbol": ["FPT", "SSI"],
+                "volume": ["1000", "0"],
+                "cost_price": ["90.0", "30.0"],
+                "target_buy": ["0", "28.5"],
+                "type": ["HOLDING", "WATCH"],
+                "note": ["Lãi tốt", "Theo dõi"],
+            }
+        )
         portfolio, watchlist = _split_csv_rows(df)
         assert len(portfolio) == 1
         assert portfolio[0]["symbol"] == "FPT"

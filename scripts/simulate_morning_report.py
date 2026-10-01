@@ -45,23 +45,23 @@ def run_morning_report():
     opportunities = scan_market_opportunities(extra_symbols=tracked_symbols)
     for o in opportunities:
         status_tag = "✅ MUA" if o["status"] == "RECOMMEND_BUY" else "⚠️ THẬN TRỌNG"
-        print(f"  {status_tag} {o['symbol']} ({o.get('sector')}): {o.get('setup_type')} | Thị giá: {o['current_price']}k | Xúc tác: [{o.get('story_tag')}]", flush=True)
+        print(
+            f"  {status_tag} {o['symbol']} ({o.get('sector')}): {o.get('setup_type')} | Thị giá: {o['current_price']}k | Xúc tác: [{o.get('story_tag')}]",
+            flush=True,
+        )
 
     print("\n📰 2. Thu thập tin tức vĩ mô & doanh nghiệp CafeF...", flush=True)
     news = fetch_macro_news(limit=10, tracked_symbols=tracked_symbols)
 
     print("\n🧠 3. AI Gemini đóng vai Giám đốc Chiến lược CTCK lập báo cáo ATO 08:45...", flush=True)
     import time
+
     start_t = time.time()
     morning_ai_text = generate_morning_strategy_report(df_eval, df_wl, opportunities, news)
     elapsed_t = time.time() - start_t
     print(f"  ⏱️ Thời gian tạo chiến lược ATO: {elapsed_t:.2f}s", flush=True)
 
-    morning_embed = format_portfolio_embed(
-        df_eval,
-        morning_ai_text,
-        report_type="🌅 CHIẾN LƯỢC ATO ĐẦU NGÀY (08:45)"
-    )
+    morning_embed = format_portfolio_embed(df_eval, morning_ai_text, report_type="🌅 CHIẾN LƯỢC ATO ĐẦU NGÀY (08:45)")
 
     print("\n📤 4. Bắn báo cáo ATO vào Discord (Kênh chung & DM cá nhân)...", flush=True)
     wh_res = send_discord_webhook(embeds=[morning_embed])

@@ -33,7 +33,7 @@ class TestPhase4E2ERegression:
             "change_pct": 1.79,
             "ma20": 27.5,
             "rsi14": 55.0,
-            "vol_ratio": 1.2
+            "vol_ratio": 1.2,
         }
         fin = {
             "roe": 22.5,
@@ -42,7 +42,7 @@ class TestPhase4E2ERegression:
             "pe": 12.0,
             "pb": 1.8,
             "latest_quarter": max(1, (datetime.now().month - 1) // 3),
-            "latest_year": datetime.now().year
+            "latest_year": datetime.now().year,
         }
         news = [{"title": "Lợi nhuận quý 1 tăng mạnh", "source": "CafeF", "tag": "KQKD"}]
 
@@ -71,12 +71,7 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
         mock_client.models.generate_content.return_value = mock_resp
 
         with patch("ai_analyst.get_ai_client", return_value=mock_client):
-            res = analyze_stock_with_smart_committee(
-                symbol="HPG",
-                tech_data=tech,
-                fin_data=fin,
-                news_items=news
-            )
+            res = analyze_stock_with_smart_committee(symbol="HPG", tech_data=tech, fin_data=fin, news_items=news)
 
         assert res["status"] == "SUCCESS"
         assert res["symbol"] == "HPG"
@@ -87,21 +82,12 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
 
     def test_e2e_corrupt_data_rejected_zero_token(self):
         """Fatal price conflict or exchange band breach is rejected with ZERO token call."""
-        corrupt_tech = {
-            "current_price": -10.0,
-            "close": -10.0,
-            "ref_price": 28.0
-        }
+        corrupt_tech = {"current_price": -10.0, "close": -10.0, "ref_price": 28.0}
 
         mock_client = MagicMock()
 
         with patch("ai_analyst.get_ai_client", return_value=mock_client):
-            res = analyze_stock_with_smart_committee(
-                symbol="BAD",
-                tech_data=corrupt_tech,
-                fin_data={},
-                news_items=[]
-            )
+            res = analyze_stock_with_smart_committee(symbol="BAD", tech_data=corrupt_tech, fin_data={}, news_items=[])
 
         assert res["status"] == "DATA_GATE_REJECTED"
         assert res["pm_decision"] == "INSUFFICIENT_DATA"
@@ -118,10 +104,7 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
         mock_resp.text = "BÁO CÁO ASYNC HỢP LỆ CHO MÃ **FPT**"
 
         mock_client.aio.models.generate_content = AsyncMock(
-            side_effect=[
-                TimeoutError("Connection timed out"),
-                mock_resp
-            ]
+            side_effect=[TimeoutError("Connection timed out"), mock_resp]
         )
 
         res = asyncio.run(async_call_gemini(mock_client, "Prompt test", max_retries=2, retry_delay=0.01))
@@ -139,12 +122,9 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
         mock_resp.text = "PM DECISION: ATTRACTIVE — Định giá tốt cho **FPT**"
         mock_client.aio.models.generate_content = AsyncMock(return_value=mock_resp)
 
-        res = asyncio.run(async_analyze_stock_with_smart_committee(
-            symbol="FPT",
-            tech_data=tech,
-            fin_data=fin,
-            client=mock_client
-        ))
+        res = asyncio.run(
+            async_analyze_stock_with_smart_committee(symbol="FPT", tech_data=tech, fin_data=fin, client=mock_client)
+        )
 
         assert res["status"] == "SUCCESS"
         assert res["symbol"] == "FPT"
@@ -161,14 +141,12 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
         candidates = [
             {"symbol": "FPT", "tech_data": {"current_price": 100.0}, "fin_data": {}, "news_items": []},
             {"symbol": "HPG", "tech_data": {"current_price": 28.0}, "fin_data": {}, "news_items": []},
-            {"symbol": "VHM", "tech_data": {"current_price": 42.0}, "fin_data": {}, "news_items": []}
+            {"symbol": "VHM", "tech_data": {"current_price": 42.0}, "fin_data": {}, "news_items": []},
         ]
 
-        batch_results = asyncio.run(async_analyze_stocks_batch(
-            symbols_or_candidates=candidates,
-            max_concurrency=3,
-            client=mock_client
-        ))
+        batch_results = asyncio.run(
+            async_analyze_stocks_batch(symbols_or_candidates=candidates, max_concurrency=3, client=mock_client)
+        )
 
         assert len(batch_results) == 3
         symbols = [r["symbol"] for r in batch_results]
@@ -190,9 +168,7 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
         """async_call_gemini raises RuntimeError when all retries fail."""
         mock_client = MagicMock()
         mock_client.aio = MagicMock()
-        mock_client.aio.models.generate_content = AsyncMock(
-            side_effect=TimeoutError("Server unreachable")
-        )
+        mock_client.aio.models.generate_content = AsyncMock(side_effect=TimeoutError("Server unreachable"))
 
         coro = async_call_gemini(mock_client, "Prompt test", max_retries=2, retry_delay=0.01)
         with pytest.raises(RuntimeError, match="failed after 2 attempts"):
@@ -202,17 +178,13 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
         """Async analysis handles AI generation exceptions without crashing."""
         mock_client = MagicMock()
         mock_client.aio = MagicMock()
-        mock_client.aio.models.generate_content = AsyncMock(
-            side_effect=Exception("API Quota exceeded")
-        )
+        mock_client.aio.models.generate_content = AsyncMock(side_effect=Exception("API Quota exceeded"))
 
-        res = asyncio.run(async_analyze_stock_with_smart_committee(
-            symbol="HPG",
-            tech_data={"current_price": 28.0},
-            fin_data={},
-            news_items=[],
-            client=mock_client
-        ))
+        res = asyncio.run(
+            async_analyze_stock_with_smart_committee(
+                symbol="HPG", tech_data={"current_price": 28.0}, fin_data={}, news_items=[], client=mock_client
+            )
+        )
 
         assert res["status"] == "AI_GENERATION_FAILED"
         assert res["symbol"] == "HPG"
@@ -234,4 +206,3 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
         assert len(res) == 1
         assert res[0]["status"] == "SUCCESS"
         assert res[0]["pm_decision"] == "HOLD_MAINTAIN"
-

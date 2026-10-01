@@ -16,6 +16,7 @@ from data_engine import prune_unsuitable_watchlist, sync_auto_watchlist
 # 1. KIỂM THỬ BÁO CÁO PHIÊN NGHỈ TRƯA (11:30) & 5 CÂU HỎI CỐT TỬ
 # =====================================================================
 
+
 @mock.patch("ai_analyst.call_gemini")
 def test_generate_portfolio_analysis_noon_session_title_and_prompt(mock_call_gemini):
     """Test báo cáo phiên trưa đổi đúng tiêu đề phiên sáng và ngữ cảnh 11:30."""
@@ -74,10 +75,7 @@ def test_generate_portfolio_analysis_noon_fallback_q5_with_double_star(mock_call
 def test_generate_portfolio_analysis_fallback_q5_with_pin_icon(mock_call_gemini):
     """Test fallback chèn trước 📌 II. nếu LLM trả về format icon."""
     mock_call_gemini.return_value = (
-        "I. TỔNG KẾT PHIÊN\n"
-        "- Câu hỏi 1: OK.\n"
-        "- Câu hỏi 4: Không có rủi ro.\n\n"
-        "📌 II. CHI TIẾT DANH MỤC"
+        "I. TỔNG KẾT PHIÊN\n- Câu hỏi 1: OK.\n- Câu hỏi 4: Không có rủi ro.\n\n📌 II. CHI TIẾT DANH MỤC"
     )
 
     portfolio_df = pd.DataFrame([{"Mã CP": "SSI", "Thị giá (k)": 35.0, "Giá vốn (k)": 32.0, "Lãi/Lỗ (%)": 9.4}])
@@ -92,12 +90,13 @@ def test_generate_portfolio_analysis_fallback_q5_with_pin_icon(mock_call_gemini)
 # 2. KIỂM THỬ TỰ ĐỘNG KHÁM PHÁ & ĐỒNG BỘ WATCHLIST (SYNC AUTO WATCHLIST)
 # =====================================================================
 
+
 def test_sync_auto_watchlist_preserves_manual_items(tmp_path):
     """Test bảo toàn 100% các mã do người dùng tự nhập tay trong Watchlist."""
     wl_file = tmp_path / "watchlist.json"
     initial_watchlist = [
         {"symbol": "HPG", "target_buy": 27.5, "note": "Tôi tự thêm tay", "is_auto": False},
-        {"symbol": "MWG", "target_buy": 60.0, "note": "Chiến lược bán lẻ"}
+        {"symbol": "MWG", "target_buy": 60.0, "note": "Chiến lược bán lẻ"},
     ]
     with open(wl_file, "w", encoding="utf-8") as f:
         json.dump(initial_watchlist, f)
@@ -109,7 +108,7 @@ def test_sync_auto_watchlist_preserves_manual_items(tmp_path):
             "target_price": 150.0,
             "conviction_score": 85.0,
             "mos_pct": 20.0,
-            "status": "RECOMMEND_BUY"
+            "status": "RECOMMEND_BUY",
         },
         {
             "symbol": "HPG",  # Trùng với mã manual của user
@@ -117,8 +116,8 @@ def test_sync_auto_watchlist_preserves_manual_items(tmp_path):
             "target_price": 32.0,
             "conviction_score": 90.0,
             "mos_pct": 18.0,
-            "status": "RECOMMEND_BUY"
-        }
+            "status": "RECOMMEND_BUY",
+        },
     ]
 
     updated = sync_auto_watchlist(opportunities=mock_opportunities, filepath=str(wl_file), max_auto=3)
@@ -146,7 +145,13 @@ def test_sync_auto_watchlist_caps_max_auto(tmp_path):
         json.dump([], f)
 
     opportunities = [
-        {"symbol": f"M{i}", "current_price": 20.0 + i, "conviction_score": 75.0, "mos_pct": 16.0, "status": "RECOMMEND_BUY"}
+        {
+            "symbol": f"M{i}",
+            "current_price": 20.0 + i,
+            "conviction_score": 75.0,
+            "mos_pct": 16.0,
+            "status": "RECOMMEND_BUY",
+        }
         for i in range(10)
     ]
 
@@ -169,15 +174,9 @@ def test_sync_auto_watchlist_filters_out_data_gate_rejects(tmp_path):
             "current_price": 90.0,
             "conviction_score": 80.0,
             "mos_pct": 25.0,
-            "status": "CAUTION_TRAP"  # Bị Data Gate chặn
+            "status": "CAUTION_TRAP",  # Bị Data Gate chặn
         },
-        {
-            "symbol": "SSI",
-            "current_price": 35.0,
-            "conviction_score": 78.0,
-            "mos_pct": 18.0,
-            "status": "RECOMMEND_BUY"
-        }
+        {"symbol": "SSI", "current_price": 35.0, "conviction_score": 78.0, "mos_pct": 18.0, "status": "RECOMMEND_BUY"},
     ]
 
     updated = sync_auto_watchlist(opportunities=opportunities, filepath=str(wl_file), max_auto=5)
@@ -206,6 +205,7 @@ def test_sync_auto_watchlist_graceful_on_missing_file(tmp_path):
 # 3. KIỂM THỬ THANH LỌC CỔ PHIẾU QUÁ HOT HOẶC KHÔNG PHÙ HỢP (PRUNE)
 # =====================================================================
 
+
 def test_prune_unsuitable_watchlist_removes_overheated_auto(tmp_path):
     """Test mã auto bị quá mua (RSI > 75) hoặc MoS < -25% tự động bị xóa khỏi Watchlist."""
     wl_file = tmp_path / "watchlist.json"
@@ -224,6 +224,7 @@ def test_prune_unsuitable_watchlist_removes_overheated_auto(tmp_path):
     }
 
     with mock.patch("quant_valuation.calculate_fair_value_and_mos") as mock_val:
+
         def val_side_effect(symbol, current_price, sector):
             if symbol == "HOT2":
                 return {"fair_value": 30.0, "mos_pct": -33.3}  # MoS < -25%
@@ -248,14 +249,14 @@ def test_prune_unsuitable_watchlist_removes_trap_auto(tmp_path):
     wl_file = tmp_path / "watchlist.json"
     initial = [
         {"symbol": "TRAP1", "target_buy": 25.0, "is_auto": True, "note": "[AUTO_DISCOVERY]"},
-        {"symbol": "GOOD1", "target_buy": 40.0, "is_auto": True, "note": "[AUTO_DISCOVERY]"}
+        {"symbol": "GOOD1", "target_buy": 40.0, "is_auto": True, "note": "[AUTO_DISCOVERY]"},
     ]
     with open(wl_file, "w", encoding="utf-8") as f:
         json.dump(initial, f)
 
     mock_tech = {
         "TRAP1": {"current_price": 24.0, "rsi14": 50.0, "trap_info": {"is_trap": True, "trap_type": "BULL_TRAP"}},
-        "GOOD1": {"current_price": 40.0, "rsi14": 52.0, "trap_info": {"is_trap": False}}
+        "GOOD1": {"current_price": 40.0, "rsi14": 52.0, "trap_info": {"is_trap": False}},
     }
 
     retained, pruned = prune_unsuitable_watchlist(filepath=str(wl_file), tech_map=mock_tech, notify_discord=False)
@@ -270,15 +271,11 @@ def test_prune_unsuitable_watchlist_removes_trap_auto(tmp_path):
 def test_prune_unsuitable_watchlist_warns_manual_item_without_deleting(tmp_path):
     """Test mã thủ công của người dùng không bị xóa, chỉ được gắn cờ cảnh báo rủi ro."""
     wl_file = tmp_path / "watchlist.json"
-    initial = [
-        {"symbol": "MY_STOCK", "target_buy": 100.0, "is_auto": False, "note": "Hàng chiến lược dài hạn"}
-    ]
+    initial = [{"symbol": "MY_STOCK", "target_buy": 100.0, "is_auto": False, "note": "Hàng chiến lược dài hạn"}]
     with open(wl_file, "w", encoding="utf-8") as f:
         json.dump(initial, f)
 
-    mock_tech = {
-        "MY_STOCK": {"current_price": 120.0, "rsi14": 79.0, "trap_info": {"is_trap": False}}
-    }
+    mock_tech = {"MY_STOCK": {"current_price": 120.0, "rsi14": 79.0, "trap_info": {"is_trap": False}}}
 
     retained, pruned = prune_unsuitable_watchlist(filepath=str(wl_file), tech_map=mock_tech, prune_manual=False)
 
@@ -289,4 +286,3 @@ def test_prune_unsuitable_watchlist_warns_manual_item_without_deleting(tmp_path)
     # Ghi chú được gắn thêm cảnh báo
     assert "[⚠️ CẢNH BÁO:" in retained[0]["note"]
     assert "Hàng chiến lược dài hạn" in retained[0]["note"]
-

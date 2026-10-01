@@ -142,18 +142,44 @@ class TestFailSafePass1Parser:
 
         with mock.patch("ai_analyst.get_ai_client", return_value=mock_client):
             with mock.patch("ai_analyst.call_gemini", side_effect=mock_call):
-                with mock.patch("data_engine.fetch_stock_technical", return_value={"current_price": 50.0, "rsi14": 50.0, "status_ma20": "TRÊN MA20", "adv20_billion": 20.0}):
-                    with mock.patch("data_engine.get_financial_ratios", return_value={"pe": 10.0, "pb": 1.2, "roe": 18.0, "debt_equity": 0.4}):
+                with mock.patch(
+                    "data_engine.fetch_stock_technical",
+                    return_value={
+                        "current_price": 50.0,
+                        "rsi14": 50.0,
+                        "status_ma20": "TRÊN MA20",
+                        "adv20_billion": 20.0,
+                    },
+                ):
+                    with mock.patch(
+                        "data_engine.get_financial_ratios",
+                        return_value={"pe": 10.0, "pb": 1.2, "roe": 18.0, "debt_equity": 0.4},
+                    ):
                         with mock.patch("data_engine.fetch_macro_news", return_value=[]):
-                            with mock.patch("quant_engine.check_data_gate", return_value={"passed": True, "daily_value_billion": 20.0}):
-                                with mock.patch("quant_engine.calculate_piotroski_f_score", return_value={"score": 8, "rating": "RẤT MẠNH"}):
-                                    with mock.patch("quant_engine.calculate_altman_z_score", return_value={"z_score": 3.2, "zone": "AN TOÀN", "icon": "🟢"}):
-                                        with mock.patch("quant_engine.calculate_valuation_triangle", return_value={"price_bull": 70.0, "price_base": 60.0, "price_bear": 45.0}):
-                                            with mock.patch("quant_engine.evaluate_decision_hard_gates", return_value={
-                                                "action_state": "QUAN SÁT",
-                                                "decision_tag": "PARSE_FAILSAFE",
-                                                "position_size_nav": "0% NAV",
-                                            }):
+                            with mock.patch(
+                                "quant_engine.check_data_gate",
+                                return_value={"passed": True, "daily_value_billion": 20.0},
+                            ):
+                                with mock.patch(
+                                    "quant_engine.calculate_piotroski_f_score",
+                                    return_value={"score": 8, "rating": "RẤT MẠNH"},
+                                ):
+                                    with mock.patch(
+                                        "quant_engine.calculate_altman_z_score",
+                                        return_value={"z_score": 3.2, "zone": "AN TOÀN", "icon": "🟢"},
+                                    ):
+                                        with mock.patch(
+                                            "quant_engine.calculate_valuation_triangle",
+                                            return_value={"price_bull": 70.0, "price_base": 60.0, "price_bear": 45.0},
+                                        ):
+                                            with mock.patch(
+                                                "quant_engine.evaluate_decision_hard_gates",
+                                                return_value={
+                                                    "action_state": "QUAN SÁT",
+                                                    "decision_tag": "PARSE_FAILSAFE",
+                                                    "position_size_nav": "0% NAV",
+                                                },
+                                            ):
                                                 res = generate_quantamental_2pass_report("VNM")
                                                 assert res["status"] == "PASS1_PARSE_FAILED"
                                                 assert res["pass1_parse_failed"] is True
@@ -175,26 +201,58 @@ class TestProvenanceTracking:
 
         def mock_call(client, prompt, **kwargs):
             if "Pass 1" in prompt or "P_bull" in prompt:
-                return json.dumps({
-                    "P_bull": 0.4, "P_base": 0.4, "P_bear": 0.2,
-                    "rationale_bull": "Growth", "rationale_base": "Stable", "rationale_bear": "Risk",
-                })
+                return json.dumps(
+                    {
+                        "P_bull": 0.4,
+                        "P_base": 0.4,
+                        "P_bear": 0.2,
+                        "rationale_bull": "Growth",
+                        "rationale_base": "Stable",
+                        "rationale_bear": "Risk",
+                    }
+                )
             return "Pass 2 Institutional Audit Text"
 
         with mock.patch("ai_analyst.get_ai_client", return_value=mock_client):
             with mock.patch("ai_analyst.call_gemini", side_effect=mock_call):
-                with mock.patch("data_engine.fetch_stock_technical", return_value={"current_price": 50.0, "rsi14": 50.0, "status_ma20": "TRÊN MA20", "adv20_billion": 20.0}):
-                    with mock.patch("data_engine.get_financial_ratios", return_value={"pe": 10.0, "pb": 1.2, "roe": 18.0, "debt_equity": 0.4}):
+                with mock.patch(
+                    "data_engine.fetch_stock_technical",
+                    return_value={
+                        "current_price": 50.0,
+                        "rsi14": 50.0,
+                        "status_ma20": "TRÊN MA20",
+                        "adv20_billion": 20.0,
+                    },
+                ):
+                    with mock.patch(
+                        "data_engine.get_financial_ratios",
+                        return_value={"pe": 10.0, "pb": 1.2, "roe": 18.0, "debt_equity": 0.4},
+                    ):
                         with mock.patch("data_engine.fetch_macro_news", return_value=[]):
-                            with mock.patch("quant_engine.check_data_gate", return_value={"passed": True, "daily_value_billion": 20.0}):
-                                with mock.patch("quant_engine.calculate_piotroski_f_score", return_value={"score": 8, "rating": "RẤT MẠNH"}):
-                                    with mock.patch("quant_engine.calculate_altman_z_score", return_value={"z_score": 3.2, "zone": "AN TOÀN", "icon": "🟢"}):
-                                        with mock.patch("quant_engine.calculate_valuation_triangle", return_value={"price_bull": 70.0, "price_base": 60.0, "price_bear": 45.0}):
-                                            with mock.patch("quant_engine.evaluate_decision_hard_gates", return_value={
-                                                "action_state": "QUAN SÁT",
-                                                "decision_tag": "TÍCH SẢN",
-                                                "position_size_nav": "5% NAV",
-                                            }):
+                            with mock.patch(
+                                "quant_engine.check_data_gate",
+                                return_value={"passed": True, "daily_value_billion": 20.0},
+                            ):
+                                with mock.patch(
+                                    "quant_engine.calculate_piotroski_f_score",
+                                    return_value={"score": 8, "rating": "RẤT MẠNH"},
+                                ):
+                                    with mock.patch(
+                                        "quant_engine.calculate_altman_z_score",
+                                        return_value={"z_score": 3.2, "zone": "AN TOÀN", "icon": "🟢"},
+                                    ):
+                                        with mock.patch(
+                                            "quant_engine.calculate_valuation_triangle",
+                                            return_value={"price_bull": 70.0, "price_base": 60.0, "price_bear": 45.0},
+                                        ):
+                                            with mock.patch(
+                                                "quant_engine.evaluate_decision_hard_gates",
+                                                return_value={
+                                                    "action_state": "QUAN SÁT",
+                                                    "decision_tag": "TÍCH SẢN",
+                                                    "position_size_nav": "5% NAV",
+                                                },
+                                            ):
                                                 with mock.patch("db_manager.save_quant_signal", return_value=123):
                                                     res = generate_quantamental_2pass_report("FPT")
                                                     assert "prompt_hash" in res

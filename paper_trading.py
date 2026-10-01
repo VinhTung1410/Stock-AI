@@ -177,9 +177,7 @@ class PaperTradingManager:
         order.shares = shares
         order.status = STATUS_FILLED
         is_buy = order.side == "BUY"
-        order.shortfall_bps = calculate_implementation_shortfall(
-            order.decision_price, fill_price, is_buy=is_buy
-        )
+        order.shortfall_bps = calculate_implementation_shortfall(order.decision_price, fill_price, is_buy=is_buy)
 
         if is_buy:
             self.active_positions[order.symbol] = self.active_positions.get(order.symbol, 0) + shares

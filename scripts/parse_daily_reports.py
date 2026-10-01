@@ -79,7 +79,9 @@ def extract_vnindex_summary(text: str) -> Dict[str, Any]:
 
     # Tìm đoạn kết thúc phiên
     # Ví dụ: "VN-Index đóng cửa tại 1,768.6 điểm, giảm 9.1 điểm (tương đương 0.5%)."
-    close_pat = r"VN-Index đóng cửa tại\s*([\d,\.]+)\s*điểm,\s*(tăng|giảm)\s*([\d,\.]+)\s*điểm\s*\(tương đương\s*([\d,\.]+)%\)"
+    close_pat = (
+        r"VN-Index đóng cửa tại\s*([\d,\.]+)\s*điểm,\s*(tăng|giảm)\s*([\d,\.]+)\s*điểm\s*\(tương đương\s*([\d,\.]+)%\)"
+    )
     match = re.search(close_pat, text)
     if match:
         pts_str = match.group(1).replace(",", "")
@@ -150,9 +152,20 @@ def extract_support_resistance_zones(text: str) -> tuple[List[float], List[float
 def extract_focus_sectors(text: str) -> List[str]:
     """Trích xuất các nhóm ngành được đề cập trọng tâm."""
     sectors_pool = [
-        "Bất động sản", "Dầu khí", "Vật liệu", "Tiện ích", "Điện, nước & xăng dầu khí đốt",
-        "Dịch vụ tài chính", "Du lịch và Giải trí", "Bán lẻ", "Ngân hàng", "Công nghệ thông tin",
-        "Hóa chất", "Thép", "Hàng & Dịch vụ Công nghiệp", "Thực phẩm & Đồ uống"
+        "Bất động sản",
+        "Dầu khí",
+        "Vật liệu",
+        "Tiện ích",
+        "Điện, nước & xăng dầu khí đốt",
+        "Dịch vụ tài chính",
+        "Du lịch và Giải trí",
+        "Bán lẻ",
+        "Ngân hàng",
+        "Công nghệ thông tin",
+        "Hóa chất",
+        "Thép",
+        "Hàng & Dịch vụ Công nghiệp",
+        "Thực phẩm & Đồ uống",
     ]
     found = [sec for sec in sectors_pool if sec.lower() in text.lower()]
     return found
@@ -161,8 +174,15 @@ def extract_focus_sectors(text: str) -> List[str]:
 def extract_risk_keywords(text: str) -> List[str]:
     """Trích xuất các từ khóa rủi ro xuất hiện trong văn bản."""
     keywords_pool = [
-        "áp lực chốt lời", "áp lực điều chỉnh", "suy yếu", "bán ròng", "sắc đỏ",
-        "thủng hỗ trợ", "rủi ro điều chỉnh", "phân phối", "bẫy tăng giá"
+        "áp lực chốt lời",
+        "áp lực điều chỉnh",
+        "suy yếu",
+        "bán ròng",
+        "sắc đỏ",
+        "thủng hỗ trợ",
+        "rủi ro điều chỉnh",
+        "phân phối",
+        "bẫy tăng giá",
     ]
     lowered = text.lower()
     return [kw for kw in keywords_pool if kw in lowered]
@@ -179,7 +199,9 @@ def extract_buy_sell_signals(pages_text: List[str]) -> tuple[List[str], List[str
     if "Không có tín hiệu MUA" in full_text:
         buy_signals = []
     else:
-        buy_block = re.search(r"Danh mục cổ phiếu có tín hiệu MUA(.+?)(?:Danh mục cổ phiếu có tín hiệu BÁN|$)", full_text, re.DOTALL)
+        buy_block = re.search(
+            r"Danh mục cổ phiếu có tín hiệu MUA(.+?)(?:Danh mục cổ phiếu có tín hiệu BÁN|$)", full_text, re.DOTALL
+        )
         if buy_block:
             tickers = re.findall(r"\b[A-Z]{3}\b", buy_block.group(1))
             buy_signals = [t for t in tickers if t not in ["TCB", "VND", "MUA", "BAN", "NAV", "RSI", "MACD"]]
@@ -207,9 +229,7 @@ def parse_tcbs_daily_report(pdf_path: Path) -> Dict[str, Any]:
 
     report_date = parse_date_from_filename_or_text(pdf_path.name, first_page)
     summary_data = extract_vnindex_summary(first_page)
-    regime, sentiment = extract_market_regime_and_sentiment(
-        first_page, summary_data.get("vnindex_change_pct")
-    )
+    regime, sentiment = extract_market_regime_and_sentiment(first_page, summary_data.get("vnindex_change_pct"))
     sup_zones, res_zones = extract_support_resistance_zones(first_page)
     focus_secs = extract_focus_sectors(first_page)
     risk_kws = extract_risk_keywords(first_page)
@@ -263,8 +283,7 @@ def update_manifests_after_processing(filename: str, output_path: Path) -> None:
 
 
 def run_parse_daily_pipeline(
-    ptkt_dir: Path = DEFAULT_PTKT_DIR,
-    output_path: Path = DEFAULT_OUTPUT_FILE
+    ptkt_dir: Path = DEFAULT_PTKT_DIR, output_path: Path = DEFAULT_OUTPUT_FILE
 ) -> Optional[Dict[str, Any]]:
     """Tìm file PDF mới nhất trong ptkt_dir và chạy parse trích xuất context."""
     if not ptkt_dir.exists():
@@ -293,6 +312,7 @@ def run_parse_daily_pipeline(
 
 if __name__ == "__main__":
     import sys
+
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -301,7 +321,9 @@ if __name__ == "__main__":
         print("\n--- KẾT QUẢ TRÍCH XUẤT NGỮ CẢNH THỊ TRƯỜNG ---")
         print(f"Ngày: {res.get('date')} | Nguồn: {res.get('source')}")
         print(f"Xu hướng: {res.get('market_regime_analyst')} | Tâm lý: {res.get('sentiment')}")
-        print(f"VN-Index: {res.get('vnindex_close')} ({res.get('vnindex_change_pts'):+.2f} pts, {res.get('vnindex_change_pct'):+.2f}%)")
+        print(
+            f"VN-Index: {res.get('vnindex_close')} ({res.get('vnindex_change_pts'):+.2f} pts, {res.get('vnindex_change_pct'):+.2f}%)"
+        )
         print(f"Ngành tâm điểm: {', '.join(res.get('focus_sectors', []))}")
         print(f"Từ khóa rủi ro: {', '.join(res.get('risk_keywords', []))}")
         print(f"Tín hiệu bán: {', '.join(res.get('sell_signals', []))}")

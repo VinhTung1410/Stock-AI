@@ -32,9 +32,13 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
         col_s1, col_s2 = st.columns([3, 1])
         with col_s1:
             if update_url:
-                st.success("🟢 **Đồng bộ 2 chiều đã kích hoạt:** Mọi thay đổi khi bấm Lưu sẽ tự động cập nhật trực tiếp lên Google Sheet (cả Sheet 1 và Sheet 2)!")
+                st.success(
+                    "🟢 **Đồng bộ 2 chiều đã kích hoạt:** Mọi thay đổi khi bấm Lưu sẽ tự động cập nhật trực tiếp lên Google Sheet (cả Sheet 1 và Sheet 2)!"
+                )
             else:
-                st.warning("⚠️ **Google Sheet đang ở chế độ Chỉ Đọc:** Chưa cấu hình GOOGLE_SHEET_UPDATE_URL nên nút Lưu chưa thể ghi đè lên Google Sheet.")
+                st.warning(
+                    "⚠️ **Google Sheet đang ở chế độ Chỉ Đọc:** Chưa cấu hình GOOGLE_SHEET_UPDATE_URL nên nút Lưu chưa thể ghi đè lên Google Sheet."
+                )
         with col_s2:
             st.link_button("🔗 Mở Google Sheet", sheet_url, width="stretch")
 
@@ -53,11 +57,22 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
         height=p_height,
         key="editor_portfolio",
         column_config={
-            "symbol": st.column_config.TextColumn("Mã CP", required=True, help="Nhập mã 3 ký tự (Ví dụ: FPT, HPG, SSI...)"),
-            "volume": st.column_config.NumberColumn("Số lượng", min_value=0, step=10, required=True, help="Khối lượng cổ phiếu nắm giữ"),
-            "cost_price": st.column_config.NumberColumn("Giá vốn (k)", min_value=0.0, step=0.05, format="%.2f", required=True, help="Giá vốn tính theo nghìn đồng (k)"),
+            "symbol": st.column_config.TextColumn(
+                "Mã CP", required=True, help="Nhập mã 3 ký tự (Ví dụ: FPT, HPG, SSI...)"
+            ),
+            "volume": st.column_config.NumberColumn(
+                "Số lượng", min_value=0, step=10, required=True, help="Khối lượng cổ phiếu nắm giữ"
+            ),
+            "cost_price": st.column_config.NumberColumn(
+                "Giá vốn (k)",
+                min_value=0.0,
+                step=0.05,
+                format="%.2f",
+                required=True,
+                help="Giá vốn tính theo nghìn đồng (k)",
+            ),
             "note": st.column_config.TextColumn("Ghi chú / Nhóm ngành", help="Ghi chú hoặc phân loại ngành"),
-        }
+        },
     )
 
     if st.button("💾 Lưu Danh mục Nắm Giữ (Sheet 1)", type="primary"):
@@ -72,14 +87,13 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
 
             # Xử lý an toàn ghi chú
             raw_note = r.get("note")
-            note = "" if (raw_note is None or pd.isna(raw_note) or str(raw_note).strip().lower() == "nan") else str(raw_note).strip()
+            note = (
+                ""
+                if (raw_note is None or pd.isna(raw_note) or str(raw_note).strip().lower() == "nan")
+                else str(raw_note).strip()
+            )
 
-            new_portfolio.append({
-                "symbol": sym,
-                "volume": volume,
-                "cost_price": cost_price,
-                "note": note
-            })
+            new_portfolio.append({"symbol": sym, "volume": volume, "cost_price": cost_price, "note": note})
 
         save_portfolio(new_portfolio)
 
@@ -94,11 +108,17 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
                 ok, msg = update_google_sheet_portfolio(new_portfolio)
             if ok:
                 st.session_state["portfolio_toast"] = "Đã đồng bộ Danh mục lên Google Sheet!"
-                st.session_state["portfolio_alert_success"] = "✅ Đã lưu và đồng bộ Danh mục thành công lên Sheet 1 của Google Sheet!"
+                st.session_state["portfolio_alert_success"] = (
+                    "✅ Đã lưu và đồng bộ Danh mục thành công lên Sheet 1 của Google Sheet!"
+                )
             else:
-                st.session_state["portfolio_alert_error"] = f"❌ Không thể đồng bộ lên Google Sheet: {msg}. Hãy thử lại hoặc kiểm tra Apps Script."
+                st.session_state["portfolio_alert_error"] = (
+                    f"❌ Không thể đồng bộ lên Google Sheet: {msg}. Hãy thử lại hoặc kiểm tra Apps Script."
+                )
         elif sheet_url:
-            st.session_state["portfolio_alert_error"] = "⚠️ Chưa cấu hình GOOGLE_SHEET_UPDATE_URL! Dữ liệu chưa thể ghi lên Google Sheet."
+            st.session_state["portfolio_alert_error"] = (
+                "⚠️ Chưa cấu hình GOOGLE_SHEET_UPDATE_URL! Dữ liệu chưa thể ghi lên Google Sheet."
+            )
         else:
             st.session_state["portfolio_alert_success"] = "✅ Đã cập nhật Danh mục nắm giữ thành công!"
 
@@ -110,7 +130,9 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
     # PHẦN 2: QUẢN LÝ CỔ PHIẾU THEO DÕI (WATCHLIST)
     # ==========================================
     st.markdown("#### 🎯 2. Danh mục Cổ phiếu Đang Theo Dõi (Watchlist - Trang tính 2)")
-    st.caption("Các mã bạn canh mua. Bot sẽ quét tín hiệu kỹ thuật & tin tức CafeF để gửi DM cảnh báo khi có điểm mua an toàn.")
+    st.caption(
+        "Các mã bạn canh mua. Bot sẽ quét tín hiệu kỹ thuật & tin tức CafeF để gửi DM cảnh báo khi có điểm mua an toàn."
+    )
     valid_wl = [w for w in raw_watchlist if w.get("symbol") and str(w["symbol"]).strip()] if raw_watchlist else []
     df_wl_raw = pd.DataFrame(valid_wl) if valid_wl else pd.DataFrame(columns=["symbol", "target_buy", "note"])
     wl_height = min(360, (len(df_wl_raw) + 2) * 36 + 10)
@@ -122,10 +144,16 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
         height=wl_height,
         key="editor_watchlist",
         column_config={
-            "symbol": st.column_config.TextColumn("Mã CP", required=True, help="Nhập mã 3 ký tự canh mua (Ví dụ: VHM, MWG...)"),
-            "target_buy": st.column_config.NumberColumn("Giá canh mua (k)", min_value=0.0, step=0.05, format="%.2f", help="Vùng giá hỗ trợ muốn canh giải ngân"),
-            "note": st.column_config.TextColumn("Câu chuyện / Lý do theo dõi", help="Luận điểm đầu tư hoặc chất xúc tác"),
-        }
+            "symbol": st.column_config.TextColumn(
+                "Mã CP", required=True, help="Nhập mã 3 ký tự canh mua (Ví dụ: VHM, MWG...)"
+            ),
+            "target_buy": st.column_config.NumberColumn(
+                "Giá canh mua (k)", min_value=0.0, step=0.05, format="%.2f", help="Vùng giá hỗ trợ muốn canh giải ngân"
+            ),
+            "note": st.column_config.TextColumn(
+                "Câu chuyện / Lý do theo dõi", help="Luận điểm đầu tư hoặc chất xúc tác"
+            ),
+        },
     )
 
     if st.button("💾 Lưu Danh mục Theo Dõi (Sheet 2)", type="primary"):
@@ -139,13 +167,13 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
 
             # Xử lý an toàn ghi chú
             raw_note = r.get("note")
-            note = "" if (raw_note is None or pd.isna(raw_note) or str(raw_note).strip().lower() == "nan") else str(raw_note).strip()
+            note = (
+                ""
+                if (raw_note is None or pd.isna(raw_note) or str(raw_note).strip().lower() == "nan")
+                else str(raw_note).strip()
+            )
 
-            new_watchlist.append({
-                "symbol": sym,
-                "target_buy": target_buy,
-                "note": note
-            })
+            new_watchlist.append({"symbol": sym, "target_buy": target_buy, "note": note})
 
         save_watchlist(new_watchlist)
 
@@ -160,11 +188,15 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
                 ok, msg = update_google_sheet_watchlist(new_watchlist)
             if ok:
                 st.session_state["portfolio_toast"] = "Đã đồng bộ Watchlist lên Google Sheet!"
-                st.session_state["portfolio_alert_success"] = "✅ Đã lưu và đồng bộ Watchlist thành công lên Sheet 2 của Google Sheet!"
+                st.session_state["portfolio_alert_success"] = (
+                    "✅ Đã lưu và đồng bộ Watchlist thành công lên Sheet 2 của Google Sheet!"
+                )
             else:
                 st.session_state["portfolio_alert_error"] = f"❌ Không thể đồng bộ Watchlist lên Google Sheet: {msg}."
         elif sheet_url:
-            st.session_state["portfolio_alert_error"] = "⚠️ Chưa cấu hình GOOGLE_SHEET_UPDATE_URL! Watchlist chưa thể ghi lên Google Sheet."
+            st.session_state["portfolio_alert_error"] = (
+                "⚠️ Chưa cấu hình GOOGLE_SHEET_UPDATE_URL! Watchlist chưa thể ghi lên Google Sheet."
+            )
         else:
             st.session_state["portfolio_alert_success"] = "✅ Đã cập nhật Watchlist thành công!"
 
@@ -212,4 +244,3 @@ def render_tab_portfolio(raw_portfolio: list, raw_watchlist: list = None):
                - Bấm **Triển khai** và copy **URL ứng dụng web**.
             4. Dán URL đó vào file `.env`: `GOOGLE_SHEET_UPDATE_URL="<URL_VỪA_COPY>"` là hoàn tất!
             """)
-

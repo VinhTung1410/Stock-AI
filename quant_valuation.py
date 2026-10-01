@@ -29,21 +29,96 @@ VAL_RATING_MANUAL_VERIFY = "CẦN XÁC MINH THỦ CÔNG"
 # Mỏ neo định giá trung vị tham chiếu từ các tổ chức phân tích uy tín (SSI Research, HSC, Vietcap)
 # Được cập nhật định kỳ (kèm last_updated), đóng vai trò "Trần định giá tham chiếu" (Consensus Ceiling)
 INSTITUTIONAL_CONSENSUS_TARGETS = {
-    "FPT": {"consensus_target": 88.0, "source": "SSI/Vietcap/HSC Consensus", "quality_tier": "TIER_1_COMPOUNDER", "last_updated": "2024-10-01"},
-    "HPG": {"consensus_target": 26.5, "source": "HSC/SSI Research", "quality_tier": "TIER_1_CYCLICAL", "last_updated": "2024-10-01"},
-    "MWG": {"consensus_target": 82.0, "source": "Vietcap/SSI Research", "quality_tier": "TIER_1_RETAIL", "last_updated": "2024-10-01"},
-    "SSI": {"consensus_target": 24.5, "source": "MBS/HSC Research", "quality_tier": "TIER_1_BROKER", "last_updated": "2024-10-01"},
-    "MSB": {"consensus_target": 14.5, "source": "SSI Research/VCSC", "quality_tier": "TIER_2_BANK", "last_updated": "2024-10-01"},
-    "BSR": {"consensus_target": 32.0, "source": "KBSV/SSI Research", "quality_tier": "TIER_2_ENERGY", "last_updated": "2024-10-01"},
-    "TCB": {"consensus_target": 28.0, "source": "Vietcap/HSC Research", "quality_tier": "TIER_1_BANK", "last_updated": "2024-10-01"},
-    "MBB": {"consensus_target": 27.0, "source": "SSI/HSC Research", "quality_tier": "TIER_1_BANK", "last_updated": "2024-10-01"},
-    "ACB": {"consensus_target": 28.5, "source": "SSI/Vietcap", "quality_tier": "TIER_1_BANK", "last_updated": "2024-10-01"},
-    "VCB": {"consensus_target": 98.0, "source": "SSI/HSC Research", "quality_tier": "TIER_1_BANK", "last_updated": "2024-10-01"},
-    "VHM": {"consensus_target": 48.0, "source": "Vietcap/SSI Research", "quality_tier": "TIER_1_REALTY", "last_updated": "2024-10-01"},
-    "VNM": {"consensus_target": 75.0, "source": "HSC/SSI Research", "quality_tier": "TIER_1_CONSUMER", "last_updated": "2024-10-01"},
-    "DGC": {"consensus_target": 115.0, "source": "Vietcap/HSC Research", "quality_tier": "TIER_1_CHEMICAL", "last_updated": "2024-10-01"},
-    "PNJ": {"consensus_target": 105.0, "source": "SSI/Vietcap Research", "quality_tier": "TIER_1_RETAIL", "last_updated": "2024-10-01"},
-    "REE": {"consensus_target": 72.0, "source": "SSI Research", "quality_tier": "TIER_1_UTILITY", "last_updated": "2024-10-01"},
+    "FPT": {
+        "consensus_target": 88.0,
+        "source": "SSI/Vietcap/HSC Consensus",
+        "quality_tier": "TIER_1_COMPOUNDER",
+        "last_updated": "2024-10-01",
+    },
+    "HPG": {
+        "consensus_target": 26.5,
+        "source": "HSC/SSI Research",
+        "quality_tier": "TIER_1_CYCLICAL",
+        "last_updated": "2024-10-01",
+    },
+    "MWG": {
+        "consensus_target": 82.0,
+        "source": "Vietcap/SSI Research",
+        "quality_tier": "TIER_1_RETAIL",
+        "last_updated": "2024-10-01",
+    },
+    "SSI": {
+        "consensus_target": 24.5,
+        "source": "MBS/HSC Research",
+        "quality_tier": "TIER_1_BROKER",
+        "last_updated": "2024-10-01",
+    },
+    "MSB": {
+        "consensus_target": 14.5,
+        "source": "SSI Research/VCSC",
+        "quality_tier": "TIER_2_BANK",
+        "last_updated": "2024-10-01",
+    },
+    "BSR": {
+        "consensus_target": 32.0,
+        "source": "KBSV/SSI Research",
+        "quality_tier": "TIER_2_ENERGY",
+        "last_updated": "2024-10-01",
+    },
+    "TCB": {
+        "consensus_target": 28.0,
+        "source": "Vietcap/HSC Research",
+        "quality_tier": "TIER_1_BANK",
+        "last_updated": "2024-10-01",
+    },
+    "MBB": {
+        "consensus_target": 27.0,
+        "source": "SSI/HSC Research",
+        "quality_tier": "TIER_1_BANK",
+        "last_updated": "2024-10-01",
+    },
+    "ACB": {
+        "consensus_target": 28.5,
+        "source": "SSI/Vietcap",
+        "quality_tier": "TIER_1_BANK",
+        "last_updated": "2024-10-01",
+    },
+    "VCB": {
+        "consensus_target": 98.0,
+        "source": "SSI/HSC Research",
+        "quality_tier": "TIER_1_BANK",
+        "last_updated": "2024-10-01",
+    },
+    "VHM": {
+        "consensus_target": 48.0,
+        "source": "Vietcap/SSI Research",
+        "quality_tier": "TIER_1_REALTY",
+        "last_updated": "2024-10-01",
+    },
+    "VNM": {
+        "consensus_target": 75.0,
+        "source": "HSC/SSI Research",
+        "quality_tier": "TIER_1_CONSUMER",
+        "last_updated": "2024-10-01",
+    },
+    "DGC": {
+        "consensus_target": 115.0,
+        "source": "Vietcap/HSC Research",
+        "quality_tier": "TIER_1_CHEMICAL",
+        "last_updated": "2024-10-01",
+    },
+    "PNJ": {
+        "consensus_target": 105.0,
+        "source": "SSI/Vietcap Research",
+        "quality_tier": "TIER_1_RETAIL",
+        "last_updated": "2024-10-01",
+    },
+    "REE": {
+        "consensus_target": 72.0,
+        "source": "SSI Research",
+        "quality_tier": "TIER_1_UTILITY",
+        "last_updated": "2024-10-01",
+    },
 }
 
 
@@ -131,18 +206,42 @@ def classify_stock_archetype(symbol: str, sector: str = "") -> str:
         sym = symbol.strip().upper()
     sec = sector.lower() if isinstance(sector, str) else ""
 
-    if any(b in sym for b in ["VCB", "TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "CTG", "BID", "VIB", "TPB"]) or "ngân hàng" in sec:
+    if (
+        any(b in sym for b in ["VCB", "TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "CTG", "BID", "VIB", "TPB"])
+        or "ngân hàng" in sec
+    ):
         return "BANK"
-    if any(s in sec for s in ["thép", "dầu khí", "hóa chất", "phân bón", "vận tải biển", "cao su"]) or sym in ["HPG", "HSG", "NKG", "BSR", "PVD", "PVS", "DGC", "DCM", "DPM"]:
+    if any(s in sec for s in ["thép", "dầu khí", "hóa chất", "phân bón", "vận tải biển", "cao su"]) or sym in [
+        "HPG",
+        "HSG",
+        "NKG",
+        "BSR",
+        "PVD",
+        "PVS",
+        "DGC",
+        "DCM",
+        "DPM",
+    ]:
         return "CYCLICAL"
-    if any(s in sec for s in ["bất động sản", "địa ốc"]) or sym in ["VHM", "VIC", "VRE", "KDH", "NLG", "DXG", "DIG", "PDR", "KBC", "IDC"]:
+    if any(s in sec for s in ["bất động sản", "địa ốc"]) or sym in [
+        "VHM",
+        "VIC",
+        "VRE",
+        "KDH",
+        "NLG",
+        "DXG",
+        "DIG",
+        "PDR",
+        "KBC",
+        "IDC",
+    ]:
         return "REAL_ESTATE"
     return "GROWTH_COMPOUNDER"
 
 
 def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
     """Trả về chi tiết phân loại Archetype, Nhóm ngành và Chiến lược đầu tư phù hợp.
-    
+
     Phân tách rạch ròi:
     - GROWTH_COMPOUNDER: Doanh nghiệp tăng trưởng dài hạn (FPT, MWG...) -> Chiến lược VALUE / Tích sản.
     - CYCLICAL: Doanh nghiệp chu kỳ hàng hóa (HPG, BSR, DGC...) -> Chiến lược CYCLICAL.
@@ -157,7 +256,7 @@ def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
             "default_strategy": "VALUE",
             "strategy_label": "TÍCH SẢN DÀI HẠN",
             "valuation_model": "Historical Median P/E",
-            "holding_shield": True
+            "holding_shield": True,
         },
         "CYCLICAL": {
             "archetype": "CYCLICAL",
@@ -165,7 +264,7 @@ def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
             "default_strategy": "CYCLICAL",
             "strategy_label": "GIAO DỊCH THEO CHU KỲ",
             "valuation_model": "Normalized Mid-Cycle P/E & P/B chu kỳ",
-            "holding_shield": False
+            "holding_shield": False,
         },
         "BANK": {
             "archetype": "BANK",
@@ -173,7 +272,7 @@ def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
             "default_strategy": "FINANCIAL",
             "strategy_label": "TÀI CHÍNH / P/B BANDS",
             "valuation_model": "Justified P/B & NPL/LLR Quality",
-            "holding_shield": True
+            "holding_shield": True,
         },
         "REAL_ESTATE": {
             "archetype": "REAL_ESTATE",
@@ -181,8 +280,8 @@ def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
             "default_strategy": "PROPERTY",
             "strategy_label": "TÀI SẢN / RNAV",
             "valuation_model": "RNAV & Floor P/B",
-            "holding_shield": False
-        }
+            "holding_shield": False,
+        },
     }
     return details_map.get(archetype, details_map["GROWTH_COMPOUNDER"])
 
@@ -190,6 +289,7 @@ def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
 # =============================================================================
 # PHASE 10: REAL ESTATE & HOLDING COMPANY VALUATION ENGINE (TASK-0024 -> 0028)
 # =============================================================================
+
 
 def check_sotp_holding_sanity(
     symbol: str,
@@ -223,8 +323,14 @@ def check_sotp_holding_sanity(
 
     sub_list = struct.get("listed_subsidiaries", [])
     default_prices = {
-        "VHM": 42.0, "VRE": 19.0, "MCH": 120.0, "MSR": 15.0,
-        "VSH": 45.0, "CHP": 22.0, "VGC": 40.0, "GEE": 35.0
+        "VHM": 42.0,
+        "VRE": 19.0,
+        "MCH": 120.0,
+        "MSR": 15.0,
+        "VSH": 45.0,
+        "CHP": 22.0,
+        "VGC": 40.0,
+        "GEE": 35.0,
     }
     sub_prices = dict(default_prices)
     if subsidiary_prices:
@@ -237,7 +343,7 @@ def check_sotp_holding_sanity(
         own_pct = float(sub.get("ownership", 0.5))
         p = float(sub_prices.get(sub_sym, 30.0))
         sub_mcap_bil = shares_bil * p * 1000.0
-        total_listed_holding_val += (sub_mcap_bil * own_pct)
+        total_listed_holding_val += sub_mcap_bil * own_pct
 
     mcap_parent = float(parent_market_cap) if (parent_market_cap and parent_market_cap > 0) else 170000.0
     sotp_ratio = total_listed_holding_val / mcap_parent if mcap_parent > 0 else 0.0
@@ -251,11 +357,15 @@ def check_sotp_holding_sanity(
     if sotp_ratio < 0.30:
         has_critical_block = True
         flags.append("SOTP_DISCOUNT_CRITICAL")
-        warnings.append(f"Vốn hóa mảng niêm yết chỉ chiếm {sotp_ratio*100:.1f}% vốn hóa mẹ (< 30%). Rủi ro mảng chưa niêm yết cực cao!")
+        warnings.append(
+            f"Vốn hóa mảng niêm yết chỉ chiếm {sotp_ratio * 100:.1f}% vốn hóa mẹ (< 30%). Rủi ro mảng chưa niêm yết cực cao!"
+        )
         fv_discount += 0.20
     elif sotp_ratio < 0.50:
         flags.append("SOTP_ANOMALY")
-        warnings.append(f"Vốn hóa mảng niêm yết chiếm {sotp_ratio*100:.1f}% vốn hóa mẹ (< 50%). Cần chiết khấu holding conglomerate.")
+        warnings.append(
+            f"Vốn hóa mảng niêm yết chiếm {sotp_ratio * 100:.1f}% vốn hóa mẹ (< 50%). Cần chiết khấu holding conglomerate."
+        )
         fv_discount += 0.10
 
     if implied_unlisted_val > (mcap_parent * 0.50):
@@ -436,7 +546,7 @@ def evaluate_real_estate_valuation(
         + core_res.get("fv_discount", 0.0)
         + survival_res.get("applied_discounts", 0.0)
         + pb_res.get("fv_discount", 0.0),
-        0.50
+        0.50,
     )
 
     fv_base = round(max(fv_raw * (1.0 - total_disc), current_price * 0.40), 2)
@@ -453,7 +563,11 @@ def evaluate_real_estate_valuation(
         or survival_res.get("has_critical_block", False)
     )
     confidence = "LOW" if has_risk else "MEDIUM"
-    val_method = "SOTP / RNAV & BCTC Thực (Real Estate Model)" if sotp_res.get("is_holding") else "P/B Chuẩn Hóa BCTC & Survival Gate (Real Estate)"
+    val_method = (
+        "SOTP / RNAV & BCTC Thực (Real Estate Model)"
+        if sotp_res.get("is_holding")
+        else "P/B Chuẩn Hóa BCTC & Survival Gate (Real Estate)"
+    )
 
     return {
         "fv_base": fv_base,
@@ -525,9 +639,8 @@ def check_peak_earnings_trap(
     except (ValueError, TypeError):
         return {"is_peak_trap": False, "warning": None, "fv_discount": 0.0, "cap_rating": False}
 
-    is_margin_down = (
-        str(gross_margin_trend or "").upper() == "DOWN"
-        or (isinstance(margin_quarters_down, (int, float)) and margin_quarters_down >= 2)
+    is_margin_down = str(gross_margin_trend or "").upper() == "DOWN" or (
+        isinstance(margin_quarters_down, (int, float)) and margin_quarters_down >= 2
     )
 
     if pe_val < 6.5 and is_margin_down:
@@ -637,9 +750,10 @@ def evaluate_cyclical_valuation(
 
     # 2. Peak Earnings Trap Detector (TASK-0029)
     peak_res = check_peak_earnings_trap(
-        sym, pe,
+        sym,
+        pe,
         gross_margin_trend=fin.get("gross_margin_trend"),
-        margin_quarters_down=fin.get("margin_quarters_down", 0)
+        margin_quarters_down=fin.get("margin_quarters_down", 0),
     )
 
     # 3. Regional Peer Comparison Benchmark (TASK-0031)
@@ -653,10 +767,7 @@ def evaluate_cyclical_valuation(
     fv_raw = base_eps * mid_cycle_multiple
 
     total_discount = min(
-        peak_res.get("fv_discount", 0.0)
-        + peer_res.get("fv_discount", 0.0)
-        + sec_risk_res.get("fv_discount", 0.0),
-        0.50
+        peak_res.get("fv_discount", 0.0) + peer_res.get("fv_discount", 0.0) + sec_risk_res.get("fv_discount", 0.0), 0.50
     )
 
     fv_base = round(max(fv_raw * (1.0 - total_discount), current_price * 0.40), 2)
@@ -724,7 +835,7 @@ def calculate_fair_value_and_mos(
             "confidence": "LOW",
             "consensus_target": 0.0,
             "consensus_source": "N/A",
-            "archetype": "UNKNOWN"
+            "archetype": "UNKNOWN",
         }
 
     sym_clean = symbol.strip().upper()
@@ -783,7 +894,11 @@ def calculate_fair_value_and_mos(
             logging.warning(
                 "[DATA-INTEGRITY] %s P/B=%s ngoài ngưỡng an toàn %s-%s (%s). "
                 "Chặn xuất khuyến nghị đầu tư, chỉ xuất cảnh báo lỗi dữ liệu.",
-                sym_clean, pb, lo, hi, sec_key
+                sym_clean,
+                pb,
+                lo,
+                hi,
+                sec_key,
             )
             return {
                 "fair_value": 0.0,
@@ -858,7 +973,11 @@ def calculate_fair_value_and_mos(
         if freshness.get("is_stale", False):
             consensus_stale = True
             confidence = "LOW"
-            logging.warning("Consensus target của %s đã quá hạn (%s ngày), loại bỏ khỏi Fair Value.", sym_clean, freshness.get("age_days"))
+            logging.warning(
+                "Consensus target của %s đã quá hạn (%s ngày), loại bỏ khỏi Fair Value.",
+                sym_clean,
+                freshness.get("age_days"),
+            )
         else:
             discounted_consensus = round(cons_target * 0.85, 2)
             fv_base = round((fv_base * 0.6) + (discounted_consensus * 0.4), 2)

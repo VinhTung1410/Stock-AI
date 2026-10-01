@@ -8,6 +8,7 @@ from indicators import calculate_altman_z_score, calculate_piotroski_f_score
 
 MAX_POSITIONS_PER_SECTOR: int = 3
 
+
 def _evaluate_profitable_holding(
     symbol: str,
     entry_price: float,
@@ -21,15 +22,10 @@ def _evaluate_profitable_holding(
     max_allowed_stop = round(curr_price * 0.96, 2)
     if pl_pct >= 15.0:
         candidate_stop = max(
-            entry_price * 1.06,
-            (curr_price - (1.2 * atr)) if atr > 0 else (curr_price * 0.95),
-            ma20 * 0.98
+            entry_price * 1.06, (curr_price - (1.2 * atr)) if atr > 0 else (curr_price * 0.95), ma20 * 0.98
         )
     elif pl_pct >= 5.0:
-        candidate_stop = max(
-            entry_price * 1.02,
-            (curr_price - (1.5 * atr)) if atr > 0 else (curr_price * 0.94)
-        )
+        candidate_stop = max(entry_price * 1.02, (curr_price - (1.5 * atr)) if atr > 0 else (curr_price * 0.94))
     else:
         candidate_stop = entry_price
 
@@ -52,8 +48,7 @@ def _evaluate_profitable_holding(
     else:
         action = "🟢 NẮM GIỮ / THEO DÕI ĐÀ TĂNG"
         detail = (
-            f"Vị thế có lãi nhẹ (+{pl_pct:.1f}%). Tiếp tục nắm giữ, "
-            f"đặt mốc chặn lãi hòa vốn tại {trailing_stop:.2f}k."
+            f"Vị thế có lãi nhẹ (+{pl_pct:.1f}%). Tiếp tục nắm giữ, đặt mốc chặn lãi hòa vốn tại {trailing_stop:.2f}k."
         )
 
     return {
@@ -67,7 +62,7 @@ def _evaluate_profitable_holding(
         "detail": detail,
         "trailing_stop": trailing_stop,
         "is_profit": True,
-        "thesis_breaker": "N/A (Vị thế đang thắng thế, không có rủi ro vỡ luận điểm)"
+        "thesis_breaker": "N/A (Vị thế đang thắng thế, không có rủi ro vỡ luận điểm)",
     }
 
 
@@ -134,7 +129,7 @@ def _evaluate_losing_holding(
         "detail": detail,
         "stop_loss": stop_loss,
         "is_profit": False,
-        "thesis_breaker": thesis_msg
+        "thesis_breaker": thesis_msg,
     }
 
 
@@ -152,18 +147,11 @@ def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict | None 
     ma20 = float(tech_data.get("ma20") or curr_price)
 
     if pl_pct > 0:
-        return _evaluate_profitable_holding(
-            symbol, entry_price, curr_price, volume, pl_pct, pl_val, atr, ma20
-        )
-    return _evaluate_losing_holding(
-        symbol, entry_price, curr_price, volume, pl_pct, pl_val, atr, fin_dict, sector
-    )
+        return _evaluate_profitable_holding(symbol, entry_price, curr_price, volume, pl_pct, pl_val, atr, ma20)
+    return _evaluate_losing_holding(symbol, entry_price, curr_price, volume, pl_pct, pl_val, atr, fin_dict, sector)
 
 
-def check_portfolio_concentration(
-    candidates: List[Dict[str, Any]],
-    max_per_sector: int = 1
-) -> Dict[str, Any]:
+def check_portfolio_concentration(candidates: List[Dict[str, Any]], max_per_sector: int = 1) -> Dict[str, Any]:
     """Audit candidate recommendations against sector concentration.
 
     Retains the highest conviction candidate per sector in approved list,
@@ -210,11 +198,7 @@ def check_portfolio_concentration(
                 f"để tránh rủi ro đồng pha danh mục."
             )
 
-    return {
-        "approved_candidates": approved,
-        "downgraded_candidates": downgraded,
-        "warnings": warnings
-    }
+    return {"approved_candidates": approved, "downgraded_candidates": downgraded, "warnings": warnings}
 
 
 def calculate_drawdown_controlled_sizing(
@@ -299,6 +283,7 @@ def check_sector_concentration(
         return True, "SECTOR_CONCENTRATION_OK"
 
     from data_engine import SECTOR_MAP
+
     s_map = sector_map if sector_map is not None else SECTOR_MAP
 
     sym_clean = new_symbol.upper().strip()
@@ -432,5 +417,3 @@ def evaluate_partial_profit_lock(
         "current_pnl_pct": round(current_pnl_pct, 2),
         "status": "TRAIL_IN_PROGRESS",
     }
-
-

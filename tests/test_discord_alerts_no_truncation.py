@@ -163,4 +163,3 @@ def test_prune_unsuitable_watchlist_deletes_manual_item_when_enabled(tmp_path, m
     # Đã kích hoạt hàm bắn DM
     assert len(alert_called_with) == 1
     assert alert_called_with[0]["symbol"] == "OVERHEATED"
-

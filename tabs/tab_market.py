@@ -19,11 +19,12 @@ def render_tab_market(df_vnindex: pd.DataFrame):
 
         # Tính toán thanh khoản & độ rộng thị trường khớp hình ảnh tham chiếu
         vol_shares = int(df_vnindex["volume"].iloc[-1]) if "volume" in df_vnindex.columns else 697692122
-        val_bil = (vol_shares * latest_idx * 0.0000135)
+        val_bil = vol_shares * latest_idx * 0.0000135
         if val_bil < 10000 or val_bil > 35000:
             val_bil = 16961.869
 
         from datetime import datetime, timedelta, timezone
+
         vn_time = datetime.now(timezone(timedelta(hours=7)))
         is_weekday = vn_time.weekday() < 5
         curr_min = vn_time.hour * 60 + vn_time.minute
@@ -127,9 +128,12 @@ def render_tab_market(df_vnindex: pd.DataFrame):
 
         # 1. BIỂU ĐỒ NẾN NHẬT VN-INDEX (VÙNG ĐỆM THỊ GIÁC CHO DARK MODE)
         st.subheader("📉 Biểu đồ Kỹ thuật Chỉ số VN-INDEX")
-        st.markdown("""
+        st.markdown(
+            """
         <div style="background: #1e222d; border: 1px solid #2a2e39; border-radius: 12px; padding: 4px; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); margin-bottom: 16px;">
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
         tv_vnindex_html = generate_tradingview_html(df_vnindex, "VNINDEX")
         components.html(tv_vnindex_html, height=530)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -141,15 +145,19 @@ def render_tab_market(df_vnindex: pd.DataFrame):
         valuation_view = st.radio(
             "📐 Bố cục hiển thị biểu đồ định giá:",
             ["🖥️ Toàn cảnh P/E (Khuyên dùng)", "📈 Toàn cảnh P/B", "↔️ So sánh song song (2 Cột)"],
-            horizontal=True
+            horizontal=True,
         )
 
         if valuation_view == "🖥️ Toàn cảnh P/E (Khuyên dùng)":
-            st.caption("💡 **Chế độ Toàn cảnh:** Không gian mở rộng tối đa giúp quan sát trọn vẹn xu hướng định giá P/E so với đỉnh/đáy lịch sử VN-INDEX và đường Trung bình (TB).")
+            st.caption(
+                "💡 **Chế độ Toàn cảnh:** Không gian mở rộng tối đa giúp quan sát trọn vẹn xu hướng định giá P/E so với đỉnh/đáy lịch sử VN-INDEX và đường Trung bình (TB)."
+            )
             html_pe = generate_echarts_valuation_html(df_vnindex, metric="PE")
             components.html(html_pe, height=480)
         elif valuation_view == "📈 Toàn cảnh P/B":
-            st.caption("💡 **Chế độ Toàn cảnh:** Phân tích giá trị sổ sách P/B của toàn thị trường mở rộng 100% chiều ngang.")
+            st.caption(
+                "💡 **Chế độ Toàn cảnh:** Phân tích giá trị sổ sách P/B của toàn thị trường mở rộng 100% chiều ngang."
+            )
             html_pb = generate_echarts_valuation_html(df_vnindex, metric="PB")
             components.html(html_pb, height=480)
         else:

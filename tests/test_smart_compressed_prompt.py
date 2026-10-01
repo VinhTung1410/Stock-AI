@@ -3,6 +3,7 @@ Unit tests for Phase 3: Smart Compressed Prompt & Built-in Red Team.
 Validates 5-expert sequential reasoning, Red Team contrarian challenge,
 8 PM decision states, and zero-token Data Gate rejection.
 """
+
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -45,23 +46,16 @@ class TestSmartCompressedPrompt:
             "volume": 25000000,
             "vol_ratio": 1.35,
             "adv20_billion": 500.0,
-            "status_ma20": "TRÊN MA20"
+            "status_ma20": "TRÊN MA20",
         }
-        mock_fin = {
-            "period": "Q2/2026",
-            "roe": 16.5,
-            "pb": 1.45,
-            "pe": 10.2,
-            "f_score": 8,
-            "z_score": 3.2
-        }
+        mock_fin = {"period": "Q2/2026", "roe": 16.5, "pb": 1.45, "pe": 10.2, "f_score": 8, "z_score": 3.2}
 
         with patch("ai_analyst.call_gemini", side_effect=mock_call_gemini):
             res = analyze_stock_with_smart_committee(
                 symbol="HPG",
                 tech_data=mock_tech,
                 fin_data=mock_fin,
-                news_items=[{"title": "Hòa Phát xuất khẩu thép tăng mạnh", "tag": "KQKD"}]
+                news_items=[{"title": "Hòa Phát xuất khẩu thép tăng mạnh", "tag": "KQKD"}],
             )
 
         assert res["status"] == "SUCCESS"
@@ -90,16 +84,11 @@ class TestSmartCompressedPrompt:
         corrupted_tech = {
             "current_price": -5.0,  # Fatal non-positive price
             "close": -5.0,
-            "ref_price": 28.0
+            "ref_price": 28.0,
         }
 
         with patch("ai_analyst.call_gemini") as mock_gemini:
-            res = analyze_stock_with_smart_committee(
-                symbol="HPG",
-                tech_data=corrupted_tech,
-                fin_data={},
-                news_items=[]
-            )
+            res = analyze_stock_with_smart_committee(symbol="HPG", tech_data=corrupted_tech, fin_data={}, news_items=[])
 
             # Assert Gemini is NEVER called -> 0 AI tokens spent!
             mock_gemini.assert_not_called()
@@ -126,19 +115,30 @@ class TestSmartCompressedPrompt:
                 "story_tag": "AI",
                 "story": "Hợp tác Nvidia",
                 "data_quality": "HIGH",
-                "data_badge": "📊 DATA QUALITY: HIGH (95/100)"
+                "data_badge": "📊 DATA QUALITY: HIGH (95/100)",
             }
         ]
 
-        with patch("ai_analyst.call_gemini", side_effect=mock_call_gemini), \
-             patch("quant_valuation.calculate_fair_value_and_mos", return_value={"fair_value": 150.0, "mos_pct": 11.1, "valuation_method": "P/E", "confidence": "HIGH"}), \
-             patch("data_engine.fetch_stock_technical", return_value={"current_price": 1280.0, "change_pct": 0.5, "ma20": 1270.0, "ma50": 1260.0, "rsi14": 55.0, "status_ma20": "TRÊN MA20"}):
-
+        with (
+            patch("ai_analyst.call_gemini", side_effect=mock_call_gemini),
+            patch(
+                "quant_valuation.calculate_fair_value_and_mos",
+                return_value={"fair_value": 150.0, "mos_pct": 11.1, "valuation_method": "P/E", "confidence": "HIGH"},
+            ),
+            patch(
+                "data_engine.fetch_stock_technical",
+                return_value={
+                    "current_price": 1280.0,
+                    "change_pct": 0.5,
+                    "ma20": 1270.0,
+                    "ma50": 1260.0,
+                    "rsi14": 55.0,
+                    "status_ma20": "TRÊN MA20",
+                },
+            ),
+        ):
             generate_morning_strategy_report(
-                portfolio_df=pd.DataFrame(),
-                watchlist_df=pd.DataFrame(),
-                opportunities=opps,
-                news_items=[]
+                portfolio_df=pd.DataFrame(), watchlist_df=pd.DataFrame(), opportunities=opps, news_items=[]
             )
 
         assert len(captured_prompts) == 1
@@ -177,10 +177,7 @@ class TestSmartCompressedPrompt:
 
         with patch("ai_analyst.call_gemini", return_value=misleading_report):
             res = analyze_stock_with_smart_committee(
-                symbol="VHM",
-                tech_data=mock_tech,
-                fin_data=mock_fin,
-                news_items=[]
+                symbol="VHM", tech_data=mock_tech, fin_data=mock_fin, news_items=[]
             )
 
         assert res["status"] == "SUCCESS"
@@ -202,7 +199,7 @@ class TestSmartCompressedPrompt:
                 symbol="TEST",
                 tech_data=mock_tech,
                 fin_data={},  # Empty financial data
-                news_items=[]
+                news_items=[],
             )
 
         assert len(captured_prompts) == 1
@@ -221,10 +218,7 @@ class TestSmartCompressedPrompt:
         mock_response.text = "BÁO CÁO HỢP LỆ"
 
         # Fail once, succeed on 2nd attempt
-        mock_client.models.generate_content.side_effect = [
-            TimeoutError("Connection timed out"),
-            mock_response
-        ]
+        mock_client.models.generate_content.side_effect = [TimeoutError("Connection timed out"), mock_response]
 
         result = call_gemini(mock_client, "Test prompt", max_retries=2, retry_delay=0.01)
         assert result == "BÁO CÁO HỢP LỆ"
@@ -236,10 +230,7 @@ class TestSmartCompressedPrompt:
 
         with patch("ai_analyst.call_gemini", side_effect=RuntimeError("API Outage")):
             res = analyze_stock_with_smart_committee(
-                symbol="FPT",
-                tech_data=mock_tech,
-                fin_data={"f_score": 8, "z_score": 3.0},
-                news_items=[]
+                symbol="FPT", tech_data=mock_tech, fin_data={"f_score": 8, "z_score": 3.0}, news_items=[]
             )
 
         assert res["status"] == "AI_GENERATION_FAILED"

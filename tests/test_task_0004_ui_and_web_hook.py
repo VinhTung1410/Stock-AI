@@ -16,15 +16,17 @@ def test_web_to_discord_hook_triggers_on_buy(monkeypatch):
     captured_alerts = []
 
     def mock_send_alert(symbol, action, current_price, trigger_reason, target_price=None, stop_loss=None, **kwargs):
-        captured_alerts.append({
-            "symbol": symbol,
-            "action": action,
-            "current_price": current_price,
-            "target_price": target_price,
-            "stop_loss": stop_loss,
-            "trigger_reason": trigger_reason,
-            **kwargs,
-        })
+        captured_alerts.append(
+            {
+                "symbol": symbol,
+                "action": action,
+                "current_price": current_price,
+                "target_price": target_price,
+                "stop_loss": stop_loss,
+                "trigger_reason": trigger_reason,
+                **kwargs,
+            }
+        )
         return True
 
     monkeypatch.setattr("discord_alerts.send_trade_signal_alert", mock_send_alert)
@@ -42,27 +44,47 @@ def test_web_to_discord_hook_triggers_on_buy(monkeypatch):
 
     with mock.patch("ai_analyst.get_ai_client", return_value=mock_client):
         with mock.patch("ai_analyst.call_gemini", side_effect=mock_call_gemini):
-            with mock.patch("data_engine.fetch_stock_technical", return_value={"current_price": 33.0, "rsi14": 55.0, "status_ma20": "TRÊN MA20", "adv20_billion": 10.0}):
-                with mock.patch("data_engine.get_financial_ratios", return_value={"pe": 7.5, "pb": 1.1, "roe": 22.0, "debt_equity": 0.5}):
+            with mock.patch(
+                "data_engine.fetch_stock_technical",
+                return_value={"current_price": 33.0, "rsi14": 55.0, "status_ma20": "TRÊN MA20", "adv20_billion": 10.0},
+            ):
+                with mock.patch(
+                    "data_engine.get_financial_ratios",
+                    return_value={"pe": 7.5, "pb": 1.1, "roe": 22.0, "debt_equity": 0.5},
+                ):
                     with mock.patch("data_engine.fetch_macro_news", return_value=[]):
-                        with mock.patch("quant_engine.check_data_gate", return_value={"passed": True, "daily_value_billion": 10.0}):
-                            with mock.patch("quant_engine.calculate_piotroski_f_score", return_value={"score": 7, "rating": "RẤT MẠNH"}):
-                                with mock.patch("quant_engine.calculate_altman_z_score", return_value={"z_score": 2.8, "zone": "AN TOÀN", "icon": "🟢"}):
-                                    with mock.patch("quant_engine.calculate_valuation_triangle", return_value={"price_bull": 45.0, "price_base": 38.0, "price_bear": 30.0}):
-                                        with mock.patch("quant_engine.evaluate_decision_hard_gates", return_value={
-                                            "action_state": "🟢 KHUYẾN NGHỊ MUA",
-                                            "decision_tag": "TÍCH SẢN GIÁ TRỊ",
-                                            "mos_pct": 20.0,
-                                            "price_target": 45.0,
-                                            "stop_loss": 30.0,
-                                            "downside_pct": 9.1,
-                                            "ev": 40.0,
-                                            "risk_reward": 2.5,
-                                            "risk_reward_ratio": 2.5,
-                                            "kelly_f": 0.15,
-                                            "kelly_f_star": 0.15,
-                                            "position_size_nav": "10% NAV",
-                                        }):
+                        with mock.patch(
+                            "quant_engine.check_data_gate", return_value={"passed": True, "daily_value_billion": 10.0}
+                        ):
+                            with mock.patch(
+                                "quant_engine.calculate_piotroski_f_score",
+                                return_value={"score": 7, "rating": "RẤT MẠNH"},
+                            ):
+                                with mock.patch(
+                                    "quant_engine.calculate_altman_z_score",
+                                    return_value={"z_score": 2.8, "zone": "AN TOÀN", "icon": "🟢"},
+                                ):
+                                    with mock.patch(
+                                        "quant_engine.calculate_valuation_triangle",
+                                        return_value={"price_bull": 45.0, "price_base": 38.0, "price_bear": 30.0},
+                                    ):
+                                        with mock.patch(
+                                            "quant_engine.evaluate_decision_hard_gates",
+                                            return_value={
+                                                "action_state": "🟢 KHUYẾN NGHỊ MUA",
+                                                "decision_tag": "TÍCH SẢN GIÁ TRỊ",
+                                                "mos_pct": 20.0,
+                                                "price_target": 45.0,
+                                                "stop_loss": 30.0,
+                                                "downside_pct": 9.1,
+                                                "ev": 40.0,
+                                                "risk_reward": 2.5,
+                                                "risk_reward_ratio": 2.5,
+                                                "kelly_f": 0.15,
+                                                "kelly_f_star": 0.15,
+                                                "position_size_nav": "10% NAV",
+                                            },
+                                        ):
                                             with mock.patch("db_manager.save_quant_signal", return_value=37):
                                                 from ai_analyst import generate_quantamental_2pass_report
 

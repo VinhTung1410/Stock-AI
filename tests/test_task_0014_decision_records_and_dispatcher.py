@@ -185,7 +185,9 @@ class TestEvidenceKillSwitch:
         mock_supa.return_value = mock_client
         # 10 losing trades with -1.0R and 5 small wins with +0.5R -> average R = (-10 + 2.5) / 15 = -0.5R
         trades = [{"r_multiple": -1.0, "status": "STOP_LOSS"}] * 10 + [{"r_multiple": 0.5, "status": "TARGET_HIT"}] * 5
-        mock_client.table("signal_lifecycle").select().in_().order().limit().execute.return_value = MagicMock(data=trades)
+        mock_client.table("signal_lifecycle").select().in_().order().limit().execute.return_value = MagicMock(
+            data=trades
+        )
 
         res = check_evidence_kill_switch(lookback_trades=20)
         assert res["is_triggered"] is True
@@ -198,7 +200,9 @@ class TestEvidenceKillSwitch:
         mock_client = MagicMock()
         mock_supa.return_value = mock_client
         trades = [{"r_multiple": 1.5, "status": "TARGET_HIT"}] * 8 + [{"r_multiple": -1.0, "status": "STOP_LOSS"}] * 4
-        mock_client.table("signal_lifecycle").select().in_().order().limit().execute.return_value = MagicMock(data=trades)
+        mock_client.table("signal_lifecycle").select().in_().order().limit().execute.return_value = MagicMock(
+            data=trades
+        )
 
         res = check_evidence_kill_switch(lookback_trades=20)
         assert res["is_triggered"] is False

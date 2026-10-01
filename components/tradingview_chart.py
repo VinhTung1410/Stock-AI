@@ -24,11 +24,9 @@ def generate_tradingview_html(df: pd.DataFrame, symbol: str) -> str:
         v = int(row.get("volume", 0))
         is_up = c >= o
         candle_list.append({"time": t, "open": o, "high": h, "low": l, "close": c})
-        volume_list.append({
-            "time": t,
-            "value": v,
-            "color": "rgba(8, 153, 129, 0.65)" if is_up else "rgba(242, 54, 69, 0.65)"
-        })
+        volume_list.append(
+            {"time": t, "value": v, "color": "rgba(8, 153, 129, 0.65)" if is_up else "rgba(242, 54, 69, 0.65)"}
+        )
 
     candle_json = json.dumps(candle_list)
     volume_json = json.dumps(volume_list)

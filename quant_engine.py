@@ -50,12 +50,6 @@ from portfolio_guard import (  # noqa: F401
 ACTION_ACCUMULATE = "🟢 TÍCH LŨY"
 
 
-
-
-
-
-
-
 def check_data_gate(symbol: str, tech_dict: dict, fin_dict: dict, min_adv20_billion: float = 2.0) -> dict:
     """Hard data quality gate - blocks recommendations for illiquid or stale-data stocks.
 
@@ -94,26 +88,22 @@ def check_data_gate(symbol: str, tech_dict: dict, fin_dict: dict, min_adv20_bill
 
     if daily_value_billion < min_adv20_billion:
         passed = False
-        reasons.append(f"Thanh khoản quá thấp ({daily_value_billion:.2f} tỷ < ngưỡng tối thiểu {min_adv20_billion} tỷ/phiên). Rủi ro kẹp vốn!")
+        reasons.append(
+            f"Thanh khoản quá thấp ({daily_value_billion:.2f} tỷ < ngưỡng tối thiểu {min_adv20_billion} tỷ/phiên). Rủi ro kẹp vốn!"
+        )
 
     # 3. Kiểm tra tính mới BCTC
     if not period or period == "N/A":
         reasons.append("BCTC chưa được đồng bộ hoặc thiếu kỳ báo cáo kiểm toán gần nhất.")
 
-    return {
-        "passed": passed,
-        "daily_value_billion": round(daily_value_billion, 2),
-        "reasons": reasons
-    }
-
-
+    return {"passed": passed, "daily_value_billion": round(daily_value_billion, 2), "reasons": reasons}
 
 
 def evaluate_market_regime(
     vnindex_tech: dict = None,
     market_breadth_pct: float = None,
     portfolio_drawdown_pct: float = 0.0,
-    margin_exposure_pct: float = 0.0
+    margin_exposure_pct: float = 0.0,
 ) -> dict:
     """Classify market regime and compute multi-variable risk budget.
 
@@ -136,7 +126,7 @@ def evaluate_market_regime(
             "cash_pct": "50%",
             "max_stock_nav": 50,
             "bias": "Thận trọng, giải ngân từng phần vào các mã có Margin of Safety cao.",
-            "defense_priority": "Trung bình"
+            "defense_priority": "Trung bình",
         }
 
     curr = vnindex_tech.get("current_price", 0.0)
@@ -219,15 +209,12 @@ def evaluate_market_regime(
         "max_stock_nav": max_nav,
         "risk_budget_score": total_risk_budget,
         "bias": bias,
-        "defense_priority": defense_priority
+        "defense_priority": defense_priority,
     }
 
 
 def calculate_weighted_entry_and_rr(
-    entry_prices: list[float],
-    weights: list[float] | None = None,
-    target_price: float = 0.0,
-    stop_loss: float = 0.0
+    entry_prices: list[float], weights: list[float] | None = None, target_price: float = 0.0, stop_loss: float = 0.0
 ) -> dict:
     """Compute weighted average entry price and risk/reward ratio.
 
@@ -250,7 +237,7 @@ def calculate_weighted_entry_and_rr(
             "risk": 0.0,
             "risk_reward": 1.0,
             "is_valid": False,
-            "error": "Thiếu danh sách giá vào lệnh (entry_prices)"
+            "error": "Thiếu danh sách giá vào lệnh (entry_prices)",
         }
 
     # Mặc định trọng số giải ngân 3 bước (30% - 40% - 30%)
@@ -285,12 +272,8 @@ def calculate_weighted_entry_and_rr(
         "risk": risk,
         "risk_reward": rr,
         "rr_ratio": rr,
-        "is_valid": is_valid
+        "is_valid": is_valid,
     }
-
-
-
-
 
 
 def evaluate_decision_hard_gates(
@@ -308,7 +291,7 @@ def evaluate_decision_hard_gates(
     symbol: str = "",
     fin_dict: dict | None = None,
     sector: str = "",
-    tech_data: dict | None = None
+    tech_data: dict | None = None,
 ) -> dict:
     """Compute deterministic hard gates for buy/sell decision.
 
@@ -331,10 +314,7 @@ def evaluate_decision_hard_gates(
 
     # Tích hợp mô hình Fair Value & MOS chuẩn tổ chức
     val_model = calculate_fair_value_and_mos(
-        symbol=symbol,
-        current_price=current_price,
-        fin_dict=fin_dict or {},
-        sector=sector
+        symbol=symbol, current_price=current_price, fin_dict=fin_dict or {}, sector=sector
     )
 
     fair_value = val_model.get("fair_value", price_base)
@@ -471,12 +451,14 @@ def evaluate_decision_hard_gates(
     try:
         if can_buy:
             from db_manager import check_evidence_kill_switch
+
             ks_res = check_evidence_kill_switch(lookback_trades=20)
             if ks_res.get("is_triggered"):
                 decision_tag = f"{decision_tag} ⚠️ [KILL SWITCH KÍCH HOẠT: Expectancy R {ks_res.get('expectancy_r')}]"
                 position_size_nav = f"{position_size_nav} (Yêu cầu giảm 50% quy mô do chuỗi lệnh thua)"
     except Exception:
         import logging
+
         logging.exception("Lỗi khi kiểm tra Kill Switch")
 
     return {
@@ -502,16 +484,8 @@ def evaluate_decision_hard_gates(
         "tech_signal": tech_signal,
         "action_state": action_state,
         "decision_tag": decision_tag,
-        "position_size_nav": position_size_nav
+        "position_size_nav": position_size_nav,
     }
-
-
-
-
-
-
-
-
 
 
 LOCKED_QUANT_THRESHOLDS = {
@@ -630,10 +604,7 @@ def calculate_signal_performance_metrics(
     }
 
 
-
 MAX_SECTOR_WEIGHT_PCT: float = 25.0
-
-
 
 
 def bootstrap_sharpe_ci(
@@ -711,14 +682,11 @@ def bootstrap_sharpe_ci(
     warning_msg = ""
     if not is_significant:
         warning_msg = (
-            f"Khoảng tin cậy {int(ci*100)}% [{ci_lower}, {ci_upper}] chứa giá trị <= 0. "
+            f"Khoảng tin cậy {int(ci * 100)}% [{ci_lower}, {ci_upper}] chứa giá trị <= 0. "
             "Chưa đủ bằng chứng thống kê để khẳng định chiến lược có Edge thực sự."
         )
     elif effective_n < 30.0:
-        warning_msg = (
-            f"Effective Sample Size ({effective_n}) < 30. "
-            "Cần tích lũy thêm dữ liệu để kết luận chắc chắn."
-        )
+        warning_msg = f"Effective Sample Size ({effective_n}) < 30. Cần tích lũy thêm dữ liệu để kết luận chắc chắn."
 
     return {
         "sharpe_point": round(point_sharpe, 3),
@@ -737,9 +705,7 @@ def bootstrap_sharpe_ci(
 ARM_QUANT_ONLY: Final[str] = "QUANT_ONLY"
 ARM_QUANT_AI: Final[str] = "QUANT_AI"
 
-CALIBRATION_BUCKET_NAMES: Final[list[str]] = [
-    "50-60", "60-70", "70-80", "80-90", "90-100"
-]
+CALIBRATION_BUCKET_NAMES: Final[list[str]] = ["50-60", "60-70", "70-80", "80-90", "90-100"]
 
 
 def _extract_trade_confidence(row: dict[str, Any]) -> tuple[float, int] | None:
@@ -1238,17 +1204,6 @@ def calculate_sector_gate_insurance_roi(
     }
 
 
-
-
-
-
-
-
-
-
-
-
-
 # =============================================================================
 # PHASE 7e: CONVICTION WEIGHTS STATISTICAL VALIDATION (SPEARMAN IC & FDR)
 # =============================================================================
@@ -1445,6 +1400,3 @@ def apply_benjamini_hochberg_fdr(
         "warning": warning_msg,
         "results": results,
     }
-
-
-

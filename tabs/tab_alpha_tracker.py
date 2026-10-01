@@ -93,7 +93,7 @@ def _filter_and_render_signals_table(df_signals: pd.DataFrame) -> pd.DataFrame:
     with col_f1:
         filter_status = st.selectbox(
             "Lọc theo trạng thái:",
-            [FILTER_ALL, "Đang mở (OPEN)", "Chốt lời (TARGET_HIT)", "Cắt lỗ (STOP_LOSS)", "Hết hạn (EXPIRED)"]
+            [FILTER_ALL, "Đang mở (OPEN)", "Chốt lời (TARGET_HIT)", "Cắt lỗ (STOP_LOSS)", "Hết hạn (EXPIRED)"],
         )
     with col_f2:
         all_syms = [FILTER_ALL] + sorted(df_signals["Mã"].dropna().astype(str).unique().tolist())
@@ -112,9 +112,21 @@ def _filter_and_render_signals_table(df_signals: pd.DataFrame) -> pd.DataFrame:
         filtered_df = filtered_df[filtered_df["Mã"] == filter_sym]
 
     display_cols = [
-        "ID", "Mã", COL_SIGNAL_DATE, COL_ACTION, "Giá vào", "Giá Target", "Stop-Loss",
-        COL_STATUS, "PnL Thực tế (%)", "Alpha vs VNI (%)", "Đỉnh MFE", "Đáy MAE",
-        "MoS (%)", "F-Score", "Nguyên nhân nếu lỗ"
+        "ID",
+        "Mã",
+        COL_SIGNAL_DATE,
+        COL_ACTION,
+        "Giá vào",
+        "Giá Target",
+        "Stop-Loss",
+        COL_STATUS,
+        "PnL Thực tế (%)",
+        "Alpha vs VNI (%)",
+        "Đỉnh MFE",
+        "Đáy MAE",
+        "MoS (%)",
+        "F-Score",
+        "Nguyên nhân nếu lỗ",
     ]
     avail_cols = [c for c in display_cols if c in filtered_df.columns]
     st.dataframe(filtered_df[avail_cols], width="stretch", hide_index=True)
@@ -134,9 +146,7 @@ def _render_signal_detail_inspector(filtered_df: pd.DataFrame, df_signals: pd.Da
         return f"Signal #{x} - {row.get('Mã', '')} ({row.get(COL_SIGNAL_DATE, '')} | Trạng thái: {row.get(COL_STATUS, 'OPEN')})"
 
     selected_id = st.selectbox(
-        "Chọn một tín hiệu để mở hộp đen dữ liệu gốc:",
-        options=filtered_df["ID"].tolist(),
-        format_func=_format_label
+        "Chọn một tín hiệu để mở hộp đen dữ liệu gốc:", options=filtered_df["ID"].tolist(), format_func=_format_label
     )
     if not selected_id:
         return
@@ -146,34 +156,34 @@ def _render_signal_detail_inspector(filtered_df: pd.DataFrame, df_signals: pd.Da
         return
 
     target_row = target_rows.iloc[0]
-    entry_txt = _safe_num(target_row.get('Giá vào'), 1, suffix="k")
-    target_txt = _safe_num(target_row.get('Giá Target'), 1, suffix="k")
-    sl_txt = _safe_num(target_row.get('Stop-Loss'), 1, suffix="k")
+    entry_txt = _safe_num(target_row.get("Giá vào"), 1, suffix="k")
+    target_txt = _safe_num(target_row.get("Giá Target"), 1, suffix="k")
+    sl_txt = _safe_num(target_row.get("Stop-Loss"), 1, suffix="k")
 
-    mos_val = target_row.get('MoS (%)')
+    mos_val = target_row.get("MoS (%)")
     mos_prefix = "+" if (mos_val is not None and pd.notnull(mos_val) and float(mos_val or 0) > 0) else ""
     mos_txt = _safe_num(mos_val, 1, prefix=mos_prefix, suffix="%")
 
-    f_score_val = target_row.get('F-Score')
+    f_score_val = target_row.get("F-Score")
     f_score_txt = f"{int(float(f_score_val))}/9" if (f_score_val is not None and pd.notnull(f_score_val)) else "N/A"
-    z_score_txt = _safe_num(target_row.get('Z-Score'), 2)
-    kelly_val = target_row.get('Kelly f*')
+    z_score_txt = _safe_num(target_row.get("Z-Score"), 2)
+    kelly_val = target_row.get("Kelly f*")
     kelly_txt = _safe_num(kelly_val, 2, default=str(kelly_val if kelly_val is not None else "N/A"))
 
-    pnl_txt = _safe_pct(target_row.get('PnL Thực tế (%)'), default="Đang chạy (N/A)")
-    alpha_txt = _safe_pct(target_row.get('Alpha vs VNI (%)'), default="Đang chạy (N/A)")
-    mfe_txt = _safe_num(target_row.get('Đỉnh MFE'), 1, suffix="k")
-    mae_txt = _safe_num(target_row.get('Đáy MAE'), 1, suffix="k")
-    t1_txt = _safe_num(target_row.get('Giá T+1'), 1, suffix="k", default="Chưa đạt")
-    t5_txt = _safe_num(target_row.get('Giá T+5'), 1, suffix="k", default="Chưa đạt")
-    t20_txt = _safe_num(target_row.get('Giá T+20'), 1, suffix="k", default="Chưa đạt")
+    pnl_txt = _safe_pct(target_row.get("PnL Thực tế (%)"), default="Đang chạy (N/A)")
+    alpha_txt = _safe_pct(target_row.get("Alpha vs VNI (%)"), default="Đang chạy (N/A)")
+    mfe_txt = _safe_num(target_row.get("Đỉnh MFE"), 1, suffix="k")
+    mae_txt = _safe_num(target_row.get("Đáy MAE"), 1, suffix="k")
+    t1_txt = _safe_num(target_row.get("Giá T+1"), 1, suffix="k", default="Chưa đạt")
+    t5_txt = _safe_num(target_row.get("Giá T+5"), 1, suffix="k", default="Chưa đạt")
+    t20_txt = _safe_num(target_row.get("Giá T+20"), 1, suffix="k", default="Chưa đạt")
 
     col_d1, col_d2, col_d3 = st.columns(3)
     with col_d1:
         st.markdown(f"""
         **1. Thông tin Vị thế & Giá:**
-        - Mã: **{target_row.get('Mã', 'N/A')}** ({target_row.get(COL_ACTION, 'N/A')})
-        - Ngày phát: `{target_row.get(COL_SIGNAL_DATE, 'N/A')}`
+        - Mã: **{target_row.get("Mã", "N/A")}** ({target_row.get(COL_ACTION, "N/A")})
+        - Ngày phát: `{target_row.get(COL_SIGNAL_DATE, "N/A")}`
         - Giá vào (Entry): `{entry_txt}`
         - Mục tiêu (Target): `{target_txt}`
         - Ngưỡng cắt lỗ: `{sl_txt}`
@@ -191,7 +201,7 @@ def _render_signal_detail_inspector(filtered_df: pd.DataFrame, df_signals: pd.Da
     with col_d3:
         st.markdown(f"""
         **3. Kết quả Thực tế sau T+:**
-        - Trạng thái hiện tại: **{target_row.get(COL_STATUS, 'OPEN')}**
+        - Trạng thái hiện tại: **{target_row.get(COL_STATUS, "OPEN")}**
         - P/L Thực tế: **{pnl_txt}**
         - Alpha vs VN-Index: **{alpha_txt}**
         - Đỉnh MFE: `{mfe_txt}` | Đáy MAE: `{mae_txt}`
@@ -227,7 +237,8 @@ def render_tab_alpha_tracker():
     - Subtab 2: Backtest Lõi Định Lượng Theo Regime
     - Subtab 3: Forward Testing (Paper Trading)
     """
-    st.markdown("""
+    st.markdown(
+        """
     <div style="margin-bottom: 20px;">
         <h2 style="font-size: 24px; font-weight: 800; color: #0f172a; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
             🎯 KIỂM TOÁN TÍN HIỆU & ENGINE BACKTEST / PAPER TRADING
@@ -236,15 +247,19 @@ def render_tab_alpha_tracker():
             Hệ thống đối soát độc lập: Kiểm toán Alpha thực tế, Backtest 3 Regime HOSE, và Forward Testing đo lường Implementation Shortfall.
         </p>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
-    subtab1, subtab2, subtab3, subtab4, subtab5 = st.tabs([
-        "🎯 Kiểm Toán Tín Hiệu (Alpha Ledger)",
-        "🚀 Backtest Lõi Định Lượng Theo Regime",
-        "📝 Forward Testing (Paper Trading)",
-        "🌪️ Kiểm Tra Áp Lực & Rủi Ro Đuôi (Stress Test)",
-        "📋 Nhật Ký Quyết Định (Decision Log)",
-    ])
+    subtab1, subtab2, subtab3, subtab4, subtab5 = st.tabs(
+        [
+            "🎯 Kiểm Toán Tín Hiệu (Alpha Ledger)",
+            "🚀 Backtest Lõi Định Lượng Theo Regime",
+            "📝 Forward Testing (Paper Trading)",
+            "🌪️ Kiểm Tra Áp Lực & Rủi Ro Đuôi (Stress Test)",
+            "📋 Nhật Ký Quyết Định (Decision Log)",
+        ]
+    )
 
     with subtab1:
         _render_alpha_audit_subtab()
@@ -270,7 +285,9 @@ def _render_alpha_audit_subtab():
             with st.spinner("Đang chạy kiểm toán đối soát sau phiên..."):
                 audit_res = update_daily_tracking()
                 if audit_res.get("status") == "PENDING_DATA":
-                    st.warning("⚠️ Thị trường chưa chốt phiên hoặc dữ liệu chưa sẵn sàng (PENDING_DATA). Đã hoãn đối soát giả định.")
+                    st.warning(
+                        "⚠️ Thị trường chưa chốt phiên hoặc dữ liệu chưa sẵn sàng (PENDING_DATA). Đã hoãn đối soát giả định."
+                    )
                 else:
                     st.success(f"✅ Hoàn tất kiểm toán! Đã cập nhật {audit_res.get('updated', 0)} tín hiệu.")
                     st.rerun()
@@ -280,7 +297,9 @@ def _render_alpha_audit_subtab():
 
     df_signals = metrics.get("signals_df", pd.DataFrame())
     if df_signals.empty:
-        st.info("💡 **Chưa có dữ liệu kiểm toán trên Supabase.** Khi Trading Bot quét thị trường hoặc bạn bấm phân tích mã trên Tab 5, các khuyến nghị sẽ tự động được ghi nhận và lưu vết tại đây.")
+        st.info(
+            "💡 **Chưa có dữ liệu kiểm toán trên Supabase.** Khi Trading Bot quét thị trường hoặc bạn bấm phân tích mã trên Tab 5, các khuyến nghị sẽ tự động được ghi nhận và lưu vết tại đây."
+        )
         return
 
     filtered_df = _filter_and_render_signals_table(df_signals)
@@ -303,7 +322,9 @@ def _normalize_price_index(df: pd.DataFrame) -> pd.DataFrame:
     return df_out
 
 
-def _prepare_backtest_data(sym_input: str, limit_days: int, method: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series | None, pd.Series]:
+def _prepare_backtest_data(
+    sym_input: str, limit_days: int, method: str
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series | None, pd.Series]:
     """Fetch and align stock price, VN-Index benchmark, returns, and regime series."""
     from data_engine import fetch_index_historical, fetch_stock_historical
     from regime_classifier import classify_market_regime
@@ -346,19 +367,23 @@ def _render_regime_kpi_table(reg_data: dict) -> None:
         ("Beta", "beta"),
     ]
     for label, key in metric_keys:
-        table_rows.append({
-            "Chỉ Số Định Lượng": label,
-            "Toàn Kỳ (FULL)": reg_data.get("FULL", {}).get(key, "N/A"),
-            "Uptrend (Tăng)": reg_data.get("UPTREND", {}).get(key, "N/A"),
-            "Downtrend (Giảm)": reg_data.get("DOWNTREND", {}).get(key, "N/A"),
-            "Sideways (Đi Ngang)": reg_data.get("SIDEWAYS", {}).get(key, "N/A"),
-        })
+        table_rows.append(
+            {
+                "Chỉ Số Định Lượng": label,
+                "Toàn Kỳ (FULL)": reg_data.get("FULL", {}).get(key, "N/A"),
+                "Uptrend (Tăng)": reg_data.get("UPTREND", {}).get(key, "N/A"),
+                "Downtrend (Giảm)": reg_data.get("DOWNTREND", {}).get(key, "N/A"),
+                "Sideways (Đi Ngang)": reg_data.get("SIDEWAYS", {}).get(key, "N/A"),
+            }
+        )
 
     st.markdown("#### 📊 Bảng Chỉ Số Bóc Tách Theo 3 Chế Độ Thị Trường")
     st.dataframe(pd.DataFrame(table_rows), width="stretch", hide_index=True)
     full_trades = reg_data.get("FULL", {}).get("total_trades", 0)
     if isinstance(full_trades, (int, float)) and full_trades < 30:
-        st.caption(f"⚠️ **Lưu ý mẫu nhỏ:** Số lệnh Toàn Kỳ (N = {full_trades} < 30). Khoảng tin cậy ước lượng rộng, nên xem xét thận trọng trước khi kết luận.")
+        st.caption(
+            f"⚠️ **Lưu ý mẫu nhỏ:** Số lệnh Toàn Kỳ (N = {full_trades} < 30). Khoảng tin cậy ước lượng rộng, nên xem xét thận trọng trước khi kết luận."
+        )
 
 
 def _render_equity_charts(result: Any, df_p: pd.DataFrame, df_vni: pd.DataFrame, initial_cap: float) -> None:
@@ -382,14 +407,17 @@ def _render_equity_charts(result: Any, df_p: pd.DataFrame, df_vni: pd.DataFrame,
 
 def _render_regime_backtest_subtab():
     """Render interactive Regime-based Backtest controls and performance breakdown."""
-    st.markdown("""
+    st.markdown(
+        """
     <div style="margin-bottom: 16px;">
         <h3 style="margin: 0; color: #0f172a; font-weight: 700;">🚀 Engine Backtest Định Lượng Theo Regime Thị Trường</h3>
         <p style="color: #64748b; font-size: 13.5px; margin-top: 4px;">
             Mô phỏng chân thực quy chế HOSE: <b>Chặn mua trần (+6.9%+)</b>, <b>Chu kỳ T+2.5</b>, <b>Trượt giá 15 bps</b>, <b>Benchmark VN-Index</b> và <b>Phí/Thuế thực tế</b>.
         </p>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     if "backtest_initial_cap" not in st.session_state:
         st.session_state["backtest_initial_cap"] = 100_000_000
@@ -409,7 +437,12 @@ def _render_regime_backtest_subtab():
 
     st.caption("Chọn nhanh quy mô vốn:")
     preset_cols = st.columns(4)
-    presets = [("💵 50 Triệu", 50_000_000), ("💵 100 Triệu", 100_000_000), ("💵 500 Triệu", 500_000_000), ("💎 1 Tỷ", 1_000_000_000)]
+    presets = [
+        ("💵 50 Triệu", 50_000_000),
+        ("💵 100 Triệu", 100_000_000),
+        ("💵 500 Triệu", 500_000_000),
+        ("💎 1 Tỷ", 1_000_000_000),
+    ]
     for col, (label, cap) in zip(preset_cols, presets):
         with col:
             if st.button(label, width="stretch"):
@@ -427,7 +460,9 @@ def _render_regime_backtest_subtab():
             ],
             index=0,
         )
-        st.caption("ℹ️ **Phân loại kiểm định:** *Kiểm định thời điểm kỹ thuật (Technical timing test)*. Thuật toán kiểm định thời điểm vào/ra kỹ thuật trên dữ liệu giá, không thay thế cho định giá FA.")
+        st.caption(
+            "ℹ️ **Phân loại kiểm định:** *Kiểm định thời điểm kỹ thuật (Technical timing test)*. Thuật toán kiểm định thời điểm vào/ra kỹ thuật trên dữ liệu giá, không thay thế cho định giá FA."
+        )
     with c_method:
         method = st.selectbox("Phương pháp phân loại Regime VN-Index", ["MA200_SLOPE", "MOMENTUM_VOLATILITY"])
 
@@ -474,30 +509,35 @@ def _render_regime_backtest_subtab():
                 enforce_regime_gate=enforce_cash_mode,
             )
 
-
             st.success(f"✅ Hoàn tất Backtest {sym_input} ({len(df_p)} phiên)! Tổng số lệnh: {len(result.trades)}")
             _render_regime_kpi_table(result.regime_metrics)
             _render_equity_charts(result, df_p, df_vni, float(initial_cap))
 
-            st.markdown("""
+            st.markdown(
+                """
             <div style="background: #f8fafc; border-left: 4px solid #3b82f6; padding: 12px 16px; border-radius: 4px; margin-top: 20px;">
                 <span style="font-size: 13px; color: #475569;">
                     ⚠️ <b>Khuyến cáo chuẩn mực CFA:</b> Hiệu suất quá khứ không đảm bảo kết quả tương lai. Backtest đã mô phỏng phí 0.15%, thuế bán 0.1%, trượt giá 15 bps, chu kỳ thanh toán T+2.5 và quy chế trần/sàn HOSE. Không phản ánh tác động thị trường (Market Impact) của quy mô vốn lớn.
                 </span>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
 
 def _render_paper_trading_subtab():
     """Render Forward Testing & Implementation Shortfall tracking."""
-    st.markdown("""
+    st.markdown(
+        """
     <div style="margin-bottom: 16px;">
         <h3 style="margin: 0; color: #0f172a; font-weight: 700;">📝 Khung Forward Testing (Paper Trading)</h3>
         <p style="color: #64748b; font-size: 13.5px; margin-top: 4px;">
             Đo lường <b>Implementation Shortfall (Trượt giá thực thi tính theo bps)</b> và kiểm chứng tỷ lệ khớp lệnh trên thị trường thực.
         </p>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -514,22 +554,27 @@ def _render_paper_trading_subtab():
         st.markdown("#### 📋 Nhật Ký Lệnh Ảo Đang Theo Dõi (Forward Testing Ledger)")
         display_paper = []
         from paper_trading import calculate_implementation_shortfall
+
         for _, row in df_signals.head(10).iterrows():
             entry_p = float(row.get("Giá vào") or 0.0)
             t1_p = float(row.get("Giá T+1") or entry_p)
             shortfall = calculate_implementation_shortfall(entry_p, t1_p, is_buy=True)
-            display_paper.append({
-                "Mã": row.get("Mã"),
-                COL_SIGNAL_DATE: row.get(COL_SIGNAL_DATE),
-                COL_ACTION: row.get(COL_ACTION),
-                "Giá đề xuất (k)": f"{entry_p:.1f}",
-                "Giá thực tế T+1 (k)": f"{t1_p:.1f}" if t1_p > 0 else "Chờ khớp",
-                "Trượt giá (bps)": f"{shortfall:+.1f}",
-                COL_STATUS: row.get(COL_STATUS),
-            })
+            display_paper.append(
+                {
+                    "Mã": row.get("Mã"),
+                    COL_SIGNAL_DATE: row.get(COL_SIGNAL_DATE),
+                    COL_ACTION: row.get(COL_ACTION),
+                    "Giá đề xuất (k)": f"{entry_p:.1f}",
+                    "Giá thực tế T+1 (k)": f"{t1_p:.1f}" if t1_p > 0 else "Chờ khớp",
+                    "Trượt giá (bps)": f"{shortfall:+.1f}",
+                    COL_STATUS: row.get(COL_STATUS),
+                }
+            )
         st.dataframe(pd.DataFrame(display_paper), width="stretch", hide_index=True)
     else:
-        st.info("💡 **Chưa có lệnh ảo nào được ghi nhận.** Khi Trading Bot quét cơ hội hoặc phân tích mã trên Web, các lệnh ảo sẽ tự động lưu và đối soát trượt giá tại đây.")
+        st.info(
+            "💡 **Chưa có lệnh ảo nào được ghi nhận.** Khi Trading Bot quét cơ hội hoặc phân tích mã trên Web, các lệnh ảo sẽ tự động lưu và đối soát trượt giá tại đây."
+        )
 
     st.divider()
     st.markdown("#### 🎯 Bộ Đo Lường Implementation Shortfall (Thử Nghiệm Độ Lệch Giá)")
@@ -542,10 +587,12 @@ def _render_paper_trading_subtab():
         side = st.selectbox("Loại Lệnh", ["BUY (Mua)", "SELL (Bán)"])
 
     from paper_trading import calculate_implementation_shortfall
+
     is_buy = "BUY" in side
     shortfall_bps = calculate_implementation_shortfall(dec_price, fill_price, is_buy=is_buy)
     slip_color = "#dc2626" if shortfall_bps > 0 else "#15803d"
-    st.markdown(f"""
+    st.markdown(
+        f"""
     <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 16px; margin-top: 8px;">
         <b>Độ trượt giá thực thi (Implementation Shortfall):</b>
         <span style="font-size: 20px; font-weight: 800; color: {slip_color}; margin-left: 8px;">
@@ -555,7 +602,9 @@ def _render_paper_trading_subtab():
             ({(shortfall_bps / 100.0):+.2f}% so với giá dự kiến)
         </span>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
 
 def _build_crisis_stress_table(stress_summary: dict) -> pd.DataFrame:
@@ -568,16 +617,18 @@ def _build_crisis_stress_table(stress_summary: dict) -> pd.DataFrame:
         wr = data.get("win_rate_pct", 0.0)
         trades = data.get("total_trades", 0)
 
-        rows.append({
-            "Sự Kiện Khủng Hoảng Lịch Sử": data.get("name", "N/A"),
-            "Bắt Đầu": data.get("start_date", "N/A"),
-            "Kết Thúc": data.get("end_date", "N/A"),
-            "VN-Index Giảm (%)": f"{m_drop:+.1f}%",
-            "Chiến Lược Lãi/Lỗ (%)": f"{s_ret:+.2f}%",
-            "Max Drawdown (MDD)": f"{mdd:.1f}%",
-            "Số Lệnh": trades,
-            "Tỷ Lệ Thắng (%)": f"{wr:.1f}%",
-        })
+        rows.append(
+            {
+                "Sự Kiện Khủng Hoảng Lịch Sử": data.get("name", "N/A"),
+                "Bắt Đầu": data.get("start_date", "N/A"),
+                "Kết Thúc": data.get("end_date", "N/A"),
+                "VN-Index Giảm (%)": f"{m_drop:+.1f}%",
+                "Chiến Lược Lãi/Lỗ (%)": f"{s_ret:+.2f}%",
+                "Max Drawdown (MDD)": f"{mdd:.1f}%",
+                "Số Lệnh": trades,
+                "Tỷ Lệ Thắng (%)": f"{wr:.1f}%",
+            }
+        )
     return pd.DataFrame(rows)
 
 
@@ -601,24 +652,28 @@ def _render_crisis_bar_chart(stress_summary: dict) -> None:
     strat_colors = ["#10b981" if r >= 0 else "#ef4444" for r in strategy_rets]
 
     fig = go.Figure()
-    fig.add_trace(go.Bar(
-        y=names,
-        x=market_drops,
-        name="VN-Index Sụt Giảm (%)",
-        orientation="h",
-        marker_color="#94a3b8",
-        text=[f"{v:+.1f}%" for v in market_drops],
-        textposition="outside",
-    ))
-    fig.add_trace(go.Bar(
-        y=names,
-        x=strategy_rets,
-        name="Chiến Lược Lãi/Lỗ (%)",
-        orientation="h",
-        marker_color=strat_colors,
-        text=[f"{v:+.1f}%" for v in strategy_rets],
-        textposition="outside",
-    ))
+    fig.add_trace(
+        go.Bar(
+            y=names,
+            x=market_drops,
+            name="VN-Index Sụt Giảm (%)",
+            orientation="h",
+            marker_color="#94a3b8",
+            text=[f"{v:+.1f}%" for v in market_drops],
+            textposition="outside",
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            y=names,
+            x=strategy_rets,
+            name="Chiến Lược Lãi/Lỗ (%)",
+            orientation="h",
+            marker_color=strat_colors,
+            text=[f"{v:+.1f}%" for v in strategy_rets],
+            textposition="outside",
+        )
+    )
     fig.update_layout(
         title="<b>📊 Đối Chiếu Trực Quan: Thị Trường vs Chiến Lược Qua 11 Cuộc Khủng Hoảng</b>",
         barmode="group",
@@ -729,9 +784,13 @@ def _render_monte_carlo_tail_risk_ui(extracted_pnls: list[float]) -> None:
 
     pnls_source = extracted_pnls if extracted_pnls else st.session_state.get("stress_pnls", [])
     if pnls_source:
-        st.success(f"⚡ **Tự động liên kết dữ liệu:** Đang nạp N = {len(pnls_source)} lệnh từ đợt kiểm tra áp lực vừa hoàn thành.")
+        st.success(
+            f"⚡ **Tự động liên kết dữ liệu:** Đang nạp N = {len(pnls_source)} lệnh từ đợt kiểm tra áp lực vừa hoàn thành."
+        )
     else:
-        st.info("💡 Chưa có dữ liệu lệnh từ backtest. Bạn có thể bấm **Chạy Ma Trận** phía trên để tự động nạp hoặc tự nhập chuỗi PnL bên dưới.")
+        st.info(
+            "💡 Chưa có dữ liệu lệnh từ backtest. Bạn có thể bấm **Chạy Ma Trận** phía trên để tự động nạp hoặc tự nhập chuỗi PnL bên dưới."
+        )
 
     default_pnls = pnls_source if pnls_source else [4.5, -2.1, 7.2, -5.0, 12.0, -6.5, 3.2, -4.0, 8.5, -3.2, 5.1, -7.0]
 
@@ -786,9 +845,16 @@ def _render_monte_carlo_tail_risk_ui(extracted_pnls: list[float]) -> None:
             st.session_state["stress_mc"] = res_mc
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Max Drawdown Trung Vị", f"{res_mc['median_drawdown_pct']:.2f}%", f"Khối L = {res_mc.get('block_size', 1)}")
+        c1.metric(
+            "Max Drawdown Trung Vị", f"{res_mc['median_drawdown_pct']:.2f}%", f"Khối L = {res_mc.get('block_size', 1)}"
+        )
         c2.metric("Rủi Ro Đuôi P95", f"{res_mc['p95_drawdown_pct']:.2f}%", "95% Worst Case", delta_color="inverse")
-        c3.metric("Rủi Ro Đuôi P99 (Khủng Hoảng)", f"{res_mc['p99_drawdown_pct']:.2f}%", "99% Catastrophic", delta_color="inverse")
+        c3.metric(
+            "Rủi Ro Đuôi P99 (Khủng Hoảng)",
+            f"{res_mc['p99_drawdown_pct']:.2f}%",
+            "99% Catastrophic",
+            delta_color="inverse",
+        )
         c4.metric(
             "Xác Suất Lỗ Quá 15%",
             f"{res_mc['prob_drawdown_over_15pct'] * 100.0:.1f}%",
@@ -802,11 +868,14 @@ def _render_sector_gate_insurance_roi_ui(sym_input: str) -> None:
     from quant_engine import calculate_sector_gate_insurance_roi
 
     with st.expander("🛡️ Định Lượng Chi Phí Bảo Hiểm Sector Gate (Insurance ROI - Phase 6d)", expanded=False):
-        st.markdown("""
+        st.markdown(
+            """
         <p style="color: #64748b; font-size: 13.5px;">
             Đo lường mức đánh đổi: <b>Chi phí Upside hy sinh</b> (trong sóng tăng) vs <b>Lợi ích Bảo vệ Vốn</b> (giảm Max Drawdown trong khủng hoảng) khi kích hoạt chốt chặn rủi ro.
         </p>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
         col_roi1, col_roi2 = st.columns(2)
         with col_roi1:
@@ -822,19 +891,24 @@ def _render_sector_gate_insurance_roi_ui(sym_input: str) -> None:
         cr1.metric("Chi Phí Upside Hy Sinh", f"{roi_data['upside_cost_pct']:.2f}%", "CAGR Delta", delta_color="inverse")
         cr2.metric("Lợi Ích Bảo Vệ Vốn", f"{roi_data['protection_benefit_pct']:.2f}%", "MDD Giảm Thiểu")
         cr3.metric("Tỷ Lệ Hiệu Quả Bảo Hiểm", f"{roi_data['insurance_roi']:.2f}x", roi_data["verdict"])
-        st.caption("ℹ️ *Định lượng ex-post dựa trên dữ liệu kiểm định lịch sử, phục vụ thẩm định khẩu vị rủi ro tổ chức.*")
+        st.caption(
+            "ℹ️ *Định lượng ex-post dựa trên dữ liệu kiểm định lịch sử, phục vụ thẩm định khẩu vị rủi ro tổ chức.*"
+        )
 
 
 def _render_stress_test_subtab():
     """Render Subtab 4: Crisis Stress Matrix & Monte Carlo Tail Risk (Phase 6 Overhaul)."""
-    st.markdown("""
+    st.markdown(
+        """
     <div style="margin-bottom: 16px;">
         <h3 style="margin: 0; color: #0f172a; font-weight: 700;">🌪️ Kiểm Tra Áp Lực Khủng Hoảng & Mô Phỏng Rủi Ro Đuôi (Stress Test)</h3>
         <p style="color: #64748b; font-size: 13.5px; margin-top: 4px;">
             Thẩm định sức chịu đựng của chiến lược qua <b>11 cuộc khủng hoảng lịch sử lớn nhất VN-Index (2018–2024)</b> và <b>Mô phỏng rủi ro đuôi Stationary Block Bootstrap</b>.
         </p>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # Risk Executive Summary (Đầu trang - Phase 6b)
     stress_sum = st.session_state.get("stress_summary", {})
@@ -850,8 +924,12 @@ def _render_stress_test_subtab():
             worst_mdd_sub = f"Đợt: {worst_item.get('name', 'N/A')[:20]}..."
 
     p99_text = f"{mc_sum['p99_drawdown_pct']:.1f}%" if mc_sum else "—"
-    p99_sub = f"Xác suất lỗ >15%: {mc_sum.get('prob_drawdown_over_15pct', 0.0)*100.0:.1f}%" if mc_sum else "Chờ mô phỏng"
-    sample_badge = f"N = {len(pnls)} lệnh" if len(pnls) >= 30 else (f"⚠️ Mẫu nhỏ (N={len(pnls)})" if pnls else "Chưa chạy")
+    p99_sub = (
+        f"Xác suất lỗ >15%: {mc_sum.get('prob_drawdown_over_15pct', 0.0) * 100.0:.1f}%" if mc_sum else "Chờ mô phỏng"
+    )
+    sample_badge = (
+        f"N = {len(pnls)} lệnh" if len(pnls) >= 30 else (f"⚠️ Mẫu nhỏ (N={len(pnls)})" if pnls else "Chưa chạy")
+    )
 
     st.markdown("##### 🛡️ Tóm Lược Rủi Ro Điều Hành (Risk Executive Summary)")
     c1, c2, c3, c4 = st.columns(4)
@@ -881,6 +959,7 @@ def _render_stress_test_subtab():
         trade_pnls = _run_and_display_crisis_matrix(sym_input, enforce_cash_mode)
 
     from data_engine import fetch_index_historical
+
     df_vni = fetch_index_historical("VNINDEX", limit=1800)
     if not df_vni.empty:
         _render_flash_crash_scanner(_normalize_price_index(df_vni))
@@ -891,14 +970,17 @@ def _render_stress_test_subtab():
 
 def _render_decision_log_subtab():
     """Render Subtab 5: Universe Panel Decision Log (TASK-0014)."""
-    st.markdown("""
+    st.markdown(
+        """
     <div style="margin-bottom: 16px;">
         <h3 style="margin: 0; color: #0f172a; font-weight: 700;">📋 Nhật Ký Quyết Định Toàn Universe (Decision Records & Counterfactual Log)</h3>
         <p style="color: #64748b; font-size: 13.5px; margin-top: 4px;">
             Lưu vết 100% quyết định <b>BUY, WATCH, REJECT</b>. Đo lường giá trị bảo vệ thực tế (Counterfactual ROI) của từng cổng rủi ro.
         </p>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     from db_manager import check_evidence_kill_switch, get_decision_records
 
@@ -950,12 +1032,12 @@ def _render_decision_log_subtab():
     m1.metric("Tổng Quyết Định", total)
     m2.metric("Lệnh BUY Được Cấp Phép", buys)
     m3.metric("Lệnh Đưa Vào WATCH", watches)
-    pct_str = f"{rejects/total*100:.1f}% bị chặn" if total > 0 else None
+    pct_str = f"{rejects / total * 100:.1f}% bị chặn" if total > 0 else None
     m4.metric("Lệnh Bị REJECT", rejects, delta=pct_str, delta_color="inverse")
 
-    cols_to_show = [c for c in ["decision_id", "symbol", "session", "decision", "primary_rejection_gate", "created_at"] if c in df_dec.columns]
+    cols_to_show = [
+        c
+        for c in ["decision_id", "symbol", "session", "decision", "primary_rejection_gate", "created_at"]
+        if c in df_dec.columns
+    ]
     st.dataframe(df_dec[cols_to_show], width="stretch")
-
-
-
-

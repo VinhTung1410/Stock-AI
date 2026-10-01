@@ -122,9 +122,7 @@ class TestQuantEngineRiskControls:
 
     def test_adv20_liquidity_absorption_invalid_adv(self):
         """Zero or negative ADV20 should be rejected."""
-        passed, allowed, reason = check_adv20_liquidity_absorption(
-            order_val_vnd=100_000_000.0, adv20_vnd=0.0
-        )
+        passed, allowed, reason = check_adv20_liquidity_absorption(order_val_vnd=100_000_000.0, adv20_vnd=0.0)
         assert passed is False
         assert allowed == 0.0
         assert reason == "ADV20_ZERO_OR_NEGATIVE"

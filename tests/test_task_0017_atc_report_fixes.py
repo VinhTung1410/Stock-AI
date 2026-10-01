@@ -29,14 +29,16 @@ def test_fetch_stock_technical_calculates_delta_points_and_ma_diff():
     # Generate prices: baseline 1200 with an uptrend up to 1285.50
     closes = np.linspace(1200, 1285.50, 60)
     # Yesterday close: closes[-2], Today close: closes[-1]
-    df_mock = pd.DataFrame({
-        "time": dates,
-        "open": closes - 2.0,
-        "high": closes + 5.0,
-        "low": closes - 5.0,
-        "close": closes,
-        "volume": [1000000] * 60,
-    })
+    df_mock = pd.DataFrame(
+        {
+            "time": dates,
+            "open": closes - 2.0,
+            "high": closes + 5.0,
+            "low": closes - 5.0,
+            "close": closes,
+            "volume": [1000000] * 60,
+        }
+    )
 
     with mock.patch("vnstock.api.quote.Quote.history", return_value=df_mock):
         res = fetch_stock_technical("VNINDEX", fetch_foreign=False)
@@ -204,7 +206,9 @@ def test_trading_bot_trigger_scheduled_report_prefetches_vnindex(
     from trading_bot import trigger_scheduled_report
 
     mock_load_port.return_value = [{"symbol": "FPT", "volume": 100, "cost_price": 100.0}]
-    mock_eval_port.return_value = pd.DataFrame([{"Mã CP": "FPT", "Thị giá (k)": 110.0, "Giá vốn (k)": 100.0, "Lãi/Lỗ (%)": 10.0}])
+    mock_eval_port.return_value = pd.DataFrame(
+        [{"Mã CP": "FPT", "Thị giá (k)": 110.0, "Giá vốn (k)": 100.0, "Lãi/Lỗ (%)": 10.0}]
+    )
     mock_load_wl.return_value = []
     mock_eval_wl.return_value = None
     mock_fetch_news.return_value = []

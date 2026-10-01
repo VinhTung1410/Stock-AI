@@ -96,13 +96,16 @@ class TestPhase3aWalkForwardBacktest:
         returns = rng.normal(loc=0.0003, scale=0.015, size=n)
         prices = 50.0 * np.exp(np.cumsum(returns))
 
-        df_price = pd.DataFrame({
-            "open": prices * 0.995,
-            "high": prices * 1.01,
-            "low": prices * 0.99,
-            "close": prices,
-            "volume": 500_000,
-        }, index=dates)
+        df_price = pd.DataFrame(
+            {
+                "open": prices * 0.995,
+                "high": prices * 1.01,
+                "low": prices * 0.99,
+                "close": prices,
+                "volume": 500_000,
+            },
+            index=dates,
+        )
 
         # Alternating buy and sell signals every 20 days
         signals = pd.Series(0, index=dates)
@@ -156,10 +159,13 @@ class TestPhase3bCrisisStressMatrix:
     def test_crisis_stress_matrix_all_four_scenarios(self):
         """Stress matrix covers 2018 Trade War, 2020 COVID, 2022 Bond Crash, and 2021 Bull."""
         dates = pd.date_range(start="2018-01-01", end="2024-12-31", freq="B")
-        df_price = pd.DataFrame({
-            "close": np.linspace(20.0, 80.0, len(dates)),
-            "open": np.linspace(20.0, 80.0, len(dates)),
-        }, index=dates)
+        df_price = pd.DataFrame(
+            {
+                "close": np.linspace(20.0, 80.0, len(dates)),
+                "open": np.linspace(20.0, 80.0, len(dates)),
+            },
+            index=dates,
+        )
         signals = pd.Series(0, index=dates)
         # Inject signals in each stress period
         signals.iloc[100] = 1
@@ -238,4 +244,3 @@ class TestPhase3bCrisisStressMatrix:
         assert len(stress_res["drop_4pct_days"]) >= 1
         assert stress_res["drop_4pct_days"][0]["date"] == "2023-08-18"
         assert stress_res["total_stress_days"] >= 1
-

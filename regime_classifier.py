@@ -142,4 +142,3 @@ def is_macro_circuit_breaker_active(
         return True, "VN-INDEX_DOWNTREND_CIRCUIT_BREAKER"
 
     return False, "MARKET_HEALTHY_OR_SIDEWAYS"
-

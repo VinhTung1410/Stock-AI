@@ -2,7 +2,7 @@
   {
     "symbol": "VIC",
     "target_buy": 0.0,
-    "note": "Theo dõi từ Google Sheet"
+    "note": "Theo dõi từ Google Sheet [⚠️ CẢNH BÁO: Dính bẫy giá (FALLING_KNIFE_TRAP)]"
   },
   {
     "symbol": "VPB",
@@ -13,5 +13,14 @@
     "symbol": "TCB",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"
+  },
+  {
+    "symbol": "MWG",
+    "target_buy": 72.6,
+    "note": "[AUTO_DISCOVERY] [💻 Công nghệ & Tiêu dùng Tăng trưởng] Điểm 65/100 | MoS: 15.3%",
+    "sector": "💻 Công nghệ & Tiêu dùng Tăng trưởng",
+    "archetype": "GROWTH_COMPOUNDER",
+    "strategy": "VALUE",
+    "is_auto": true
   }
 ]

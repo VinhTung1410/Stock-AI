@@ -9,12 +9,14 @@ try:
     import pyarrow.compute  # noqa: F401
 except Exception:
     import sys
+
     sys.modules["pyarrow"] = None
 
 import pandas as pd
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -60,7 +62,7 @@ def save_quant_signal(
     prob_dict: dict = None,
     model_version: str = "gemini-flash-v2.1",
     input_snapshot: dict = None,
-    decision_id: str = None
+    decision_id: str = None,
 ) -> int:
     """Save an immutable signal snapshot to Supabase when a buy/sell signal fires.
 
@@ -107,8 +109,8 @@ def save_quant_signal(
             "input_snapshot": {
                 "market_price_at_signal": mkt_price,
                 "timestamp_vn": datetime.now(VN_TZ).strftime("%Y-%m-%d %H:%M:%S"),
-                **(input_snapshot or {})
-            }
+                **(input_snapshot or {}),
+            },
         }
 
         res = client.table("signals").insert(data).execute()
@@ -117,25 +119,24 @@ def save_quant_signal(
         signal_id = res.data[0]["id"]
 
         # Khởi tạo bản ghi tracking tương ứng ở trạng thái OPEN
-        client.table("signal_tracking").insert({
-            "signal_id": signal_id,
-            "status": "OPEN",
-            "max_favorable_price": mkt_price,
-            "max_adverse_price": mkt_price
-        }).execute()
+        client.table("signal_tracking").insert(
+            {"signal_id": signal_id, "status": "OPEN", "max_favorable_price": mkt_price, "max_adverse_price": mkt_price}
+        ).execute()
 
         # Lưu bản ghi vòng đời tín hiệu (Phase 3)
         try:
-            save_signal_lifecycle({
-                "signal_id": signal_id,
-                "decision_id": decision_id,
-                "symbol": symbol,
-                "entry_price": entry_price,
-                "f_score": f_score_res.get("score", 0),
-                "mos_pct": hard_gates.get("mos_pct", 0.0),
-                "initial_target_price": target_price,
-                "initial_stop_price": stop_loss,
-            })
+            save_signal_lifecycle(
+                {
+                    "signal_id": signal_id,
+                    "decision_id": decision_id,
+                    "symbol": symbol,
+                    "entry_price": entry_price,
+                    "f_score": f_score_res.get("score", 0),
+                    "mos_pct": hard_gates.get("mos_pct", 0.0),
+                    "initial_target_price": target_price,
+                    "initial_stop_price": stop_loss,
+                }
+            )
         except Exception:
             logging.exception("Lỗi khi lưu signal_lifecycle")
 
@@ -154,7 +155,7 @@ def fetch_open_signals() -> list:
     try:
         res = client.table("signals").select("*, signal_tracking(*)").execute()
         open_list = []
-        for row in (res.data or []):
+        for row in res.data or []:
             trackings = row.get("signal_tracking") or []
             if trackings and trackings[0].get("status") == "OPEN":
                 row["tracking"] = trackings[0]
@@ -172,6 +173,7 @@ def check_symbol_recent_signal(symbol: str, days: int = 5) -> bool:
         return False
     try:
         from datetime import timezone
+
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         res = (
             client.table("signals")
@@ -193,12 +195,7 @@ def get_open_signals_count() -> int:
     if not client:
         return 0
     try:
-        res = (
-            client.table("signal_tracking")
-            .select("id", count="exact")
-            .eq("status", "OPEN")
-            .execute()
-        )
+        res = client.table("signal_tracking").select("id", count="exact").eq("status", "OPEN").execute()
         if hasattr(res, "count") and res.count is not None:
             return res.count
         return len(res.data or [])
@@ -538,17 +535,19 @@ def update_daily_tracking() -> dict:
                 else:
                     loss_attribution = "TECHNICAL_FALSE_BREAKOUT"
 
-            tracking_updates.update({
-                "status": new_status,
-                "exit_price": exit_price,
-                "exit_date": now_utc,
-                "actual_pnl_pct": pnl_pct,
-                "pnl_vs_vnindex": alpha_pct,
-                "vnindex_pct_same_period": vnindex_holding,
-                "vn30_pct_same_period": vn30_holding,
-                "t_plus_2_locked": t_plus_2_locked,
-                "loss_attribution": loss_attribution,
-            })
+            tracking_updates.update(
+                {
+                    "status": new_status,
+                    "exit_price": exit_price,
+                    "exit_date": now_utc,
+                    "actual_pnl_pct": pnl_pct,
+                    "pnl_vs_vnindex": alpha_pct,
+                    "vnindex_pct_same_period": vnindex_holding,
+                    "vn30_pct_same_period": vn30_holding,
+                    "t_plus_2_locked": t_plus_2_locked,
+                    "loss_attribution": loss_attribution,
+                }
+            )
             logging.info(
                 f"🎯 POSITION {sym} CLOSED: Status = {new_status} | P/L = {pnl_pct:+.2f}% | Alpha = {alpha_pct:+.2f}%"
             )
@@ -560,13 +559,16 @@ def update_daily_tracking() -> dict:
                     risk_pct = abs(item["entry_price"] - item["stop_loss"]) / item["entry_price"] * 100
                     r_multiple = round(pnl_pct / risk_pct, 2) if risk_pct > 0 else 0.0
 
-                update_signal_lifecycle_exit(str(sig_id), {
-                    "status": new_status,
-                    "exit_price": float(exit_price),
-                    "pnl_pct": float(pnl_pct),
-                    "r_multiple": float(r_multiple) if r_multiple is not None else None,
-                    "loss_attribution": loss_attribution
-                })
+                update_signal_lifecycle_exit(
+                    str(sig_id),
+                    {
+                        "status": new_status,
+                        "exit_price": float(exit_price),
+                        "pnl_pct": float(pnl_pct),
+                        "r_multiple": float(r_multiple) if r_multiple is not None else None,
+                        "loss_attribution": loss_attribution,
+                    },
+                )
             except Exception:
                 logging.exception("Lỗi khi update_signal_lifecycle_exit")
 
@@ -597,7 +599,7 @@ def get_signal_audit_metrics() -> dict:
         "profit_factor": 0.0,
         "alpha_vs_vnindex": 0.0,
         "signals_df": pd.DataFrame(),
-        "loss_reasons": {}
+        "loss_reasons": {},
     }
     if not client:
         return empty_res
@@ -613,35 +615,37 @@ def get_signal_audit_metrics() -> dict:
             trackings = r.get("signal_tracking") or [{}]
             t = trackings[0] if trackings else {}
 
-            flattened.append({
-                "ID": r.get("id"),
-                "Mã": r.get("symbol"),
-                "Ngày phát": str(r.get("created_at", ""))[:10],
-                "Hành động": r.get("action"),
-                "Giá vào": r.get("entry_price"),
-                "Giá Target": r.get("target_price"),
-                "Stop-Loss": r.get("stop_loss"),
-                "MoS (%)": r.get("mos_pct"),
-                "F-Score": r.get("f_score"),
-                "Z-Score": r.get("z_score"),
-                "Kelly f*": r.get("kelly_f"),
-                "P_Bull": r.get("p_bull"),
-                "P_Base": r.get("p_base"),
-                "P_Bear": r.get("p_bear"),
-                "Trạng thái": t.get("status", "OPEN"),
-                "Giá đóng": t.get("exit_price"),
-                "PnL Thực tế (%)": t.get("actual_pnl_pct"),
-                "Alpha vs VNI (%)": t.get("pnl_vs_vnindex"),
-                "Đỉnh MFE": t.get("max_favorable_price"),
-                "Đáy MAE": t.get("max_adverse_price"),
-                "Giá T+1": t.get("price_t1"),
-                "Giá T+5": t.get("price_t5"),
-                "Giá T+20": t.get("price_t20"),
-                "Nguyên nhân nếu lỗ": t.get("loss_attribution", ""),
-                "AI Thesis": r.get("ai_thesis", ""),
-                "Model": r.get("model_version", "gemini-flash"),
-                "Input Snapshot": r.get("input_snapshot", {})
-            })
+            flattened.append(
+                {
+                    "ID": r.get("id"),
+                    "Mã": r.get("symbol"),
+                    "Ngày phát": str(r.get("created_at", ""))[:10],
+                    "Hành động": r.get("action"),
+                    "Giá vào": r.get("entry_price"),
+                    "Giá Target": r.get("target_price"),
+                    "Stop-Loss": r.get("stop_loss"),
+                    "MoS (%)": r.get("mos_pct"),
+                    "F-Score": r.get("f_score"),
+                    "Z-Score": r.get("z_score"),
+                    "Kelly f*": r.get("kelly_f"),
+                    "P_Bull": r.get("p_bull"),
+                    "P_Base": r.get("p_base"),
+                    "P_Bear": r.get("p_bear"),
+                    "Trạng thái": t.get("status", "OPEN"),
+                    "Giá đóng": t.get("exit_price"),
+                    "PnL Thực tế (%)": t.get("actual_pnl_pct"),
+                    "Alpha vs VNI (%)": t.get("pnl_vs_vnindex"),
+                    "Đỉnh MFE": t.get("max_favorable_price"),
+                    "Đáy MAE": t.get("max_adverse_price"),
+                    "Giá T+1": t.get("price_t1"),
+                    "Giá T+5": t.get("price_t5"),
+                    "Giá T+20": t.get("price_t20"),
+                    "Nguyên nhân nếu lỗ": t.get("loss_attribution", ""),
+                    "AI Thesis": r.get("ai_thesis", ""),
+                    "Model": r.get("model_version", "gemini-flash"),
+                    "Input Snapshot": r.get("input_snapshot", {}),
+                }
+            )
 
         df = pd.DataFrame(flattened)
 
@@ -685,7 +689,7 @@ def get_signal_audit_metrics() -> dict:
             "profit_factor": profit_factor,
             "alpha_vs_vnindex": alpha_mean,
             "signals_df": df,
-            "loss_reasons": loss_reasons
+            "loss_reasons": loss_reasons,
         }
     except Exception as e:
         logging.exception("Lỗi tính toán chỉ số kiểm toán")
@@ -706,10 +710,7 @@ def save_signal_lifecycle(signal_data: dict) -> dict | None:
     if not symbol:
         return None
 
-    signal_id = signal_data.get(
-        "signal_id",
-        f"{symbol}_{datetime.now(VN_TZ).strftime('%Y%m%d_%H%M%S')}"
-    )
+    signal_id = signal_data.get("signal_id", f"{symbol}_{datetime.now(VN_TZ).strftime('%Y%m%d_%H%M%S')}")
 
     row = {
         "signal_id": signal_id,
@@ -783,13 +784,11 @@ def save_decision_record(record: dict) -> str | None:
         "inferences": record.get("inferences", {}),
         "opinions": record.get("opinions", {}),
         "counterfactual": record.get("counterfactual", {}),
-        
         # Phiên bản 6.3 - Analyst Context Tracking (Migration 0004)
         "analyst_context_used": record.get("analyst_context_used", False),
         "regime_conflict": record.get("regime_conflict", False),
         "context_source_file": record.get("context_source_file"),
         "context_date": record.get("context_date"),
-        
         # Phiên bản 6.4 - Audit Fields (Migration 0005)
         "prompt_version": record.get("prompt_version"),
         "model_version": record.get("model_version"),
@@ -913,5 +912,3 @@ def check_evidence_kill_switch(lookback_trades: int = 20) -> dict:
     except Exception:
         logging.exception("Error evaluating evidence kill switch")
         return default_res
-
-

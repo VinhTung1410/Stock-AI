@@ -88,7 +88,12 @@ def validate_trade_setup(setup: dict) -> tuple[bool, list[str], dict]:
     issues = []
     sanitized = dict(setup)
 
-    entry = float(sanitized.get("weighted_entry") or sanitized.get("avg_cost") or sanitized.get("entry_price") or sanitized.get("current_price", 0.0))
+    entry = float(
+        sanitized.get("weighted_entry")
+        or sanitized.get("avg_cost")
+        or sanitized.get("entry_price")
+        or sanitized.get("current_price", 0.0)
+    )
     target = float(sanitized.get("target_price", 0.0))
     stop = float(sanitized.get("stop_loss", 0.0))
     reported_rr = float(sanitized.get("risk_reward", 1.0))
@@ -152,7 +157,9 @@ def validate_valuation_mos(val_dict: dict) -> tuple[bool, list[str], dict]:
     return is_valid, issues, sanitized
 
 
-def validate_value_vs_technical(symbol: str, mos_pct: float, action_state: str, decision_tag: str) -> tuple[bool, str, str]:
+def validate_value_vs_technical(
+    symbol: str, mos_pct: float, action_state: str, decision_tag: str
+) -> tuple[bool, str, str]:
     """Guard against misclassifying high-value stocks with weak technicals as 'AVOID'.
 
     If fundamental MoS >= 8% but technical is currently lagging (e.g. below MA20),
@@ -227,7 +234,7 @@ def run_full_portfolio_sanity_check(df_portfolio: pd.DataFrame) -> tuple[bool, l
             "pl_pct": pnl_pct,
             "action": str(row.get("Hành động V2", row.get("action", ""))),
             "trailing_stop": def_target if pnl_pct > 0 else None,
-            "stop_loss": def_target if pnl_pct <= 0 else None
+            "stop_loss": def_target if pnl_pct <= 0 else None,
         }
 
         v_ok, issues, san_pos = validate_holding_position(pos_dict)

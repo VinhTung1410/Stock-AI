@@ -8,6 +8,7 @@ import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+
 def calculate_atr(df_history: pd.DataFrame, period: int = 14) -> float:
     """Calculate Average True Range reflecting actual price volatility.
 
@@ -97,32 +98,26 @@ def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
     - Operating Efficiency (max 2 pts): gross margin, ROIC
     """
     if sector in ["Ngân hàng", "Bất động sản"]:
-        return {
-            "score": 6,
-            "max_score": 9,
-            "rating": "TRUNG BÌNH - (Ngoại lệ Ngành)",
-            "breakdown": {}
-        }
+        return {"score": 6, "max_score": 9, "rating": "TRUNG BÌNH - (Ngoại lệ Ngành)", "breakdown": {}}
 
-    if fin_dict and fin_dict.get("f_score") is not None and not any(k in fin_dict for k in ("roa", "current_ratio", "debt_equity")):
+    if (
+        fin_dict
+        and fin_dict.get("f_score") is not None
+        and not any(k in fin_dict for k in ("roa", "current_ratio", "debt_equity"))
+    ):
         raw_s = int(fin_dict["f_score"])
         return {
             "score": raw_s,
             "max_score": 9,
             "rating": _get_f_score_rating(raw_s),
-            "breakdown": {"precomputed": raw_s}
+            "breakdown": {"precomputed": raw_s},
         }
 
     fin_dict = fin_dict or {}
     breakdown = {}
     score = _calc_profitability_points(fin_dict, breakdown) + _calc_leverage_and_efficiency_points(fin_dict, breakdown)
 
-    return {
-        "score": score,
-        "max_score": 9,
-        "rating": _get_f_score_rating(score),
-        "breakdown": breakdown
-    }
+    return {"score": score, "max_score": 9, "rating": _get_f_score_rating(score), "breakdown": breakdown}
 
 
 def _resolve_z_zone(z: float) -> tuple[str, str]:
@@ -188,12 +183,7 @@ def calculate_valuation_triangle(current_price: float, pe: float = None, pb: flo
         price_base = round(current_price * 1.10, 2)
         price_bear = round(current_price * 0.85, 2)
 
-    return {
-        "price_bull": price_bull,
-        "price_base": price_base,
-        "price_bear": price_bear,
-        "is_cyclical": is_cyclical
-    }
+    return {"price_bull": price_bull, "price_base": price_base, "price_bear": price_bear, "is_cyclical": is_cyclical}
 
 
 def _score_fundamental_pillar(fin_dict: dict) -> float:
@@ -317,7 +307,7 @@ def calculate_100_point_score(symbol: str, tech_data: dict, fin_dict: dict, mos_
             "pillar_valuation": mos_pts,
             "pillar_technical": tech_pts,
             "pillar_smart_flow": flow_pts,
-        }
+        },
     }
 
 
@@ -390,7 +380,7 @@ def calculate_factor_exposures(
         cov_am = float(np.cov(r_a, r_m)[0, 1])
         market_beta = round(cov_am / var_m, 2)
         corr_m = float(np.corrcoef(r_a, r_m)[0, 1])
-        market_r2 = round(corr_m ** 2, 3)
+        market_r2 = round(corr_m**2, 3)
     else:
         market_beta = 1.0
         market_r2 = 0.0
@@ -414,5 +404,3 @@ def calculate_factor_exposures(
         "sector_beta": sector_beta,
         "idiosyncratic_alpha_pct": round(float(excess_annual), 2),
     }
-
-

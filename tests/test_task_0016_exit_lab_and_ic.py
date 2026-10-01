@@ -36,9 +36,15 @@ class TestExitPolicySimulators:
         """Create a 10-bar deterministic bullish OHLC path starting from 100 to 130."""
         dates = pd.date_range("2026-01-01", periods=10, freq="B")
         data = [
-            {"open": 100.0, "high": 105.0, "low": 98.0, "close": 104.0, "atr14": 3.0},   # Bar 1: +5%
+            {"open": 100.0, "high": 105.0, "low": 98.0, "close": 104.0, "atr14": 3.0},  # Bar 1: +5%
             {"open": 104.0, "high": 109.0, "low": 102.0, "close": 108.0, "atr14": 3.0},  # Bar 2: +9%
-            {"open": 108.0, "high": 113.0, "low": 107.0, "close": 112.5, "atr14": 3.0},  # Bar 3: +13% (Triggers Policy A & B)
+            {
+                "open": 108.0,
+                "high": 113.0,
+                "low": 107.0,
+                "close": 112.5,
+                "atr14": 3.0,
+            },  # Bar 3: +13% (Triggers Policy A & B)
             {"open": 112.5, "high": 118.0, "low": 111.0, "close": 116.0, "atr14": 3.0},  # Bar 4: +18%
             {"open": 116.0, "high": 122.0, "low": 115.0, "close": 121.0, "atr14": 3.0},  # Bar 5: +22% (Target 120 hit)
             {"open": 121.0, "high": 125.0, "low": 119.0, "close": 124.0, "atr14": 3.0},  # Bar 6
@@ -70,7 +76,7 @@ class TestExitPolicySimulators:
         data = [
             {"open": 100.0, "high": 105.0, "low": 99.0, "close": 104.0, "atr14": 2.0},
             {"open": 104.0, "high": 113.0, "low": 103.0, "close": 112.5, "atr14": 2.0},  # Hits +12%, SL -> 100.3
-            {"open": 112.5, "high": 113.0, "low": 99.5, "close": 100.0, "atr14": 2.0},   # Dips below 100.3
+            {"open": 112.5, "high": 113.0, "low": 99.5, "close": 100.0, "atr14": 2.0},  # Dips below 100.3
         ]
         df = pd.DataFrame(data)
         res = simulate_exit_policy(100.0, 93.0, 125.0, df, policy="A")
@@ -94,8 +100,14 @@ class TestExitPolicySimulators:
         """Policy C: Trailing stop = Highest High - 2.5 * ATR(14)."""
         data = [
             {"open": 100.0, "high": 110.0, "low": 99.0, "close": 108.0, "atr14": 2.0},  # HH=110, trail=105
-            {"open": 108.0, "high": 115.0, "low": 107.0, "close": 114.0, "atr14": 2.0}, # HH=115, trail=110
-            {"open": 114.0, "high": 114.5, "low": 109.0, "close": 110.0, "atr14": 2.0}, # Low=109 < 110 -> Trailing Stop!
+            {"open": 108.0, "high": 115.0, "low": 107.0, "close": 114.0, "atr14": 2.0},  # HH=115, trail=110
+            {
+                "open": 114.0,
+                "high": 114.5,
+                "low": 109.0,
+                "close": 110.0,
+                "atr14": 2.0,
+            },  # Low=109 < 110 -> Trailing Stop!
         ]
         df = pd.DataFrame(data)
         res = simulate_exit_policy(100.0, 93.0, 130.0, df, policy="C", atr_multiplier=2.5)
@@ -132,18 +144,22 @@ class TestExitHypothesisLab:
         """Verify lab runs paired bootstrap on simulated trade universe."""
         signals = []
         for i in range(15):
-            df = pd.DataFrame([
-                {"open": 50.0, "high": 55.0, "low": 48.0, "close": 54.0, "atr14": 1.5},
-                {"open": 54.0, "high": 62.0, "low": 53.0, "close": 61.0, "atr14": 1.5},  # +20% gain
-                {"open": 61.0, "high": 63.0, "low": 60.0, "close": 62.0, "atr14": 1.5},
-            ])
-            signals.append({
-                "symbol": f"SYM_{i}",
-                "entry_price": 50.0,
-                "initial_stop": 46.5,
-                "target_price": 60.0,
-                "ohlc_df": df,
-            })
+            df = pd.DataFrame(
+                [
+                    {"open": 50.0, "high": 55.0, "low": 48.0, "close": 54.0, "atr14": 1.5},
+                    {"open": 54.0, "high": 62.0, "low": 53.0, "close": 61.0, "atr14": 1.5},  # +20% gain
+                    {"open": 61.0, "high": 63.0, "low": 60.0, "close": 62.0, "atr14": 1.5},
+                ]
+            )
+            signals.append(
+                {
+                    "symbol": f"SYM_{i}",
+                    "entry_price": 50.0,
+                    "initial_stop": 46.5,
+                    "target_price": 60.0,
+                    "ohlc_df": df,
+                }
+            )
 
         lab_res = run_exit_hypothesis_lab(signals, n_bootstrap=500, random_state=42)
         assert lab_res["status"] == "SUCCESS"
@@ -171,24 +187,28 @@ class TestPillarSpearmanIC:
         records = []
         # 10 records with informative MoS (positive correlation)
         for i in range(10):
-            records.append({
-                "s_mos": float(10 + i * 2),
-                "s_fscore": 7,
-                "s_ta": 50.0,
-                "s_flow": 1.0,
-                "alpha_t20": float(2.0 + i * 1.5),
-                "mos_is_informative": True,
-            })
+            records.append(
+                {
+                    "s_mos": float(10 + i * 2),
+                    "s_fscore": 7,
+                    "s_ta": 50.0,
+                    "s_flow": 1.0,
+                    "alpha_t20": float(2.0 + i * 1.5),
+                    "mos_is_informative": True,
+                }
+            )
         # 5 records with uninformative MoS (synthetic fixed 1.18x)
         for i in range(5):
-            records.append({
-                "s_mos": 15.25,
-                "s_fscore": 6,
-                "s_ta": 45.0,
-                "s_flow": -1.0,
-                "alpha_t20": float(-5.0 + i),
-                "mos_is_informative": False,
-            })
+            records.append(
+                {
+                    "s_mos": 15.25,
+                    "s_fscore": 6,
+                    "s_ta": 45.0,
+                    "s_flow": -1.0,
+                    "alpha_t20": float(-5.0 + i),
+                    "mos_is_informative": False,
+                }
+            )
 
         res = calculate_pillar_spearman_ic(records, min_observations=5)
         assert res["status"] == "SUCCESS"

@@ -14,6 +14,7 @@ import os
 os.environ["VNSTOCK_TELEMETRY"] = "off"
 try:
     import vnai
+
     vnai.disable_telemetry()
 except Exception:
     pass
@@ -31,10 +32,7 @@ def start_bot_thread():
     """Khởi chạy vòng lặp Trading Bot trong một luồng nền độc lập."""
     logging.info("Đang khởi động tiến trình Trading Bot chạy ngầm...")
     bot_thread = threading.Thread(
-        target=run_trading_bot_loop,
-        kwargs={"check_interval_sec": 60},
-        daemon=True,
-        name="TradingBotDaemon"
+        target=run_trading_bot_loop, kwargs={"check_interval_sec": 60}, daemon=True, name="TradingBotDaemon"
     )
     bot_thread.start()
     logging.info("✅ Tiến trình Trading Bot đã chạy ngầm thành công!")
@@ -50,11 +48,20 @@ def main():
 
     # 3. Chạy giao diện Web Streamlit (-u unbuffered để đẩy log ngay lập tức)
     cmd = [
-        sys.executable, "-u", "-m", "streamlit", "run", "app.py",
-        "--server.port", str(port),
-        "--server.address", "0.0.0.0",
-        "--server.headless", "true",
-        "--browser.gatherUsageStats", "false"
+        sys.executable,
+        "-u",
+        "-m",
+        "streamlit",
+        "run",
+        "app.py",
+        "--server.port",
+        str(port),
+        "--server.address",
+        "0.0.0.0",
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false",
     ]
 
     subprocess.run(cmd)

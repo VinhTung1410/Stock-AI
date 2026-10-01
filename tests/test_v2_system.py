@@ -3,6 +3,7 @@ V2 system tests — validates the full quantamental pipeline including
 archetype classification, fair value, holding position evaluation,
 market regime, and the 100-point scoring engine.
 """
+
 import pytest
 
 from quant_engine import (
@@ -20,13 +21,16 @@ from quant_valuation import (
 class TestArchetypeClassification:
     """Verify stocks are classified into the correct valuation archetype."""
 
-    @pytest.mark.parametrize("symbol,sector,expected", [
-        ("MSB", "Ngân hàng", "BANK"),
-        ("FPT", "Công nghệ", "GROWTH_COMPOUNDER"),
-        ("HPG", "Thép", "CYCLICAL"),
-        ("BSR", "Dầu khí", "CYCLICAL"),
-        ("VHM", "Bất động sản", "REAL_ESTATE"),
-    ])
+    @pytest.mark.parametrize(
+        "symbol,sector,expected",
+        [
+            ("MSB", "Ngân hàng", "BANK"),
+            ("FPT", "Công nghệ", "GROWTH_COMPOUNDER"),
+            ("HPG", "Thép", "CYCLICAL"),
+            ("BSR", "Dầu khí", "CYCLICAL"),
+            ("VHM", "Bất động sản", "REAL_ESTATE"),
+        ],
+    )
     def test_classification(self, symbol, sector, expected):
         assert classify_stock_archetype(symbol, sector) == expected
 
@@ -35,12 +39,15 @@ class TestArchetypeClassification:
 class TestFairValueAndMoS:
     """Verify fair value calculation returns valid structure for each archetype."""
 
-    @pytest.mark.parametrize("symbol,price,sector", [
-        ("MSB", 15.0, "Ngân hàng"),
-        ("FPT", 75.0, "Công nghệ"),
-        ("HPG", 26.0, "Thép"),
-        ("VHM", 42.0, "Bất động sản"),
-    ])
+    @pytest.mark.parametrize(
+        "symbol,price,sector",
+        [
+            ("MSB", 15.0, "Ngân hàng"),
+            ("FPT", 75.0, "Công nghệ"),
+            ("HPG", 26.0, "Thép"),
+            ("VHM", 42.0, "Bất động sản"),
+        ],
+    )
     def test_returns_valid_structure(self, symbol, price, sector):
         result = calculate_fair_value_and_mos(symbol, price, sector=sector)
 
@@ -81,11 +88,14 @@ class TestHoldingPosition:
 class TestMarketRegime:
     """Test market regime classification under different VN-Index conditions."""
 
-    @pytest.mark.parametrize("name,tech_data", [
-        ("VN-Index above MA20+MA50", {"current_price": 1320, "ma20": 1300, "ma50": 1280, "rsi": 62}),
-        ("VN-Index below MA20", {"current_price": 1270, "ma20": 1290, "ma50": 1260, "rsi": 44}),
-        ("VN-Index deep correction", {"current_price": 1220, "ma20": 1280, "ma50": 1270, "rsi": 32}),
-    ])
+    @pytest.mark.parametrize(
+        "name,tech_data",
+        [
+            ("VN-Index above MA20+MA50", {"current_price": 1320, "ma20": 1300, "ma50": 1280, "rsi": 62}),
+            ("VN-Index below MA20", {"current_price": 1270, "ma20": 1290, "ma50": 1260, "rsi": 44}),
+            ("VN-Index deep correction", {"current_price": 1220, "ma20": 1280, "ma50": 1270, "rsi": 32}),
+        ],
+    )
     def test_regime_classification(self, name, tech_data):
         regime = evaluate_market_regime(tech_data)
 
@@ -100,13 +110,23 @@ class TestScoringEngine:
 
     def test_score_structure_and_range(self):
         fin = {
-            "roe": 19.5, "roa": 2.2, "debt_equity": 0.8, "current_ratio": 1.5,
-            "gross_margin": 22.0, "net_margin": 14.0, "p_cf": 12.0, "roic": 15.0,
+            "roe": 19.5,
+            "roa": 2.2,
+            "debt_equity": 0.8,
+            "current_ratio": 1.5,
+            "gross_margin": 22.0,
+            "net_margin": 14.0,
+            "p_cf": 12.0,
+            "roic": 15.0,
         }
         tech = {
-            "current_price": 75.0, "ma20": 73.0, "rsi": 54.0,
-            "volume": 3500000, "vol_ma20": 3000000,
-            "adv20_billion": 260.0, "foreign_flow": {"net_val_bil": 15.0},
+            "current_price": 75.0,
+            "ma20": 73.0,
+            "rsi": 54.0,
+            "volume": 3500000,
+            "vol_ma20": 3000000,
+            "adv20_billion": 260.0,
+            "foreign_flow": {"net_val_bil": 15.0},
         }
         mos = {"mos_pct": 21.0}
 

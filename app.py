@@ -3,6 +3,7 @@ import os
 os.environ["VNSTOCK_TELEMETRY"] = "off"
 try:
     import vnai
+
     vnai.disable_telemetry()
 except Exception:
     pass
@@ -20,6 +21,7 @@ except Exception:
 # Nạp biến môi trường từ .env (cho môi trường local)
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -45,13 +47,14 @@ st.set_page_config(
     page_title="AI Stock Copilot - Quản trị & Định giá Thị trường",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
 # ==============================================================================
 # HỆ THỐNG DESIGN SYSTEM & CUSTOM CSS (FINTECH PRO UI)
 # ==============================================================================
-st.markdown("""
+st.markdown(
+    """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&subset=vietnamese&display=swap');
 
@@ -424,7 +427,9 @@ st.markdown("""
         opacity: 0.9;
     }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 @st.cache_data(ttl=180, show_spinner=False)
@@ -455,12 +460,15 @@ with st.spinner("Đang đồng bộ danh mục & nạp dữ liệu thị trườ
 
 # --- SIDEBAR ĐIỀU KHIỂN (GOM NHÓM GESTALT CARD) ---
 with st.sidebar:
-    st.markdown("""
+    st.markdown(
+        """
     <div style="padding: 12px 0 6px 0;">
         <h2 style="font-size: 19px; font-weight: 800; color: #0f172a; margin: 0;">AI Stock Copilot</h2>
         <div style="font-size: 12px; color: #64748b; margin-top: 2px;">Giám sát Danh mục & Định giá Thị trường</div>
     </div>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     # KHỐI THẺ TRẠNG THÁI LIÊN KẾT (GESTALT CARD GOM NHÓM)
@@ -470,7 +478,8 @@ with st.sidebar:
     if sheet_url:
         sync_badge = "🟢 2 Chiều (Đọc & Ghi)" if update_url else "🔵 1 Chiều (Đọc tự động)"
         sync_desc = "Tự động đồng bộ Sheet 1 (Danh mục) & Sheet 2 (Watchlist) thời gian thực."
-        st.markdown(f"""
+        st.markdown(
+            f"""
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                 <span style="font-size: 12px; font-weight: 700; color: #334155;">Google Sheets</span>
@@ -481,14 +490,19 @@ with st.sidebar:
                 ↗ Mở Trang tính Google
             </a>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
     else:
-        st.markdown("""
+        st.markdown(
+            """
         <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;">
             <div style="font-size: 12px; font-weight: 700; color: #334155; margin-bottom: 4px;">📁 Nguồn dữ liệu cục bộ</div>
             <div style="font-size: 11.5px; color: #64748b; line-height: 1.45;">Đang đọc từ file <code>portfolio.json</code> & <code>watchlist.json</code> trên máy.</div>
         </div>
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
 
     st.divider()
     st.subheader("⚡ Thao tác nhanh")
@@ -511,10 +525,10 @@ active_tab = st.radio(
         "Thị trường & Biểu đồ Kỹ thuật",
         "Quản lý Danh mục",
         "Trợ lý Phân tích AI",
-        "🎯 Alpha Tracker"
+        "🎯 Alpha Tracker",
     ],
     horizontal=True,
-    label_visibility="collapsed"
+    label_visibility="collapsed",
 )
 
 if active_tab == "Tổng quan & Watchlist":
@@ -539,4 +553,3 @@ elif active_tab == "Trợ lý Phân tích AI":
 elif active_tab == "🎯 Alpha Tracker":
     with st.spinner("Đang kiểm toán đối soát Alpha Tracker từ Supabase..."):
         render_tab_alpha_tracker()
-

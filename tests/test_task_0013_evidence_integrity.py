@@ -107,13 +107,15 @@ class TestIdempotentReplayAndConservativeExit:
         # Entry at 100, Target at 112 (+12%), Stop at 93 (-7%)
         # Bar 1 hits high=115 and low=90 in the very same day!
         dates = pd.date_range("2026-02-01", periods=3, freq="D")
-        df_ohlc = pd.DataFrame({
-            "time": dates,
-            "open": [100.0, 100.0, 100.0],
-            "high": [101.0, 115.0, 105.0],
-            "low": [99.0, 90.0, 98.0],
-            "close": [100.0, 95.0, 102.0],
-        })
+        df_ohlc = pd.DataFrame(
+            {
+                "time": dates,
+                "open": [100.0, 100.0, 100.0],
+                "high": [101.0, 115.0, 105.0],
+                "low": [99.0, 90.0, 98.0],
+                "close": [100.0, 95.0, 102.0],
+            }
+        )
 
         sig = {
             "symbol": "TEST",
@@ -134,13 +136,15 @@ class TestIdempotentReplayAndConservativeExit:
     def test_replay_signal_path_idempotency(self):
         """Running replay multiple times produces identical outcome."""
         dates = pd.date_range("2026-03-01", periods=5, freq="D")
-        df_ohlc = pd.DataFrame({
-            "time": dates,
-            "open": [50.0, 51.0, 52.0, 55.0, 56.5],
-            "high": [51.0, 53.0, 54.0, 57.0, 57.5],
-            "low": [49.5, 50.5, 51.5, 54.0, 55.0],
-            "close": [50.5, 52.5, 53.5, 56.5, 57.0],
-        })
+        df_ohlc = pd.DataFrame(
+            {
+                "time": dates,
+                "open": [50.0, 51.0, 52.0, 55.0, 56.5],
+                "high": [51.0, 53.0, 54.0, 57.0, 57.5],
+                "low": [49.5, 50.5, 51.5, 54.0, 55.0],
+                "close": [50.5, 52.5, 53.5, 56.5, 57.0],
+            }
+        )
         sig = {
             "symbol": "SSI",
             "entry_price": 50.0,

@@ -24,13 +24,13 @@ def sanitize_markdown_report(text: str) -> str:
         return ""
 
     # 1. Thay thế hàng dấu bằng thành thẻ phân cách ---
-    cleaned = re.sub(r'^[ \t]*={3,}[ \t]*$', '---', text, flags=re.MULTILINE)
+    cleaned = re.sub(r"^[ \t]*={3,}[ \t]*$", "---", text, flags=re.MULTILINE)
 
     # 2. Chuyển bullet Unicode (•) thành Markdown list marker (- )
-    cleaned = re.sub(r'^[ \t]*•[ \t]*', '- ', cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^[ \t]*•[ \t]*", "- ", cleaned, flags=re.MULTILINE)
 
     # 3. Đảm bảo tiêu đề (#, ##, ###) có dòng trống phía trước
-    cleaned = re.sub(r'(?<!\n)\n(#{1,4}\s+)', r'\n\n\1', cleaned)
+    cleaned = re.sub(r"(?<!\n)\n(#{1,4}\s+)", r"\n\n\1", cleaned)
 
     return cleaned
 
@@ -43,25 +43,27 @@ def render_tab_ai(df_eval: pd.DataFrame):
     - Phân hệ 3: Báo cáo phân tích cổ phiếu định chế chuyên sâu 8 trụ cột (Thang điểm 100)
     """
     st.markdown("### 🧠 Trung Tâm Phân Tích & Chiến Lược AI (Gemini Flash)")
-    st.caption("Trí tuệ nhân tạo chuyên sâu tài chính: Tích hợp dữ liệu giao dịch realtime, báo cáo tài chính định chế và dòng tiền vĩ mô.")
+    st.caption(
+        "Trí tuệ nhân tạo chuyên sâu tài chính: Tích hợp dữ liệu giao dịch realtime, báo cáo tài chính định chế và dòng tiền vĩ mô."
+    )
 
-    sub_tab1, sub_tab2, sub_tab3 = st.tabs([
-        "Đánh giá Danh mục",
-        "Kịch bản Rủi ro & Sóng",
-        "Nghiên cứu Định chế 8 Trụ cột"
-    ])
+    sub_tab1, sub_tab2, sub_tab3 = st.tabs(
+        ["Đánh giá Danh mục", "Kịch bản Rủi ro & Sóng", "Nghiên cứu Định chế 8 Trụ cột"]
+    )
 
     # -------------------------------------------------------------
     # SUB-TAB 1: ĐÁNH GIÁ DANH MỤC HIỆN TẠI
     # -------------------------------------------------------------
     with sub_tab1:
         st.markdown("##### 📌 Đánh Giá Toàn Diện Danh Mục Đang Nắm Giữ")
-        st.caption("AI kết hợp dữ liệu giá vốn, vị thế lãi/lỗ và tin tức vĩ mô để tư vấn điểm chốt lời / cắt lỗ chi tiết.")
+        st.caption(
+            "AI kết hợp dữ liệu giá vốn, vị thế lãi/lỗ và tin tức vĩ mô để tư vấn điểm chốt lời / cắt lỗ chi tiết."
+        )
 
         custom_q = st.text_input(
             "Câu hỏi bổ sung cho danh mục (tùy chọn):",
             placeholder="Ví dụ: SSI chạm giá nào nên hạ bớt? Có nên cơ cấu gom thêm BSR vùng giá hiện tại?",
-            key="ai_portfolio_custom_q"
+            key="ai_portfolio_custom_q",
         )
 
         if st.button("🚀 Phân Tích Toàn Diện Danh Mục", type="primary", width="stretch", key="btn_run_portfolio_ai"):
@@ -78,13 +80,19 @@ def render_tab_ai(df_eval: pd.DataFrame):
     # -------------------------------------------------------------
     with sub_tab2:
         st.markdown("##### 🗺️ Ma Trận Kịch Bản Rủi Ro Thị Trường & Chu Kỳ Sóng")
-        st.caption("Mô hình hóa 4 kịch bản thị trường (Lạc quan, Trung lập, Bi quan, Thiên nga đen) kèm xác suất, điều kiện kích hoạt, tỷ lệ phân bổ vốn và định vị chu kỳ sóng Elliott / Wyckoff.")
+        st.caption(
+            "Mô hình hóa 4 kịch bản thị trường (Lạc quan, Trung lập, Bi quan, Thiên nga đen) kèm xác suất, điều kiện kích hoạt, tỷ lệ phân bổ vốn và định vị chu kỳ sóng Elliott / Wyckoff."
+        )
 
         col_m1, col_m2 = st.columns([3, 1])
         with col_m1:
-            st.info("💡 **Hệ thống AI sẽ quét:** Chỉ số VN-Index, P/E thị trường, thanh khoản phiên và các dòng tin tức vĩ mô 24h qua (lãi suất, tỷ giá, giá dầu).")
+            st.info(
+                "💡 **Hệ thống AI sẽ quét:** Chỉ số VN-Index, P/E thị trường, thanh khoản phiên và các dòng tin tức vĩ mô 24h qua (lãi suất, tỷ giá, giá dầu)."
+            )
         with col_m2:
-            run_market_scenarios = st.button("⚡ Vẽ Kịch Bản Thị Trường", type="primary", width="stretch", key="btn_run_market_scenarios")
+            run_market_scenarios = st.button(
+                "⚡ Vẽ Kịch Bản Thị Trường", type="primary", width="stretch", key="btn_run_market_scenarios"
+            )
 
         if run_market_scenarios:
             with st.spinner("Đang định vị chu kỳ sóng và xây dựng ma trận kịch bản vĩ mô..."):
@@ -101,7 +109,9 @@ def render_tab_ai(df_eval: pd.DataFrame):
     # -------------------------------------------------------------
     with sub_tab3:
         st.markdown("##### 🔬 Institutional Equity Research - Báo Cáo Định Chế 8 Trụ Cột")
-        st.caption("Chuẩn mực phân tích CFA: Tóm tắt điều hành trên đầu, Bảng tín hiệu nhanh từng trụ cột, Định giá Fair Value gãy gọn và Chấm điểm thang 100.")
+        st.caption(
+            "Chuẩn mực phân tích CFA: Tóm tắt điều hành trên đầu, Bảng tín hiệu nhanh từng trụ cột, Định giá Fair Value gãy gọn và Chấm điểm thang 100."
+        )
 
         portfolio_symbols = df_eval["Mã CP"].tolist() if "Mã CP" in df_eval.columns else ["BSR", "MSB", "SSI"]
         default_options = list(dict.fromkeys(portfolio_symbols + ["FPT", "HPG", "VNM", "VCB", "MWG", "DGC"]))
@@ -109,17 +119,18 @@ def render_tab_ai(df_eval: pd.DataFrame):
         col_sel, col_custom = st.columns([1, 1])
         with col_sel:
             selected_choice = st.selectbox(
-                "Chọn cổ phiếu cần phân tích:",
-                options=default_options,
-                index=0,
-                key="ai_stock_select"
+                "Chọn cổ phiếu cần phân tích:", options=default_options, index=0, key="ai_stock_select"
             )
         with col_custom:
-            custom_ticker = st.text_input(
-                "Hoặc nhập mã cổ phiếu khác (3 chữ cái):",
-                placeholder="Ví dụ: PVD, VHM, DGW...",
-                key="ai_stock_custom"
-            ).strip().upper()
+            custom_ticker = (
+                st.text_input(
+                    "Hoặc nhập mã cổ phiếu khác (3 chữ cái):",
+                    placeholder="Ví dụ: PVD, VHM, DGW...",
+                    key="ai_stock_custom",
+                )
+                .strip()
+                .upper()
+            )
 
         target_symbol = custom_ticker if custom_ticker else selected_choice
 
@@ -128,12 +139,12 @@ def render_tab_ai(df_eval: pd.DataFrame):
         fin_data = get_financial_ratios(target_symbol)
 
         if tech_data:
-            chg = tech_data.get('change_pct', 0)
+            chg = tech_data.get("change_pct", 0)
             chg_color = "#15803d" if chg >= 0 else "#dc2626"
             chg_bg = "rgba(22, 163, 74, 0.1)" if chg >= 0 else "rgba(220, 38, 38, 0.1)"
             chg_sign = "+" if chg > 0 else ""
 
-            rsi_val = tech_data.get('rsi14', 'N/A')
+            rsi_val = tech_data.get("rsi14", "N/A")
             try:
                 rsi_num = float(rsi_val)
                 if rsi_num > 70:
@@ -145,9 +156,9 @@ def render_tab_ai(df_eval: pd.DataFrame):
             except Exception:
                 rsi_status = ""
 
-            pe_val = fin_data.get('pe', 'N/A')
-            pb_val = fin_data.get('pb', 'N/A')
-            roe_val = f"{fin_data.get('roe', 'N/A')}%" if fin_data.get('roe') is not None else "N/A"
+            pe_val = fin_data.get("pe", "N/A")
+            pb_val = fin_data.get("pb", "N/A")
+            roe_val = f"{fin_data.get('roe', 'N/A')}%" if fin_data.get("roe") is not None else "N/A"
 
             ff = tech_data.get("foreign_flow", {})
             ff_net = ff.get("net_val_bil", 0.0) if ff else 0.0
@@ -164,7 +175,7 @@ def render_tab_ai(df_eval: pd.DataFrame):
                 <div style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 10px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); display: flex; flex-direction: column; align-items: center; justify-content: center;">
                     <div style="font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">THỊ GIÁ</div>
                     <div style="font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
-                        {tech_data.get('current_price', 'N/A')} <span style="font-size: 12px; font-weight: 600; color: #64748b;">k</span>
+                        {tech_data.get("current_price", "N/A")} <span style="font-size: 12px; font-weight: 600; color: #64748b;">k</span>
                     </div>
                     <div style="display: inline-block; background: {chg_bg}; color: {chg_color}; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-top: 3px;">
                         {chg_sign}{chg:.2f}%
@@ -209,7 +220,7 @@ def render_tab_ai(df_eval: pd.DataFrame):
                         ⚠️ CẢNH BÁO BẪY TIN TỨC / KÉO XẢ
                     </div>
                     <div style="font-size: 12px; color: #b91c1c; margin-top: 2px;">
-                        {trap_info.get('warning_msg')}
+                        {trap_info.get("warning_msg")}
                     </div>
                 </div>
                 """).strip()
@@ -228,7 +239,9 @@ def render_tab_ai(df_eval: pd.DataFrame):
 
         with col_b2:
             if st.button("🔬 Lượng Hóa 2 Lượt (Quant Pro)", type="secondary", width="stretch", key=btn_quant_key):
-                with st.spinner(f"Hệ thống Quant đang kiểm tra Data Gate & tính toán hàng rào 2 lượt cho {target_symbol}..."):
+                with st.spinner(
+                    f"Hệ thống Quant đang kiểm tra Data Gate & tính toán hàng rào 2 lượt cho {target_symbol}..."
+                ):
                     res = generate_quantamental_2pass_report(target_symbol)
                     st.session_state[f"cached_stock_report_{target_symbol}"] = res.get("report_text", "")
 
@@ -245,39 +258,42 @@ def render_tab_ai(df_eval: pd.DataFrame):
                     "bg": "rgba(239, 68, 68, 0.15)",
                     "border": "#dc2626",
                     "title": "⛔ CẢNH BÁO: HÀNG RÀO QUANT TỪ CHỐI / PHÁT HIỆN BẪY GIÁ",
-                    "sub": "Vi phạm tiêu chuẩn an toàn quỹ hoặc phát hiện bẫy tin tức kéo xả. Cấm mua tuyệt đối!"
+                    "sub": "Vi phạm tiêu chuẩn an toàn quỹ hoặc phát hiện bẫy tin tức kéo xả. Cấm mua tuyệt đối!",
                 }
             elif "MUA MẠNH" in up_text or "MUA" in up_text[:600]:
                 alert_theme = {
                     "bg": "rgba(34, 197, 94, 0.12)",
                     "border": "#22c55e",
                     "title": "🟢 TÍN HIỆU: KHUYẾN NGHỊ MUA / TÍCH CỰC",
-                    "sub": "Hội tụ các tiêu chí: Tăng trưởng cơ bản, định giá hấp dẫn và dòng tiền ủng hộ."
+                    "sub": "Hội tụ các tiêu chí: Tăng trưởng cơ bản, định giá hấp dẫn và dòng tiền ủng hộ.",
                 }
             elif "BÁN" in up_text[:600] or "HẠ TỶ TRỌNG" in up_text[:600]:
                 alert_theme = {
                     "bg": "rgba(239, 68, 68, 0.12)",
                     "border": "#ef4444",
                     "title": "🔴 CẢNH BÁO: KHUYẾN NGHỊ BÁN / THẬN TRỌNG RỦI RO",
-                    "sub": "Vi phạm ngưỡng kỹ thuật hoặc áp lực điều chỉnh. Cần ưu tiên bảo toàn vốn."
+                    "sub": "Vi phạm ngưỡng kỹ thuật hoặc áp lực điều chỉnh. Cần ưu tiên bảo toàn vốn.",
                 }
             else:
                 alert_theme = {
                     "bg": "rgba(234, 179, 8, 0.12)",
                     "border": "#eab308",
                     "title": "🟡 TÍN HIỆU: THEO DÕI / NẮM GIỮ QUAN SÁT",
-                    "sub": "Cổ phiếu trong vùng tích lũy giằng co. Chờ dòng tiền bứt phá để gia tăng."
+                    "sub": "Cổ phiếu trong vùng tích lũy giằng co. Chờ dòng tiền bứt phá để gia tăng.",
                 }
 
-            st.markdown(f"""
-            <div style="background:{alert_theme['bg']}; border-left:5px solid {alert_theme['border']}; border-radius:8px; padding:12px 18px; margin-bottom:15px;">
+            st.markdown(
+                f"""
+            <div style="background:{alert_theme["bg"]}; border-left:5px solid {alert_theme["border"]}; border-radius:8px; padding:12px 18px; margin-bottom:15px;">
                 <div style="font-size:16px; font-weight:800; color:#f8fafc;">
-                    {alert_theme['title']}
+                    {alert_theme["title"]}
                 </div>
                 <div style="font-size:12px; color:#cbd5e1; margin-top:3px;">
-                    {alert_theme['sub']}
+                    {alert_theme["sub"]}
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+            """,
+                unsafe_allow_html=True,
+            )
 
             st.markdown(sanitize_markdown_report(report_text))

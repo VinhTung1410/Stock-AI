@@ -13,11 +13,11 @@ from typing import Any, Dict, List, Optional, Tuple
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 # Source Tier Hierarchy (from Official to Rumor)
-SOURCE_TIER_OFFICIAL_FILING = "TIER_1_OFFICIAL_FILING"        # HOSE, HNX, UBCK, CBTT
+SOURCE_TIER_OFFICIAL_FILING = "TIER_1_OFFICIAL_FILING"  # HOSE, HNX, UBCK, CBTT
 SOURCE_TIER_AUDITED_FINANCIALS = "TIER_2_AUDITED_FINANCIALS"  # Audited BCTC
-SOURCE_TIER_FINANCIAL_MEDIA = "TIER_3_FINANCIAL_MEDIA"        # CafeF, Vietstock, VnEconomy
-SOURCE_TIER_GENERAL_RSS = "TIER_4_GENERAL_RSS"                # Google News RSS, general press
-SOURCE_TIER_UNVERIFIED_RUMOR = "TIER_5_UNVERIFIED_RUMOR"      # Forums, social chatter
+SOURCE_TIER_FINANCIAL_MEDIA = "TIER_3_FINANCIAL_MEDIA"  # CafeF, Vietstock, VnEconomy
+SOURCE_TIER_GENERAL_RSS = "TIER_4_GENERAL_RSS"  # Google News RSS, general press
+SOURCE_TIER_UNVERIFIED_RUMOR = "TIER_5_UNVERIFIED_RUMOR"  # Forums, social chatter
 
 # Price & Quality Status Constants (SonarCloud S1192)
 STATUS_CLEAN = "CLEAN"
@@ -34,9 +34,9 @@ BADGE_MANUAL_VERIFY = " | ⚠️ CẦN XÁC MINH THỦ CÔNG"
 
 # Exchange statutory daily price limits
 EXCHANGE_DAILY_LIMITS = {
-    "HOSE": 0.07,   # +/- 7.0%
-    "HNX": 0.10,    # +/- 10.0%
-    "UPCOM": 0.15   # +/- 15.0%
+    "HOSE": 0.07,  # +/- 7.0%
+    "HNX": 0.10,  # +/- 10.0%
+    "UPCOM": 0.15,  # +/- 15.0%
 }
 
 # Phase 10: Real Estate & Holding Survival Gate Constants (TASK-0024, 0026)
@@ -56,10 +56,7 @@ FLAG_CHINA_DUMPING_RISK = "CHINA_DUMPING_RISK"
 FLAG_INVENTORY_BUILDUP = "INVENTORY_BUILDUP"
 
 
-def reconcile_price(
-    tech_data: Optional[Dict[str, Any]] = None,
-    exchange: str = "HOSE"
-) -> Tuple[str, float, List[str]]:
+def reconcile_price(tech_data: Optional[Dict[str, Any]] = None, exchange: str = "HOSE") -> Tuple[str, float, List[str]]:
     """Reconcile market price anomalies, statutory ceiling/floor limits, and zero/negative checks.
 
     Returns:
@@ -87,7 +84,7 @@ def reconcile_price(
         calculated_chg = (reconciled_p - ref_p) / ref_p
         if abs(calculated_chg) > (max_limit + 0.005):
             issues.append(
-                f"Statutory Band Breach: Price change {calculated_chg*100:+.2f}% exceeds {exchange} limit ({max_limit*100}%)."
+                f"Statutory Band Breach: Price change {calculated_chg * 100:+.2f}% exceeds {exchange} limit ({max_limit * 100}%)."
             )
             status = STATUS_CONFLICT
 
@@ -95,9 +92,7 @@ def reconcile_price(
     if ref_p > 0 and abs(chg_pct) > 0.01:
         expected_chg = round(((reconciled_p - ref_p) / ref_p) * 100, 2)
         if abs(chg_pct - expected_chg) > 1.5:
-            issues.append(
-                f"Price Change Mismatch: Reported {chg_pct:+.2f}% vs Computed {expected_chg:+.2f}%."
-            )
+            issues.append(f"Price Change Mismatch: Reported {chg_pct:+.2f}% vs Computed {expected_chg:+.2f}%.")
             status = STATUS_ADJUSTED
 
     return status, reconciled_p, issues
@@ -116,7 +111,7 @@ def _evaluate_single_corporate_action(ca: Dict[str, Any], today: Any) -> Optiona
                 "type": ca_type,
                 "impact": "MECHANICAL_PRICE_DROP",
                 "ex_date": str(ex_date),
-                "description": ca.get("description", f"Sự kiện quyền {ca_type} ngày {ex_date}")
+                "description": ca.get("description", f"Sự kiện quyền {ca_type} ngày {ex_date}"),
             }
     except Exception:
         pass
@@ -124,8 +119,7 @@ def _evaluate_single_corporate_action(ca: Dict[str, Any], today: Any) -> Optiona
 
 
 def reconcile_corporate_actions(
-    tech_data: Optional[Dict[str, Any]] = None,
-    corporate_actions: Optional[List[Dict[str, Any]]] = None
+    tech_data: Optional[Dict[str, Any]] = None, corporate_actions: Optional[List[Dict[str, Any]]] = None
 ) -> Tuple[List[Dict[str, Any]], bool]:
     """Check for corporate actions (GDKHQ, cash dividend, bonus shares, rights issue).
 
@@ -142,13 +136,15 @@ def reconcile_corporate_actions(
 
     if tech_data and tech_data.get("is_gdkhq"):
         is_ex_date = True
-        tagged.append({
-            "type": "GDKHQ",
-            "impact": "MECHANICAL_PRICE_DROP",
-            "description": "Ngày Giao dịch Không hưởng quyền — Giá điều chỉnh kỹ thuật tự động."
-        })
+        tagged.append(
+            {
+                "type": "GDKHQ",
+                "impact": "MECHANICAL_PRICE_DROP",
+                "description": "Ngày Giao dịch Không hưởng quyền — Giá điều chỉnh kỹ thuật tự động.",
+            }
+        )
 
-    for ca in (corporate_actions or []):
+    for ca in corporate_actions or []:
         ca_result = _evaluate_single_corporate_action(ca, today)
         if ca_result:
             is_ex_date = True
@@ -195,9 +191,7 @@ def _check_financial_freshness(latest_year: Optional[int], latest_quarter: Optio
     return []
 
 
-def reconcile_financial_period(
-    fin_data: Optional[Dict[str, Any]] = None
-) -> Tuple[List[str], List[str]]:
+def reconcile_financial_period(fin_data: Optional[Dict[str, Any]] = None) -> Tuple[List[str], List[str]]:
     """Audit financial statement freshness and reporting period alignment.
 
     Checks:
@@ -240,9 +234,17 @@ def reconcile_valuation_sanity(symbol: str, fin_data: Optional[Dict[str, Any]] =
     sec = sector.lower()
     if sym in ("VCB", "CTG", "BID"):
         sec_key = "bank_soe"
-    elif any(b in sym for b in ("TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "VIB", "TPB", "LPB", "SHB", "OCB", "EIB", "SSB")) or "ngân hàng" in sec:
+    elif (
+        any(
+            b in sym
+            for b in ("TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "VIB", "TPB", "LPB", "SHB", "OCB", "EIB", "SSB")
+        )
+        or "ngân hàng" in sec
+    ):
         sec_key = "bank_private"
-    elif sym in ("VHM", "VIC", "VRE", "KDH", "NLG", "DXG", "DIG", "PDR", "KBC", "IDC", "NVL") or any(r in sec for r in ("bất động sản", "địa ốc")):
+    elif sym in ("VHM", "VIC", "VRE", "KDH", "NLG", "DXG", "DIG", "PDR", "KBC", "IDC", "NVL") or any(
+        r in sec for r in ("bất động sản", "địa ốc")
+    ):
         sec_key = "real_estate"
     else:
         sec_key = "default"
@@ -298,7 +300,10 @@ def _check_interest_coverage(norm_ebitda: Any, int_exp: Any) -> Tuple[bool, Opti
         if int_val > 0.0:
             cov = ebitda_val / int_val
             if cov < 1.5:
-                return True, f"Normalized EBITDA / Lãi vay = {cov:.2f}x < 1.5x ({GATE_INTEREST_COVERAGE_CRITICAL}). CHẶN MUA."
+                return (
+                    True,
+                    f"Normalized EBITDA / Lãi vay = {cov:.2f}x < 1.5x ({GATE_INTEREST_COVERAGE_CRITICAL}). CHẶN MUA.",
+                )
     except (ValueError, TypeError):
         pass
     return False, None
@@ -311,9 +316,13 @@ def _check_sotp_gate(sotp_ratio: Any) -> Tuple[bool, Optional[str], Optional[str
     try:
         sr_val = float(sotp_ratio)
         if sr_val < 0.30:
-            return True, f"SOTP Ratio = {sr_val*100:.1f}% < 30% ({GATE_SOTP_DISCOUNT_CRITICAL}). CHẶN MUA.", None
+            return True, f"SOTP Ratio = {sr_val * 100:.1f}% < 30% ({GATE_SOTP_DISCOUNT_CRITICAL}). CHẶN MUA.", None
         if sr_val < 0.50:
-            return False, None, f"SOTP Ratio = {sr_val*100:.1f}% < 50% ({GATE_SOTP_ANOMALY}). Cần thận trọng chiết khấu tập đoàn."
+            return (
+                False,
+                None,
+                f"SOTP Ratio = {sr_val * 100:.1f}% < 50% ({GATE_SOTP_ANOMALY}). Cần thận trọng chiết khấu tập đoàn.",
+            )
     except (ValueError, TypeError):
         pass
     return False, None, None
@@ -343,9 +352,8 @@ def reconcile_real_estate_survival_gate(
 
     sym = (symbol or "").strip().upper()
     sec = (sector or "").lower()
-    is_re_or_holding = (
-        sym in ("VIC", "VHM", "NVL", "PDR", "DIG", "DXG", "KDH", "NLG", "MSN", "REE", "GEX")
-        or any(r in sec for r in ("bất động sản", "địa ốc", "holding"))
+    is_re_or_holding = sym in ("VIC", "VHM", "NVL", "PDR", "DIG", "DXG", "KDH", "NLG", "MSN", "REE", "GEX") or any(
+        r in sec for r in ("bất động sản", "địa ốc", "holding")
     )
     if not is_re_or_holding:
         return empty_result
@@ -402,14 +410,18 @@ def _check_oil_gas_risks(sym: str, fin: Dict[str, Any]) -> Tuple[List[str], List
     dsi = fin.get("days_inventory", fin.get("dsi"))
     if dsi is not None and float(dsi) > 45.0:
         flags.append(FLAG_INVENTORY_RISK)
-        warnings.append(f"Số ngày tồn kho DSI={float(dsi):.0f}d > 45 ngày ({FLAG_INVENTORY_RISK}). Rủi ro trích lập giảm giá khi dầu giảm.")
+        warnings.append(
+            f"Số ngày tồn kho DSI={float(dsi):.0f}d > 45 ngày ({FLAG_INVENTORY_RISK}). Rủi ro trích lập giảm giá khi dầu giảm."
+        )
         discount += 0.05
 
     m_down = fin.get("margin_quarters_down", 0)
     m_trend = str(fin.get("gross_margin_trend", "")).upper()
     if m_trend == "DOWN" or (isinstance(m_down, (int, float)) and m_down >= 2):
         flags.append(FLAG_MARGIN_TREND_DOWN)
-        warnings.append(f"Biên lợi nhuận gộp giảm liên tiếp >= 2 quý ({FLAG_MARGIN_TREND_DOWN}). Crack spread bị thu hẹp.")
+        warnings.append(
+            f"Biên lợi nhuận gộp giảm liên tiếp >= 2 quý ({FLAG_MARGIN_TREND_DOWN}). Crack spread bị thu hẹp."
+        )
         discount += 0.10
 
     if fin.get("policy_expiring") is True or (sym == "BSR" and fin.get("check_policy_2026", True)):
@@ -419,7 +431,9 @@ def _check_oil_gas_risks(sym: str, fin: Dict[str, Any]) -> Tuple[List[str], List
 
     if fin.get("single_plant_risk") is True or (sym == "BSR" and fin.get("check_plant_risk", True)):
         flags.append(FLAG_SINGLE_PLANT_RISK)
-        warnings.append(f"Rủi ro vận hành đơn lẻ ({FLAG_SINGLE_PLANT_RISK}): Doanh thu phụ thuộc 100% vào cụm nhà máy duy nhất.")
+        warnings.append(
+            f"Rủi ro vận hành đơn lẻ ({FLAG_SINGLE_PLANT_RISK}): Doanh thu phụ thuộc 100% vào cụm nhà máy duy nhất."
+        )
         discount += 0.05
 
     return flags, warnings, discount
@@ -433,7 +447,9 @@ def _check_steel_risks(sym: str, fin: Dict[str, Any]) -> Tuple[List[str], List[s
 
     if fin.get("china_dumping_risk") is True or (sym in ("HPG", "HSG", "NKG") and fin.get("check_dumping", False)):
         flags.append(FLAG_CHINA_DUMPING_RISK)
-        warnings.append(f"Áp lực cạnh tranh thép nhập khẩu giá rẻ ({FLAG_CHINA_DUMPING_RISK}). Biên gộp HRC bị ép giảm.")
+        warnings.append(
+            f"Áp lực cạnh tranh thép nhập khẩu giá rẻ ({FLAG_CHINA_DUMPING_RISK}). Biên gộp HRC bị ép giảm."
+        )
         discount += 0.05
 
     inv_qoq = fin.get("inventory_growth_qoq")
@@ -463,7 +479,9 @@ def check_sector_risk_flags(
     sym = (symbol or "").strip().upper()
     sec = (sector or "").lower()
 
-    is_oil_gas = sym in ("BSR", "PVD", "PVS", "PVC", "PVB", "PLX", "OIL") or any(o in sec for o in ("dầu khí", "lọc dầu", "xăng dầu"))
+    is_oil_gas = sym in ("BSR", "PVD", "PVS", "PVC", "PVB", "PLX", "OIL") or any(
+        o in sec for o in ("dầu khí", "lọc dầu", "xăng dầu")
+    )
     is_steel = sym in ("HPG", "HSG", "NKG", "TLH", "POM", "VGS") or "thép" in sec
 
     if not (is_oil_gas or is_steel):
@@ -514,9 +532,7 @@ def _compute_news_age_and_status(pub_date_str: Any, now: datetime) -> Tuple[floa
     return round(age_hours, 1), status
 
 
-def reconcile_news_freshness(
-    news: Optional[List[Dict[str, Any]]] = None
-) -> Tuple[List[Dict[str, Any]], List[str]]:
+def reconcile_news_freshness(news: Optional[List[Dict[str, Any]]] = None) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Classify news items into source hierarchy tiers and freshness buckets.
 
     Returns:
@@ -533,18 +549,10 @@ def reconcile_news_freshness(
         title = item.get("title", "")
         source = item.get("source", "CafeF")
         tier = _classify_source_tier(source, tag)
-        age_hours, status = _compute_news_age_and_status(
-            item.get("published_date") or item.get("date"),
-            now
+        age_hours, status = _compute_news_age_and_status(item.get("published_date") or item.get("date"), now)
+        reconciled.append(
+            {"title": title, "tag": tag, "source": source, "tier": tier, "freshness": status, "age_hours": age_hours}
         )
-        reconciled.append({
-            "title": title,
-            "tag": tag,
-            "source": source,
-            "tier": tier,
-            "freshness": status,
-            "age_hours": age_hours
-        })
 
     return reconciled, []
 
@@ -567,9 +575,7 @@ def reconcile_price_freshness(tech_data: Optional[Dict[str, Any]] = None) -> Lis
 
 
 def reconcile_market_cap_consistency(
-    reconciled_price: float,
-    fin_data: Optional[Dict[str, Any]] = None,
-    tech_data: Optional[Dict[str, Any]] = None
+    reconciled_price: float, fin_data: Optional[Dict[str, Any]] = None, tech_data: Optional[Dict[str, Any]] = None
 ) -> List[str]:
     """Cross-validate price against market cap and shares outstanding.
 
@@ -602,7 +608,7 @@ def reconcile_market_cap_consistency(
     if discrepancy_pct > 0.15:
         return [
             f"Cross-Validation Mismatch: Market Cap / Shares implies {implied_price_k:.1f}k VND "
-            f"vs Market Price {reconciled_price:.1f}k VND ({discrepancy_pct*100:.1f}% discrepancy > 15%)."
+            f"vs Market Price {reconciled_price:.1f}k VND ({discrepancy_pct * 100:.1f}% discrepancy > 15%)."
         ]
     return []
 
@@ -673,8 +679,16 @@ def _calculate_quality_score(
 ) -> Tuple[float, str]:
     """Compute 100-point data quality score and assign quality tier."""
     deductions = _compute_quality_deductions(
-        price_status, reconciled_price, tech_data, fin_data,
-        fin_missing, fin_stale, news, val_issues, price_stale, cap_conflicts
+        price_status,
+        reconciled_price,
+        tech_data,
+        fin_data,
+        fin_missing,
+        fin_stale,
+        news,
+        val_issues,
+        price_stale,
+        cap_conflicts,
     )
     final_score = max(0.0, min(100.0, round(100.0 - deductions, 1)))
     tier = _assign_quality_tier(final_score)
@@ -688,11 +702,7 @@ def _evaluate_gate_decision(
     quality_score: float,
 ) -> Tuple[bool, bool, str]:
     """Determine gate passed status, recommendation allowed, and formatted badge string."""
-    gate_passed = (
-        quality_tier in (TIER_HIGH, TIER_MEDIUM)
-        and not has_conflict
-        and not is_stale_data
-    )
+    gate_passed = quality_tier in (TIER_HIGH, TIER_MEDIUM) and not has_conflict and not is_stale_data
     recommendation_allowed = gate_passed and quality_tier != TIER_LOW and not has_conflict and not is_stale_data
 
     badge = f"📊 DATA QUALITY: {quality_tier} ({quality_score:.0f}/100)"
@@ -710,7 +720,7 @@ def reconcile_data(
     fin_data: Optional[Dict[str, Any]] = None,
     news: Optional[List[Dict[str, Any]]] = None,
     corporate_actions: Optional[List[Dict[str, Any]]] = None,
-    exchange: str = "HOSE"
+    exchange: str = "HOSE",
 ) -> Dict[str, Any]:
     """Execute Phase 0 Data Reconciliation Gate in pure deterministic Python.
 
@@ -786,7 +796,7 @@ def reconcile_data(
         news=news,
         val_issues=val_issues,
         price_stale=price_stale_issues,
-        cap_conflicts=cap_issues
+        cap_conflicts=cap_issues,
     )
 
     # Determine Gate Status: Hard lock if stale data, conflicts, or survival failure
@@ -806,7 +816,7 @@ def reconcile_data(
     source_tiers = {
         "price_source": "Vnstock/HOSE_Live" if tech_data else "None",
         "financial_source": "Audited_Quarterly_Reports" if fin_data else "None",
-        "news_source": reconciled_news[0]["tier"] if reconciled_news else "None"
+        "news_source": reconciled_news[0]["tier"] if reconciled_news else "None",
     }
 
     return {
@@ -827,7 +837,7 @@ def reconcile_data(
         "survival_gate": survival_res,
         "sector_risks": sector_risk_res,
         "news": reconciled_news,
-        "source_tiers": source_tiers
+        "source_tiers": source_tiers,
     }
 
 
@@ -838,14 +848,8 @@ def format_data_quality_badge(reconcile_result: Dict[str, Any]) -> str:
     conflicts = len(reconcile_result.get("conflicting_data", []))
     missing = len(reconcile_result.get("missing_data", []))
 
-    status_icon_map = {
-        "HIGH": "🟢",
-        "MEDIUM": "🟡",
-        "LOW": "🔴",
-        "CRITICAL": "🔴"
-    }
+    status_icon_map = {"HIGH": "🟢", "MEDIUM": "🟡", "LOW": "🔴", "CRITICAL": "🔴"}
     status_icon = status_icon_map.get(tier, "🔴")
     return (
-        f"{status_icon} **Data Quality:** `{tier}` ({score:.0f}/100) | "
-        f"Conflicts: `{conflicts}` | Missing: `{missing}`"
+        f"{status_icon} **Data Quality:** `{tier}` ({score:.0f}/100) | Conflicts: `{conflicts}` | Missing: `{missing}`"
     )

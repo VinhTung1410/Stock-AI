@@ -55,9 +55,7 @@ class MarketContext:
 
 
 def load_market_context(
-    filepath: Optional[Path | str] = None,
-    current_date: Optional[str] = None,
-    allow_stale: bool = False
+    filepath: Optional[Path | str] = None, current_date: Optional[str] = None, allow_stale: bool = False
 ) -> MarketContext:
     """
     Safely load MarketContext from disk.
@@ -84,7 +82,8 @@ def load_market_context(
     if current_date and report_date != current_date and not allow_stale:
         LOGGER.warning(
             "[ContextEngine] Context date '%s' does not match session date '%s'. Falling back to invalid context.",
-            report_date, current_date
+            report_date,
+            current_date,
         )
         return MarketContext(is_valid=False, date=report_date)
 
@@ -116,6 +115,7 @@ def _normalize_regime_str(regime_str: Optional[str]) -> str:
 
 def _handle_uptrend_conflict() -> Tuple[bool, str]:
     from datetime import datetime
+
     today_str = datetime.now().strftime("%Y-%m-%d")
     should_penalize = track_regime_hysteresis(True, today_str)
 
@@ -153,6 +153,7 @@ def check_regime_conflict(code_regime: str, analyst_regime: str) -> Tuple[bool, 
         )
 
     from datetime import datetime
+
     today_str = datetime.now().strftime("%Y-%m-%d")
     track_regime_hysteresis(False, today_str)
 
@@ -172,37 +173,36 @@ def track_regime_hysteresis(is_conflict: bool, today_str: str) -> bool:
     """
     import json
     import os
-    
+
     file_path = "data/regime_hysteresis.json"
     history = {"consecutive_days": 0, "last_date": "", "last_conflict_date": ""}
-    
+
     if os.path.exists(file_path):
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 history = json.load(f)
         except Exception:
             pass
-            
+
     if history.get("last_date") == today_str:
         return history.get("consecutive_days", 0) >= 2
-        
+
     if is_conflict:
         history["consecutive_days"] = history.get("consecutive_days", 0) + 1
         history["last_conflict_date"] = today_str
     else:
         history["consecutive_days"] = 0
-        
+
     history["last_date"] = today_str
-    
+
     try:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(history, f, indent=2)
     except Exception:
         pass
-        
-    return history.get("consecutive_days", 0) >= 2
 
+    return history.get("consecutive_days", 0) >= 2
 
 
 def build_context_prompt_snippet(context: MarketContext, code_regime: Optional[str] = None) -> str:
@@ -213,8 +213,14 @@ def build_context_prompt_snippet(context: MarketContext, code_regime: Optional[s
     if not context or not context.is_valid:
         return ""
 
-    sup_str = ", ".join(str(s) for s in context.vnindex_support_zones) if context.vnindex_support_zones else "Chưa xác định"
-    res_str = ", ".join(str(r) for r in context.vnindex_resistance_zones) if context.vnindex_resistance_zones else "Chưa xác định"
+    sup_str = (
+        ", ".join(str(s) for s in context.vnindex_support_zones) if context.vnindex_support_zones else "Chưa xác định"
+    )
+    res_str = (
+        ", ".join(str(r) for r in context.vnindex_resistance_zones)
+        if context.vnindex_resistance_zones
+        else "Chưa xác định"
+    )
     sectors_str = ", ".join(context.focus_sectors) if context.focus_sectors else "Đa ngành"
     risks_str = ", ".join(context.risk_keywords) if context.risk_keywords else "Không có từ khóa rủi ro đột biến"
     buy_str = ", ".join(context.buy_signals) if context.buy_signals else "Không có"

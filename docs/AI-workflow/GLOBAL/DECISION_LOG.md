@@ -466,3 +466,18 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
      - `ruff check . --output-format=github` đạt exit code 0.
      - Tuân thủ nghiêm ngặt SonarCloud S3776 (Cognitive Complexity < 15), S8572 (`logging.exception`), S1192 (hằng số cờ rủi ro).
 - **Hệ quả:** Hệ thống chính thức làm chủ nghiệp vụ định giá chu kỳ hàng hóa theo chuẩn mực quỹ đầu tư chuyên nghiệp (CFA Institute standard); xóa bỏ triệt để bẫy P/E giá rẻ ảo tại đỉnh lợi nhuận; hoàn tất xuất sắc Phase 11 (v7.1).
+
+---
+
+### [ADR-024] Xây dựng Broad Market Pool & Rotating Cursor cho Active Screener
+- **Ngày quyết định:** 2026-10-01
+- **Người tham gia:** Client, AI
+- **Bối cảnh & Vấn đề:**
+  - Active Market Screener (`scan_market_opportunities` trong `data_engine.py`) trước đó bị hard-code giới hạn chỉ ưu tiên quét 6 mã trụ cột lớn nhất (`TOP_MARKET_SYMBOLS`) và Watchlist cá nhân.
+  - Hạn mức Rate limit 20 req/min của thư viện vnstock buộc danh sách mỗi lần quét phải khống chế ở 8 mã.
+  - Hậu quả: Các cổ phiếu vào pha đáy chu kỳ (Deep Value) như PVD bị lọt lưới nếu không có tin tức vĩ mô nổi bật hoặc không được nạp tay vào Watchlist.
+- **Quyết định lựa chọn:**
+  - Thay thế `TOP_MARKET_SYMBOLS` bằng `BROAD_MARKET_POOL` gồm 56 mã đại diện (VN30 + Midcap tiêu biểu).
+  - Triển khai biến `_market_scanner_cursor` chạy theo cơ chế Round-Robin.
+  - Trong mỗi nhịp chạy, các slot còn trống (để max 8 mã) sẽ được tự động lấp đầy bằng mã lấy từ `BROAD_MARKET_POOL` dựa trên cursor.
+- **Hệ quả:** Radar hoạt động xoay vòng 360 độ, quét 100% các mã bluechip và midcap chất lượng sau mỗi 2-3 giờ, đảm bảo không bỏ sót bất kỳ cơ hội Deep Value nào mà không vi phạm Rate Limit.

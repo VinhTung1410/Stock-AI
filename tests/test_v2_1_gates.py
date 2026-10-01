@@ -44,7 +44,7 @@ def _eval_helper(current_price: float, price_base: float, adv20: float, tech_dat
         price_bear=current_price * 0.9,
         atr=1.5,
         adv20_billion=adv20,
-        tech_data=tech_data or {"current_price": current_price, "ma20": current_price * 0.98, "rsi": 55.0}
+        tech_data=tech_data or {"current_price": current_price, "ma20": current_price * 0.98, "rsi": 55.0},
     )
 
 
@@ -62,7 +62,7 @@ class TestFreshnessAndCrossValidationGate:
             "pe": 14.0,
             "pb": 1.6,
             "latest_quarter": 4,
-            "latest_year": 2018  # 30 quarters old (VCB incident scenario)
+            "latest_year": 2018,  # 30 quarters old (VCB incident scenario)
         }
         res = reconcile_data(symbol="VCB", tech_data=tech, fin_data=fin)
 
@@ -93,10 +93,7 @@ class TestFreshnessAndCrossValidationGate:
 
     def test_cross_validation_mismatch_catches_wrong_fields(self):
         """Implied price = market_cap / shares mismatch > 15% triggers conflict."""
-        fin = {
-            "market_cap_bil": 100000.0,
-            "shares_outstanding": 1000000000.0
-        }
+        fin = {"market_cap_bil": 100000.0, "shares_outstanding": 1000000000.0}
         issues = reconcile_market_cap_consistency(reconciled_price=50.0, fin_data=fin)
         assert len(issues) >= 1
         assert "Cross-Validation Mismatch" in issues[0]
@@ -108,10 +105,7 @@ class TestFreshnessAndCrossValidationGate:
 
     def test_cross_validation_clean_alignment(self):
         """Implied price matching market price within 15% passes without conflict."""
-        fin = {
-            "market_cap_bil": 492149.0,
-            "shares_outstanding": 8355675094.0
-        }
+        fin = {"market_cap_bil": 492149.0, "shares_outstanding": 8355675094.0}
         issues = reconcile_market_cap_consistency(reconciled_price=58.8, fin_data=fin)
         assert len(issues) == 0
 
@@ -169,7 +163,7 @@ class TestPortfolioSectorConcentration:
                 "risk_reward": 2.1,
                 "f_score": 7,
                 "action_state": "🟢 MUA",
-                "position_size_nav": "15% - 20% NAV"
+                "position_size_nav": "15% - 20% NAV",
             },
             {
                 "symbol": "VCB",
@@ -178,8 +172,8 @@ class TestPortfolioSectorConcentration:
                 "risk_reward": 2.5,
                 "f_score": 8,
                 "action_state": "🟢 MUA",
-                "position_size_nav": "15% - 20% NAV"
-            }
+                "position_size_nav": "15% - 20% NAV",
+            },
         ]
 
         result = check_portfolio_concentration(candidates, max_per_sector=1)
@@ -198,7 +192,7 @@ class TestPortfolioSectorConcentration:
         candidates = [
             {"symbol": "VCB", "sector": "NGÂN HÀNG", "mos_pct": 20.0},
             {"symbol": "HPG", "sector": "THÉP", "mos_pct": 25.0},
-            {"symbol": "VHM", "sector": "BẤT ĐỘNG SẢN", "mos_pct": 19.0}
+            {"symbol": "VHM", "sector": "BẤT ĐỘNG SẢN", "mos_pct": 19.0},
         ]
         result = check_portfolio_concentration(candidates, max_per_sector=1)
         assert len(result["approved_candidates"]) == 3
@@ -213,8 +207,7 @@ class TestDeterministicPMArbitration:
     def test_data_gate_rejected_forces_insufficient_data(self):
         """When recommendation is not allowed by Data Gate, arbitration forces INSUFFICIENT_DATA."""
         final, overridden, reason = arbitrate_pm_decision(
-            raw_decision=STATE_STRONG_OPPORTUNITY,
-            recommendation_allowed=False
+            raw_decision=STATE_STRONG_OPPORTUNITY, recommendation_allowed=False
         )
         assert final == STATE_INSUFFICIENT_DATA
         assert overridden is True
@@ -223,9 +216,7 @@ class TestDeterministicPMArbitration:
     def test_thesis_breaker_financial_distress_forces_avoid(self):
         """When F-Score < 4 or Z-Score Red Zone, arbitration forces AVOID."""
         final, overridden, reason = arbitrate_pm_decision(
-            raw_decision=STATE_STRONG_OPPORTUNITY,
-            f_score=3,
-            z_zone="Vùng nguy hiểm phá sản"
+            raw_decision=STATE_STRONG_OPPORTUNITY, f_score=3, z_zone="Vùng nguy hiểm phá sản"
         )
         assert final == STATE_AVOID
         assert overridden is True
@@ -234,9 +225,7 @@ class TestDeterministicPMArbitration:
     def test_fa_bullish_ta_bearish_falling_knife_forces_wait_better_entry(self):
         """When FA Bullish but TA Bearish, arbitration blocks STRONG_OPPORTUNITY to WAIT_BETTER_ENTRY."""
         final, overridden, reason = arbitrate_pm_decision(
-            raw_decision=STATE_STRONG_OPPORTUNITY,
-            fa_view="BULLISH",
-            ta_view="BEARISH"
+            raw_decision=STATE_STRONG_OPPORTUNITY, fa_view="BULLISH", ta_view="BEARISH"
         )
         assert final == STATE_WAIT_BETTER_ENTRY
         assert overridden is True
@@ -245,9 +234,7 @@ class TestDeterministicPMArbitration:
     def test_fa_bearish_ta_bullish_fomo_forces_risk_elevated(self):
         """When FA Bearish but TA Bullish, arbitration blocks BUY decisions to RISK_ELEVATED."""
         final, overridden, reason = arbitrate_pm_decision(
-            raw_decision=STATE_STRONG_OPPORTUNITY,
-            fa_view="BEARISH",
-            ta_view="BULLISH"
+            raw_decision=STATE_STRONG_OPPORTUNITY, fa_view="BEARISH", ta_view="BULLISH"
         )
         assert final == STATE_RISK_ELEVATED
         assert overridden is True
@@ -256,10 +243,7 @@ class TestDeterministicPMArbitration:
     def test_red_team_downside_over_25_forces_watchlist(self):
         """When Red Team downside risk > 25%, arbitration caps decision at WATCHLIST."""
         final, overridden, reason = arbitrate_pm_decision(
-            raw_decision=STATE_STRONG_OPPORTUNITY,
-            fa_view="BULLISH",
-            ta_view="BULLISH",
-            red_team_downside=28.5
+            raw_decision=STATE_STRONG_OPPORTUNITY, fa_view="BULLISH", ta_view="BULLISH", red_team_downside=28.5
         )
         assert final == STATE_WATCHLIST
         assert overridden is True
@@ -274,7 +258,7 @@ class TestDeterministicPMArbitration:
             red_team_downside=12.0,
             f_score=8,
             z_zone="Vùng an toàn",
-            recommendation_allowed=True
+            recommendation_allowed=True,
         )
         assert final == STATE_STRONG_OPPORTUNITY
         assert overridden is False

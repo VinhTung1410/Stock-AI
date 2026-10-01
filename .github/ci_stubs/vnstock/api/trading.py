@@ -1,4 +1,5 @@
 """Trading module stub for vnstock."""
+
 from __future__ import annotations
 
 import pandas as pd

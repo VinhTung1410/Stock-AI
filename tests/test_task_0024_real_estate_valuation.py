@@ -8,7 +8,6 @@ Covers:
 - TASK-0028: P/B Mean Reversion Guardrail for REAL_ESTATE
 """
 
-
 from ai_analyst import _format_committee_prompt_context
 from data_engine import (
     calculate_core_earnings_ratio,
@@ -36,6 +35,7 @@ from quant_valuation import (
 # =============================================================================
 # TASK-0024: SOTP SANITY CHECK TESTS
 # =============================================================================
+
 
 class TestSOTPHoldingSanity:
     """Validate SOTP calculations and holding anomaly flags."""
@@ -78,6 +78,7 @@ class TestSOTPHoldingSanity:
 # =============================================================================
 # TASK-0025: QUALITY OF EARNINGS GATE TESTS
 # =============================================================================
+
 
 class TestQualityOfEarningsGate:
     """Validate Core Earnings Ratio and Earnings Quality Tiers."""
@@ -123,16 +124,13 @@ class TestQualityOfEarningsGate:
 # TASK-0026: SURVIVAL GATE & NORMALIZED EBITDA TESTS
 # =============================================================================
 
+
 class TestSurvivalGate:
     """Validate Normalized EBITDA and Real Estate Survival Gate checks."""
 
     def test_calculate_normalized_ebitda(self):
         # Reported 100, abnormal fin income 40, asset sale 20 -> normalized 40
-        norm = calculate_normalized_ebitda(
-            reported_ebitda=100.0,
-            abnormal_fin_income=40.0,
-            other_profit=20.0
-        )
+        norm = calculate_normalized_ebitda(reported_ebitda=100.0, abnormal_fin_income=40.0, other_profit=20.0)
         assert norm == 40.0
 
     def test_gate1_debt_overload_blocks_buy(self):
@@ -171,8 +169,8 @@ class TestSurvivalGate:
             fin_data={
                 "normalized_ebitda": 10.0,
                 "net_debt": 80.0,  # 8x > 5x
-                "period": "2026-Q2"
-            }
+                "period": "2026-Q2",
+            },
         )
         assert gate_res["recommendation_allowed"] is False
         assert any(GATE_DEBT_OVERLOAD in c for c in gate_res["conflicting_data"])
@@ -181,6 +179,7 @@ class TestSurvivalGate:
 # =============================================================================
 # TASK-0028: P/B MEAN REVERSION GUARDRAIL FOR REAL ESTATE
 # =============================================================================
+
 
 class TestRealEstatePBGuardrail:
     """Validate P/B Guardrail on Real Estate stocks."""
@@ -214,6 +213,7 @@ class TestRealEstatePBGuardrail:
 # E2E VALUATION & TCBS VIC CASE RECONCILIATION
 # =============================================================================
 
+
 class TestRealEstateValuationE2E:
     """End-to-End tests verifying Real Estate valuation improvements."""
 
@@ -222,7 +222,7 @@ class TestRealEstateValuationE2E:
             symbol="VHM",
             current_price=42.0,
             fin_dict={"pb": 1.2, "bvps": 35.0, "roe": 15.0, "debt_equity": 0.8},
-            sector="Bất động sản"
+            sector="Bất động sản",
         )
         assert "fv_base" in res
         assert "sotp_check" in res
@@ -248,7 +248,7 @@ class TestRealEstateValuationE2E:
                 "net_debt": 120.0,  # 8.0x
                 "sotp_ratio": 0.28,  # < 30%
             },
-            sector="Bất động sản"
+            sector="Bất động sản",
         )
 
         # 1. MoS must be informative (not naive current_price * 1.15)
@@ -270,6 +270,7 @@ class TestRealEstateValuationE2E:
 # TASK-0027: CASH COW VS CASH BURNER PROMPT TESTS
 # =============================================================================
 
+
 class TestPromptEngineeringHolding:
     """Validate prompt context generation for holding company analysis."""
 
@@ -278,7 +279,7 @@ class TestPromptEngineeringHolding:
             symbol="VIC",
             current_price=45.0,
             fin_dict={"pb": 10.5, "bvps": 20.0, "sotp_ratio": 0.35},
-            sector="Bất động sản"
+            sector="Bất động sản",
         )
         gate_res = {"data_quality": "HIGH", "quality_score": 90.0}
         prompt = _format_committee_prompt_context(
@@ -288,7 +289,7 @@ class TestPromptEngineeringHolding:
             val_res=val_res,
             f_score_res={"score": 5, "rating": "Ổn"},
             z_score_res={"z_score": 1.8, "zone": "GREY"},
-            news_items=[{"title": "VIC ra mắt sản phẩm mới"}]
+            news_items=[{"title": "VIC ra mắt sản phẩm mới"}],
         )
 
         assert "Cấu trúc SOTP Vốn hóa niêm yết" in prompt

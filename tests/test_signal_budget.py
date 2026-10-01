@@ -5,6 +5,7 @@ Tests for Signal Credibility Engine:
 - Daily Signal Budget (max 2 BUY recommendations)
 - Portfolio Diversification Guard (max 8 open positions)
 """
+
 import json
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -55,7 +56,7 @@ class TestConvictionScoring:
             vol_ratio=1.4,
             cat_info={"tag": "KQKD", "title": "Lợi nhuận tăng trưởng kỷ lục 45%"},
             foreign_flow={"status": "BUYING", "badge": "TÂY MUA RÒNG"},
-            is_trap=False
+            is_trap=False,
         )
         assert score_res["score"] >= HIGH_CONVICTION_THRESHOLD
         assert score_res["tier"] == "HIGH"
@@ -76,7 +77,7 @@ class TestConvictionScoring:
             vol_ratio=1.05,
             cat_info=None,
             foreign_flow={"status": "NEUTRAL"},
-            is_trap=False
+            is_trap=False,
         )
         assert MEDIUM_CONVICTION_THRESHOLD <= score_res["score"] < HIGH_CONVICTION_THRESHOLD
         assert score_res["tier"] == "MEDIUM"
@@ -92,7 +93,7 @@ class TestConvictionScoring:
             vol_ratio=0.8,
             cat_info={"tag": "TIN TỨC", "title": "Tin đồn kế hoạch thoái vốn"},
             foreign_flow={"status": "SELLING"},
-            is_trap=True
+            is_trap=True,
         )
         # Heavy technical penalty should push score down
         assert score_res["score"] < HIGH_CONVICTION_THRESHOLD
@@ -110,7 +111,7 @@ class TestConvictionScoring:
             vol_ratio=0.7,
             cat_info=None,
             foreign_flow={"status": "SELLING"},
-            is_trap=False
+            is_trap=False,
         )
         assert score_res["score"] < MEDIUM_CONVICTION_THRESHOLD
         assert score_res["tier"] == "LOW"
@@ -162,7 +163,7 @@ class TestSignalBudgetAndGuards:
                 "vol_ratio": 1.5,
                 "change_pct": 1.2,
                 "trap_info": {"is_trap": False},
-                "foreign_flow": {"status": "BUYING", "badge": "TÂY MUA"}
+                "foreign_flow": {"status": "BUYING", "badge": "TÂY MUA"},
             }
 
         def mock_val(symbol, current_price, sector):
@@ -171,17 +172,18 @@ class TestSignalBudgetAndGuards:
                 "mos_pct": 25.0,
                 "valuation_method": "DCF",
                 "confidence": "HIGH",
-                "price_target": current_price * 1.35
+                "price_target": current_price * 1.35,
             }
 
-        with patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file), \
-             patch("db_manager.check_symbol_recent_signal", return_value=False), \
-             patch("db_manager.fetch_open_signals", return_value=[]), \
-             patch("data_engine.fetch_stock_technical", side_effect=mock_tech), \
-             patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val), \
-             patch("data_engine.fetch_macro_news", return_value=[]), \
-             patch("data_engine.load_watchlist", return_value=[]):
-
+        with (
+            patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file),
+            patch("db_manager.check_symbol_recent_signal", return_value=False),
+            patch("db_manager.fetch_open_signals", return_value=[]),
+            patch("data_engine.fetch_stock_technical", side_effect=mock_tech),
+            patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val),
+            patch("data_engine.fetch_macro_news", return_value=[]),
+            patch("data_engine.load_watchlist", return_value=[]),
+        ):
             results = scan_market_opportunities(extra_symbols=["HPG", "FPT", "SSI", "TCB"])
 
             buy_results = [r for r in results if r["status"] == "RECOMMEND_BUY"]
@@ -210,25 +212,21 @@ class TestSignalBudgetAndGuards:
                 "vol_ratio": 1.4,
                 "change_pct": 0.8,
                 "trap_info": {"is_trap": False},
-                "foreign_flow": {"status": "BUYING"}
+                "foreign_flow": {"status": "BUYING"},
             }
 
         def mock_val(symbol, current_price, sector):
-            return {
-                "fair_value": 35.0,
-                "mos_pct": 25.0,
-                "valuation_method": "P/B",
-                "confidence": "HIGH"
-            }
+            return {"fair_value": 35.0, "mos_pct": 25.0, "valuation_method": "P/B", "confidence": "HIGH"}
 
-        with patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file), \
-             patch("db_manager.check_symbol_recent_signal", return_value=False), \
-             patch("db_manager.fetch_open_signals", return_value=[]), \
-             patch("data_engine.fetch_stock_technical", side_effect=mock_tech), \
-             patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val), \
-             patch("data_engine.fetch_macro_news", return_value=[]), \
-             patch("data_engine.load_watchlist", return_value=[]):
-
+        with (
+            patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file),
+            patch("db_manager.check_symbol_recent_signal", return_value=False),
+            patch("db_manager.fetch_open_signals", return_value=[]),
+            patch("data_engine.fetch_stock_technical", side_effect=mock_tech),
+            patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val),
+            patch("data_engine.fetch_macro_news", return_value=[]),
+            patch("data_engine.load_watchlist", return_value=[]),
+        ):
             results = scan_market_opportunities(extra_symbols=["HPG"])
             hpg_pick = next((r for r in results if r["symbol"] == "HPG"), None)
 
@@ -254,25 +252,21 @@ class TestSignalBudgetAndGuards:
                 "vol_ratio": 1.5,
                 "change_pct": 1.0,
                 "trap_info": {"is_trap": False},
-                "foreign_flow": {"status": "BUYING"}
+                "foreign_flow": {"status": "BUYING"},
             }
 
         def mock_val(symbol, current_price, sector):
-            return {
-                "fair_value": 70.0,
-                "mos_pct": 30.0,
-                "valuation_method": "DCF",
-                "confidence": "HIGH"
-            }
+            return {"fair_value": 70.0, "mos_pct": 30.0, "valuation_method": "DCF", "confidence": "HIGH"}
 
-        with patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file), \
-             patch("db_manager.check_symbol_recent_signal", return_value=False), \
-             patch("db_manager.fetch_open_signals", return_value=[]), \
-             patch("data_engine.fetch_stock_technical", side_effect=mock_tech), \
-             patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val), \
-             patch("data_engine.fetch_macro_news", return_value=[]), \
-             patch("data_engine.load_watchlist", return_value=[]):
-
+        with (
+            patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file),
+            patch("db_manager.check_symbol_recent_signal", return_value=False),
+            patch("db_manager.fetch_open_signals", return_value=[]),
+            patch("data_engine.fetch_stock_technical", side_effect=mock_tech),
+            patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val),
+            patch("data_engine.fetch_macro_news", return_value=[]),
+            patch("data_engine.load_watchlist", return_value=[]),
+        ):
             results = scan_market_opportunities(extra_symbols=["NEW_STOCK"])
             buy_results = [r for r in results if r["status"] == "RECOMMEND_BUY"]
             watch_results = [r for r in results if r["status"] == "WATCH_CONFIRMATION"]
@@ -299,31 +293,27 @@ class TestSignalDeduplication:
                 "vol_ratio": 1.4,
                 "change_pct": 2.1,
                 "trap_info": {"is_trap": False},
-                "foreign_flow": {"status": "BUYING", "badge": "TÂY MUA RÒNG"}
+                "foreign_flow": {"status": "BUYING", "badge": "TÂY MUA RÒNG"},
             }
 
         def mock_val(symbol, current_price, sector):
-            return {
-                "fair_value": 26.0,
-                "mos_pct": 33.3,
-                "valuation_method": "P/B Chu kỳ",
-                "confidence": "HIGH"
-            }
+            return {"fair_value": 26.0, "mos_pct": 33.3, "valuation_method": "P/B Chu kỳ", "confidence": "HIGH"}
 
         mock_news = [
             {"tag": "KQKD", "title": "BSR báo lãi lớn quý 1", "matched_symbols": ["BSR"]},
-            {"tag": "VĨ MÔ", "title": "Giá dầu thế giới tăng mạnh", "matched_symbols": ["BSR"]}
+            {"tag": "VĨ MÔ", "title": "Giá dầu thế giới tăng mạnh", "matched_symbols": ["BSR"]},
         ]
         mock_wl = [{"symbol": "BSR", "note": "Mã trọng tâm lọc dầu"}]
 
-        with patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file), \
-             patch("db_manager.check_symbol_recent_signal", return_value=False), \
-             patch("db_manager.fetch_open_signals", return_value=[]), \
-             patch("data_engine.fetch_stock_technical", side_effect=mock_tech), \
-             patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val), \
-             patch("data_engine.fetch_macro_news", return_value=mock_news), \
-             patch("data_engine.load_watchlist", return_value=mock_wl):
-
+        with (
+            patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file),
+            patch("db_manager.check_symbol_recent_signal", return_value=False),
+            patch("db_manager.fetch_open_signals", return_value=[]),
+            patch("data_engine.fetch_stock_technical", side_effect=mock_tech),
+            patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val),
+            patch("data_engine.fetch_macro_news", return_value=mock_news),
+            patch("data_engine.load_watchlist", return_value=mock_wl),
+        ):
             results = scan_market_opportunities(extra_symbols=["BSR"])
             bsr_matches = [r for r in results if r.get("symbol") == "BSR"]
 
@@ -342,25 +332,21 @@ class TestSignalDeduplication:
                 "vol_ratio": 1.3,
                 "change_pct": 1.5,
                 "trap_info": {"is_trap": False},
-                "foreign_flow": {"status": "BUYING"}
+                "foreign_flow": {"status": "BUYING"},
             }
 
         def mock_val(symbol, current_price, sector):
-            return {
-                "fair_value": 45.0,
-                "mos_pct": 50.0,
-                "valuation_method": "DCF",
-                "confidence": "HIGH"
-            }
+            return {"fair_value": 45.0, "mos_pct": 50.0, "valuation_method": "DCF", "confidence": "HIGH"}
 
-        with patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file), \
-             patch("db_manager.check_symbol_recent_signal", return_value=False), \
-             patch("db_manager.fetch_open_signals", return_value=[]), \
-             patch("data_engine.fetch_stock_technical", side_effect=mock_tech), \
-             patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val), \
-             patch("data_engine.fetch_macro_news", return_value=[]), \
-             patch("data_engine.load_watchlist", return_value=[{"symbol": "HPG"}]):
-
+        with (
+            patch("data_engine.SIGNAL_COOLDOWN_FILE", fake_cooldown_file),
+            patch("db_manager.check_symbol_recent_signal", return_value=False),
+            patch("db_manager.fetch_open_signals", return_value=[]),
+            patch("data_engine.fetch_stock_technical", side_effect=mock_tech),
+            patch("quant_valuation.calculate_fair_value_and_mos", side_effect=mock_val),
+            patch("data_engine.fetch_macro_news", return_value=[]),
+            patch("data_engine.load_watchlist", return_value=[{"symbol": "HPG"}]),
+        ):
             # Pass duplicate symbols in extra_symbols
             results = scan_market_opportunities(extra_symbols=["HPG", "HPG", "FPT", "FPT", "BSR", "BSR"])
             symbols = [r["symbol"] for r in results]
@@ -374,9 +360,30 @@ class TestSignalDeduplication:
         from ai_analyst import generate_morning_strategy_report
 
         duplicated_opps = [
-            {"symbol": "BSR", "status": "RECOMMEND_BUY", "current_price": 19.5, "sector": "Dầu khí", "story_tag": "KQKD", "story": "Lãi lớn"},
-            {"symbol": "BSR", "status": "WATCH_CONFIRMATION", "current_price": 19.5, "sector": "Dầu khí", "setup_type": "Theo dõi", "rationale": "Chờ nền"},
-            {"symbol": "HPG", "status": "RECOMMEND_BUY", "current_price": 28.0, "sector": "Thép", "story_tag": "ĐẦU TƯ CÔNG", "story": "Dung Quất 2"},
+            {
+                "symbol": "BSR",
+                "status": "RECOMMEND_BUY",
+                "current_price": 19.5,
+                "sector": "Dầu khí",
+                "story_tag": "KQKD",
+                "story": "Lãi lớn",
+            },
+            {
+                "symbol": "BSR",
+                "status": "WATCH_CONFIRMATION",
+                "current_price": 19.5,
+                "sector": "Dầu khí",
+                "setup_type": "Theo dõi",
+                "rationale": "Chờ nền",
+            },
+            {
+                "symbol": "HPG",
+                "status": "RECOMMEND_BUY",
+                "current_price": 28.0,
+                "sector": "Thép",
+                "story_tag": "ĐẦU TƯ CÔNG",
+                "story": "Dung Quất 2",
+            },
         ]
 
         captured_prompt = []
@@ -385,15 +392,26 @@ class TestSignalDeduplication:
             captured_prompt.append(prompt)
             return "BÁO CÁO CHIẾN LƯỢC ĐẦU NGÀY..."
 
-        with patch("ai_analyst.call_gemini", side_effect=mock_call_gemini), \
-             patch("quant_valuation.calculate_fair_value_and_mos", return_value={"fair_value": 25.0, "mos_pct": 20.0, "valuation_method": "P/B", "confidence": "HIGH"}), \
-             patch("data_engine.fetch_stock_technical", return_value={"current_price": 1280.0, "change_pct": 0.5, "ma20": 1270.0, "ma50": 1260.0, "rsi14": 55.0, "status_ma20": "TRÊN MA20"}):
-
+        with (
+            patch("ai_analyst.call_gemini", side_effect=mock_call_gemini),
+            patch(
+                "quant_valuation.calculate_fair_value_and_mos",
+                return_value={"fair_value": 25.0, "mos_pct": 20.0, "valuation_method": "P/B", "confidence": "HIGH"},
+            ),
+            patch(
+                "data_engine.fetch_stock_technical",
+                return_value={
+                    "current_price": 1280.0,
+                    "change_pct": 0.5,
+                    "ma20": 1270.0,
+                    "ma50": 1260.0,
+                    "rsi14": 55.0,
+                    "status_ma20": "TRÊN MA20",
+                },
+            ),
+        ):
             res = generate_morning_strategy_report(
-                portfolio_df=pd.DataFrame(),
-                watchlist_df=pd.DataFrame(),
-                opportunities=duplicated_opps,
-                news_items=[]
+                portfolio_df=pd.DataFrame(), watchlist_df=pd.DataFrame(), opportunities=duplicated_opps, news_items=[]
             )
 
             assert len(captured_prompt) == 1
@@ -404,4 +422,3 @@ class TestSignalDeduplication:
             assert "• Mã: **BSR**" in prompt_text
             # Check count of "• Mã: **BSR**"
             assert prompt_text.count("• Mã: **BSR**") == 1, "BSR must only appear once in AI prompt opportunities"
-

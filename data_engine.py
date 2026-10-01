@@ -3,6 +3,7 @@ import os
 os.environ["VNSTOCK_TELEMETRY"] = "off"
 try:
     import vnai
+
     vnai.disable_telemetry()
 except Exception:
     pass
@@ -27,6 +28,7 @@ import requests
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -35,6 +37,66 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 # Danh sách mã cổ phiếu trụ cột / thanh khoản cao phục vụ quét cơ hội đầu ngày (08:45 sáng)
 TOP_MARKET_SYMBOLS = ["HPG", "SSI", "FPT", "MWG", "TCB", "VHM"]
+
+# Danh sách quét xoay vòng toàn thị trường (VN30 + Midcap tiêu biểu)
+BROAD_MARKET_POOL = [
+    "HPG",
+    "SSI",
+    "FPT",
+    "MWG",
+    "TCB",
+    "VHM",
+    "PVD",
+    "DGC",
+    "VND",
+    "HSG",
+    "NKG",
+    "VIC",
+    "VRE",
+    "VNM",
+    "SAB",
+    "MSN",
+    "GAS",
+    "PLX",
+    "POW",
+    "BID",
+    "CTG",
+    "MBB",
+    "VPB",
+    "STB",
+    "ACB",
+    "TPB",
+    "HDB",
+    "VIB",
+    "SSB",
+    "SHB",
+    "GVR",
+    "KBC",
+    "IDC",
+    "VGC",
+    "SZC",
+    "DIG",
+    "NVL",
+    "PDR",
+    "DXG",
+    "KDH",
+    "NLG",
+    "DCM",
+    "DPM",
+    "CSV",
+    "VHC",
+    "ANV",
+    "FMC",
+    "GIL",
+    "TNG",
+    "MSH",
+    "STK",
+    "VTP",
+    "HAH",
+    "GMD",
+    "PVT",
+]
+_market_scanner_cursor = 0
 
 TAG_MACRO = "VĨ MÔ"
 TAG_INSIDER = "NỘI BỘ"
@@ -52,11 +114,7 @@ _SESSION_PRUNED_SYMBOLS: set[str] = set()
 
 
 # Cache bộ nhớ tạm để tránh spam request Google Sheets liên tục
-_GSHEET_CACHE = {
-    "timestamp": 0,
-    "portfolio": None,
-    "watchlist": None
-}
+_GSHEET_CACHE = {"timestamp": 0, "portfolio": None, "watchlist": None}
 
 
 def parse_google_sheet_csv_url(url: str) -> str:
@@ -112,6 +170,7 @@ def _parse_numeric(val, default=0.0, is_int: bool = False):
 
     if isinstance(val, (int, float)):
         import math
+
         if math.isnan(val) or math.isinf(val):
             return default_val
         return int(val) if is_int else _rescale_price(float(val))
@@ -262,6 +321,7 @@ def fetch_google_sheet_data(sheet_url: str = None) -> tuple:
     """Ingest holdings and watchlist from public Google Sheet (XLSX multi-sheet with CSV fallback)."""
     global _GSHEET_CACHE
     import time
+
     now_ts = time.time()
     if _GSHEET_CACHE["portfolio"] is not None and (now_ts - _GSHEET_CACHE["timestamp"]) < 45:
         return _GSHEET_CACHE["portfolio"], _GSHEET_CACHE["watchlist"]
@@ -292,6 +352,7 @@ def fetch_google_sheet_data(sheet_url: str = None) -> tuple:
 def clean_json_records(records: list) -> list:
     """Loại bỏ triệt để các giá trị NaN/Inf không hợp lệ trong chuẩn JSON."""
     import math
+
     cleaned = []
     for item in records:
         if not isinstance(item, dict):
@@ -327,6 +388,7 @@ def update_google_sheet_portfolio(portfolio_data: list) -> tuple:
         res = requests.post(update_url, json=payload, timeout=30)
         if res.status_code == 200:
             import time
+
             _GSHEET_CACHE["timestamp"] = time.time()
             _GSHEET_CACHE["portfolio"] = clean_data
             logging.info("✅ Đã ghi ngược danh mục lên Google Sheet thành công!")
@@ -358,6 +420,7 @@ def update_google_sheet_watchlist(watchlist_data: list) -> tuple:
         res = requests.post(update_url, json=payload, timeout=30)
         if res.status_code == 200:
             import time
+
             _GSHEET_CACHE["timestamp"] = time.time()
             _GSHEET_CACHE["watchlist"] = clean_data
             logging.info("✅ Đã ghi ngược Watchlist lên Google Sheet thành công!")
@@ -422,8 +485,7 @@ def load_watchlist(filepath: str = PATH_WATCHLIST_JSON) -> list:
         if w_data:
             # Lọc bỏ các mã đã bị thanh lọc trong phiên hiện tại
             sheet_manual_items = [
-                item for item in w_data
-                if item.get("symbol", "").upper().strip() not in _SESSION_PRUNED_SYMBOLS
+                item for item in w_data if item.get("symbol", "").upper().strip() not in _SESSION_PRUNED_SYMBOLS
             ]
             merged_watchlist = list(sheet_manual_items)
             merged_symbols = {m.get("symbol", "").upper().strip() for m in merged_watchlist if m.get("symbol")}
@@ -474,6 +536,7 @@ def _calculate_item_mos(sym: str, curr_price: float, note: str) -> float:
         return 0.0
     try:
         from quant_valuation import calculate_fair_value_and_mos
+
         val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=note)
         return float(val_res.get("mos_pct", 0.0))
     except Exception:
@@ -537,7 +600,7 @@ def prune_unsuitable_watchlist(
     filepath: str = PATH_WATCHLIST_JSON,
     prune_manual: bool = True,
     tech_map: dict = None,
-    notify_discord: bool = True
+    notify_discord: bool = True,
 ) -> tuple[list, list]:
     """
     Thanh lọc các cổ phiếu trong Watchlist đang QUÁ HOT hoặc KHÔNG PHÙ HỢP:
@@ -575,6 +638,7 @@ def prune_unsuitable_watchlist(
         if notify_discord and pruned_items:
             try:
                 from discord_alerts import send_watchlist_pruned_alert
+
                 send_watchlist_pruned_alert(pruned_items)
             except Exception:
                 logging.exception("Lỗi khi bắn cảnh báo thanh lọc Watchlist vào Discord")
@@ -604,6 +668,7 @@ def _build_auto_watchlist_candidate(opp: dict, manual_symbols: set) -> dict | No
     if conv_score >= 60.0 or mos_pct >= 15.0 or status == "RECOMMEND_BUY":
         target_p = float(opp.get("target_price") or opp.get("current_price", 0.0))
         from quant_valuation import get_stock_archetype_details
+
         arch_details = get_stock_archetype_details(sym, sector=opp.get("sector", ""))
         return {
             "symbol": sym,
@@ -618,10 +683,7 @@ def _build_auto_watchlist_candidate(opp: dict, manual_symbols: set) -> dict | No
 
 
 def sync_auto_watchlist(
-    opportunities: list = None,
-    filepath: str = PATH_WATCHLIST_JSON,
-    max_auto: int = 5,
-    prune_manual: bool = False
+    opportunities: list = None, filepath: str = PATH_WATCHLIST_JSON, max_auto: int = 5, prune_manual: bool = False
 ) -> list:
     """
     Tự động chọn lọc các cơ hội đầu tư chất lượng cao đưa vào Watchlist.
@@ -646,7 +708,7 @@ def sync_auto_watchlist(
             opportunities = scan_market_opportunities()
 
         auto_candidates = []
-        for opp in (opportunities or []):
+        for opp in opportunities or []:
             cand = _build_auto_watchlist_candidate(opp, manual_symbols)
             if cand:
                 auto_candidates.append(cand)
@@ -661,7 +723,9 @@ def sync_auto_watchlist(
                 existing_merged_symbols.add(auto_item["symbol"])
 
         save_watchlist(merged_watchlist, filepath=filepath)
-        logging.info(f"✅ Đã đồng bộ Watchlist tự động: {len(manual_items)} mã thủ công + {len(merged_watchlist) - len(manual_items)} mã tự động.")
+        logging.info(
+            f"✅ Đã đồng bộ Watchlist tự động: {len(manual_items)} mã thủ công + {len(merged_watchlist) - len(manual_items)} mã tự động."
+        )
         return merged_watchlist
     except Exception:
         logging.exception("Lỗi khi đồng bộ Watchlist tự động")
@@ -690,6 +754,7 @@ def fetch_foreign_trading_flow(symbol: str) -> dict:
     """
     global _FOREIGN_FLOW_CACHE
     import time
+
     now = time.time()
     sym_clean = symbol.upper().strip()
     if sym_clean in _FOREIGN_FLOW_CACHE:
@@ -709,11 +774,12 @@ def fetch_foreign_trading_flow(symbol: str) -> dict:
         "status": "NEUTRAL",
         "status_vi": "Cân bằng",
         "badge": "Khối ngoại: Cân bằng",
-        "icon": "⚪"
+        "icon": "⚪",
     }
 
     try:
         from vnstock.api.trading import Trading
+
         t = Trading(symbol=sym_clean, source="VCI")
         pb = t.price_board([sym_clean])
         if pb is not None and not pb.empty:
@@ -758,7 +824,7 @@ def fetch_foreign_trading_flow(symbol: str) -> dict:
                 "status": status,
                 "status_vi": status_vi,
                 "badge": badge,
-                "icon": icon
+                "icon": icon,
             }
             _FOREIGN_FLOW_CACHE[sym_clean] = (now, res)
             return res
@@ -804,7 +870,7 @@ def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> d
             "trap_type": "OVERBOUGHT_NEWS_TRAP",
             "warning_msg": f"BẪY MUA ĐUỔI TIN TỨC: Cổ phiếu có tin ('{news_matched_title[:45]}...') nhưng RSI(14) đã chạm {rsi14:.1f} (Quá mua). Nguy cơ bị xả chốt lời cực cao (Sell on news).",
             "severity": "HIGH",
-            "icon": "⚠️"
+            "icon": "⚠️",
         }
 
     # Bẫy 2: Nến cụt đầu nổ Vol (Kéo xả ngấm ngầm)
@@ -812,9 +878,9 @@ def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> d
         return {
             "is_trap": True,
             "trap_type": "UPPER_WICK_DISTRIBUTION_TRAP",
-            "warning_msg": f"CẢNH BÁO NẾN CỤT ĐẦU: Thanh khoản nổ gấp {vol_ratio:.1f}x SMA20 nhưng râu nến trên chiếm {upper_wick_ratio*100:.0f}% biên độ! Lực cung bán chốt lời đè giá áp đảo.",
+            "warning_msg": f"CẢNH BÁO NẾN CỤT ĐẦU: Thanh khoản nổ gấp {vol_ratio:.1f}x SMA20 nhưng râu nến trên chiếm {upper_wick_ratio * 100:.0f}% biên độ! Lực cung bán chốt lời đè giá áp đảo.",
             "severity": "HIGH",
-            "icon": "⚠️"
+            "icon": "⚠️",
         }
 
     # Bẫy 3: Bắt dao rơi (Giá gãy cả MA20 và MA50)
@@ -824,7 +890,7 @@ def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> d
             "trap_type": "FALLING_KNIFE_TRAP",
             "warning_msg": f"CẢNH BÁO BẮT DAO RƠI: Thị giá ({curr_price:.2f}k) nằm dưới cả MA20 ({ma20:.2f}k) và MA50 ({ma50:.2f}k). Cổ phiếu đang trong pha Downtrend / Rơi tự do.",
             "severity": "MEDIUM",
-            "icon": "⛔"
+            "icon": "⛔",
         }
 
     return {
@@ -832,7 +898,7 @@ def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> d
         "trap_type": "NONE",
         "warning_msg": "Kỹ thuật đạt chuẩn, không có dấu hiệu bẫy phân phối hay rủi ro bán tháo.",
         "severity": "NONE",
-        "icon": "🟢"
+        "icon": "🟢",
     }
 
 
@@ -916,6 +982,7 @@ def set_last_known_price(symbol: str, price: float) -> None:
 def _fetch_history_with_fallback(symbol: str, start_date: str, end_date: str, time_frame: str = "1D") -> pd.DataFrame:
     """Fetch history from multiple providers with graceful fallback (VCI -> KBS -> MSN)."""
     from vnstock.api.quote import Quote
+
     for src in ["VCI", "KBS", "MSN"]:
         try:
             q = Quote(symbol=symbol, source=src)
@@ -936,6 +1003,7 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
     """
     global _TECH_CACHE, _LAST_KNOWN_TECH_CACHE, _LAST_KNOWN_PRICE_CACHE
     import time
+
     now = time.time()
     sym_clean = symbol.upper().strip()
     cache_key = f"{sym_clean}_{fetch_foreign}"
@@ -995,6 +1063,7 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
 
         # Tính ATR(14)
         from quant_engine import calculate_atr
+
         atr14 = calculate_atr(df, period=14)
 
         # Xác định trạng thái kỹ thuật
@@ -1010,14 +1079,17 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
 
         # Phát hiện bẫy kỹ thuật / nến (cách ly lỗi)
         try:
-            trap_info = detect_news_trap(symbol, {
-                "current_price": current_price,
-                "ma20": ma20,
-                "ma50": ma50,
-                "rsi14": rsi14,
-                "vol_ratio": vol_ratio,
-                "upper_wick_ratio": upper_wick_ratio,
-            })
+            trap_info = detect_news_trap(
+                symbol,
+                {
+                    "current_price": current_price,
+                    "ma20": ma20,
+                    "ma50": ma50,
+                    "rsi14": rsi14,
+                    "vol_ratio": vol_ratio,
+                    "upper_wick_ratio": upper_wick_ratio,
+                },
+            )
         except Exception as e_trap:
             logging.warning("Lỗi phát hiện bẫy %s: %s", symbol, e_trap)
             trap_info = {"is_trap": False, "trap_type": "NONE"}
@@ -1057,7 +1129,7 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             "atr14": atr14,
             "upper_wick_ratio": upper_wick_ratio,
             "foreign_flow": foreign_data,
-            "trap_info": trap_info
+            "trap_info": trap_info,
         }
         _TECH_CACHE[cache_key] = (now, res)
         _LAST_KNOWN_TECH_CACHE[sym_clean] = res
@@ -1130,6 +1202,7 @@ def fetch_corporate_dividends(symbol: str):
     """
     try:
         from vnstock.api.company import Company
+
         c = Company(symbol=symbol, source="VCI")
         df = c.events()
         return df
@@ -1166,7 +1239,7 @@ def detect_gdkhq_event(symbol: str, tech_dict: dict, vnindex_chg_pct: float = 0.
                 f"Phát hiện Gap Down kỹ thuật bất thường ({opening_gap_pct:+.1f}%) "
                 f"trong khi VN-Index bình ổn ({vnindex_chg_pct:+.1f}%). "
                 f"Khả năng cao là ngày GDKHQ (chia cổ tức / phát hành thêm). Tạm dừng cắt lỗ cơ học!"
-            )
+            ),
         }
 
     return {"is_gdkhq": False, "reason": ""}
@@ -1255,28 +1328,31 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
         action_v2 = pos_eval.get("action", "🟢 NẮM GIỮ")
         defense_target = pos_eval.get("trailing_stop") if pos_eval.get("is_profit") else pos_eval.get("stop_loss")
 
-        records.append({
-            "Mã CP": symbol,
-            "Khối lượng": volume,
-            "Giá vốn (k)": cost_price,
-            "Thị giá (k)": curr_price,
-            "Thay đổi (%)": tech.get("change_pct", 0.0),
-            "Lãi/Lỗ (%)": round(pnl_pct, 2),
-            "Lãi/Lỗ (VND)": int(pnl_vnd),
-            "Fair Value (k)": round(fair_val, 2),
-            "MoS (%)": round(mos_pct, 1),
-            "Chặn lãi/Cắt lỗ (k)": defense_target,
-            "Hành động V2": action_v2,
-            "Vị thế MA20": tech.get("status_ma20", "N/A"),
-            "Khối ngoại (Tỷ)": ff_net,
-            "Tín hiệu Bẫy": trap_label,
-            "RSI(14)": tech.get("rsi14", "N/A"),
-            "Vol/TB20": tech.get("vol_ratio", 1.0),
-            "Chiến lược": strategy,
-        })
+        records.append(
+            {
+                "Mã CP": symbol,
+                "Khối lượng": volume,
+                "Giá vốn (k)": cost_price,
+                "Thị giá (k)": curr_price,
+                "Thay đổi (%)": tech.get("change_pct", 0.0),
+                "Lãi/Lỗ (%)": round(pnl_pct, 2),
+                "Lãi/Lỗ (VND)": int(pnl_vnd),
+                "Fair Value (k)": round(fair_val, 2),
+                "MoS (%)": round(mos_pct, 1),
+                "Chặn lãi/Cắt lỗ (k)": defense_target,
+                "Hành động V2": action_v2,
+                "Vị thế MA20": tech.get("status_ma20", "N/A"),
+                "Khối ngoại (Tỷ)": ff_net,
+                "Tín hiệu Bẫy": trap_label,
+                "RSI(14)": tech.get("rsi14", "N/A"),
+                "Vol/TB20": tech.get("vol_ratio", 1.0),
+                "Chiến lược": strategy,
+            }
+        )
     df = pd.DataFrame(records)
     try:
         from quant_sanity_check import run_full_portfolio_sanity_check
+
         _, _, clean_df = run_full_portfolio_sanity_check(df)
         return clean_df
     except Exception as e:
@@ -1349,27 +1425,30 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
         mos_pct = val_res.get("mos_pct", 0.0)
 
         from quant_valuation import get_stock_archetype_details
+
         archetype_info = get_stock_archetype_details(symbol, sector=item.get("sector") or note)
 
-        records.append({
-            "Mã CP": symbol,
-            "Thị giá (k)": curr_price,
-            "Thay đổi (%)": tech.get("change_pct", 0.0),
-            "Fair Value (k)": round(fair_val, 2),
-            "MoS (%)": round(mos_pct, 1),
-            "Giá chờ mua (k)": target_buy if target_buy > 0 else curr_price,
-            "Khoảng cách (%)": round(diff_pct, 2),
-            "Vị thế MA20": tech.get("status_ma20", "N/A"),
-            "Khối ngoại (Tỷ)": ff_net,
-            "Tín hiệu Bẫy": trap_label,
-            "RSI(14)": tech.get("rsi14", "N/A"),
-            "Vol/TB20": tech.get("vol_ratio", 1.0),
-            KEY_SECTOR_CLUSTER: archetype_info["sector_group"],
-            "Archetype": archetype_info["archetype"],
-            "Chiến lược": archetype_info["strategy_label"],
-            "Mô hình định giá": archetype_info["valuation_model"],
-            "Luận điểm / Ghi chú": note,
-        })
+        records.append(
+            {
+                "Mã CP": symbol,
+                "Thị giá (k)": curr_price,
+                "Thay đổi (%)": tech.get("change_pct", 0.0),
+                "Fair Value (k)": round(fair_val, 2),
+                "MoS (%)": round(mos_pct, 1),
+                "Giá chờ mua (k)": target_buy if target_buy > 0 else curr_price,
+                "Khoảng cách (%)": round(diff_pct, 2),
+                "Vị thế MA20": tech.get("status_ma20", "N/A"),
+                "Khối ngoại (Tỷ)": ff_net,
+                "Tín hiệu Bẫy": trap_label,
+                "RSI(14)": tech.get("rsi14", "N/A"),
+                "Vol/TB20": tech.get("vol_ratio", 1.0),
+                KEY_SECTOR_CLUSTER: archetype_info["sector_group"],
+                "Archetype": archetype_info["archetype"],
+                "Chiến lược": archetype_info["strategy_label"],
+                "Mô hình định giá": archetype_info["valuation_model"],
+                "Luận điểm / Ghi chú": note,
+            }
+        )
     return pd.DataFrame(records)
 
 
@@ -1465,13 +1544,12 @@ def fetch_macro_news(limit: int = 15, tracked_symbols: list = None) -> list:
                 title = clean_news["title"]
                 summary_clean = clean_news["summary"]
 
-
                 # Trích xuất link ảnh nếu có (linear non-backtracking parsing)
                 img_match = re.search(r'src="([^"]+)"', summary_raw)
                 img_url = None
                 if img_match:
                     candidate_url = img_match.group(1).strip()
-                    if re.search(r'\.(?:jpg|png|jpeg|webp)(?:$|[?#])', candidate_url, re.IGNORECASE):
+                    if re.search(r"\.(?:jpg|png|jpeg|webp)(?:$|[?#])", candidate_url, re.IGNORECASE):
                         img_url = candidate_url
 
                 # Gắn nhãn phân loại tự động
@@ -1482,13 +1560,39 @@ def fetch_macro_news(limit: int = 15, tracked_symbols: list = None) -> list:
                 if any(w in full_text for w in ["cổ tức", "chốt quyền", "chia thưởng", "trả cổ tức"]):
                     tag = "CỔ TỨC"
                     tag_color = "#10b981"  # Green
-                elif any(w in full_text for w in ["lợi nhuận", "kết quả kinh doanh", "kqkd", "báo cáo tài chính", "bctc", "lãi ròng", "doanh thu"]):
+                elif any(
+                    w in full_text
+                    for w in [
+                        "lợi nhuận",
+                        "kết quả kinh doanh",
+                        "kqkd",
+                        "báo cáo tài chính",
+                        "bctc",
+                        "lãi ròng",
+                        "doanh thu",
+                    ]
+                ):
                     tag = TAG_EARNINGS
                     tag_color = "#8b5cf6"  # Purple
-                elif any(w in full_text for w in ["chủ tịch", "tổng giám đốc", "mua vào", "bán ra", "thoái vốn", "đăng ký bán", "đăng ký mua", "nội bộ"]):
+                elif any(
+                    w in full_text
+                    for w in [
+                        "chủ tịch",
+                        "tổng giám đốc",
+                        "mua vào",
+                        "bán ra",
+                        "thoái vốn",
+                        "đăng ký bán",
+                        "đăng ký mua",
+                        "nội bộ",
+                    ]
+                ):
                     tag = TAG_INSIDER
                     tag_color = "#f59e0b"  # Amber
-                elif any(w in full_text for w in ["lãi suất", "fed", "ngân hàng nhà nước", "tỷ giá", "lạm phát", "gdp", "fdi"]):
+                elif any(
+                    w in full_text
+                    for w in ["lãi suất", "fed", "ngân hàng nhà nước", "tỷ giá", "lạm phát", "gdp", "fdi"]
+                ):
                     tag = TAG_MACRO
                     tag_color = "#ec4899"  # Pink
 
@@ -1499,17 +1603,19 @@ def fetch_macro_news(limit: int = 15, tracked_symbols: list = None) -> list:
                     if re.search(rf"\b{sym}\b", title.upper()) or re.search(rf"\b{sym}\b", summary_clean.upper()):
                         matched_symbols.append(sym)
 
-                news_items.append({
-                    "title": title,
-                    "summary": summary_clean,
-                    "link": entry.link,
-                    "published": entry.get("published", ""),
-                    "channel": channel_name,
-                    "tag": tag,
-                    "tag_color": tag_color,
-                    "image": img_url,
-                    "matched_symbols": matched_symbols
-                })
+                news_items.append(
+                    {
+                        "title": title,
+                        "summary": summary_clean,
+                        "link": entry.link,
+                        "published": entry.get("published", ""),
+                        "channel": channel_name,
+                        "tag": tag,
+                        "tag_color": tag_color,
+                        "image": img_url,
+                        "matched_symbols": matched_symbols,
+                    }
+                )
 
                 if len(news_items) >= limit:
                     break
@@ -1541,7 +1647,7 @@ SECTOR_MAP = {
     "VNM": "Thực phẩm & Đồ uống",
     "DGC": "Hóa chất cơ bản",
     "DCM": "Phân bón & Hóa chất",
-    "DPM": "Phân bón & Hóa chất"
+    "DPM": "Phân bón & Hóa chất",
 }
 
 
@@ -1566,7 +1672,7 @@ def calculate_conviction_score(
     vol_ratio: float = 1.0,
     cat_info: dict = None,
     foreign_flow: dict = None,
-    is_trap: bool = False
+    is_trap: bool = False,
 ) -> dict:
     """Calculate 4-pillar conviction score (100-point institutional scale).
 
@@ -1663,12 +1769,7 @@ def calculate_conviction_score(
     return {
         "score": total_score,
         "tier": tier,
-        "breakdown": {
-            "valuation": mos_pts,
-            "technical": tech_pts,
-            "catalyst": cat_pts,
-            "liquidity": flow_pts
-        }
+        "breakdown": {"valuation": mos_pts, "technical": tech_pts, "catalyst": cat_pts, "liquidity": flow_pts},
     }
 
 
@@ -1702,6 +1803,7 @@ def is_symbol_in_cooldown(symbol: str, cooldown_days: int = COOLDOWN_DAYS) -> bo
     sym = symbol.upper().strip()
     try:
         from db_manager import check_symbol_recent_signal
+
         if check_symbol_recent_signal(sym, days=cooldown_days):
             return True
     except Exception as e:
@@ -1728,11 +1830,7 @@ def record_signal_cooldown(symbol: str, action: str = "RECOMMEND_BUY", convictio
     """Record ticker into the cooldown registry after triggering a recommendation."""
     history = load_signal_cooldown()
     today_str = datetime.now().strftime("%Y-%m-%d")
-    history[symbol.upper()] = {
-        "last_signal_date": today_str,
-        "action": action,
-        "conviction_score": conviction_score
-    }
+    history[symbol.upper()] = {"last_signal_date": today_str, "action": action, "conviction_score": conviction_score}
     save_signal_cooldown(history)
 
 
@@ -1742,6 +1840,7 @@ def get_active_cooldown_symbols(cooldown_days: int = COOLDOWN_DAYS) -> list:
     # 1. Supabase OPEN tracking records
     try:
         from db_manager import fetch_open_signals
+
         open_signals = fetch_open_signals()
         for s in open_signals:
             sym = s.get("symbol")
@@ -1789,7 +1888,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     catalyst_map[sym_up] = {
                         "tag": n.get("tag", "TIN TỨC"),
                         "title": n.get("title", ""),
-                        "summary": n.get("summary", "")
+                        "summary": n.get("summary", ""),
                     }
     except Exception as e:
         logging.warning(f"Failed to fetch CafeF RSS for opportunity scanner: {e}")
@@ -1802,12 +1901,12 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             catalyst_map[w_sym] = {
                 "tag": "WATCHLIST",
                 "title": w.get("note") or "Cổ phiếu chiến lược trong danh sách theo dõi",
-                "summary": ""
+                "summary": "",
             }
 
     # 3. Tạo danh sách ứng viên (Ưu tiên mã người dùng theo dõi trong extra_symbols + watchlist)
     candidate_symbols = []
-    for s in (extra_symbols or []):
+    for s in extra_symbols or []:
         if s and s.upper() not in candidate_symbols:
             candidate_symbols.append(s.upper())
     for w in watchlist_items:
@@ -1817,9 +1916,16 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
     for c in list(catalyst_map.keys()):
         if c not in candidate_symbols:
             candidate_symbols.append(c)
-    for t in TOP_MARKET_SYMBOLS:
-        if t not in candidate_symbols:
-            candidate_symbols.append(t)
+
+    # Nạp thêm các mã xoay vòng từ BROAD_MARKET_POOL vào danh sách quét
+    global _market_scanner_cursor
+    while len(candidate_symbols) < 8:
+        if not BROAD_MARKET_POOL:
+            break
+        sym = BROAD_MARKET_POOL[_market_scanner_cursor % len(BROAD_MARKET_POOL)]
+        _market_scanner_cursor += 1
+        if sym not in candidate_symbols:
+            candidate_symbols.append(sym)
 
     # Khống chế danh sách quét tối đa 8 mã để đảm bảo an toàn hạn mức 20 req/phút của vnstock
     pool = candidate_symbols[:8]
@@ -1919,7 +2025,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "data_quality": reconcile_res.get("data_quality", "CRITICAL"),
                     "data_quality_score": reconcile_res.get("quality_score", 0.0),
                     "data_badge": reconcile_res.get("badge", "DATA CONFLICT"),
-                    "rationale": "; ".join(reconcile_res.get("conflicting_data", ["Xung đột dữ liệu giá"]))
+                    "rationale": "; ".join(reconcile_res.get("conflicting_data", ["Xung đột dữ liệu giá"])),
                 }
 
             # --- KIỂM TRA ĐIỀU KIỆN KỸ THUẬT THỰC CHIẾN ---
@@ -1933,7 +2039,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                 vol_ratio=vol_ratio,
                 cat_info=cat_info,
                 foreign_flow=foreign_flow,
-                is_trap=is_trap
+                is_trap=is_trap,
             )
             conv_score = conviction["score"]
             conv_tier = conviction["tier"]
@@ -1941,8 +2047,8 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
 
             # --- KIỂM TRA ĐIỀU KIỆN KỸ THUẬT THỰC CHIẾN ---
             tech_allowed = curr_price >= (ma20 * 0.985)
-            rsi_allowed = (44 <= rsi <= 68)
-            vol_allowed = (vol_ratio >= 0.90)
+            rsi_allowed = 44 <= rsi <= 68
+            vol_allowed = vol_ratio >= 0.90
             no_trap = not is_trap
 
             # A. ĐẠT CHUẨN HIGH CONVICTION (>= 70) VÀ KỸ THUẬT AN TOÀN -> KHUYẾN NGHỊ MUA
@@ -1964,7 +2070,9 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     rr_calc = calculate_weighted_entry_and_rr(entry_prices, weights, target_price, stop_loss)
                     avg_cost = rr_calc["weighted_entry"]
                     rr = rr_calc["risk_reward"]
-                    execution_plan = f"Mua dứt khoát 1 lần quanh {curr_price}k (vùng {entry_zone}k). Vượt {p_max}k KHÔNG mua đuổi."
+                    execution_plan = (
+                        f"Mua dứt khoát 1 lần quanh {curr_price}k (vùng {entry_zone}k). Vượt {p_max}k KHÔNG mua đuổi."
+                    )
                 else:
                     style_type = "💎 [GOM HÀNG VỊ THẾ / TRUNG HẠN]"
                     setup_type = f"💎 TÍCH LŨY NỀN GIÁ TRÊN MA20 (Conviction: {conv_score:.0f}/100)"
@@ -2004,7 +2112,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
-                    "rationale": f"Conviction {conv_score:.0f}/100 ({conv_tier}). Định giá MoS: {mos_pct:+.1f}% ({val_method}). Kỹ thuật: Trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}."
+                    "rationale": f"Conviction {conv_score:.0f}/100 ({conv_tier}). Định giá MoS: {mos_pct:+.1f}% ({val_method}). Kỹ thuật: Trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}.",
                 }
 
             # B. MEDIUM CONVICTION (55-69) HOẶC CƠ BẢN TỐT (MOS >= 8%) NHƯNG KỸ THUẬT CHƯA XÁC NHẬN
@@ -2037,7 +2145,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
-                    "rationale": f"Cơ bản tốt (MoS {mos_pct:+.1f}%), Conviction {conv_score:.0f}/100 nhưng {reason_str}. Ưu tiên theo dõi chờ nến xác nhận ngừng rơi, không mua đuổi."
+                    "rationale": f"Cơ bản tốt (MoS {mos_pct:+.1f}%), Conviction {conv_score:.0f}/100 nhưng {reason_str}. Ưu tiên theo dõi chờ nến xác nhận ngừng rơi, không mua đuổi.",
                 }
 
             # C. CÓ TIN HOẶC DÍNH BẪY PHÂN PHỐI / ĐỊNH GIÁ ĐẮT -> CẢNH BÁO BẪY
@@ -2073,7 +2181,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
-                    "rationale": " | ".join(caution_reason) if caution_reason else "Kỹ thuật chưa đạt chuẩn an toàn."
+                    "rationale": " | ".join(caution_reason) if caution_reason else "Kỹ thuật chưa đạt chuẩn an toàn.",
                 }
 
             return None
@@ -2088,6 +2196,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             if res:
                 all_results.append(res)
             import time
+
             time.sleep(0.2)
         except Exception as e:
             logging.debug(f"Lỗi khi xử lý {sym}: {e}")
@@ -2131,8 +2240,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
     # 3. DAILY SIGNAL BUDGET (MAX 2 BUYS / DAY)
     # Priority ranking by Conviction Score desc, then Vol Ratio and R:R
     eligible_buys.sort(
-        key=lambda x: (x.get("conviction_score", 0), x.get("vol_ratio", 1.0), x.get("risk_reward", 1.0)),
-        reverse=True
+        key=lambda x: (x.get("conviction_score", 0), x.get("vol_ratio", 1.0), x.get("risk_reward", 1.0)), reverse=True
     )
 
     approved_buys = eligible_buys[:MAX_DAILY_BUY_SIGNALS]
@@ -2151,9 +2259,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
     # Record cooldown for approved buy signals
     for b in approved_buys:
         record_signal_cooldown(
-            symbol=b["symbol"],
-            action="RECOMMEND_BUY",
-            conviction_score=b.get("conviction_score", 0.0)
+            symbol=b["symbol"], action="RECOMMEND_BUY", conviction_score=b.get("conviction_score", 0.0)
         )
 
     # Sort watch and caution lists
@@ -2187,8 +2293,6 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
 
     # Return up to 2 Buys + 2 Watch + 2 Caution (Strictly deduplicated)
     return final_buys + final_watch + final_caution
-
-
 
 
 def get_stock_chart_data(symbol: str) -> pd.DataFrame:
@@ -2248,9 +2352,17 @@ def resolve_sector_key(ticker: str, sector: str = "") -> str:
     sec = sector.lower()
     if sym in ("VCB", "CTG", "BID"):
         return "bank_soe"
-    if any(b in sym for b in ("TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "VIB", "TPB", "LPB", "SHB", "OCB", "EIB", "SSB")) or "ngân hàng" in sec:
+    if (
+        any(
+            b in sym
+            for b in ("TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "VIB", "TPB", "LPB", "SHB", "OCB", "EIB", "SSB")
+        )
+        or "ngân hàng" in sec
+    ):
         return "bank_private"
-    if sym in ("VHM", "VIC", "VRE", "KDH", "NLG", "DXG", "DIG", "PDR", "KBC", "IDC", "NVL") or any(r in sec for r in ("bất động sản", "địa ốc")):
+    if sym in ("VHM", "VIC", "VRE", "KDH", "NLG", "DXG", "DIG", "PDR", "KBC", "IDC", "NVL") or any(
+        r in sec for r in ("bất động sản", "địa ốc")
+    ):
         return "real_estate"
     return "default"
 
@@ -2277,6 +2389,7 @@ def get_shares_outstanding(ticker: str, as_of_date: str = None) -> float | None:
     sym = ticker.strip().upper()
     try:
         from vnstock.api.company import Company
+
         c = Company(symbol=sym, source="VCI")
         ov = c.overview()
         if ov is not None and not ov.empty:
@@ -2305,7 +2418,7 @@ def get_equity_value(ticker: str, as_of_date: str = None) -> float | None:
 
 def compute_pb(ticker: str, as_of_date: str = None) -> float | None:
     """Hàm trung tâm tính P/B chuẩn hóa DUY NHẤT trong toàn hệ thống.
-    
+
     Ưu tiên Dynamic P/B = Giá khớp lệnh thực tế sàn HOSE / BVPS hợp nhất kỳ gần nhất.
     Fallback sang P/B từ bảng tỷ số nếu không lấy được giá realtime.
     """
@@ -2317,6 +2430,7 @@ def compute_pb(ticker: str, as_of_date: str = None) -> float | None:
     # 1. Thử lấy giá thị trường thực tế khớp lệnh sàn HOSE
     try:
         from vnstock.api.trading import Trading
+
         t = Trading(symbol=sym, source="VCI")
         pb_board = t.price_board([sym])
         if pb_board is not None and not pb_board.empty:
@@ -2336,7 +2450,7 @@ def compute_pb(ticker: str, as_of_date: str = None) -> float | None:
 
 def compute_pb_with_guardrail(ticker: str, sector: str = "", as_of_date: str = None) -> float | None:
     """Tính P/B kèm chốt chặn runtime Guardrail theo chuẩn Ban Kiểm soát Tài chính.
-    
+
     Nếu P/B ngoài ngưỡng hợp lý theo ngành, gắn cờ cảnh báo, chặn khuyến nghị và trả về None.
     """
     sym = ticker.strip().upper()
@@ -2349,7 +2463,11 @@ def compute_pb_with_guardrail(ticker: str, sector: str = "", as_of_date: str = N
         logging.warning(
             "[DATA-INTEGRITY] %s P/B=%s ngoài ngưỡng an toàn %s-%s (%s). "
             "Chặn xuất khuyến nghị đầu tư, chỉ xuất cảnh báo lỗi dữ liệu.",
-            sym, pb, lo, hi, sec_key
+            sym,
+            pb,
+            lo,
+            hi,
+            sec_key,
         )
         return None
     return pb
@@ -2381,7 +2499,8 @@ def _extract_kbs_ratios(symbol: str) -> dict:
     """Trích xuất dữ liệu tài chính mới nhất từ nguồn KBS."""
     try:
         from vnstock.api.financial import Finance
-        f = Finance(symbol=symbol, source="VCI")
+
+        f = Finance(symbol=symbol, source="KBS")
         df = f.ratio()
         if df is None or df.empty:
             return {}
@@ -2404,139 +2523,130 @@ def _extract_kbs_ratios(symbol: str) -> dict:
 
 def get_financial_ratios(symbol: str) -> dict:
     """
-    Lấy các chỉ số tài chính cơ bản & định giá chuyên sâu phục vụ báo cáo 8 trụ cột:
-    P/E, P/B, P/S, EV/EBITDA, ROE, ROA, Nợ/VCSH, Biên LN gộp, Biên LN ròng, Vốn hóa...
-    Tích hợp kiểm soát độ tươi (Freshness Check) và chống dùng nhầm dữ liệu đóng băng cũ.
+    Lấy các chỉ số tài chính cơ bản & định giá chuyên sâu phục vụ báo cáo 8 trụ cột.
+    Sử dụng VCI làm nền tảng (base) vì có nhiều chỉ số (P/S, ROIC, EV/EBITDA),
+    sau đó đè các chỉ số cốt lõi (P/E, P/B, ROE) bằng dữ liệu KBS tươi mới hơn nếu có.
     """
     try:
-        # Bước 1: Ưu tiên dữ liệu sống từ KBS
-        kbs_data = _extract_kbs_ratios(symbol)
-        period = kbs_data.get("period")
-        year, quarter = _parse_period_year_quarter(period)
-
-        if kbs_data and year and year >= 2024:
-            return {
-                "symbol": symbol,
-                "period": period,
-                "latest_year": year,
-                "latest_quarter": quarter,
-                "pe": round(kbs_data["pe"], 2) if kbs_data.get("pe") is not None else None,
-                "pb": round(kbs_data["pb"], 2) if kbs_data.get("pb") is not None else None,
-                "bvps": round(kbs_data["bvps"], 2) if kbs_data.get("bvps") is not None else None,
-                "ps": None,
-                "ev_ebitda": None,
-                "p_cf": None,
-                "roe": round(kbs_data["roe"], 2) if kbs_data.get("roe") is not None else None,
-                "roa": round(kbs_data["roa"], 2) if kbs_data.get("roa") is not None else None,
-                "roic": None,
-                "debt_equity": None,
-                "financial_leverage": None,
-                "gross_margin": None,
-                "net_margin": None,
-                "current_ratio": None,
-                "quick_ratio": None,
-                "market_cap_bil": None,
-                "dividend_yield": round(kbs_data["dividend_yield"], 2) if kbs_data.get("dividend_yield") is not None else None,
-                "audit_trail": {
-                    "source": "KBS_Verified_Live",
-                    "period": period,
-                    "bvps": kbs_data.get("bvps"),
-                    "pb": kbs_data.get("pb"),
-                }
-            }
-
-        # Bước 2: Fallback VCI nếu KBS không khả dụng
         from vnstock.api.financial import Finance
-        f = Finance(symbol=symbol, source="VCI")
-        df_ratio = f.ratio()
-        if df_ratio is None or df_ratio.empty:
-            return {}
 
-        data_cols = [c for c in df_ratio.columns if c not in ["item", "item_en", "item_id"]]
-        if not data_cols:
-            return {}
-        latest_col = data_cols[-1]
-        vci_year, vci_quarter = _parse_period_year_quarter(latest_col)
-
+        # Bước 1: Kéo VCI làm nền
+        df_ratio = Finance(symbol=symbol, source="VCI").ratio()
         metric_map = {}
-        for _, row in df_ratio.iterrows():
-            item_name = str(row.get("item", "")).strip()
-            val = row.get(latest_col)
-            try:
-                val_num = float(val) if pd.notnull(val) else None
-            except (ValueError, TypeError):
-                val_num = None
-            if item_name:
-                metric_map[item_name] = val_num
+        vci_period, vci_year, vci_quarter = None, None, None
+
+        if df_ratio is not None and not df_ratio.empty:
+            data_cols = [c for c in df_ratio.columns if c not in ["item", "item_en", "item_id"]]
+            if data_cols:
+                vci_period = data_cols[-1]
+                vci_year, vci_quarter = _parse_period_year_quarter(vci_period)
+                for _, row in df_ratio.iterrows():
+                    item_name = str(row.get("item", "")).strip()
+                    val = row.get(vci_period)
+                    try:
+                        metric_map[item_name] = float(val) if pd.notnull(val) else None
+                    except (ValueError, TypeError):
+                        pass
 
         def get_m(name, default=None):
             return metric_map.get(name, default)
 
-        # Chốt chặn tài chính: Nếu dữ liệu VCI cũ hơn 2024 (ví dụ 2018), KHÔNG lấy P/B cũ
+        # Xử lý VCI base metrics
         is_stale_legacy = vci_year is not None and vci_year < 2024
         pb_raw = get_m("P/B")
         pb = None if is_stale_legacy else pb_raw
         if is_stale_legacy and pb_raw is not None:
             logging.warning(
-                "[DATA-INTEGRITY] Bỏ qua P/B=%s của %s do nguồn VCI bị đóng băng ở kỳ cũ %s",
-                pb_raw, symbol, latest_col
+                "[DATA-INTEGRITY] Bỏ qua P/B=%s của %s do nguồn VCI bị đóng băng ở kỳ cũ %s", pb_raw, symbol, vci_period
             )
 
-        pe = get_m("P/E")
-        ps = get_m("P/S")
-        ev_ebitda = get_m("EV/EBITDA")
-        p_cf = get_m("Giá/ Dòng tiền")
         roe = get_m("ROE (%)")
         if roe is not None and roe < 1.0:
-            roe = roe * 100
+            roe *= 100
         roa = get_m("ROA (%)")
         if roa is not None and roa < 1.0:
-            roa = roa * 100
+            roa *= 100
         roic = get_m("ROIC")
         if roic is not None and roic < 1.0:
-            roic = roic * 100
-        debt_equity = get_m("Nợ/Vốn chủ") or get_m("Nợ trên vốn chủ")
-        financial_leverage = get_m("Đòn bẩy tài chính")
+            roic *= 100
         gross_margin = get_m("Biên LN gộp (%)")
         if gross_margin is not None and gross_margin < 1.0:
-            gross_margin = gross_margin * 100
+            gross_margin *= 100
         net_margin = get_m("Biên LN sau thuế (%)")
         if net_margin is not None and net_margin < 1.0:
-            net_margin = net_margin * 100
-        current_ratio = get_m("Hệ số thanh toán hiện hành")
-        quick_ratio = get_m("Hệ số thanh toán nhanh")
-        market_cap = get_m("Vốn hóa")
+            net_margin *= 100
         dividend_yield = get_m("Tỷ suất cổ tức (%)")
         if dividend_yield is not None and dividend_yield < 1.0:
-            dividend_yield = dividend_yield * 100
+            dividend_yield *= 100
+        market_cap = get_m("Vốn hóa")
 
-        return {
+        base_data = {
             "symbol": symbol,
-            "period": latest_col,
+            "period": vci_period,
             "latest_year": vci_year,
             "latest_quarter": vci_quarter,
-            "pe": round(pe, 2) if pe is not None else None,
-            "pb": round(pb, 2) if pb is not None else None,
-            "ps": round(ps, 2) if ps is not None else None,
-            "ev_ebitda": round(ev_ebitda, 2) if ev_ebitda is not None else None,
-            "p_cf": round(p_cf, 2) if p_cf is not None else None,
-            "roe": round(roe, 2) if roe is not None else None,
-            "roa": round(roa, 2) if roa is not None else None,
-            "roic": round(roic, 2) if roic is not None else None,
-            "debt_equity": round(debt_equity, 2) if debt_equity is not None else None,
-            "financial_leverage": round(financial_leverage, 2) if financial_leverage is not None else None,
-            "gross_margin": round(gross_margin, 2) if gross_margin is not None else None,
-            "net_margin": round(net_margin, 2) if net_margin is not None else None,
-            "current_ratio": round(current_ratio, 2) if current_ratio is not None else None,
-            "quick_ratio": round(quick_ratio, 2) if quick_ratio is not None else None,
+            "pe": get_m("P/E"),
+            "pb": pb,
+            "bvps": get_m("BVPS"),
+            "ps": get_m("P/S"),
+            "ev_ebitda": get_m("EV/EBITDA"),
+            "p_cf": get_m("Giá/ Dòng tiền"),
+            "roe": roe,
+            "roa": roa,
+            "roic": roic,
+            "debt_equity": get_m("Nợ/Vốn chủ") or get_m("Nợ trên vốn chủ"),
+            "financial_leverage": get_m("Đòn bẩy tài chính"),
+            "gross_margin": gross_margin,
+            "net_margin": net_margin,
+            "current_ratio": get_m("Hệ số thanh toán hiện hành"),
+            "quick_ratio": get_m("Hệ số thanh toán nhanh"),
             "market_cap_bil": round(market_cap / 1e9, 1) if market_cap is not None else None,
-            "dividend_yield": round(dividend_yield, 2) if dividend_yield is not None else None,
-            "audit_trail": {
-                "source": "VCI_Fallback",
-                "period": latest_col,
-                "is_stale_legacy": is_stale_legacy,
-            }
+            "dividend_yield": dividend_yield,
+            "audit_trail": {"source": "VCI_Base", "period": vci_period, "is_stale_legacy": is_stale_legacy},
         }
+
+        # Bước 2: Kéo KBS và ghi đè nếu dữ liệu tươi hơn
+        kbs_data = _extract_kbs_ratios(symbol)
+        kbs_period = kbs_data.get("period")
+        kbs_year, kbs_quarter = _parse_period_year_quarter(kbs_period)
+
+        if kbs_data and kbs_year and kbs_year >= 2024:
+            base_data.update(
+                {
+                    "period": kbs_period,
+                    "latest_year": kbs_year,
+                    "latest_quarter": kbs_quarter,
+                }
+            )
+            if kbs_data.get("pe") is not None:
+                base_data["pe"] = kbs_data["pe"]
+            if kbs_data.get("pb") is not None:
+                base_data["pb"] = kbs_data["pb"]
+            if kbs_data.get("bvps") is not None:
+                base_data["bvps"] = kbs_data["bvps"]
+            if kbs_data.get("roe") is not None:
+                base_data["roe"] = kbs_data["roe"]
+            if kbs_data.get("roa") is not None:
+                base_data["roa"] = kbs_data["roa"]
+            if kbs_data.get("dividend_yield") is not None:
+                base_data["dividend_yield"] = kbs_data["dividend_yield"]
+            base_data["audit_trail"] = {
+                "source": "KBS_Merged_VCI",
+                "period": kbs_period,
+                "vci_period": vci_period,
+                "kbs_pb": kbs_data.get("pb"),
+                "vci_pb_stale": pb_raw,
+            }
+
+        # Round all values
+        for k, v in base_data.items():
+            if k not in ["symbol", "period", "latest_year", "latest_quarter", "audit_trail"] and isinstance(
+                v, (int, float)
+            ):
+                base_data[k] = round(v, 2) if v is not None else None
+
+        return base_data
+
     except Exception:
         logging.exception("Lỗi khi lấy chỉ số tài chính cho %s", symbol)
         return {}
@@ -2712,6 +2822,7 @@ def calculate_normalized_ebitda(
 # PHASE 11: CYCLICAL VALUATION HELPERS (TASK-0029, 0030)
 # =============================================================================
 
+
 def calculate_trimmed_normalized_eps(
     eps_history: list[float] | None,
 ) -> dict[str, Any]:
@@ -2759,8 +2870,6 @@ def calculate_trimmed_normalized_eps(
         "min_removed": sorted_eps[0],
         "max_removed": sorted_eps[-1],
     }
-
-
 
 
 if __name__ == "__main__":

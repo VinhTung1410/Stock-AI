@@ -5,6 +5,7 @@ Alpha Tracker & Signal Lifecycle tests — validates defensive filters
 Offline tests run without any external services.
 Integration tests require SUPABASE_URL and SUPABASE_KEY in .env.
 """
+
 import pytest
 
 from data_engine import detect_gdkhq_event
@@ -56,11 +57,7 @@ class TestAntiChasingFilter:
             "change_pct": 6.85,
             "is_ceiling": True,
         }
-        is_chasing = (
-            tech["current_price"] >= tech["ceiling_price"]
-            or tech["change_pct"] >= 6.7
-            or tech["is_ceiling"]
-        )
+        is_chasing = tech["current_price"] >= tech["ceiling_price"] or tech["change_pct"] >= 6.7 or tech["is_ceiling"]
         assert is_chasing is True
 
     def test_allows_healthy_breakout(self):
@@ -70,11 +67,7 @@ class TestAntiChasingFilter:
             "change_pct": 3.2,
             "is_ceiling": False,
         }
-        is_chasing = (
-            tech["current_price"] >= tech["ceiling_price"]
-            or tech["change_pct"] >= 6.7
-            or tech["is_ceiling"]
-        )
+        is_chasing = tech["current_price"] >= tech["ceiling_price"] or tech["change_pct"] >= 6.7 or tech["is_ceiling"]
         assert is_chasing is False
 
 

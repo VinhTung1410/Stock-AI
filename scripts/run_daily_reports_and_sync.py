@@ -77,7 +77,9 @@ def _print_pruned_watchlist_report(pruned_tickers: list[dict]) -> None:
     if pruned_tickers:
         print(f"  ❌ ĐÃ LOẠI BỎ {len(pruned_tickers)} CỔ PHIẾU KHỎI WATCHLIST:")
         for pt in pruned_tickers:
-            print(f"    - Mã {pt['symbol']}: {pt.get('reason')} (Giá: {pt.get('current_price')}k, RSI: {pt.get('rsi14')})")
+            print(
+                f"    - Mã {pt['symbol']}: {pt.get('reason')} (Giá: {pt.get('current_price')}k, RSI: {pt.get('rsi14')})"
+            )
     else:
         print("  ✅ Không có mã nào vi phạm tiêu chí quá nóng (RSI > 75) hay bẫy giá cần loại bỏ.")
 

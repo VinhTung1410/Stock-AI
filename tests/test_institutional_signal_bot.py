@@ -160,9 +160,11 @@ def test_send_regime_circuit_breaker_alert(monkeypatch):
 def test_trading_bot_macro_circuit_breaker_blocks_buys(monkeypatch):
     """Verify Macro Circuit Breaker halts all new buy scans when in Downtrend."""
     # Mock VN-Index series in downtrend
-    df_downtrend = pd.DataFrame({
-        "close": [1300.0 - i * 5 for i in range(220)],
-    })
+    df_downtrend = pd.DataFrame(
+        {
+            "close": [1300.0 - i * 5 for i in range(220)],
+        }
+    )
 
     monkeypatch.setattr("data_engine.fetch_stock_historical", lambda *a, **k: df_downtrend)
     monkeypatch.setattr("regime_classifier.classify_market_regime", lambda df: pd.Series(["DOWNTREND"] * len(df)))

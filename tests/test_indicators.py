@@ -19,11 +19,13 @@ class TestIndicators:
     """Test suite for indicators module."""
 
     def test_calculate_atr_standard(self):
-        df = pd.DataFrame({
-            "high": [10.5, 11.0, 11.2, 11.5, 11.3, 11.6, 11.8, 12.0, 12.2, 12.1, 12.3, 12.5, 12.7, 12.8, 13.0],
-            "low": [10.0, 10.2, 10.5, 10.8, 10.7, 10.9, 11.1, 11.3, 11.5, 11.4, 11.6, 11.8, 12.0, 12.1, 12.2],
-            "close": [10.2, 10.8, 11.0, 11.2, 11.0, 11.4, 11.6, 11.8, 12.0, 11.8, 12.1, 12.4, 12.5, 12.6, 12.8]
-        })
+        df = pd.DataFrame(
+            {
+                "high": [10.5, 11.0, 11.2, 11.5, 11.3, 11.6, 11.8, 12.0, 12.2, 12.1, 12.3, 12.5, 12.7, 12.8, 13.0],
+                "low": [10.0, 10.2, 10.5, 10.8, 10.7, 10.9, 11.1, 11.3, 11.5, 11.4, 11.6, 11.8, 12.0, 12.1, 12.2],
+                "close": [10.2, 10.8, 11.0, 11.2, 11.0, 11.4, 11.6, 11.8, 12.0, 11.8, 12.1, 12.4, 12.5, 12.6, 12.8],
+            }
+        )
         atr = calculate_atr(df, period=14)
         assert atr > 0.0
 
@@ -59,7 +61,7 @@ class TestIndicators:
             "current_ratio": 2.0,
             "financial_leverage": 1.5,
             "gross_margin": 25.0,
-            "roic": 12.0
+            "roic": 12.0,
         }
         res = calculate_piotroski_f_score(fin_perfect)
         assert res["score"] == 9
@@ -75,7 +77,7 @@ class TestIndicators:
             "current_ratio": 0.8,
             "financial_leverage": 4.0,
             "gross_margin": 5.0,
-            "roic": 2.0
+            "roic": 2.0,
         }
         res_w = calculate_piotroski_f_score(fin_weak)
         assert res_w["score"] == 0
@@ -103,20 +105,12 @@ class TestIndicators:
         assert res_red["icon"] == "🔴"
 
     def test_altman_z_score_calculation(self):
-        fin_strong = {
-            "roa": 15.0,
-            "debt_equity": 0.3,
-            "current_ratio": 2.5
-        }
+        fin_strong = {"roa": 15.0, "debt_equity": 0.3, "current_ratio": 2.5}
         res = calculate_altman_z_score(fin_strong)
         assert res["z_score"] >= 2.9
         assert res["icon"] == "🟢"
 
-        fin_distressed = {
-            "roa": -25.0,
-            "debt_equity": 5.0,
-            "current_ratio": 0.4
-        }
+        fin_distressed = {"roa": -25.0, "debt_equity": 5.0, "current_ratio": 0.4}
         res_dist = calculate_altman_z_score(fin_distressed)
         assert res_dist["z_score"] < 2.9
 
@@ -193,27 +187,18 @@ class TestIndicators:
 
     def test_evaluate_smart_money_flow(self):
         # Heavy sell
-        res_sell = evaluate_smart_money_flow(
-            foreign_flow={"net_val_bil": -25.0},
-            prop_flow={"net_val_bil": -5.0}
-        )
+        res_sell = evaluate_smart_money_flow(foreign_flow={"net_val_bil": -25.0}, prop_flow={"net_val_bil": -5.0})
         assert res_sell["heavy_selling"] is True
         assert res_sell["buy_allowed"] is False
         assert res_sell["status"] == "INSTITUTIONAL_HEAVY_DISTRIBUTION"
 
         # Strong accumulation
-        res_acc = evaluate_smart_money_flow(
-            foreign_flow={"net_val_bil": 20.0},
-            prop_flow={"net_val_bil": 10.0}
-        )
+        res_acc = evaluate_smart_money_flow(foreign_flow={"net_val_bil": 20.0}, prop_flow={"net_val_bil": 10.0})
         assert res_acc["buy_allowed"] is True
         assert res_acc["status"] == "INSTITUTIONAL_STRONG_ACCUMULATION"
 
         # Neutral
-        res_neu = evaluate_smart_money_flow(
-            foreign_flow={"net_val_bil": 2.0},
-            prop_flow={"net_val_bil": 1.0}
-        )
+        res_neu = evaluate_smart_money_flow(foreign_flow={"net_val_bil": 2.0}, prop_flow={"net_val_bil": 1.0})
         assert res_neu["status"] == "INSTITUTIONAL_NEUTRAL"
 
     def test_calculate_factor_exposures(self):

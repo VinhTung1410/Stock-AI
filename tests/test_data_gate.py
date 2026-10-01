@@ -29,7 +29,7 @@ class TestDataReconciliationGate:
             "ref_price": 28.0,
             "change_pct": 1.79,
             "ma20": 27.5,
-            "rsi14": 55.0
+            "rsi14": 55.0,
         }
         fin = {
             "roe": 22.5,
@@ -38,14 +38,14 @@ class TestDataReconciliationGate:
             "pe": 12.0,
             "pb": 1.8,
             "latest_quarter": max(1, (datetime.now().month - 1) // 3),
-            "latest_year": datetime.now().year
+            "latest_year": datetime.now().year,
         }
         news = [
             {
                 "title": "Doanh thu tăng trưởng 30% trong quý 1",
                 "tag": "KQKD",
                 "source": "CafeF",
-                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
         ]
 
@@ -66,7 +66,7 @@ class TestDataReconciliationGate:
             "current_price": 31.0,
             "close": 31.0,
             "ref_price": 28.0,  # (31 - 28) / 28 = +10.7% (> 7% HOSE limit)
-            "change_pct": 10.7
+            "change_pct": 10.7,
         }
 
         res = reconcile_data(symbol="VHM", tech_data=tech, exchange="HOSE")
@@ -81,11 +81,7 @@ class TestDataReconciliationGate:
         tech = {"current_price": 25.0, "is_gdkhq": True}
         today_str = datetime.now().strftime("%Y-%m-%d")
         corp_actions = [
-            {
-                "action_type": "CASH_DIVIDEND",
-                "ex_date": today_str,
-                "description": "Chi trả cổ tức bằng tiền 1,500đ/cp"
-            }
+            {"action_type": "CASH_DIVIDEND", "ex_date": today_str, "description": "Chi trả cổ tức bằng tiền 1,500đ/cp"}
         ]
 
         res = reconcile_data(symbol="SSI", tech_data=tech, corporate_actions=corp_actions)
@@ -103,7 +99,7 @@ class TestDataReconciliationGate:
             "pe": 10.0,
             "pb": 1.2,
             "latest_quarter": 1,
-            "latest_year": datetime.now().year - 1  # 1 year ago (4+ quarters stale)
+            "latest_year": datetime.now().year - 1,  # 1 year ago (4+ quarters stale)
         }
 
         res = reconcile_data(symbol="MSB", tech_data={"current_price": 14.0}, fin_data=fin)
@@ -127,7 +123,7 @@ class TestDataReconciliationGate:
         """News from official vs media sources are assigned proper source tiers."""
         news = [
             {"title": "Báo cáo thường niên", "source": "UBCK", "tag": "CBTT"},
-            {"title": "Kế hoạch kinh doanh", "source": "CafeF", "tag": "TIN_TỨC"}
+            {"title": "Kế hoạch kinh doanh", "source": "CafeF", "tag": "TIN_TỨC"},
         ]
 
         reconciled, _ = reconcile_news_freshness(news)
@@ -138,12 +134,7 @@ class TestDataReconciliationGate:
 
     def test_format_data_quality_badge(self):
         """Badge formatter produces formatted markdown summary."""
-        recon_mock = {
-            "data_quality": "HIGH",
-            "quality_score": 92.5,
-            "conflicting_data": [],
-            "missing_data": []
-        }
+        recon_mock = {"data_quality": "HIGH", "quality_score": 92.5, "conflicting_data": [], "missing_data": []}
         badge = format_data_quality_badge(recon_mock)
         assert "Data Quality:" in badge
         assert "HIGH" in badge
@@ -164,11 +155,7 @@ class TestDataReconciliationGate:
         assert p == 0.0
 
         # Price mismatch: reported +5%, computed +2%
-        tech = {
-            "current_price": 102.0,
-            "ref_price": 100.0,
-            "change_pct": 5.0
-        }
+        tech = {"current_price": 102.0, "ref_price": 100.0, "change_pct": 5.0}
         status_adj, p_adj, issues_adj = reconcile_price(tech_data=tech)
         assert status_adj == "ADJUSTED"
         assert any("Price Change Mismatch" in iss for iss in issues_adj)
@@ -179,7 +166,7 @@ class TestDataReconciliationGate:
 
         actions = [
             {"action_type": "DIVIDEND"},  # Missing ex_date
-            {"action_type": "BONUS", "ex_date": "invalid-date-format"}  # Malformed date
+            {"action_type": "BONUS", "ex_date": "invalid-date-format"},  # Malformed date
         ]
         tagged, is_ex = reconcile_corporate_actions(tech_data=None, corporate_actions=actions)
         assert len(tagged) == 0
@@ -199,7 +186,7 @@ class TestDataReconciliationGate:
             "pe": 10.0,
             "pb": 1.0,
             "latest_quarter": "INVALID_Q",
-            "latest_year": "NOT_A_YEAR"
+            "latest_year": "NOT_A_YEAR",
         }
         missing_m, stale_m = reconcile_financial_period(fin_data=fin_malformed)
         assert len(missing_m) == 0
@@ -214,7 +201,7 @@ class TestDataReconciliationGate:
 
         news = [
             {"title": "Báo cáo kiểm toán 2024", "source": "Doanh nghiệp", "tag": "AUDIT", "date": "bad-date"},
-            {"title": "Tin tổng hợp thị trường", "source": "Báo Lao Động", "tag": "TIN_TỨC", "date": None}
+            {"title": "Tin tổng hợp thị trường", "source": "Báo Lao Động", "tag": "TIN_TỨC", "date": None},
         ]
         reconciled, _ = reconcile_news_freshness(news)
         assert len(reconciled) == 2
@@ -227,7 +214,7 @@ class TestDataReconciliationGate:
         tech = {
             "current_price": 102.0,
             "ref_price": 100.0,
-            "change_pct": 5.0  # Mismatch triggers ADJUSTED (-10)
+            "change_pct": 5.0,  # Mismatch triggers ADJUSTED (-10)
         }
         fin = {
             "roe": 10.0,
@@ -235,7 +222,7 @@ class TestDataReconciliationGate:
             "pb": 1.5,
             # missing f_score and z_score (-12)
             "latest_quarter": 1,
-            "latest_year": datetime.now().year - 2  # Stale (-15)
+            "latest_year": datetime.now().year - 2,  # Stale (-15)
         }
         res = reconcile_data(symbol="TEST", tech_data=tech, fin_data=fin, news=[])
         assert res["data_quality"] in ["LOW", "MEDIUM"]

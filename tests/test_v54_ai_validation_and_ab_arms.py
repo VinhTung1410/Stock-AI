@@ -96,18 +96,25 @@ class TestPhase4aABArmsComparison:
     def test_compare_quant_vs_ai_arms_positive_alpha(self):
         """When AI filtering improves Sharpe and expectancy, verdict is POSITIVE_AI_ALPHA."""
         trades_a = [
-            {"pnl_pct": 5.0}, {"pnl_pct": -3.0}, {"pnl_pct": 2.0}, {"pnl_pct": -4.0},
-            {"pnl_pct": 3.0}, {"pnl_pct": -2.0}, {"pnl_pct": 1.0}, {"pnl_pct": -3.0},
+            {"pnl_pct": 5.0},
+            {"pnl_pct": -3.0},
+            {"pnl_pct": 2.0},
+            {"pnl_pct": -4.0},
+            {"pnl_pct": 3.0},
+            {"pnl_pct": -2.0},
+            {"pnl_pct": 1.0},
+            {"pnl_pct": -3.0},
         ]
         # AI filters out 3 losing trades, improving hit rate and expectancy
         trades_b = [
-            {"pnl_pct": 5.0}, {"pnl_pct": 2.0}, {"pnl_pct": -4.0},
-            {"pnl_pct": 3.0}, {"pnl_pct": 1.0},
+            {"pnl_pct": 5.0},
+            {"pnl_pct": 2.0},
+            {"pnl_pct": -4.0},
+            {"pnl_pct": 3.0},
+            {"pnl_pct": 1.0},
         ]
 
-        res = compare_quant_vs_ai_arms(
-            trades_a, trades_b, cagr_a=8.0, cagr_b=15.0, sharpe_a=0.7, sharpe_b=1.2
-        )
+        res = compare_quant_vs_ai_arms(trades_a, trades_b, cagr_a=8.0, cagr_b=15.0, sharpe_a=0.7, sharpe_b=1.2)
 
         assert res["incremental_sharpe"] == 0.5
         assert res["incremental_expectancy"] > 0.0
@@ -119,9 +126,7 @@ class TestPhase4aABArmsComparison:
         trades_a = [{"pnl_pct": 3.0}, {"pnl_pct": -2.0}, {"pnl_pct": 4.0}]
         trades_b = [{"pnl_pct": 3.0}, {"pnl_pct": -2.0}, {"pnl_pct": 4.0}]
 
-        res = compare_quant_vs_ai_arms(
-            trades_a, trades_b, cagr_a=10.0, cagr_b=10.5, sharpe_a=1.0, sharpe_b=1.05
-        )
+        res = compare_quant_vs_ai_arms(trades_a, trades_b, cagr_a=10.0, cagr_b=10.5, sharpe_a=1.0, sharpe_b=1.05)
 
         assert abs(res["incremental_sharpe"]) <= 0.10
         assert res["ai_verdict"] == "NEUTRAL_REPORTING_ONLY"
@@ -129,17 +134,11 @@ class TestPhase4aABArmsComparison:
 
     def test_compare_quant_vs_ai_arms_negative_drag(self):
         """When AI filtering causes underperformance, verdict is NEGATIVE_AI_DRAG."""
-        trades_a = [
-            {"pnl_pct": 10.0}, {"pnl_pct": 8.0}, {"pnl_pct": 6.0}, {"pnl_pct": -2.0}
-        ]
+        trades_a = [{"pnl_pct": 10.0}, {"pnl_pct": 8.0}, {"pnl_pct": 6.0}, {"pnl_pct": -2.0}]
         # AI falsely pruned the biggest winning trades
-        trades_b = [
-            {"pnl_pct": -2.0}, {"pnl_pct": 1.0}, {"pnl_pct": -1.0}
-        ]
+        trades_b = [{"pnl_pct": -2.0}, {"pnl_pct": 1.0}, {"pnl_pct": -1.0}]
 
-        res = compare_quant_vs_ai_arms(
-            trades_a, trades_b, cagr_a=20.0, cagr_b=2.0, sharpe_a=1.6, sharpe_b=0.4
-        )
+        res = compare_quant_vs_ai_arms(trades_a, trades_b, cagr_a=20.0, cagr_b=2.0, sharpe_a=1.6, sharpe_b=0.4)
 
         assert res["incremental_sharpe"] < -0.10
         assert res["ai_verdict"] == "NEGATIVE_AI_DRAG"

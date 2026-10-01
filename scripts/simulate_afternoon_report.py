@@ -29,6 +29,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 def run_afternoon_simulation():
     from datetime import datetime
+
     today_str = datetime.now().strftime("%d/%m")
     print("=" * 70, flush=True)
     print(f"📊 BÁO CÁO TỔNG KẾT ATC KẾT PHIÊN GIAO DỊCH (15:00 - {today_str})", flush=True)
@@ -51,9 +52,7 @@ def run_afternoon_simulation():
     afternoon_ai_text = generate_portfolio_analysis(df_eval, news, watchlist_df=df_wl, vnindex_tech=vnindex_tech)
 
     afternoon_embed = format_portfolio_embed(
-        df_eval,
-        afternoon_ai_text,
-        report_type=f"📊 BÁO CÁO TỔNG KẾT ATC KẾT PHIÊN (15:00 - {today_str})"
+        df_eval, afternoon_ai_text, report_type=f"📊 BÁO CÁO TỔNG KẾT ATC KẾT PHIÊN (15:00 - {today_str})"
     )
 
     print("📤 3. Bắn báo cáo 15:00 vào Discord (Kênh chung & DM cá nhân)...", flush=True)

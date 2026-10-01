@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional, Tuple
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
@@ -90,23 +91,23 @@ def sanitize_ai_text(text: str) -> str:
         text = text.replace(cn, vn)
 
     # Bước 2: Quét dọn sạch mọi ký tự CJK (chữ Hán Unicode \u4e00-\u9fff) còn sót lại
-    text = re.sub(r'[\u4e00-\u9fff]+', '', text)
+    text = re.sub(r"[\u4e00-\u9fff]+", "", text)
 
     # Bước 3: Chuẩn hóa các dòng thuộc tính bị AI đánh số liên tục (ví dụ: 4. Câu chuyện xúc tác, 5. Vùng giá gom...)
-    attr_pattern = r'^\s*\d+\.\s*(Câu chuyện xúc tác|Luận điểm cơ bản|Vùng giá gom|Giá mục tiêu|Ngưỡng dừng lỗ|Trạng thái kỹ thuật|Xúc tác|Mục tiêu|Cắt lỗ|Kỹ thuật)[^:]*:\s*'
-    text = re.sub(attr_pattern, r'  - **\1:** ', text, flags=re.MULTILINE)
+    attr_pattern = r"^\s*\d+\.\s*(Câu chuyện xúc tác|Luận điểm cơ bản|Vùng giá gom|Giá mục tiêu|Ngưỡng dừng lỗ|Trạng thái kỹ thuật|Xúc tác|Mục tiêu|Cắt lỗ|Kỹ thuật)[^:]*:\s*"
+    text = re.sub(attr_pattern, r"  - **\1:** ", text, flags=re.MULTILINE)
 
     # Bước 4: Chuẩn hóa dòng tiêu đề mã bị đánh số (ví dụ: 1. Cổ phiếu BSR, 3. Cổ phiếu SSI) thành bullet point cấp 1
-    code_pattern = r'^\s*\d+\.\s*(Cổ phiếu|Mã)\s+'
-    text = re.sub(code_pattern, r'• \1 ', text, flags=re.MULTILINE)
+    code_pattern = r"^\s*\d+\.\s*(Cổ phiếu|Mã)\s+"
+    text = re.sub(code_pattern, r"• \1 ", text, flags=re.MULTILINE)
 
     # Bước 5: Đảm bảo in đậm các mã cổ phiếu đứng sau Cổ phiếu / Mã / CP nếu AI quên in đậm
-    text = re.sub(r'\b(Cổ phiếu|cổ phiếu|Mã|mã|CP|cp)\s+([A-Z0-9]{3})\b', r'\1 **\2**', text)
+    text = re.sub(r"\b(Cổ phiếu|cổ phiếu|Mã|mã|CP|cp)\s+([A-Z0-9]{3})\b", r"\1 **\2**", text)
     # Loại bỏ double asterisks nếu có (ví dụ ****SSI**** -> **SSI**)
-    text = text.replace('****', '**')
+    text = text.replace("****", "**")
 
     # Bước 6: Chuẩn hóa khoảng trắng
-    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r"[ \t]+", " ", text)
     return text.strip()
 
 
@@ -150,16 +151,16 @@ def check_and_track_gemini_call(pending_symbols: list[str] | None = None) -> boo
     - Khi chạm ngưỡng: trả về False và gửi cảnh báo Discord.
     """
     import time
+
     now = time.time()
-    _GEMINI_RATE_TRACKER["calls"] = [
-        t for t in _GEMINI_RATE_TRACKER["calls"] if now - t < 60.0
-    ]
+    _GEMINI_RATE_TRACKER["calls"] = [t for t in _GEMINI_RATE_TRACKER["calls"] if now - t < 60.0]
 
     if len(_GEMINI_RATE_TRACKER["calls"]) >= MAX_GEMINI_CALLS_PER_MINUTE:
         if not _GEMINI_RATE_TRACKER["limit_hit"]:
             _GEMINI_RATE_TRACKER["limit_hit"] = True
             try:
                 from discord_alerts import send_gemini_rate_limit_alert
+
                 send_gemini_rate_limit_alert(
                     current_rpm=len(_GEMINI_RATE_TRACKER["calls"]),
                     dropped_symbols=pending_symbols or [],
@@ -212,6 +213,7 @@ async def async_call_gemini(client, prompt: str, max_retries: int = 3, retry_del
     Khóa cứng temperature = 0.0 bảo đảm tính ổn định và tái lập kiểm toán.
     """
     import asyncio
+
     full_prompt = f"{SYSTEM_LANGUAGE_RULE}\n\n{prompt}\n\n{SYSTEM_LANGUAGE_RULE}"
     config = types.GenerateContentConfig(temperature=0.0) if types else None
     last_err = None
@@ -321,7 +323,7 @@ def generate_portfolio_analysis(
     watchlist_df=None,
     vnindex_tech=None,
     custom_question: str = None,
-    session_label: str = "ATC"
+    session_label: str = "ATC",
 ) -> str:
     """
     🎯 BÁO CÁO TỔNG KẾT PHIÊN (TRƯA 11:30 HOẶC ATC 15:00) - AI STOCK COPILOT V2.1:
@@ -331,12 +333,14 @@ def generate_portfolio_analysis(
     - Chạy Sanity Check Engine kiểm toán tính nhất quán toán học trước khi render.
     """
     from quant_engine import evaluate_market_regime
+
     client = get_ai_client()
 
     # Kéo số liệu VN-Index thực tế nếu chưa được truyền vào hoặc rỗng
     if not vnindex_tech:
         try:
             from data_engine import fetch_stock_technical
+
             vnindex_tech = fetch_stock_technical("VNINDEX")
         except Exception:
             logging.exception("Không thể lấy dữ liệu kỹ thuật VN-Index cho báo cáo tổng kết phiên")
@@ -354,11 +358,16 @@ def generate_portfolio_analysis(
     session_title, time_intro, price_ref_label = _build_session_timing_meta(session_label)
 
     quant_eval_str = _build_portfolio_quant_summary(portfolio_df)
-    portfolio_str = portfolio_df.to_string(index=False) if portfolio_df is not None and not portfolio_df.empty else "Chưa có dữ liệu."
+    portfolio_str = (
+        portfolio_df.to_string(index=False)
+        if portfolio_df is not None and not portfolio_df.empty
+        else "Chưa có dữ liệu."
+    )
     watchlist_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else ""
     news_str = _format_news_summary(news_items, limit=8)
 
     from context_engine import build_context_prompt_snippet, load_market_context
+
     market_ctx = load_market_context()
     ctx_snippet = build_context_prompt_snippet(market_ctx, code_regime=regime_data.get("tag"))
 
@@ -368,9 +377,9 @@ def generate_portfolio_analysis(
 === 0. THÔNG SỐ THỊ TRƯỜNG & RISK BUDGETING (VN-INDEX) ===
 - Điểm số đóng cửa phiên gần nhất: {idx_price:.2f} điểm (thay đổi: {idx_diff:+.2f} điểm, tương ứng {idx_chg:+.2f}%)
 - Đường MA20 ngày: {idx_ma20:.2f} điểm ({idx_status}) | Đường MA50 ngày: {idx_ma50:.2f} điểm | RSI(14): {idx_rsi}
-- TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME): {regime_data['tag']}
-- TỶ TRỌNG PHÂN BỔ ĐỀ XUẤT (THEO RISK BUDGET): Cổ phiếu {regime_data['stock_pct']} | Tiền mặt {regime_data['cash_pct']} (Hạn mức tối đa: {regime_data['max_stock_nav']}% NAV)
-- ĐỊNH HƯỚNG QUẢN TRỊ RỦI RO: {regime_data.get('bias', 'Thận trọng')}
+- TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME): {regime_data["tag"]}
+- TỶ TRỌNG PHÂN BỔ ĐỀ XUẤT (THEO RISK BUDGET): Cổ phiếu {regime_data["stock_pct"]} | Tiền mặt {regime_data["cash_pct"]} (Hạn mức tối đa: {regime_data["max_stock_nav"]}% NAV)
+- ĐỊNH HƯỚNG QUẢN TRỊ RỦI RO: {regime_data.get("bias", "Thận trọng")}
 {ctx_snippet}
 === 1. TÍNH TOÁN ĐỊNH LƯỢNG TẤT ĐỊNH CỦA HỆ THỐNG PYTHON CHO DANH MỤC ===
 {quant_eval_str}
@@ -397,7 +406,7 @@ QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM (MATHEMATICAL SANITY RULES):
    - Câu hỏi 2: Cổ phiếu nào còn rẻ, cổ phiếu nào chạm định giá? (Tham chiếu Fair Value và Margin of Safety).
    - Câu hỏi 3: Vị thế nào cần chốt lời từng phần và nâng Trailing Stop? (Nêu rõ mốc giá cụ thể do Python đã tính).
    - Câu hỏi 4: Vị thế nào bị suy giảm luận điểm (Thesis Breaker) cần dứt khoát cơ cấu?
-   - Câu hỏi 5: Tỷ trọng tiền mặt hiện tại đã an toàn chưa? Đề xuất tỷ lệ Tiền/Cổ phiếu tối ưu dựa trên Risk Budgeting (Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']}).
+   - Câu hỏi 5: Tỷ trọng tiền mặt hiện tại đã an toàn chưa? Đề xuất tỷ lệ Tiền/Cổ phiếu tối ưu dựa trên Risk Budgeting (Cổ phiếu {regime_data["stock_pct"]} / Tiền mặt {regime_data["cash_pct"]}).
 
 Yêu cầu trình bày báo cáo tổng kết phiên:
 **I. {session_title} & ĐÁNH GIÁ 5 CÂU HỎI CỐT TỬ**
@@ -407,7 +416,7 @@ BẮT BUỘC sử dụng đúng định dạng danh sách dưới đây, không 
 - **Câu hỏi 2 (Định giá & MoS):** [Trả lời ngắn gọn]
 - **Câu hỏi 3 (Chốt lời & Trailing Stop):** [Trả lời ngắn gọn]
 - **Câu hỏi 4 (Thesis Breaker):** [Trả lời ngắn gọn]
-- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** [Trả lời ngắn gọn dựa trên tỷ lệ Tiền mặt đề xuất: Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']}]
+- **Câu hỏi 5 (Tỷ trọng Tiền/Cổ phiếu):** [Trả lời ngắn gọn dựa trên tỷ lệ Tiền mặt đề xuất: Cổ phiếu {regime_data["stock_pct"]} / Tiền mặt {regime_data["cash_pct"]}]
 
 **II. CHI TIẾT DANH MỤC & HÀNH ĐỘNG QUẢN TRỊ RỦI RO**
 - Trình bày từng mã đang nắm giữ:
@@ -421,7 +430,7 @@ BẮT BUỘC sử dụng đúng định dạng danh sách dưới đây, không 
 - Đánh giá động thái mua/bán ròng và tin tức CafeF hôm nay.
 
 **IV. KẾ HOẠCH HÀNH ĐỘNG CHO PHIÊN KẾ TIẾP**
-- Tỷ trọng phân bổ đề xuất: % Tiền mặt / % Cổ phiếu (Khớp tỷ lệ: Cổ phiếu {regime_data['stock_pct']} / Tiền mặt {regime_data['cash_pct']}).
+- Tỷ trọng phân bổ đề xuất: % Tiền mặt / % Cổ phiếu (Khớp tỷ lệ: Cổ phiếu {regime_data["stock_pct"]} / Tiền mặt {regime_data["cash_pct"]}).
 - Điều kiện thị trường để kích hoạt giải ngân mới.
 
 Định dạng Discord/Web:
@@ -432,13 +441,17 @@ BẮT BUỘC sử dụng đúng định dạng danh sách dưới đây, không 
 """
 
     if custom_question:
-        prompt += f"\n\n[CÂU HỎI BỔ SUNG CỦA NHÀ ĐẦU TƯ]: {custom_question}\nHãy trả lời chi tiết trọng tâm câu hỏi này."
+        prompt += (
+            f"\n\n[CÂU HỎI BỔ SUNG CỦA NHÀ ĐẦU TƯ]: {custom_question}\nHãy trả lời chi tiết trọng tâm câu hỏi này."
+        )
 
     result = call_gemini(client, prompt)
     return _ensure_question_5_in_result(result, regime_data)
 
 
-def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: list, news_items: list, vnindex_tech: dict = None) -> str:
+def generate_morning_strategy_report(
+    portfolio_df, watchlist_df, opportunities: list, news_items: list, vnindex_tech: dict = None
+) -> str:
     """
     🎯 BÁO CÁO CHIẾN LƯỢC ĐẦU NGÀY 08:45 (VALUE-FIRST + TECHNICAL TIMING) - CHUẨN V2.1:
     - Nhận diện Market Regime & Risk Budgeting đa biến (Trend + Breadth + Liquidity + Drawdown + Margin).
@@ -454,6 +467,7 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
     if not vnindex_tech:
         try:
             from data_engine import fetch_stock_technical
+
             vnindex_tech = fetch_stock_technical("VNINDEX")
         except Exception:
             logging.exception("Không thể lấy dữ liệu kỹ thuật VN-Index cho báo cáo chiến lược đầu ngày")
@@ -470,16 +484,24 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
     # Đánh giá Market Regime & Ngân sách Rủi ro Đa biến (Risk Budgeting)
     regime_data = evaluate_market_regime(vnindex_tech)
 
-    p_str = portfolio_df.to_string(index=False) if portfolio_df is not None and not portfolio_df.empty else "Chưa có mã nắm giữ."
-    w_str = watchlist_df.to_string(index=False) if watchlist_df is not None and not watchlist_df.empty else "Chưa có mã trong Watchlist."
+    p_str = (
+        portfolio_df.to_string(index=False)
+        if portfolio_df is not None and not portfolio_df.empty
+        else "Chưa có mã nắm giữ."
+    )
+    w_str = (
+        watchlist_df.to_string(index=False)
+        if watchlist_df is not None and not watchlist_df.empty
+        else "Chưa có mã trong Watchlist."
+    )
 
     idx_context = f"""=== 0. DỮ LIỆU THỊ TRƯỜNG & RISK BUDGETING (CẬP NHẬT TỨC THỜI) ===
 - Điểm số đóng cửa phiên gần nhất: {idx_price:.2f} điểm (Thay đổi: {idx_diff:+.2f} điểm, tương ứng {idx_chg:+.2f}%)
 - Đường MA20 ngày: {idx_ma20:.2f} điểm (Trạng thái: {idx_status})
 - Đường MA50 ngày: {idx_ma50:.2f} điểm | RSI(14): {idx_rsi}
-- TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME): {regime_data['tag']}
-- TỶ TRỌNG PHÂN BỔ ĐỀ XUẤT (THEO RISK BUDGET): Cổ phiếu {regime_data['stock_pct']} | Tiền mặt {regime_data['cash_pct']} (Hạn mức tối đa: {regime_data['max_stock_nav']}% NAV)
-- ĐỊNH HƯỚNG QUẢN TRỊ RỦI RO: {regime_data['bias']} (Ưu tiên phòng thủ: {regime_data['defense_priority']})
+- TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME): {regime_data["tag"]}
+- TỶ TRỌNG PHÂN BỔ ĐỀ XUẤT (THEO RISK BUDGET): Cổ phiếu {regime_data["stock_pct"]} | Tiền mặt {regime_data["cash_pct"]} (Hạn mức tối đa: {regime_data["max_stock_nav"]}% NAV)
+- ĐỊNH HƯỚNG QUẢN TRỊ RỦI RO: {regime_data["bias"]} (Ưu tiên phòng thủ: {regime_data["defense_priority"]})
 """
 
     # Defensive Deduplication Gate: Guarantee every candidate ticker is processed at most once
@@ -499,7 +521,9 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
     for o in opportunities:
         sym = o.get("symbol", "")
         # Lấy định giá Fair Value, Methodology, Confidence và Price Target
-        val_res = calculate_fair_value_and_mos(symbol=sym, current_price=o.get("current_price", 0.0), sector=o.get("sector", ""))
+        val_res = calculate_fair_value_and_mos(
+            symbol=sym, current_price=o.get("current_price", 0.0), sector=o.get("sector", "")
+        )
         fv = val_res.get("fair_value", o.get("fair_value", 0.0))
         mos = val_res.get("mos_pct", o.get("mos_pct", 0.0))
         val_method = val_res.get("valuation_method", o.get("valuation_method", "N/A"))
@@ -515,14 +539,16 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
             "weighted_entry": avg_entry,
             "target_price": p_target,
             "stop_loss": stop,
-            "risk_reward": o.get("risk_reward", 1.5)
+            "risk_reward": o.get("risk_reward", 1.5),
         }
         _, _, clean_setup = validate_trade_setup(setup_dict)
         rr = clean_setup["risk_reward"]
 
         if status == "RECOMMEND_BUY":
             act = "🟢 VALUE BUY" if mos >= 15.0 and o.get("current_price", 0) >= o.get("ma20", 0) else "🟢 ACCUMULATE"
-            dq_badge = o.get("data_badge") or (f"📊 Data Quality: {o.get('data_quality', 'HIGH')}" if o.get("data_quality") else "")
+            dq_badge = o.get("data_badge") or (
+                f"📊 Data Quality: {o.get('data_quality', 'HIGH')}" if o.get("data_quality") else ""
+            )
             dq_line = f"  - **Độ tin cậy dữ liệu:** {dq_badge}\n" if dq_badge else ""
             buy_lines.append(
                 f"• Mã: **{sym}** ({o.get('sector', 'Niêm yết')}) — {act}\n"
@@ -548,7 +574,11 @@ def generate_morning_strategy_report(portfolio_df, watchlist_df, opportunities: 
                 f"  - **Lý do theo dõi:** {o.get('setup_type', 'Chờ xác nhận')} — {o.get('rationale', 'Định giá và cơ bản đạt chuẩn nhưng giá cần tích lũy thêm trên MA20. Tuyệt đối không mua vội, chờ tín hiệu dòng tiền.')}"
             )
 
-    buy_str = "\n".join(buy_lines) if buy_lines else "Thị trường chưa có mã nào đạt đồng thời Biên an toàn (MoS >= 15%) và tín hiệu kỹ thuật ổn định."
+    buy_str = (
+        "\n".join(buy_lines)
+        if buy_lines
+        else "Thị trường chưa có mã nào đạt đồng thời Biên an toàn (MoS >= 15%) và tín hiệu kỹ thuật ổn định."
+    )
     watch_str = "\n".join(watch_lines) if watch_lines else "Không có mã nào trong diện chờ xác nhận nền."
     caution_str = "\n".join(caution_lines) if caution_lines else "Không có mã nào rơi vào diện cảnh báo bẫy tin."
 
@@ -592,8 +622,8 @@ QUY TẮC CỐT TỬ KHÔNG ĐƯỢC VI PHẠM (MATHEMATICAL CONSISTENCY & UX CL
 
 Yêu cầu xuất bản & Cấu trúc 4 phần chuẩn mực:
 **I. BỐI CẢNH VĨ MÔ & TRẠNG THÁI THỊ TRƯỜNG (MARKET REGIME & RISK BUDGET)**
-- Nêu rõ Trạng thái: {regime_data['tag']}.
-- Phân bổ đề xuất: {regime_data['stock_pct']} Cổ phiếu / {regime_data['cash_pct']} Tiền mặt (Hạn mức tối đa {regime_data['max_stock_nav']}% NAV).
+- Nêu rõ Trạng thái: {regime_data["tag"]}.
+- Phân bổ đề xuất: {regime_data["stock_pct"]} Cổ phiếu / {regime_data["cash_pct"]} Tiền mặt (Hạn mức tối đa {regime_data["max_stock_nav"]}% NAV).
 - Phân tích điểm số VN-Index ({idx_price:.2f}), mốc hỗ trợ MA20 ({idx_ma20:.2f})/MA50 ({idx_ma50:.2f}).
 
 **II. CƠ HỘI ĐẦU TƯ & RADAR THEO DÕI (PHÂN TÁCH 3 NHÓM RÕ RÀNG)**
@@ -661,10 +691,9 @@ def generate_market_risk_scenarios(vnindex_df, news_items) -> str:
         )
 
     if news_items:
-        news_str = "\n".join([
-            f"- [{n.get('tag', n.get('keyword', 'TIN TỨC')).upper()}] {n.get('title', '')}"
-            for n in news_items[:8]
-        ])
+        news_str = "\n".join(
+            [f"- [{n.get('tag', n.get('keyword', 'TIN TỨC')).upper()}] {n.get('title', '')}" for n in news_items[:8]]
+        )
     else:
         news_str = "Không có tin tức vĩ mô mới trong 24h qua."
 
@@ -783,18 +812,29 @@ def generate_institutional_stock_report(symbol: str, financial_info: dict, tech_
 
     fin_summary = f"Kỳ báo cáo tài chính gần nhất: {financial_info.get('period', 'N/A')}\n"
     for k, label in [
-        ("pe", "P/E"), ("pb", "P/B"), ("ps", "P/S"), ("ev_ebitda", "EV/EBITDA"),
-        ("p_cf", "Giá / Dòng tiền"), ("roe", "ROE (%)"), ("roa", "ROA (%)"),
-        ("roic", "ROIC (%)"), ("debt_equity", "Nợ / Vốn chủ sở hữu"),
-        ("financial_leverage", "Đòn bẩy tài chính"), ("gross_margin", "Biên LN gộp (%)"),
-        ("net_margin", "Biên LN ròng (%)"), ("current_ratio", "Thanh toán hiện hành"),
-        ("quick_ratio", "Thanh toán nhanh"), ("market_cap_bil", "Vốn hóa (Tỷ VND)"),
-        ("dividend_yield", "Tỷ suất cổ tức (%)")
+        ("pe", "P/E"),
+        ("pb", "P/B"),
+        ("ps", "P/S"),
+        ("ev_ebitda", "EV/EBITDA"),
+        ("p_cf", "Giá / Dòng tiền"),
+        ("roe", "ROE (%)"),
+        ("roa", "ROA (%)"),
+        ("roic", "ROIC (%)"),
+        ("debt_equity", "Nợ / Vốn chủ sở hữu"),
+        ("financial_leverage", "Đòn bẩy tài chính"),
+        ("gross_margin", "Biên LN gộp (%)"),
+        ("net_margin", "Biên LN ròng (%)"),
+        ("current_ratio", "Thanh toán hiện hành"),
+        ("quick_ratio", "Thanh toán nhanh"),
+        ("market_cap_bil", "Vốn hóa (Tỷ VND)"),
+        ("dividend_yield", "Tỷ suất cổ tức (%)"),
     ]:
         v = financial_info.get(k)
         fin_summary += f"- {label}: {v if v is not None else 'N/A'}\n"
 
-    news_lines = [f"- [{n.get('tag', n.get('keyword', 'TIN')).upper()}] {n.get('title', '')}" for n in (news_items or [])[:6]]
+    news_lines = [
+        f"- [{n.get('tag', n.get('keyword', 'TIN')).upper()}] {n.get('title', '')}" for n in (news_items or [])[:6]
+    ]
     news_str = "\n".join(news_lines) if news_lines else "Không có tin tức đột biến trong 7-14 ngày qua."
 
     prompt = f"""<ROLE>
@@ -918,6 +958,7 @@ Hãy lập Báo cáo Phân tích Toàn diện cho cổ phiếu **{symbol}** theo
 
     return call_gemini(client, prompt)
 
+
 def _check_data_gate_or_refuse(symbol: str, tech_data: dict, fin_data: dict) -> tuple[dict | None, dict]:
     """Run Data Gate check, returning (rejection_dict, gate_dict)."""
     from quant_engine import check_data_gate
@@ -927,16 +968,19 @@ def _check_data_gate_or_refuse(symbol: str, tech_data: dict, fin_data: dict) -> 
         return None, gate
 
     reason_str = " | ".join(gate["reasons"])
-    
+
     try:
         from db_manager import save_decision_record
-        save_decision_record({
-            "symbol": symbol,
-            "decision": "REJECT",
-            "primary_rejection_gate": "LIQUIDITY" if "Thanh khoản" in reason_str else "DATA_GATE",
-            "facts": {"market_price": tech_data.get("current_price", 0.0)},
-            "rejection_reasons": gate["reasons"]
-        })
+
+        save_decision_record(
+            {
+                "symbol": symbol,
+                "decision": "REJECT",
+                "primary_rejection_gate": "LIQUIDITY" if "Thanh khoản" in reason_str else "DATA_GATE",
+                "facts": {"market_price": tech_data.get("current_price", 0.0)},
+                "rejection_reasons": gate["reasons"],
+            }
+        )
     except Exception:
         logging.exception("Không thể lưu decision_records khi bị loại ở Data Gate")
 
@@ -965,7 +1009,7 @@ def _parse_pass1_probabilities(raw_text: str) -> tuple[float, float, float, dict
         (p_bull, p_base, p_bear, prob_dict, pass1_parse_failed)
     """
     try:
-        json_match = re.search(r'\{.*\}', raw_text or "", re.DOTALL)
+        json_match = re.search(r"\{.*\}", raw_text or "", re.DOTALL)
         if not json_match:
             raise ValueError("Không tìm thấy cấu trúc JSON trong phản hồi LLM")
         prob_dict = json.loads(json_match.group(0))
@@ -1038,11 +1082,15 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     val_triangle = calculate_valuation_triangle(curr_price, pe=pe, pb=pb)
 
     ff = tech_data.get("foreign_flow", {})
-    ff_str = f"Mua {ff.get('buy_val_bil', 0):.1f} tỷ, Bán {ff.get('sell_val_bil', 0):.1f} tỷ, Ròng {ff.get('net_val_bil', 0):+.1f} tỷ ({ff.get('status_vi', 'N/A')})" if ff else "Chưa có số liệu giao dịch."
+    ff_str = (
+        f"Mua {ff.get('buy_val_bil', 0):.1f} tỷ, Bán {ff.get('sell_val_bil', 0):.1f} tỷ, Ròng {ff.get('net_val_bil', 0):+.1f} tỷ ({ff.get('status_vi', 'N/A')})"
+        if ff
+        else "Chưa có số liệu giao dịch."
+    )
 
     tr = tech_data.get("trap_info", {})
     tr_str = f"⚠️ CẢNH BÁO BẪY: {tr.get('warning_msg')}" if tr.get("is_trap") else "✅ Không phát hiện bẫy nguy hiểm."
-    adv_str = f"{tech_data.get('adv20_billion', 0):.2f} tỷ/phiên" if tech_data.get('adv20_billion') else "N/A"
+    adv_str = f"{tech_data.get('adv20_billion', 0):.2f} tỷ/phiên" if tech_data.get("adv20_billion") else "N/A"
 
     sanitized_news = []
     for n in (news_items or [])[:5]:
@@ -1053,11 +1101,11 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
 
     pass1_prompt = f"""Bạn là Quản lý Quỹ Lượng hóa (Quantamental Portfolio Manager).
 Hãy đọc các dữ liệu thị trường và tin tức sau của mã **{symbol}**:
-- Thị giá: {curr_price}k | Vị thế MA20: {tech_data.get('status_ma20')} | RSI(14): {tech_data.get('rsi14')} | Vol/SMA20: {tech_data.get('vol_ratio')}x
+- Thị giá: {curr_price}k | Vị thế MA20: {tech_data.get("status_ma20")} | RSI(14): {tech_data.get("rsi14")} | Vol/SMA20: {tech_data.get("vol_ratio")}x
 - Thanh khoản ADV20: {adv_str} | Dòng tiền Khối ngoại: {ff_str}
 - Tín hiệu Bẫy tin tức: {tr_str}
-- P/E: {pe} | P/B: {pb} | ROE: {fin_data.get('roe')}% | Nợ/Vốn chủ: {fin_data.get('debt_equity')}
-- Điểm kiểm toán F-Score: {f_score_res['score']}/9 ({f_score_res['rating']}) | Z-Score: {z_score_res['z_score']} ({z_score_res['zone']})
+- P/E: {pe} | P/B: {pb} | ROE: {fin_data.get("roe")}% | Nợ/Vốn chủ: {fin_data.get("debt_equity")}
+- Điểm kiểm toán F-Score: {f_score_res["score"]}/9 ({f_score_res["rating"]}) | Z-Score: {z_score_res["z_score"]} ({z_score_res["zone"]})
 - Tin tức vĩ mô / doanh nghiệp:
 {news_brief}
 
@@ -1086,16 +1134,19 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
     if parse_failed:
         logging.warning("Pass 1 parse failed for %s. Refusing to open position (Fail-Safe Gate).", symbol)
         refusal_msg = "⛔ TỪ CHỐI MỞ VỊ THẾ: LỖI PARSE XÁC SUẤT PASS 1 (JSON KHÔNG HỢP LỆ)"
-        
+
         try:
             from db_manager import save_decision_record
-            save_decision_record({
-                "symbol": symbol,
-                "decision": "REJECT",
-                "primary_rejection_gate": "AI_PASS1_PARSE_GATE",
-                "rejection_reasons": ["Lỗi cấu trúc phản hồi Pass 1 không thể parse xác suất"],
-                "facts": {"market_price": curr_price}
-            })
+
+            save_decision_record(
+                {
+                    "symbol": symbol,
+                    "decision": "REJECT",
+                    "primary_rejection_gate": "AI_PASS1_PARSE_GATE",
+                    "rejection_reasons": ["Lỗi cấu trúc phản hồi Pass 1 không thể parse xác suất"],
+                    "facts": {"market_price": curr_price},
+                }
+            )
         except Exception:
             logging.exception("Không thể lưu decision_records khi bị loại ở Pass 1")
 
@@ -1132,7 +1183,7 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
         atr=tech_data.get("atr14", 0.0),
         trap_info=tech_data.get("trap_info"),
         foreign_flow=tech_data.get("foreign_flow"),
-        adv20_billion=tech_data.get("adv20_billion", 0.0)
+        adv20_billion=tech_data.get("adv20_billion", 0.0),
     )
 
     # -------------------------------------------------------------
@@ -1146,12 +1197,12 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
         check_regime_conflict,
         load_market_context,
     )
+
     market_ctx = load_market_context()
     has_regime_conflict = False
     if market_ctx.is_valid:
         has_regime_conflict, _ = check_regime_conflict(
-            code_regime=tech_data.get("status_ma20", ""),
-            analyst_regime=market_ctx.market_regime_analyst
+            code_regime=tech_data.get("status_ma20", ""), analyst_regime=market_ctx.market_regime_analyst
         )
     ctx_snippet = build_context_prompt_snippet(market_ctx, code_regime=tech_data.get("status_ma20"))
 
@@ -1163,26 +1214,26 @@ Bạn sẽ tổ chức một màn TRANH BIỆN ĐỐI KHÁNG (Adversarial Debate
 
 <CONTEXT>
 [CÁC KẾT QUẢ ĐỊNH LƯỢNG DO PYTHON TÍNH TOÁN]:
-- Cổ phiếu: {symbol} | Thị giá hiện tại: {curr_price} k VND (Biến động phiên: {tech_data.get('change_pct')}%)
-- Vị thế kỹ thuật: {tech_data.get('status_ma20')} (MA20: {tech_data.get('ma20')}k, MA50: {tech_data.get('ma50')}k, RSI: {tech_data.get('rsi14')}, Vol/SMA20: {tech_data.get('vol_ratio')}x)
+- Cổ phiếu: {symbol} | Thị giá hiện tại: {curr_price} k VND (Biến động phiên: {tech_data.get("change_pct")}%)
+- Vị thế kỹ thuật: {tech_data.get("status_ma20")} (MA20: {tech_data.get("ma20")}k, MA50: {tech_data.get("ma50")}k, RSI: {tech_data.get("rsi14")}, Vol/SMA20: {tech_data.get("vol_ratio")}x)
 - Thanh khoản ADV20: {adv_str}
 - Giao dịch Khối ngoại: {ff_str}
 - Cảnh báo bẫy tin tức: {tr_str}
-- Điểm kiểm toán Piotroski F-Score: {f_score_res['score']}/9 (Xếp loại: {f_score_res['rating']})
-- Điểm kiệt quệ tài chính Altman Z-Score: {z_score_res['z_score']} ({z_score_res['zone']})
-- Giá mục tiêu 3 kịch bản: Bull = {val_triangle['price_bull']}k | Base = {val_triangle['price_base']}k | Bear = {val_triangle['price_bear']}k
-- Xác suất kịch bản đã gán: Bull = {p_bull*100:.1f}% | Base = {p_base*100:.1f}% | Bear = {p_bear*100:.1f}%
-- Giá trị kỳ vọng toán học (Expected Value - EV): {hard_gates.get('ev')} k VND
+- Điểm kiểm toán Piotroski F-Score: {f_score_res["score"]}/9 (Xếp loại: {f_score_res["rating"]})
+- Điểm kiệt quệ tài chính Altman Z-Score: {z_score_res["z_score"]} ({z_score_res["zone"]})
+- Giá mục tiêu 3 kịch bản: Bull = {val_triangle["price_bull"]}k | Base = {val_triangle["price_base"]}k | Bear = {val_triangle["price_bear"]}k
+- Xác suất kịch bản đã gán: Bull = {p_bull * 100:.1f}% | Base = {p_base * 100:.1f}% | Bear = {p_bear * 100:.1f}%
+- Giá trị kỳ vọng toán học (Expected Value - EV): {hard_gates.get("ev")} k VND
 - Biên an toàn định lượng (Margin of Safety - MoS): {mos_str}
-- Ngưỡng cắt lỗ Stop-Loss: {hard_gates.get('stop_loss')} k VND (Mức rủi ro Downside: -{hard_gates.get('downside_pct')}%)
-- Tỷ lệ Lãi / Lỗ R (Risk/Reward): {hard_gates.get('risk_reward')}x
-- Tiêu chuẩn phân bổ Kelly Criterion (f*): {hard_gates.get('kelly_f')}
-- QUYẾT ĐỊNH HÀNG RÀO CỨNG: {hard_gates.get('decision_tag')}
-- TỶ TRỌNG NAV ĐỀ XUẤT: {hard_gates.get('position_size_nav')}
+- Ngưỡng cắt lỗ Stop-Loss: {hard_gates.get("stop_loss")} k VND (Mức rủi ro Downside: -{hard_gates.get("downside_pct")}%)
+- Tỷ lệ Lãi / Lỗ R (Risk/Reward): {hard_gates.get("risk_reward")}x
+- Tiêu chuẩn phân bổ Kelly Criterion (f*): {hard_gates.get("kelly_f")}
+- QUYẾT ĐỊNH HÀNG RÀO CỨNG: {hard_gates.get("decision_tag")}
+- TỶ TRỌNG NAV ĐỀ XUẤT: {hard_gates.get("position_size_nav")}
 - Luận điểm kịch bản:
-  + Bull: {prob_dict.get('rationale_bull')}
-  + Base: {prob_dict.get('rationale_base')}
-  + Bear: {prob_dict.get('rationale_bear')}
+  + Bull: {prob_dict.get("rationale_bull")}
+  + Base: {prob_dict.get("rationale_base")}
+  + Bear: {prob_dict.get("rationale_bear")}
 - Bối cảnh tin tức mới nhất:
 {news_brief}
 {ctx_snippet}
@@ -1199,62 +1250,62 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
 
 ---
 ### 🎯 I. TÓM TẮT ĐIỀU HÀNH (EXECUTIVE DECISION - THEO HÀNG RÀO PYTHON)
-- **Khuyến nghị chính thức:** {hard_gates.get('decision_tag')}
-- **Giá trị kỳ vọng (Expected Value - EV):** {hard_gates.get('ev')} k VND
+- **Khuyến nghị chính thức:** {hard_gates.get("decision_tag")}
+- **Giá trị kỳ vọng (Expected Value - EV):** {hard_gates.get("ev")} k VND
 - **Biên an toàn định lượng (Margin of Safety):** {mos_str}
 - **Vùng giá mua gom tối ưu:** [Đề xuất vùng giá hợp lý dựa trên mốc Base và MA20] k VND
-- **Ngưỡng cắt lỗ dứt khoát (Stop-Loss):** {hard_gates.get('stop_loss')} k VND (Mức rủi ro Downside: -{hard_gates.get('downside_pct')}%)
-- **Tỷ lệ Risk / Reward (R:R):** {hard_gates.get('risk_reward')}x
-- **Tỷ trọng đề xuất trong danh mục:** {hard_gates.get('position_size_nav')}
-- **Kelly Criterion f*:** {hard_gates.get('kelly_f')} (Ý nghĩa: {'Cấm mở vị thế mua do Kelly không dương' if hard_gates.get('kelly_f', 0) <= 0 else 'Đạt chuẩn giải ngân vốn'})
+- **Ngưỡng cắt lỗ dứt khoát (Stop-Loss):** {hard_gates.get("stop_loss")} k VND (Mức rủi ro Downside: -{hard_gates.get("downside_pct")}%)
+- **Tỷ lệ Risk / Reward (R:R):** {hard_gates.get("risk_reward")}x
+- **Tỷ trọng đề xuất trong danh mục:** {hard_gates.get("position_size_nav")}
+- **Kelly Criterion f*:** {hard_gates.get("kelly_f")} (Ý nghĩa: {"Cấm mở vị thế mua do Kelly không dương" if hard_gates.get("kelly_f", 0) <= 0 else "Đạt chuẩn giải ngân vốn"})
 - **Thesis Breaker quan trọng nhất:** [Nêu 1 lý do then chốt nếu vi phạm sẽ thoát vị thế ngay]
 
 ---
 ### 📊 II. BẢNG TỔNG KẾT 8 TRỤ CỘT & ĐIỂM SỨC KHỎE TÀI CHÍNH
-- **Piotroski F-Score:** {f_score_res['score']}/9 Điểm (Xếp loại: {f_score_res['rating']})
-- **Altman Z-Score:** {z_score_res['z_score']} ({z_score_res['icon']} {z_score_res['zone']})
-- **Trụ cột 1 (Dữ liệu):** 🟢 ĐẦY ĐỦ / ĐẠT CHUẨN DATA GATE (Thanh khoản {gate.get('daily_value_billion')} tỷ/phiên)
-- **Trụ cột 2 (Cơ bản & Sinh lời):** [🟢 Tốt / 🟡 Trung bình / 🔴 Suy giảm] (ROE {fin_data.get('roe')}%, Nợ/Vốn {fin_data.get('debt_equity')})
+- **Piotroski F-Score:** {f_score_res["score"]}/9 Điểm (Xếp loại: {f_score_res["rating"]})
+- **Altman Z-Score:** {z_score_res["z_score"]} ({z_score_res["icon"]} {z_score_res["zone"]})
+- **Trụ cột 1 (Dữ liệu):** 🟢 ĐẦY ĐỦ / ĐẠT CHUẨN DATA GATE (Thanh khoản {gate.get("daily_value_billion")} tỷ/phiên)
+- **Trụ cột 2 (Cơ bản & Sinh lời):** [🟢 Tốt / 🟡 Trung bình / 🔴 Suy giảm] (ROE {fin_data.get("roe")}%, Nợ/Vốn {fin_data.get("debt_equity")})
 - **Trụ cột 3 (Định giá & Biên an toàn):** [🟢 Hấp dẫn / 🟡 Hợp lý / 🔴 Bẫy chu kỳ/Đắt] (MoS {mos_str})
-- **Trụ cột 4 (Kỹ thuật & Xu hướng):** [🟢 Uptrend / 🟡 Chờ tích lũy / 🔴 Gãy MA20] ({tech_data.get('status_ma20')})
+- **Trụ cột 4 (Kỹ thuật & Xu hướng):** [🟢 Uptrend / 🟡 Chờ tích lũy / 🔴 Gãy MA20] ({tech_data.get("status_ma20")})
 - **Trụ cột 5 (Hành vi Dòng tiền & Khối ngoại):** [🟢 Gom hàng / 🟡 Cạn kiệt / 🔴 Phân phối / Xả ròng] ({ff_str})
 - **Trụ cột 6 (Mức độ Rủi ro & Bẫy tin):** [🟢 Thấp / 🟡 Cảnh báo bẫy / 🔴 Cao] ({tr_str})
 - **Trụ cột 7 (Triển vọng Kịch bản):** [🟢 Khả quan / 🟡 Giằng co / 🔴 Tiêu cực]
-- **Trụ cột 8 (Phân bổ Danh mục):** {hard_gates.get('position_size_nav')}
+- **Trụ cột 8 (Phân bổ Danh mục):** {hard_gates.get("position_size_nav")}
 
 ---
 ### 🐂 III. TRANH BIỆN ĐỐI KHÁNG: PHE BÒ (BULL THESIS) VS PHE GẤU (BEAR CRO AUDIT)
 #### 🟢 1. Phe Bò (Bull Thesis - Luận Điểm Tăng Trưởng & Upside):
-- **Động lực tăng trưởng:** {prob_dict.get('rationale_bull')}
+- **Động lực tăng trưởng:** {prob_dict.get("rationale_bull")}
 - **Kỹ thuật & Dòng tiền:** [Nêu ưu điểm kỹ thuật và bệ đỡ giá]
-- **Mục tiêu Kịch bản Lạc quan:** {val_triangle['price_bull']} k VND
+- **Mục tiêu Kịch bản Lạc quan:** {val_triangle["price_bull"]} k VND
 
 #### 🔴 2. Phe Gấu (Bear CRO Audit - Vạch Lá Tìm Sâu & Bẫy Rủi Ro):
 - **Cảnh báo Bẫy & Dòng tiền ngoại:** [Đánh giá tín hiệu '{tr_str}' và dòng tiền '{ff_str}']
-- **Bóc tách rủi ro BCTC & Chu kỳ:** Điểm F-Score ({f_score_res['score']}/9), Z-Score ({z_score_res['z_score']}), rủi ro {prob_dict.get('rationale_bear')}
-- **Rủi ro Kịch bản Xấu nhất:** Giảm về vùng Bear {val_triangle['price_bear']} k VND.
+- **Bóc tách rủi ro BCTC & Chu kỳ:** Điểm F-Score ({f_score_res["score"]}/9), Z-Score ({z_score_res["z_score"]}), rủi ro {prob_dict.get("rationale_bear")}
+- **Rủi ro Kịch bản Xấu nhất:** Giảm về vùng Bear {val_triangle["price_bear"]} k VND.
 
 #### 🛡️ 3. Bộ 3 Thesis Breakers (Ngưỡng Vi Phạm Bắt Buộc Thoát Vị Thế):
-- **Thesis Breaker 1 (Ngưỡng Cắt Lỗ Cứng):** Giá đóng cửa gãy mốc Stop-loss {hard_gates.get('stop_loss')} k VND (Rủi ro -{hard_gates.get('downside_pct')}%) -> Kích hoạt lệnh bán dứt khoát 100%.
+- **Thesis Breaker 1 (Ngưỡng Cắt Lỗ Cứng):** Giá đóng cửa gãy mốc Stop-loss {hard_gates.get("stop_loss")} k VND (Rủi ro -{hard_gates.get("downside_pct")}%) -> Kích hoạt lệnh bán dứt khoát 100%.
 - **Thesis Breaker 2 (Dòng tiền / Veto Bẫy):** [Điều kiện vi phạm dòng tiền hoặc bẫy tin tức kéo xả]
 - **Thesis Breaker 3 (Cơ bản / BCTC):** [Điều kiện vi phạm hoạt động kinh doanh cốt lõi]
 
 ---
 ### 🎯 IV. 3 KỊCH BẢN 6-12 THÁNG (ĐỊNH LƯỢNG)
-- **🟢 Kịch bản Lạc quan (Bull Case):** Giá {val_triangle['price_bull']}k | Xác suất: {p_bull*100:.1f}% | Điều kiện: {prob_dict.get('rationale_bull')}
-- **🟡 Kịch bản Cơ sở (Base Case):** Giá {val_triangle['price_base']}k | Xác suất: {p_base*100:.1f}% | Điều kiện: {prob_dict.get('rationale_base')}
-- **🔴 Kịch bản Tiêu cực (Bear Case):** Giá {val_triangle['price_bear']}k | Xác suất: {p_bear*100:.1f}% | Điều kiện: {prob_dict.get('rationale_bear')}
-➔ **Giá trị kỳ vọng toán học (EV):** {hard_gates.get('ev')} k VND | **Biên an toàn (MoS):** {mos_str}
+- **🟢 Kịch bản Lạc quan (Bull Case):** Giá {val_triangle["price_bull"]}k | Xác suất: {p_bull * 100:.1f}% | Điều kiện: {prob_dict.get("rationale_bull")}
+- **🟡 Kịch bản Cơ sở (Base Case):** Giá {val_triangle["price_base"]}k | Xác suất: {p_base * 100:.1f}% | Điều kiện: {prob_dict.get("rationale_base")}
+- **🔴 Kịch bản Tiêu cực (Bear Case):** Giá {val_triangle["price_bear"]}k | Xác suất: {p_bear * 100:.1f}% | Điều kiện: {prob_dict.get("rationale_bear")}
+➔ **Giá trị kỳ vọng toán học (EV):** {hard_gates.get("ev")} k VND | **Biên an toàn (MoS):** {mos_str}
 
 ---
 ### 🔍 V. KIỂM TRA CHÉO & PHÁN QUYẾT HỘI ĐỒNG LƯỢNG HÓA
-- **Quyết định định lượng tối hậu:** {hard_gates.get('decision_tag')}
-- **Hành động phân bổ vốn:** {hard_gates.get('position_size_nav')}
+- **Quyết định định lượng tối hậu:** {hard_gates.get("decision_tag")}
+- **Hành động phân bổ vốn:** {hard_gates.get("position_size_nav")}
 - **Tín hiệu theo dõi trọng yếu:** [...]
 </OUTPUT_FORMAT>"""
 
     final_report = call_gemini(client, pass2_prompt)
-    
+
     # LƯU IMMUTABLE DECISION RECORD TRƯỚC TIÊN
     action_state = str(hard_gates.get("action_state", "")).upper()
     is_buy = "MUA" in action_state or "BUY" in action_state
@@ -1271,35 +1322,35 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
     decision_id = None
     try:
         from db_manager import save_decision_record
-        decision_id = save_decision_record({
-            "symbol": symbol,
-            "decision": decision_type,
-            "primary_rejection_gate": primary_gate,
-            "facts": {
-                "market_price": curr_price,
-                "ev": hard_gates.get("ev"),
-                "mos_pct": hard_gates.get("mos_pct"),
-                "decision_tag": hard_gates.get("decision_tag")
-            },
-            "inferences": {
-                "p_bull": p_bull,
-                "p_base": p_base,
-                "p_bear": p_bear
-            },
-            "analyst_context_used": market_ctx.is_valid,
-            "regime_conflict": has_regime_conflict,
-            "context_source_file": market_ctx.source_file if market_ctx.is_valid else None,
-            "context_date": market_ctx.date if market_ctx.is_valid else None,
-            "prompt_version": "v6.4",
-            "model_version": MODEL_NAME,
-            "raw_response": final_report,
-        })
+
+        decision_id = save_decision_record(
+            {
+                "symbol": symbol,
+                "decision": decision_type,
+                "primary_rejection_gate": primary_gate,
+                "facts": {
+                    "market_price": curr_price,
+                    "ev": hard_gates.get("ev"),
+                    "mos_pct": hard_gates.get("mos_pct"),
+                    "decision_tag": hard_gates.get("decision_tag"),
+                },
+                "inferences": {"p_bull": p_bull, "p_base": p_base, "p_bear": p_bear},
+                "analyst_context_used": market_ctx.is_valid,
+                "regime_conflict": has_regime_conflict,
+                "context_source_file": market_ctx.source_file if market_ctx.is_valid else None,
+                "context_date": market_ctx.date if market_ctx.is_valid else None,
+                "prompt_version": "v6.4",
+                "model_version": MODEL_NAME,
+                "raw_response": final_report,
+            }
+        )
     except Exception:
         logging.exception("Không thể lưu decision_records")
 
     # TỰ ĐỘNG LƯU SNAPSHOT BẤT BIẾN VÀO SUPABASE (SIGNAL LIFECYCLE)
     try:
         from db_manager import save_quant_signal
+
         save_quant_signal(
             symbol=symbol,
             action=hard_gates.get("action_state", "🟡 THEO DÕI"),
@@ -1321,8 +1372,8 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
                 "debt_equity": fin_data.get("debt_equity"),
                 "adv20_billion": tech_data.get("adv20_billion"),
                 "rsi14": tech_data.get("rsi14"),
-                "status_ma20": tech_data.get("status_ma20")
-            }
+                "status_ma20": tech_data.get("status_ma20"),
+            },
         )
     except Exception:
         logging.exception("Không thể lưu snapshot tín hiệu vào Supabase")
@@ -1391,8 +1442,14 @@ STATE_AVOID = "AVOID"
 STATE_INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
 
 VALID_PM_STATES = (
-    STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE, STATE_WATCHLIST, STATE_WAIT_BETTER_ENTRY,
-    STATE_HOLD_MAINTAIN, STATE_RISK_ELEVATED, STATE_AVOID, STATE_INSUFFICIENT_DATA
+    STATE_STRONG_OPPORTUNITY,
+    STATE_ATTRACTIVE,
+    STATE_WATCHLIST,
+    STATE_WAIT_BETTER_ENTRY,
+    STATE_HOLD_MAINTAIN,
+    STATE_RISK_ELEVATED,
+    STATE_AVOID,
+    STATE_INSUFFICIENT_DATA,
 )
 
 
@@ -1403,6 +1460,7 @@ def _resolve_input_data(symbol: str, tech_data: dict = None, fin_data: dict = No
     if resolved_tech is None:
         try:
             from data_engine import fetch_stock_technical
+
             resolved_tech = fetch_stock_technical(sym)
         except Exception:
             resolved_tech = {}
@@ -1411,6 +1469,7 @@ def _resolve_input_data(symbol: str, tech_data: dict = None, fin_data: dict = No
     if resolved_fin is None:
         try:
             from data_engine import get_financial_ratios
+
             resolved_fin = get_financial_ratios(sym)
         except Exception:
             resolved_fin = {}
@@ -1419,6 +1478,7 @@ def _resolve_input_data(symbol: str, tech_data: dict = None, fin_data: dict = No
     if resolved_news is None:
         try:
             from data_engine import fetch_macro_news
+
             resolved_news = fetch_macro_news(limit=6, tracked_symbols=[sym])
         except Exception:
             resolved_news = []
@@ -1445,7 +1505,7 @@ def _format_committee_prompt_context(
     f_score_res: dict,
     z_score_res: dict,
     news_items: list,
-    market_context: Any = None
+    market_context: Any = None,
 ) -> str:
     """Format prompt string for smart compressed investment committee analysis."""
     from context_engine import build_context_prompt_snippet
@@ -1497,13 +1557,19 @@ def _format_committee_prompt_context(
     if sotp_chk.get("is_holding"):
         sr = sotp_chk.get("sotp_ratio", 0.0)
         flags_s = ", ".join(sotp_chk.get("flags", [])) or "Bình thường"
-        re_lines.append(f"- Cấu trúc SOTP Vốn hóa niêm yết: {sr*100:.1f}% mẹ ({flags_s})")
-        re_lines.append(f"  + Vốn hóa ngụ ý phần chưa niêm yết: {sotp_chk.get('implied_unlisted_value_bil', 0.0):,.0f} tỷ VND")
-        re_lines.append("  + Yêu cầu phân tích 3 chiều: Cash Cow (mảng tạo tiền) vs Cash Burner (mảng đốt vốn), Runway tự nuôi, và Cross-Subsidy Risk.")
+        re_lines.append(f"- Cấu trúc SOTP Vốn hóa niêm yết: {sr * 100:.1f}% mẹ ({flags_s})")
+        re_lines.append(
+            f"  + Vốn hóa ngụ ý phần chưa niêm yết: {sotp_chk.get('implied_unlisted_value_bil', 0.0):,.0f} tỷ VND"
+        )
+        re_lines.append(
+            "  + Yêu cầu phân tích 3 chiều: Cash Cow (mảng tạo tiền) vs Cash Burner (mảng đốt vốn), Runway tự nuôi, và Cross-Subsidy Risk."
+        )
 
     core_eq = val_res.get("earnings_quality") or {}
     if core_eq.get("core_earnings_ratio") is not None:
-        re_lines.append(f"- Chất lượng Lợi nhuận (Core Earnings Ratio): {core_eq.get('core_earnings_ratio')*100:.1f}% ({core_eq.get('quality_tier', '')})")
+        re_lines.append(
+            f"- Chất lượng Lợi nhuận (Core Earnings Ratio): {core_eq.get('core_earnings_ratio') * 100:.1f}% ({core_eq.get('quality_tier', '')})"
+        )
 
     surv_gt = val_res.get("survival_gate") or {}
     surv_issues = surv_gt.get("issues", []) + surv_gt.get("warnings", [])
@@ -1581,10 +1647,7 @@ QUY TẮC BẮT BUỘC:
 def _extract_pm_decision(report_text: str) -> str:
     """Extract PM Decision from AI report using priority matching."""
     # Priority 1: Match explicit PM DECISION statement
-    pattern = re.compile(
-        r'(?:PM[_\s]*DECISION|PHÁN QUYẾT PM|QUYẾT ĐỊNH PM)[:\s—\-]+([A-Z_]+)',
-        re.IGNORECASE
-    )
+    pattern = re.compile(r"(?:PM[_\s]*DECISION|PHÁN QUYẾT PM|QUYẾT ĐỊNH PM)[:\s—\-]+([A-Z_]+)", re.IGNORECASE)
     for m in reversed(pattern.findall(report_text)):
         candidate = m.strip().upper()
         if candidate in VALID_PM_STATES:
@@ -1595,7 +1658,7 @@ def _extract_pm_decision(report_text: str) -> str:
     scope = report_text[b5_pos:] if b5_pos != -1 else report_text
     for line in scope.splitlines():
         for state in VALID_PM_STATES:
-            if re.search(r'\b' + re.escape(state) + r'\b', line):
+            if re.search(r"\b" + re.escape(state) + r"\b", line):
                 return state
 
     # Priority 3: Fallback default
@@ -1608,11 +1671,11 @@ def _extract_views(report_text: str) -> Dict[str, str]:
     if not report_text:
         return views
 
-    fa_match = re.search(r'FA\s*VIEW[:\s—\-]+(BULLISH|NEUTRAL|BEARISH)', report_text, re.IGNORECASE)
+    fa_match = re.search(r"FA\s*VIEW[:\s—\-]+(BULLISH|NEUTRAL|BEARISH)", report_text, re.IGNORECASE)
     if fa_match:
         views["fa_view"] = fa_match.group(1).upper()
 
-    ta_match = re.search(r'TA\s*VIEW[:\s—\-]+(BULLISH|NEUTRAL|BEARISH)', report_text, re.IGNORECASE)
+    ta_match = re.search(r"TA\s*VIEW[:\s—\-]+(BULLISH|NEUTRAL|BEARISH)", report_text, re.IGNORECASE)
     if ta_match:
         views["ta_view"] = ta_match.group(1).upper()
 
@@ -1623,7 +1686,7 @@ def _extract_red_team_downside(report_text: str) -> float:
     """Extract downside risk percentage from Red Team section if specified."""
     if not report_text:
         return 0.0
-    match = re.search(r'(?:downside|sụt giảm|rủi ro giảm)[:\s—\-]+(\d+(?:\.\d+)?)\s*%', report_text, re.IGNORECASE)
+    match = re.search(r"(?:downside|sụt giảm|rủi ro giảm)[:\s—\-]+(\d+(?:\.\d+)?)\s*%", report_text, re.IGNORECASE)
     if match:
         try:
             return float(match.group(1))
@@ -1650,7 +1713,11 @@ def _check_view_and_risk_arbitration(
     if fa_u == "BEARISH" and ta_u == "BULLISH" and decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
         return STATE_RISK_ELEVATED, True, "Trọng tài PM: Kỹ thuật hưng phấn nhưng cơ bản suy yếu (Chống FOMO bơm thổi)"
     if red_team_downside > 25.0 and decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
-        return STATE_WATCHLIST, True, f"Trọng tài PM: Rủi ro sụt giảm Red Team {red_team_downside:.1f}% > 25% (Hạ về Watchlist)"
+        return (
+            STATE_WATCHLIST,
+            True,
+            f"Trọng tài PM: Rủi ro sụt giảm Red Team {red_team_downside:.1f}% > 25% (Hạ về Watchlist)",
+        )
     return None
 
 
@@ -1688,7 +1755,10 @@ def arbitrate_pm_decision(
     if not can_buy and decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
         return STATE_WATCHLIST, True, "Veto-Only: Quant Core từ chối mở lệnh mua, LLM bị cấm khuyến nghị BUY"
 
-    if _check_thesis_breaker(f_score, z_zone, trap_warning) and decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
+    if _check_thesis_breaker(f_score, z_zone, trap_warning) and decision in (
+        STATE_STRONG_OPPORTUNITY,
+        STATE_ATTRACTIVE,
+    ):
         return STATE_AVOID, True, "Thesis Breaker kích hoạt: Sức khỏe tài chính suy kiệt hoặc bẫy giá nguy hiểm"
 
     rule_override = _check_view_and_risk_arbitration(decision, fa_view, ta_view, red_team_downside)
@@ -1699,10 +1769,7 @@ def arbitrate_pm_decision(
 
 
 def _prepare_smart_committee_context(
-    symbol: str,
-    tech_data: dict = None,
-    fin_data: dict = None,
-    news_items: list = None
+    symbol: str, tech_data: dict = None, fin_data: dict = None, news_items: list = None
 ) -> tuple[dict | None, str | None, dict | None]:
     """
     Chuẩn bị dữ liệu và prompt cho Hội đồng Đầu tư Định chế V2.
@@ -1714,15 +1781,15 @@ def _prepare_smart_committee_context(
 
     # 1. PHASE 0: DATA RECONCILIATION GATE (100% DETERMINISTIC PYTHON)
     from data_gate import reconcile_data
-    gate_res = reconcile_data(
-        symbol=sym,
-        tech_data=tech_data,
-        fin_data=fin_data,
-        news=news_items
-    )
+
+    gate_res = reconcile_data(symbol=sym, tech_data=tech_data, fin_data=fin_data, news=news_items)
 
     # Hard Gate check: Reject if price conflict, statutory band breach, or critical quality
-    if not gate_res.get("gate_passed") or gate_res.get("price_status") == "CONFLICT" or not gate_res.get("recommendation_allowed"):
+    if (
+        not gate_res.get("gate_passed")
+        or gate_res.get("price_status") == "CONFLICT"
+        or not gate_res.get("recommendation_allowed")
+    ):
         conflicts = "; ".join(gate_res.get("conflicting_data", ["Xung đột dữ liệu giá hoặc vi phạm quy chế sàn"]))
         refusal_report = (
             "======================================================\n"
@@ -1735,19 +1802,24 @@ def _prepare_smart_committee_context(
         )
         try:
             from db_manager import save_decision_record
-            save_decision_record({
-                "symbol": sym,
-                "decision": "REJECT",
-                "primary_rejection_gate": "DATA_GATE",
-                "rejection_reasons": gate_res.get("conflicting_data", ["Xung đột dữ liệu giá hoặc vi phạm quy chế sàn"]),
-                "facts": {
-                    "market_price": tech_data.get("current_price", 0.0) if tech_data else 0.0,
-                    "data_quality": gate_res.get("data_quality", "CRITICAL"),
-                    "quality_score": gate_res.get("quality_score", 0.0),
-                },
-                "model_version": MODEL_NAME,
-                "raw_response": refusal_report,
-            })
+
+            save_decision_record(
+                {
+                    "symbol": sym,
+                    "decision": "REJECT",
+                    "primary_rejection_gate": "DATA_GATE",
+                    "rejection_reasons": gate_res.get(
+                        "conflicting_data", ["Xung đột dữ liệu giá hoặc vi phạm quy chế sàn"]
+                    ),
+                    "facts": {
+                        "market_price": tech_data.get("current_price", 0.0) if tech_data else 0.0,
+                        "data_quality": gate_res.get("data_quality", "CRITICAL"),
+                        "quality_score": gate_res.get("quality_score", 0.0),
+                    },
+                    "model_version": MODEL_NAME,
+                    "raw_response": refusal_report,
+                }
+            )
         except Exception:
             logging.exception("Không thể lưu decision_records khi bị loại ở Smart Committee Data Gate")
 
@@ -1758,7 +1830,7 @@ def _prepare_smart_committee_context(
             "quality_score": gate_res.get("quality_score", 0.0),
             "gate_res": gate_res,
             "report_text": refusal_report,
-            "pm_decision": STATE_INSUFFICIENT_DATA
+            "pm_decision": STATE_INSUFFICIENT_DATA,
         }
         return rejection_res, None, None
 
@@ -1771,12 +1843,13 @@ def _prepare_smart_committee_context(
     z_score_res = calculate_altman_z_score(fin_data)
 
     from context_engine import check_regime_conflict, load_market_context
+
     market_ctx = load_market_context()
     has_regime_conflict = False
     if market_ctx.is_valid:
         has_regime_conflict, _ = check_regime_conflict(
             code_regime=tech_data.get("status_ma20", "") if tech_data else "",
-            analyst_regime=market_ctx.market_regime_analyst
+            analyst_regime=market_ctx.market_regime_analyst,
         )
 
     prompt = _format_committee_prompt_context(
@@ -1787,7 +1860,7 @@ def _prepare_smart_committee_context(
         f_score_res=f_score_res,
         z_score_res=z_score_res,
         news_items=news_items,
-        market_context=market_ctx
+        market_context=market_ctx,
     )
 
     prompt_hash = compute_sha256(prompt)
@@ -1817,10 +1890,11 @@ def _save_smart_committee_record(
     views: dict,
     is_overridden: bool,
     override_reason: str,
-    report_text: str
+    report_text: str,
 ) -> None:
     try:
         from db_manager import save_decision_record
+
         dec_str = str(final_decision or "").upper()
         if "MUA" in dec_str or "BUY" in dec_str:
             dec_type = "BUY"
@@ -1838,30 +1912,32 @@ def _save_smart_committee_record(
         ctx_valid = market_ctx.is_valid if market_ctx else False
         tech_data = context_meta.get("tech_data") or {}
 
-        save_decision_record({
-            "symbol": sym,
-            "decision": dec_type,
-            "primary_rejection_gate": prim_gate,
-            "facts": {
-                "market_price": tech_data.get("current_price", 0.0),
-                "quality_score": gate_res.get("quality_score", 100.0),
-                "data_quality": gate_res.get("data_quality", "HIGH"),
-            },
-            "inferences": {
-                "pm_decision": final_decision,
-                "raw_pm_decision": raw_decision,
-                "fa_view": views.get("fa_view", "NEUTRAL"),
-                "ta_view": views.get("ta_view", "NEUTRAL"),
-                "is_overridden": is_overridden,
-                "override_reason": override_reason,
-            },
-            "analyst_context_used": ctx_valid,
-            "regime_conflict": context_meta.get("regime_conflict", False),
-            "context_source_file": market_ctx.source_file if ctx_valid else None,
-            "context_date": market_ctx.date if ctx_valid else None,
-            "model_version": MODEL_NAME,
-            "raw_response": report_text,
-        })
+        save_decision_record(
+            {
+                "symbol": sym,
+                "decision": dec_type,
+                "primary_rejection_gate": prim_gate,
+                "facts": {
+                    "market_price": tech_data.get("current_price", 0.0),
+                    "quality_score": gate_res.get("quality_score", 100.0),
+                    "data_quality": gate_res.get("data_quality", "HIGH"),
+                },
+                "inferences": {
+                    "pm_decision": final_decision,
+                    "raw_pm_decision": raw_decision,
+                    "fa_view": views.get("fa_view", "NEUTRAL"),
+                    "ta_view": views.get("ta_view", "NEUTRAL"),
+                    "is_overridden": is_overridden,
+                    "override_reason": override_reason,
+                },
+                "analyst_context_used": ctx_valid,
+                "regime_conflict": context_meta.get("regime_conflict", False),
+                "context_source_file": market_ctx.source_file if ctx_valid else None,
+                "context_date": market_ctx.date if ctx_valid else None,
+                "model_version": MODEL_NAME,
+                "raw_response": report_text,
+            }
+        )
     except Exception:
         logging.exception("Không thể lưu decision_records cho Smart Committee response %s", context_meta.get("symbol"))
 
@@ -1960,10 +2036,7 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
 
 
 def analyze_stock_with_smart_committee(
-    symbol: str,
-    tech_data: dict = None,
-    fin_data: dict = None,
-    news_items: list = None
+    symbol: str, tech_data: dict = None, fin_data: dict = None, news_items: list = None
 ) -> dict:
     """
     BÁO CÁO PHÂN TÍCH ĐỊNH CHẾ TOÀN DIỆN V2 (SMART COMPRESSED INVESTMENT COMMITTEE):
@@ -1990,11 +2063,7 @@ def analyze_stock_with_smart_committee(
 
 
 async def async_analyze_stock_with_smart_committee(
-    symbol: str,
-    tech_data: dict = None,
-    fin_data: dict = None,
-    news_items: list = None,
-    client = None
+    symbol: str, tech_data: dict = None, fin_data: dict = None, news_items: list = None, client=None
 ) -> dict:
     """
     Phân tích định chế toàn diện V2 bất đồng bộ (Async Smart Compressed Committee).
@@ -2014,16 +2083,13 @@ async def async_analyze_stock_with_smart_committee(
     return _build_committee_response(context_meta, report_text=report_text)
 
 
-async def async_analyze_stocks_batch(
-    symbols_or_candidates: list,
-    max_concurrency: int = 5,
-    client = None
-) -> list:
+async def async_analyze_stocks_batch(symbols_or_candidates: list, max_concurrency: int = 5, client=None) -> list:
     """
     Phân tích đồng thời hàng loạt cổ phiếu bằng asyncio.gather kết hợp Semaphore.
     Giúp quét 10-20 mã trong < 15s mà không bị tràn quota API Gemini.
     """
     import asyncio
+
     sem = asyncio.Semaphore(max_concurrency)
     ai_client = client or get_ai_client()
 
@@ -2037,20 +2103,19 @@ async def async_analyze_stocks_batch(
                     tech_data=item.get("tech_data"),
                     fin_data=item.get("fin_data"),
                     news_items=item.get("news_items"),
-                    client=ai_client
+                    client=ai_client,
                 )
             return {
                 "status": "INVALID_INPUT",
                 "symbol": "UNKNOWN",
                 "pm_decision": "INSUFFICIENT_DATA",
-                "report_text": "Dữ liệu đầu vào không hợp lệ"
+                "report_text": "Dữ liệu đầu vào không hợp lệ",
             }
 
     tasks = [_bound_worker(c) for c in (symbols_or_candidates or [])]
     if not tasks:
         return []
     return list(await asyncio.gather(*tasks, return_exceptions=False))
-
 
 
 if __name__ == "__main__":
@@ -2063,4 +2128,3 @@ if __name__ == "__main__":
     analysis = generate_portfolio_analysis(df_eval, news)
     print("\n--- BÁO CÁO PHÂN TÍCH TỪ GEMINI ---")
     print(analysis)
-

@@ -1,4 +1,5 @@
 """CI Stub for vnstock when public PyPI package is temporarily unavailable."""
+
 from __future__ import annotations
 
 __version__ = "4.0.8"
@@ -22,6 +23,7 @@ class Trading:
 
     def price_board(self, *args, **kwargs):
         import pandas as pd
+
         return pd.DataFrame()
 
 
@@ -33,6 +35,7 @@ class Quote:
 
     def history(self, *args, **kwargs):
         import pandas as pd
+
         return pd.DataFrame()
 
 

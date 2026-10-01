@@ -24,6 +24,7 @@ try:
     import pyarrow.compute  # noqa: F401
 except Exception:
     import sys
+
     sys.modules["pyarrow"] = None
 
 import pandas as pd
@@ -52,13 +53,11 @@ from discord_alerts import (
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv()
 except ImportError:
     pass
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] (TradingBot) %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] (TradingBot) %(message)s")
 
 # Múi giờ thị trường chứng khoán Việt Nam (UTC+7)
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -105,7 +104,7 @@ def _handle_gdkhq_shield(symbol: str, curr_price: float, today_str: str, gdkhq_i
         symbol=symbol,
         action="THEO DÕI (GDKHQ)",
         current_price=curr_price,
-        trigger_reason=f"[KHIÊN CHẮN CỔ TỨC] {gdkhq_info['reason']}"
+        trigger_reason=f"[KHIÊN CHẮN CỔ TỨC] {gdkhq_info['reason']}",
     )
     sent_alerts.add(alert_key)
 
@@ -150,7 +149,9 @@ def _handle_rsi_overbought(symbol: str, curr_price: float, rsi, today_str: str):
         sent_alerts.add(alert_key)
 
 
-def _handle_value_deep_drawdown(symbol: str, curr_price: float, cost_price: float, pnl_pct: float, today_str: str) -> bool:
+def _handle_value_deep_drawdown(
+    symbol: str, curr_price: float, cost_price: float, pnl_pct: float, today_str: str
+) -> bool:
     alert_key = (today_str, symbol, "VALUE_DEEP_DRAWDOWN")
     if pnl_pct <= -15.0 and alert_key not in sent_alerts:
         logging.warning(f"🚨 CẢNH BÁO TÍCH SẢN LỖ SÂU: {symbol} ({pnl_pct:.2f}%)")
@@ -164,12 +165,15 @@ def _handle_value_deep_drawdown(symbol: str, curr_price: float, cost_price: floa
     return False
 
 
-def _handle_partial_profit_lock(symbol: str, curr_price: float, cost_price: float, high_price: float, today_str: str) -> bool:
+def _handle_partial_profit_lock(
+    symbol: str, curr_price: float, cost_price: float, high_price: float, today_str: str
+) -> bool:
     alert_key = (today_str, symbol, "PARTIAL_PROFIT_LOCK")
     if alert_key in sent_alerts:
         return False
 
     from quant_engine import evaluate_partial_profit_lock
+
     res = evaluate_partial_profit_lock(
         entry_price=cost_price,
         current_high=max(curr_price, high_price),
@@ -206,9 +210,8 @@ def _check_single_holding_risk(row, today_str: str, vnindex_chg_pct: float):
     sector_input = str(row.get("Ngành", ""))
 
     archetype_info = get_stock_archetype_details(symbol, sector_input)
-    is_value_investing = (
-        strategy_input in ["VALUE", "COMPOUNDER", "LONG_TERM"]
-        or archetype_info.get("holding_shield", False)
+    is_value_investing = strategy_input in ["VALUE", "COMPOUNDER", "LONG_TERM"] or archetype_info.get(
+        "holding_shield", False
     )
 
     tech_sym = fetch_stock_technical(symbol)
@@ -240,6 +243,7 @@ def _check_single_holding_risk(row, today_str: str, vnindex_chg_pct: float):
 
 def _audit_portfolio_risk(today_str: str):
     from data_engine import fetch_stock_technical
+
     vnindex_tech = fetch_stock_technical("VNINDEX")
     vnindex_chg_pct = vnindex_tech.get("change_pct", 0.0) if vnindex_tech else 0.0
 
@@ -311,9 +315,10 @@ def _record_and_save_buy_signal(
     buy_reason: str,
     f_score_txt: str,
     f_score_dict: dict,
-    tech: dict
+    tech: dict,
 ):
     from db_manager import save_quant_signal
+
     record_signal_cooldown(sym, action="MUA", conviction_score=75.0)
     try:
         act_tag = "🟢 VALUE BUY" if "Breakout" in buy_reason else "🟢 ACCUMULATE"
@@ -330,7 +335,7 @@ def _record_and_save_buy_signal(
             z_score_res={"z_score": 2.5},
             prob_dict={"P_bull": 0.35, "P_base": 0.50, "P_bear": 0.15, "rationale_base": buy_reason},
             model_version="trading-bot-v2.1",
-            input_snapshot={"tech": tech, "f_score": f_score_dict.get("score", 6)}
+            input_snapshot={"tech": tech, "f_score": f_score_dict.get("score", 6)},
         )
     except Exception:
         logging.exception("Lỗi ghi Supabase Signal")
@@ -344,6 +349,7 @@ def _process_single_watchlist_item(item: dict, today_str: str):
         return
 
     from data_engine import fetch_stock_technical
+
     tech = fetch_stock_technical(sym)
     if not tech:
         return
@@ -571,7 +577,9 @@ def _warn_portfolio_fallback_prices(df_eval: pd.DataFrame | None, report_type: s
         c_price = float(r.get("Giá vốn (k)", 0.0))
         pnl = float(r.get("Lãi/Lỗ (%)", 0.0))
         if abs(m_price - c_price) < 0.001 and abs(pnl) < 0.001:
-            logging.warning("⚠️ Báo cáo %s: Mã %s có Thị giá trùng Giá vốn %.2fk (fallback)", report_type, sym_r, c_price)
+            logging.warning(
+                "⚠️ Báo cáo %s: Mã %s có Thị giá trùng Giá vốn %.2fk (fallback)", report_type, sym_r, c_price
+            )
 
 
 def trigger_scheduled_report(report_type: str, title_desc: str):
@@ -588,11 +596,14 @@ def trigger_scheduled_report(report_type: str, title_desc: str):
 
         watchlist = load_watchlist()
         df_wl = evaluate_watchlist(watchlist) if watchlist else None
-        news = fetch_macro_news(limit=10, tracked_symbols=[p["symbol"] for p in portfolio] + [w["symbol"] for w in watchlist])
+        news = fetch_macro_news(
+            limit=10, tracked_symbols=[p["symbol"] for p in portfolio] + [w["symbol"] for w in watchlist]
+        )
 
         # Pre-fetch VN-Index technical data once for reports
         try:
             from data_engine import fetch_stock_technical
+
             vnindex_tech = fetch_stock_technical("VNINDEX")
         except Exception:
             logging.exception("Lỗi kéo dữ liệu kỹ thuật VN-Index trong trigger_scheduled_report")
@@ -604,11 +615,7 @@ def trigger_scheduled_report(report_type: str, title_desc: str):
         else:
             session_lbl = "NOON" if any(k in report_type for k in ["11:30", "TRƯA", "SÁNG"]) else "ATC"
             ai_text = generate_portfolio_analysis(
-                df_eval,
-                news,
-                watchlist_df=df_wl,
-                vnindex_tech=vnindex_tech,
-                session_label=session_lbl
+                df_eval, news, watchlist_df=df_wl, vnindex_tech=vnindex_tech, session_label=session_lbl
             )
 
         embed = format_portfolio_embed(df_eval, ai_text, report_type=report_type)
@@ -626,6 +633,7 @@ def trigger_post_market_audit():
     logging.info("🚀 Starting automated post-market signal audit (15:15)...")
     try:
         from db_manager import get_signal_audit_metrics, update_daily_tracking
+
         audit_res = update_daily_tracking()
 
         if audit_res.get("status") == "PENDING_DATA":
@@ -646,7 +654,7 @@ def trigger_post_market_audit():
                 f"• Số tín hiệu đang theo dõi (OPEN): **{metrics.get('open_signals', 0)}**"
             ),
             "color": 0x2ECC71 if metrics.get("win_rate", 0) >= 50 else 0x3498DB,
-            "footer": {"text": "AI Stock Copilot • Post-Market Audit Engine"}
+            "footer": {"text": "AI Stock Copilot • Post-Market Audit Engine"},
         }
         send_discord_webhook(embeds=[embed])
         send_discord_dm(embeds=[embed])
@@ -690,9 +698,27 @@ def _check_scheduled_reports(now: datetime, today_str: str, cur_t: dtime):
         trigger_pre_ato_heartbeat()
 
     schedules = [
-        ("08:45", dtime(8, 45), dtime(9, 0), "BÁO CÁO ĐẦU NGÀY (TRƯỚC PHIÊN ATO)", "Điểm tin vĩ mô thế giới & Sẵn sàng mở phiên"),
-        ("11:30", dtime(11, 30), dtime(12, 0), "TỔNG KẾT PHIÊN SÁNG (NGHỈ TRƯA)", "Đánh giá biến động nửa ngày & Dòng tiền nổi bật"),
-        ("14:45", dtime(14, 45), dtime(15, 15), "BÁO CÁO TỔNG KẾT PHIÊN ATC (TOÀN DIỆN)", "Phân tích sức khỏe danh mục & Khuyến nghị phiên tới"),
+        (
+            "08:45",
+            dtime(8, 45),
+            dtime(9, 0),
+            "BÁO CÁO ĐẦU NGÀY (TRƯỚC PHIÊN ATO)",
+            "Điểm tin vĩ mô thế giới & Sẵn sàng mở phiên",
+        ),
+        (
+            "11:30",
+            dtime(11, 30),
+            dtime(12, 0),
+            "TỔNG KẾT PHIÊN SÁNG (NGHỈ TRƯA)",
+            "Đánh giá biến động nửa ngày & Dòng tiền nổi bật",
+        ),
+        (
+            "14:45",
+            dtime(14, 45),
+            dtime(15, 15),
+            "BÁO CÁO TỔNG KẾT PHIÊN ATC (TOÀN DIỆN)",
+            "Phân tích sức khỏe danh mục & Khuyến nghị phiên tới",
+        ),
     ]
 
     for key_tag, start_t, end_t, title, desc in schedules:
@@ -705,7 +731,6 @@ def _check_scheduled_reports(now: datetime, today_str: str, cur_t: dtime):
     if dtime(15, 15) <= cur_t < dtime(16, 0) and key_1515 not in sent_scheduled_reports:
         sent_scheduled_reports.add(key_1515)
         trigger_post_market_audit()
-
 
 
 def run_trading_bot_loop(check_interval_sec: int = 30):
@@ -731,7 +756,9 @@ def run_trading_bot_loop(check_interval_sec: int = 30):
             if is_market_open(now):
                 check_realtime_risk()
             elif now.hour != last_heartbeat_hour:
-                logging.info(f"💤 Ngoài phiên giao dịch VN [{now.strftime('%H:%M:%S %d/%m/%Y')}]. Bot đang ở chế độ chờ tiết kiệm tài nguyên...")
+                logging.info(
+                    f"💤 Ngoài phiên giao dịch VN [{now.strftime('%H:%M:%S %d/%m/%Y')}]. Bot đang ở chế độ chờ tiết kiệm tài nguyên..."
+                )
                 last_heartbeat_hour = now.hour
 
         except Exception:

@@ -44,7 +44,7 @@ def test_buy_signal():
         current_price=21.50,
         trigger_reason="Giá bứt phá vượt MA20 kèm Volume đột biến gấp 1.8x TB20 phiên. RSI(14) bật tăng từ vùng tích lũy 52.0!",
         target_price=25.00,
-        stop_loss=20.20
+        stop_loss=20.20,
     )
     if success:
         print("✅ Thành công! Hãy mở mục TIN NHẮN RIÊNG (DM) với Bot trên Discord để kiểm tra (màu XANH LÁ).")
@@ -61,7 +61,7 @@ def test_sell_signal():
         current_price=25.20,
         trigger_reason="Thị giá giảm quá -7.2% so với giá vốn (27.16). Đã kích hoạt ngưỡng CẮT LỖ dứt khoát bảo toàn vốn!",
         target_price=None,
-        stop_loss=25.20
+        stop_loss=25.20,
     )
     if success:
         print("✅ Thành công! Hãy mở mục TIN NHẮN RIÊNG (DM) với Bot trên Discord để kiểm tra (màu ĐỎ).")
@@ -131,7 +131,9 @@ def test_morning_recommendation_report():
         tracked += [w["symbol"] for w in watchlist]
     opportunities = scan_market_opportunities(extra_symbols=tracked)
     for o in opportunities:
-        print(f"  ➜ {o['symbol']}: {o['setup_type']} | Giá: {o['current_price']}k | Target: {o['target_price']}k | Cutloss: {o['stop_loss']}k")
+        print(
+            f"  ➜ {o['symbol']}: {o['setup_type']} | Giá: {o['current_price']}k | Target: {o['target_price']}k | Cutloss: {o['stop_loss']}k"
+        )
 
     print("📰 Đang thu thập tin tức tài chính CafeF nóng nhất sáng nay...")
     news = fetch_macro_news(limit=8, tracked_symbols=tracked)
@@ -153,6 +155,7 @@ def test_morning_recommendation_report():
 def test_full_daily_reports_and_sync():
     """Chạy toàn bộ quy trình kiểm toán, đồng bộ/thanh lọc Watchlist và bắn báo cáo nguyên ngày (Trưa 11:30, ATC 14:45, Audit 15:15)."""
     from scripts.run_daily_reports_and_sync import run_full_daily_workflow
+
     run_full_daily_workflow()
 
 

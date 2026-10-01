@@ -11,11 +11,13 @@ def generate_echarts_valuation_html(df: pd.DataFrame, metric: str = "PE") -> str
     """
     dataset = []
     for _, row in df.iterrows():
-        dataset.append({
-            "date": str(row["time"]).split(" ")[0],
-            "index": round(float(row["close"])),
-            "val": float(row["PE"] if metric == "PE" else row["PB"])
-        })
+        dataset.append(
+            {
+                "date": str(row["time"]).split(" ")[0],
+                "index": round(float(row["close"])),
+                "val": float(row["PE"] if metric == "PE" else row["PB"]),
+            }
+        )
 
     metric_name = "P/E" if metric == "PE" else "P/B"
     color_val = "#4caf50" if metric == "PE" else "#00b4d8"

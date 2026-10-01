@@ -19,6 +19,7 @@ from trading_bot import _check_single_holding_risk, sent_alerts
 # 1. KIỂM THỬ PHÂN LOẠI ARCHETYPE & METADATA CHI TIẾT
 # =====================================================================
 
+
 def test_archetype_classification_and_metadata():
     """Kiểm tra phân loại đúng 4 Archetype và gán đúng chiến lược & mô hình định giá."""
     # FPT -> Compounder tăng trưởng
@@ -51,6 +52,7 @@ def test_archetype_classification_and_metadata():
 # 2. KIỂM THỬ BẢO VỆ VỊ THẾ DÀI HẠN (FPT KHÔNG BỊ BÁN NON)
 # =====================================================================
 
+
 @mock.patch("trading_bot.send_trade_signal_alert")
 @mock.patch("data_engine.fetch_stock_technical")
 def test_fpt_growth_compounder_ignores_ma20_breakdown(mock_fetch_tech, mock_send_alert):
@@ -60,7 +62,7 @@ def test_fpt_growth_compounder_ignores_ma20_breakdown(mock_fetch_tech, mock_send
         "status_ma20": "DƯỚI MA20",
         "vol_ratio": 2.5,  # Bán tháo vol lớn
         "rsi14": 45.0,
-        "trap_info": {"is_trap": False}
+        "trap_info": {"is_trap": False},
     }
 
     row = {
@@ -72,7 +74,7 @@ def test_fpt_growth_compounder_ignores_ma20_breakdown(mock_fetch_tech, mock_send
         "Vị thế MA20": "DƯỚI MA20",
         "RSI(14)": 45.0,
         "Chiến lược": "SWING",  # Dù user chưa set VALUE, hệ thống tự nhận diện FPT là COMPOUNDER
-        "Ngành": "Công nghệ"
+        "Ngành": "Công nghệ",
     }
 
     sent_alerts.clear()
@@ -91,7 +93,7 @@ def test_fpt_value_holding_triggers_alert_on_deep_loss(mock_fetch_tech, mock_sen
         "status_ma20": "DƯỚI MA20",
         "vol_ratio": 1.0,
         "rsi14": 30.0,
-        "trap_info": {"is_trap": False}
+        "trap_info": {"is_trap": False},
     }
 
     row = {
@@ -103,7 +105,7 @@ def test_fpt_value_holding_triggers_alert_on_deep_loss(mock_fetch_tech, mock_sen
         "Vị thế MA20": "DƯỚI MA20",
         "RSI(14)": 30.0,
         "Chiến lược": "VALUE",
-        "Ngành": "Công nghệ"
+        "Ngành": "Công nghệ",
     }
 
     sent_alerts.clear()
@@ -120,6 +122,7 @@ def test_fpt_value_holding_triggers_alert_on_deep_loss(mock_fetch_tech, mock_sen
 # 3. KIỂM THỬ METADATA NGÀNH TRONG WATCHLIST & GOM NHÓM THEO NGÀNH
 # =====================================================================
 
+
 @mock.patch("data_engine.fetch_stock_technical")
 def test_evaluate_watchlist_enriches_sector_archetype(mock_fetch_tech):
     """Test evaluate_watchlist bổ sung đầy đủ Cụm ngành, Archetype, Chiến lược và Mô hình định giá."""
@@ -130,13 +133,13 @@ def test_evaluate_watchlist_enriches_sector_archetype(mock_fetch_tech):
         "vol_ratio": 1.2,
         "rsi14": 55.0,
         "foreign_flow": {"net_val_bil": 15.0},
-        "trap_info": {"is_trap": False}
+        "trap_info": {"is_trap": False},
     }
 
     watchlist = [
         {"symbol": "FPT", "target_buy": 120.0, "note": "Công nghệ thông tin"},
         {"symbol": "HPG", "target_buy": 26.0, "note": "Sản xuất thép"},
-        {"symbol": "TCB", "target_buy": 22.0, "note": "Ngân hàng TMCP"}
+        {"symbol": "TCB", "target_buy": 22.0, "note": "Ngân hàng TMCP"},
     ]
 
     df = evaluate_watchlist(watchlist)
@@ -189,7 +192,7 @@ def test_sync_auto_watchlist_enriches_sector_archetype(tmp_path):
             "conviction_score": 88.0,
             "mos_pct": 22.0,
             "status": "RECOMMEND_BUY",
-            "sector": "Công nghệ"
+            "sector": "Công nghệ",
         },
         {
             "symbol": "BSR",
@@ -198,8 +201,8 @@ def test_sync_auto_watchlist_enriches_sector_archetype(tmp_path):
             "conviction_score": 80.0,
             "mos_pct": 18.0,
             "status": "RECOMMEND_BUY",
-            "sector": "Dầu khí"
-        }
+            "sector": "Dầu khí",
+        },
     ]
 
     updated = sync_auto_watchlist(opportunities=mock_opportunities, filepath=str(wl_file), max_auto=5)

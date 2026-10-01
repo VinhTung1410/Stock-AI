@@ -60,7 +60,11 @@ import os
 import requests
 
 # Use API key from prompt if available, fallback to environment variable
-api_key = "<YOUR_DYNAMICALLY_INJECTED_API_KEY>" if "<YOUR_DYNAMICALLY_INJECTED_API_KEY>" != "" else os.environ.get("VNSTOCK_API_KEY")
+api_key = (
+    "<YOUR_DYNAMICALLY_INJECTED_API_KEY>"
+    if "<YOUR_DYNAMICALLY_INJECTED_API_KEY>" != ""
+    else os.environ.get("VNSTOCK_API_KEY")
+)
 setup_api_key(api_key)
 
 try:
@@ -92,7 +96,8 @@ Based on the detected tier (`TIER_DETECTED`):
 * **If yes:** Instruct the Agent to dynamically load the setup instructions into context using:
   ```python
   from vnstock.core.utils.agents import load_skill
-  load_skill('env-setup')
+
+  load_skill("env-setup")
   ```
   Follow the steps provided in that skill for environment selection, package installation, and exclusive files downloading.
 * Run a background script to verify the license via `vnii.license.LicenseVerifier` once installation completes.

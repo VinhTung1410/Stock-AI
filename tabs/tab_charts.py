@@ -23,7 +23,7 @@ def render_market_header_card(df_vnindex: pd.DataFrame):
 
     # Tính toán thanh khoản & độ rộng thị trường
     vol_shares = int(df_vnindex["volume"].iloc[-1]) if "volume" in df_vnindex.columns else 697692122
-    val_bil = (vol_shares * latest_idx * 0.0000135)
+    val_bil = vol_shares * latest_idx * 0.0000135
     if val_bil < 10000 or val_bil > 35000:
         val_bil = 16961.869
 
@@ -158,16 +158,19 @@ def render_tab_market_and_charts(raw_portfolio: list, raw_watchlist: list = None
     col_select, col_info = st.columns([1, 2])
     with col_select:
         selected_symbol = st.selectbox(
-            "🎯 Chọn mã cần phân tích kỹ thuật:",
-            symbols,
-            index=0,
-            key="market_chart_symbol_selector"
+            "🎯 Chọn mã cần phân tích kỹ thuật:", symbols, index=0, key="market_chart_symbol_selector"
         )
     with col_info:
         if selected_symbol == "VNINDEX":
-            st.markdown("<div style='padding-top: 28px; font-size: 13px; color: #64748b;'>📉 Đang hiển thị nến kỹ thuật <b>Chỉ số VN-Index</b> sàn HOSE.</div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div style='padding-top: 28px; font-size: 13px; color: #64748b;'>📉 Đang hiển thị nến kỹ thuật <b>Chỉ số VN-Index</b> sàn HOSE.</div>",
+                unsafe_allow_html=True,
+            )
         else:
-            st.markdown(f"<div style='padding-top: 28px; font-size: 13px; color: #64748b;'>📈 Đang hiển thị nến kỹ thuật cổ phiếu <b>{selected_symbol}</b>.</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='padding-top: 28px; font-size: 13px; color: #64748b;'>📈 Đang hiển thị nến kỹ thuật cổ phiếu <b>{selected_symbol}</b>.</div>",
+                unsafe_allow_html=True,
+            )
 
     # 4. LẤY DỮ LIỆU NẾN & HIỂN THỊ TRADINGVIEW
     if selected_symbol == "VNINDEX":
@@ -176,13 +179,18 @@ def render_tab_market_and_charts(raw_portfolio: list, raw_watchlist: list = None
         df_chart = get_stock_chart_data(selected_symbol)
 
     if df_chart is not None and not df_chart.empty:
-        st.markdown("""
+        st.markdown(
+            """
         <div style="background: #1e222d; border: 1px solid #2a2e39; border-radius: 12px; padding: 4px; box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08); margin-bottom: 12px;">
-        """, unsafe_allow_html=True)
+        """,
+            unsafe_allow_html=True,
+        )
         tv_html = generate_tradingview_html(df_chart, selected_symbol)
         components.html(tv_html, height=530)
         st.markdown("</div>", unsafe_allow_html=True)
-        st.caption("✨ **Mẹo sử dụng:** Chọn khung thời gian (Phút, Giờ, Ngày, Tuần, Tháng) ở header. Bật/tắt chỉ báo **MA, EMA, MACD, RSI, BOLL** bên dưới đáy. Rê chuột trên nến để xem chi tiết từng chỉ báo. Lăn chuột để phóng to/thu nhỏ.")
+        st.caption(
+            "✨ **Mẹo sử dụng:** Chọn khung thời gian (Phút, Giờ, Ngày, Tuần, Tháng) ở header. Bật/tắt chỉ báo **MA, EMA, MACD, RSI, BOLL** bên dưới đáy. Rê chuột trên nến để xem chi tiết từng chỉ báo. Lăn chuột để phóng to/thu nhỏ."
+        )
     else:
         st.error(f"Chưa có dữ liệu nến kỹ thuật cho mã {selected_symbol}.")
 
@@ -190,12 +198,14 @@ def render_tab_market_and_charts(raw_portfolio: list, raw_watchlist: list = None
     if df_vnindex is not None and not df_vnindex.empty:
         st.write("")
         with st.expander("📊 Bội số Định giá P/E & P/B Lịch sử VN-Index (Nhấn để xem chi tiết)", expanded=False):
-            st.caption("💡 Không gian phân tích chuyên sâu lịch sử định giá VN-Index 600 ngày qua so với đường Trung bình (TB) và độ lệch chuẩn.")
+            st.caption(
+                "💡 Không gian phân tích chuyên sâu lịch sử định giá VN-Index 600 ngày qua so với đường Trung bình (TB) và độ lệch chuẩn."
+            )
             valuation_view = st.radio(
                 "📐 Bố cục hiển thị biểu đồ định giá:",
                 ["🖥️ Toàn cảnh P/E (Khuyên dùng)", "📈 Toàn cảnh P/B", "↔️ So sánh song song (2 Cột)"],
                 horizontal=True,
-                key="valuation_view_radio"
+                key="valuation_view_radio",
             )
 
             if valuation_view == "🖥️ Toàn cảnh P/E (Khuyên dùng)":
