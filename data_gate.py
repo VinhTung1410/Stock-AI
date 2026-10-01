@@ -39,6 +39,22 @@ EXCHANGE_DAILY_LIMITS = {
     "UPCOM": 0.15   # +/- 15.0%
 }
 
+# Phase 10: Real Estate & Holding Survival Gate Constants (TASK-0024, 0026)
+GATE_DEBT_OVERLOAD = "DEBT_OVERLOAD"
+GATE_REFINANCING_RISK = "REFINANCING_RISK"
+GATE_INTEREST_COVERAGE_CRITICAL = "INTEREST_COVERAGE_CRITICAL"
+GATE_SOTP_DISCOUNT_CRITICAL = "SOTP_DISCOUNT_CRITICAL"
+GATE_SOTP_ANOMALY = "SOTP_ANOMALY"
+
+# Phase 11: Cyclical Sector Risk Flags Constants (TASK-0029, 0032)
+FLAG_PEAK_EARNINGS_TRAP = "PEAK_EARNINGS_TRAP"
+FLAG_INVENTORY_RISK = "INVENTORY_RISK"
+FLAG_MARGIN_TREND_DOWN = "MARGIN_TREND_DOWN"
+FLAG_POLICY_EXPIRING = "POLICY_EXPIRING"
+FLAG_SINGLE_PLANT_RISK = "SINGLE_PLANT_RISK"
+FLAG_CHINA_DUMPING_RISK = "CHINA_DUMPING_RISK"
+FLAG_INVENTORY_BUILDUP = "INVENTORY_BUILDUP"
+
 
 def reconcile_price(
     tech_data: Optional[Dict[str, Any]] = None,
@@ -236,6 +252,234 @@ def reconcile_valuation_sanity(symbol: str, fin_data: Optional[Dict[str, Any]] =
     if not (lo <= pb_val <= hi):
         return [f"P/B={pb_val} ngoài ngưỡng an toàn ngành [{lo}, {hi}]. CẦN XÁC MINH THỦ CÔNG."]
     return []
+
+
+def _check_debt_overload(norm_ebitda: Any, net_debt: Any) -> Tuple[bool, Optional[str]]:
+    """Kiểm tra Gate 1: Net Debt / Normalized EBITDA > 5.0x (S3776 Refactor)."""
+    if norm_ebitda is None or net_debt is None:
+        return False, None
+    try:
+        ebitda_val = float(norm_ebitda)
+        nd_val = float(net_debt)
+        if ebitda_val <= 0.0 and nd_val > 0.0:
+            return True, f"Net Debt={nd_val:.1f} tỷ trong khi Normalized EBITDA <= 0 ({GATE_DEBT_OVERLOAD}). CHẶN MUA."
+        if ebitda_val > 0.0:
+            leverage = nd_val / ebitda_val
+            if leverage > 5.0:
+                return True, f"Net Debt / Normalized EBITDA = {leverage:.1f}x > 5.0x ({GATE_DEBT_OVERLOAD}). CHẶN MUA."
+    except (ValueError, TypeError):
+        pass
+    return False, None
+
+
+def _check_refinancing_risk(st_debt: Any, tot_debt: Any) -> Tuple[Optional[str], float]:
+    """Kiểm tra Gate 2: Nợ ngắn hạn / Tổng nợ > 40% (S3776 Refactor)."""
+    if st_debt is None or tot_debt is None:
+        return None, 0.0
+    try:
+        st_val = float(st_debt)
+        tot_val = float(tot_debt)
+        if tot_val > 0.0 and (st_val / tot_val) > 0.40:
+            re_pct = (st_val / tot_val) * 100
+            msg = f"Nợ ngắn hạn / Tổng nợ = {re_pct:.1f}% > 40% ({GATE_REFINANCING_RISK}). Chiết khấu FV 10%."
+            return msg, 0.10
+    except (ValueError, TypeError):
+        pass
+    return None, 0.0
+
+
+def _check_interest_coverage(norm_ebitda: Any, int_exp: Any) -> Tuple[bool, Optional[str]]:
+    """Kiểm tra Gate 3: Normalized EBITDA / Chi phí lãi vay < 1.5x (S3776 Refactor)."""
+    if norm_ebitda is None or int_exp is None:
+        return False, None
+    try:
+        ebitda_val = float(norm_ebitda)
+        int_val = float(int_exp)
+        if int_val > 0.0:
+            cov = ebitda_val / int_val
+            if cov < 1.5:
+                return True, f"Normalized EBITDA / Lãi vay = {cov:.2f}x < 1.5x ({GATE_INTEREST_COVERAGE_CRITICAL}). CHẶN MUA."
+    except (ValueError, TypeError):
+        pass
+    return False, None
+
+
+def _check_sotp_gate(sotp_ratio: Any) -> Tuple[bool, Optional[str], Optional[str]]:
+    """Kiểm tra SOTP Holding sanity: < 30% chặn MUA, < 50% cảnh báo (S3776 Refactor)."""
+    if sotp_ratio is None:
+        return False, None, None
+    try:
+        sr_val = float(sotp_ratio)
+        if sr_val < 0.30:
+            return True, f"SOTP Ratio = {sr_val*100:.1f}% < 30% ({GATE_SOTP_DISCOUNT_CRITICAL}). CHẶN MUA.", None
+        if sr_val < 0.50:
+            return False, None, f"SOTP Ratio = {sr_val*100:.1f}% < 50% ({GATE_SOTP_ANOMALY}). Cần thận trọng chiết khấu tập đoàn."
+    except (ValueError, TypeError):
+        pass
+    return False, None, None
+
+
+def reconcile_real_estate_survival_gate(
+    symbol: str,
+    fin_data: Optional[Dict[str, Any]] = None,
+    sector: str = "",
+) -> Dict[str, Any]:
+    """Kiểm tra 3 chốt chặn sinh tồn tài chính cho BĐS và holding company (TASK-0026, TASK-0024).
+
+    1. Net Debt / Normalized EBITDA > 5.0x -> DEBT_OVERLOAD -> Chặn MUA
+    2. Nợ ngắn hạn / Tổng nợ > 40% -> REFINANCING_RISK -> Chiết khấu FV 10%
+    3. Normalized EBITDA / Chi phí lãi vay < 1.5x -> INTEREST_COVERAGE_CRITICAL -> Chặn MUA
+    4. SOTP Ratio < 30% -> SOTP_DISCOUNT_CRITICAL -> Chặn MUA
+    """
+    empty_result = {
+        "survival_passed": True,
+        "has_critical_block": False,
+        "issues": [],
+        "warnings": [],
+        "applied_discounts": 0.0,
+    }
+    if not fin_data:
+        return empty_result
+
+    sym = (symbol or "").strip().upper()
+    sec = (sector or "").lower()
+    is_re_or_holding = (
+        sym in ("VIC", "VHM", "NVL", "PDR", "DIG", "DXG", "KDH", "NLG", "MSN", "REE", "GEX")
+        or any(r in sec for r in ("bất động sản", "địa ốc", "holding"))
+    )
+    if not is_re_or_holding:
+        return empty_result
+
+    issues: List[str] = []
+    warnings: List[str] = []
+    has_critical_block = False
+    fv_discount = 0.0
+
+    norm_ebitda = fin_data.get("normalized_ebitda", fin_data.get("ebitda"))
+    net_debt = fin_data.get("net_debt")
+
+    # Gate 1
+    g1_block, g1_issue = _check_debt_overload(norm_ebitda, net_debt)
+    if g1_block and g1_issue:
+        has_critical_block = True
+        issues.append(g1_issue)
+
+    # Gate 2
+    g2_warn, g2_disc = _check_refinancing_risk(fin_data.get("short_term_debt"), fin_data.get("total_debt"))
+    if g2_warn:
+        warnings.append(g2_warn)
+        fv_discount += g2_disc
+
+    # Gate 3
+    g3_block, g3_issue = _check_interest_coverage(norm_ebitda, fin_data.get("interest_expense"))
+    if g3_block and g3_issue:
+        has_critical_block = True
+        issues.append(g3_issue)
+
+    # Gate 4: SOTP
+    sotp_block, sotp_issue, sotp_warn = _check_sotp_gate(fin_data.get("sotp_ratio"))
+    if sotp_block and sotp_issue:
+        has_critical_block = True
+        issues.append(sotp_issue)
+    if sotp_warn:
+        warnings.append(sotp_warn)
+
+    return {
+        "survival_passed": not has_critical_block,
+        "has_critical_block": has_critical_block,
+        "issues": issues,
+        "warnings": warnings,
+        "applied_discounts": round(fv_discount, 2),
+    }
+
+
+def _check_oil_gas_risks(sym: str, fin: Dict[str, Any]) -> Tuple[List[str], List[str], float]:
+    """Kiểm tra rủi ro đặc thù ngành Dầu khí / Lọc hóa dầu (TASK-0032)."""
+    flags: List[str] = []
+    warnings: List[str] = []
+    discount = 0.0
+
+    dsi = fin.get("days_inventory", fin.get("dsi"))
+    if dsi is not None and float(dsi) > 45.0:
+        flags.append(FLAG_INVENTORY_RISK)
+        warnings.append(f"Số ngày tồn kho DSI={float(dsi):.0f}d > 45 ngày ({FLAG_INVENTORY_RISK}). Rủi ro trích lập giảm giá khi dầu giảm.")
+        discount += 0.05
+
+    m_down = fin.get("margin_quarters_down", 0)
+    m_trend = str(fin.get("gross_margin_trend", "")).upper()
+    if m_trend == "DOWN" or (isinstance(m_down, (int, float)) and m_down >= 2):
+        flags.append(FLAG_MARGIN_TREND_DOWN)
+        warnings.append(f"Biên lợi nhuận gộp giảm liên tiếp >= 2 quý ({FLAG_MARGIN_TREND_DOWN}). Crack spread bị thu hẹp.")
+        discount += 0.10
+
+    if fin.get("policy_expiring") is True or (sym == "BSR" and fin.get("check_policy_2026", True)):
+        flags.append(FLAG_POLICY_EXPIRING)
+        warnings.append(f"Rủi ro chính sách ({FLAG_POLICY_EXPIRING}): Ưu đãi thuế hoặc cơ chế giá sắp đáo hạn.")
+        discount += 0.05
+
+    if fin.get("single_plant_risk") is True or (sym == "BSR" and fin.get("check_plant_risk", True)):
+        flags.append(FLAG_SINGLE_PLANT_RISK)
+        warnings.append(f"Rủi ro vận hành đơn lẻ ({FLAG_SINGLE_PLANT_RISK}): Doanh thu phụ thuộc 100% vào cụm nhà máy duy nhất.")
+        discount += 0.05
+
+    return flags, warnings, discount
+
+
+def _check_steel_risks(sym: str, fin: Dict[str, Any]) -> Tuple[List[str], List[str], float]:
+    """Kiểm tra rủi ro đặc thù ngành Thép (TASK-0032)."""
+    flags: List[str] = []
+    warnings: List[str] = []
+    discount = 0.0
+
+    if fin.get("china_dumping_risk") is True or (sym in ("HPG", "HSG", "NKG") and fin.get("check_dumping", False)):
+        flags.append(FLAG_CHINA_DUMPING_RISK)
+        warnings.append(f"Áp lực cạnh tranh thép nhập khẩu giá rẻ ({FLAG_CHINA_DUMPING_RISK}). Biên gộp HRC bị ép giảm.")
+        discount += 0.05
+
+    inv_qoq = fin.get("inventory_growth_qoq")
+    if (inv_qoq is not None and float(inv_qoq) > 0.20) or fin.get("inventory_buildup") is True:
+        flags.append(FLAG_INVENTORY_BUILDUP)
+        warnings.append(f"Tồn kho thành phẩm dồn ứ ({FLAG_INVENTORY_BUILDUP}). Tốc độ tiêu thụ chậm lại.")
+        discount += 0.05
+
+    return flags, warnings, discount
+
+
+def check_sector_risk_flags(
+    symbol: str,
+    fin_data: Optional[Dict[str, Any]] = None,
+    sector: str = "",
+) -> Dict[str, Any]:
+    """Kiểm tra các rủi ro đặc thù ngành cho nhóm CYCLICAL (TASK-0032)."""
+    empty_res = {
+        "risk_flags": [],
+        "warnings": [],
+        "fv_discount": 0.0,
+        "is_cyclical": False,
+    }
+    if not fin_data:
+        return empty_res
+
+    sym = (symbol or "").strip().upper()
+    sec = (sector or "").lower()
+
+    is_oil_gas = sym in ("BSR", "PVD", "PVS", "PVC", "PVB", "PLX", "OIL") or any(o in sec for o in ("dầu khí", "lọc dầu", "xăng dầu"))
+    is_steel = sym in ("HPG", "HSG", "NKG", "TLH", "POM", "VGS") or "thép" in sec
+
+    if not (is_oil_gas or is_steel):
+        return empty_res
+
+    if is_oil_gas:
+        flags, warnings, discount = _check_oil_gas_risks(sym, fin_data)
+    else:
+        flags, warnings, discount = _check_steel_risks(sym, fin_data)
+
+    return {
+        "risk_flags": flags,
+        "warnings": warnings,
+        "fv_discount": round(discount, 2),
+        "is_cyclical": True,
+    }
 
 
 def _classify_source_tier(source: str, tag: str) -> str:
@@ -516,6 +760,18 @@ def reconcile_data(
     if cap_issues:
         conflicting_data.extend(cap_issues)
 
+    # 4b. Real Estate & Holding Survival Gate (Phase 10 / TASK-0024, 0026)
+    survival_res = reconcile_real_estate_survival_gate(sym, fin_data, sec_str)
+    if survival_res.get("issues"):
+        conflicting_data.extend(survival_res["issues"])
+    if survival_res.get("warnings"):
+        stale_data.extend(survival_res["warnings"])
+
+    # 4c. Cyclical Sector Risk Flags (Phase 11 / TASK-0032)
+    sector_risk_res = check_sector_risk_flags(sym, fin_data, sec_str)
+    if sector_risk_res.get("warnings"):
+        stale_data.extend(sector_risk_res["warnings"])
+
     # 5. News Catalysts
     reconciled_news, _ = reconcile_news_freshness(news)
 
@@ -533,9 +789,14 @@ def reconcile_data(
         cap_conflicts=cap_issues
     )
 
-    # Determine Gate Status: Hard lock if stale data or conflicts
+    # Determine Gate Status: Hard lock if stale data, conflicts, or survival failure
     is_stale_data = bool(fin_stale) or bool(price_stale_issues)
-    has_conflict = bool(val_issues) or bool(cap_issues) or price_status == STATUS_CONFLICT
+    has_conflict = (
+        bool(val_issues)
+        or bool(cap_issues)
+        or price_status == STATUS_CONFLICT
+        or survival_res.get("has_critical_block", False)
+    )
 
     gate_passed, recommendation_allowed, badge = _evaluate_gate_decision(
         quality_tier, has_conflict, is_stale_data, quality_score
@@ -563,6 +824,8 @@ def reconcile_data(
         "missing_data": missing_data,
         "conflicting_data": conflicting_data,
         "stale_data": stale_data,
+        "survival_gate": survival_res,
+        "sector_risks": sector_risk_res,
         "news": reconciled_news,
         "source_tiers": source_tiers
     }

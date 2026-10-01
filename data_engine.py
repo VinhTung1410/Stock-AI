@@ -2542,6 +2542,226 @@ def get_financial_ratios(symbol: str) -> dict:
         return {}
 
 
+# =============================================================================
+# PHASE 10: REAL ESTATE & HOLDING COMPANY VALUATION HELPERS (TASK-0024, 0025, 0026)
+# =============================================================================
+
+EARNINGS_QUALITY_HIGH = "EARNINGS_QUALITY_HIGH"
+EARNINGS_QUALITY_MEDIUM = "EARNINGS_QUALITY_MEDIUM"
+EARNINGS_QUALITY_LOW = "EARNINGS_QUALITY_LOW"
+EARNINGS_QUALITY_NEGATIVE_PBT = "EARNINGS_QUALITY_NEGATIVE_PBT"
+
+HOLDING_SUBSIDIARY_REGISTRY: dict[str, dict[str, Any]] = {
+    "VIC": {
+        "holding_name": "Tập đoàn Vingroup",
+        "listed_subsidiaries": [
+            {"symbol": "VHM", "ownership": 0.623, "name": "Vinhomes", "shares_bil": 4.35},
+            {"symbol": "VRE", "ownership": 0.188, "name": "Vincom Retail", "shares_bil": 2.27},
+        ],
+        "unlisted_segments": ["VinFast", "Vinpearl", "Vinmec", "Vinschool", "VinBigData"],
+        "cash_cow_segments": ["Vinhomes", "Vincom Retail", "Vinpearl", "Vinmec", "Vinschool"],
+        "cash_burner_segments": ["VinFast", "VinSpeed", "VinEnergo", "VinBrain"],
+    },
+    "MSN": {
+        "holding_name": "Tập đoàn Masan",
+        "listed_subsidiaries": [
+            {"symbol": "MCH", "ownership": 0.700, "name": "Masan Consumer", "shares_bil": 0.72},
+            {"symbol": "MSR", "ownership": 0.864, "name": "Masan High-Tech Materials", "shares_bil": 1.10},
+        ],
+        "unlisted_segments": ["WinCommerce", "Masan MEATLife", "Phuc Long"],
+        "cash_cow_segments": ["Masan Consumer", "WinCommerce"],
+        "cash_burner_segments": ["Masan High-Tech Materials", "Tech Ventures"],
+    },
+    "REE": {
+        "holding_name": "Cơ Điện Lạnh REE",
+        "listed_subsidiaries": [
+            {"symbol": "VSH", "ownership": 0.505, "name": "Thủy điện Vĩnh Sơn Sông Hinh", "shares_bil": 0.24},
+            {"symbol": "CHP", "ownership": 0.240, "name": "Thủy điện Miền Trung", "shares_bil": 0.14},
+        ],
+        "unlisted_segments": ["REE Water", "REE Energy", "REE Property", "M&E"],
+        "cash_cow_segments": ["REE Property", "Thủy điện VSH", "M&E"],
+        "cash_burner_segments": ["Năng lượng tái tạo mới"],
+    },
+    "GEX": {
+        "holding_name": "Tập đoàn Gelex",
+        "listed_subsidiaries": [
+            {"symbol": "VGC", "ownership": 0.502, "name": "Viglacera", "shares_bil": 0.45},
+            {"symbol": "GEE", "ownership": 0.800, "name": "Điện lực Gelex", "shares_bil": 0.30},
+        ],
+        "unlisted_segments": ["Gelex Infra", "Hạ tầng KCN"],
+        "cash_cow_segments": ["Thiết bị điện", "Viglacera"],
+        "cash_burner_segments": ["Đầu tư hạ tầng mới"],
+    },
+}
+
+
+def get_holding_subsidiary_structure(symbol: str) -> dict[str, Any]:
+    """Lấy cấu trúc công ty con niêm yết và phân mảng của tập đoàn đa ngành (TASK-0024)."""
+    sym = (symbol or "").strip().upper()
+    info = HOLDING_SUBSIDIARY_REGISTRY.get(sym)
+    if not info:
+        return {"symbol": sym, "is_holding": False, "listed_subsidiaries": [], "unlisted_segments": []}
+    return {
+        "symbol": sym,
+        "is_holding": True,
+        "holding_name": info.get("holding_name", sym),
+        "listed_subsidiaries": list(info.get("listed_subsidiaries", [])),
+        "unlisted_segments": list(info.get("unlisted_segments", [])),
+        "cash_cow_segments": list(info.get("cash_cow_segments", [])),
+        "cash_burner_segments": list(info.get("cash_burner_segments", [])),
+    }
+
+
+def calculate_core_earnings_ratio(
+    gross_profit: float | None,
+    sga_expense: float | None,
+    pbt: float | None,
+) -> dict[str, Any]:
+    """Tính toán tỷ số lợi nhuận cốt lõi (Core Earnings Ratio) và xếp hạng chất lượng (TASK-0025).
+
+    Core Earnings Ratio = (Gross Profit - SG&A) / PBT
+    - >= 70%: Lợi nhuận cốt lõi cao, bền vững.
+    - 40% - 70%: Lợi nhuận cốt lõi trung bình.
+    - < 40%: Lợi nhuận chủ yếu từ hoạt động tài chính/bán tài sản một lần (phạt chiết khấu FV 15%).
+    - PBT <= 0: Âm lợi nhuận trước thuế (phạt chiết khấu FV 20%).
+    """
+    if pbt is None or gross_profit is None or sga_expense is None:
+        return {
+            "core_earnings_ratio": None,
+            "quality_tier": EARNINGS_QUALITY_MEDIUM,
+            "warning": "MISSING_EARNINGS_COMPONENTS",
+            "fv_discount": 0.0,
+            "confidence": "MEDIUM",
+            "core_operating_profit": None,
+        }
+
+    try:
+        pbt_val = float(pbt)
+        gp_val = float(gross_profit)
+        sga_val = float(sga_expense)
+    except (ValueError, TypeError):
+        return {
+            "core_earnings_ratio": None,
+            "quality_tier": EARNINGS_QUALITY_MEDIUM,
+            "warning": "INVALID_NUMERIC_EARNINGS",
+            "fv_discount": 0.0,
+            "confidence": "MEDIUM",
+            "core_operating_profit": None,
+        }
+
+    core_operating_profit = gp_val - sga_val
+
+    if pbt_val <= 0.0:
+        return {
+            "core_earnings_ratio": 0.0,
+            "quality_tier": EARNINGS_QUALITY_LOW,
+            "warning": EARNINGS_QUALITY_NEGATIVE_PBT,
+            "fv_discount": 0.20,
+            "confidence": "LOW",
+            "core_operating_profit": round(core_operating_profit, 2),
+        }
+
+    ratio = core_operating_profit / pbt_val
+    ratio_rounded = round(ratio, 4)
+
+    if ratio >= 0.70:
+        tier = EARNINGS_QUALITY_HIGH
+        warning = None
+        discount = 0.0
+        conf = "HIGH"
+    elif ratio >= 0.40:
+        tier = EARNINGS_QUALITY_MEDIUM
+        warning = None
+        discount = 0.0
+        conf = "MEDIUM"
+    else:
+        tier = EARNINGS_QUALITY_LOW
+        warning = EARNINGS_QUALITY_LOW
+        discount = 0.15
+        conf = "LOW"
+
+    return {
+        "core_earnings_ratio": ratio_rounded,
+        "quality_tier": tier,
+        "warning": warning,
+        "fv_discount": discount,
+        "confidence": conf,
+        "core_operating_profit": round(core_operating_profit, 2),
+    }
+
+
+def calculate_normalized_ebitda(
+    reported_ebitda: float | None,
+    abnormal_fin_income: float | None = 0.0,
+    other_profit: float | None = 0.0,
+) -> float:
+    """Chuẩn hóa EBITDA bóc tách thu nhập tài chính bất thường và lãi bán tài sản một lần (TASK-0026)."""
+    if reported_ebitda is None:
+        return 0.0
+    try:
+        ebitda = float(reported_ebitda)
+        fin_inc = float(abnormal_fin_income or 0.0)
+        oth_prof = float(other_profit or 0.0)
+        norm_ebitda = ebitda - fin_inc - oth_prof
+        return round(max(norm_ebitda, 0.0), 2)
+    except (ValueError, TypeError):
+        return 0.0
+
+
+# =============================================================================
+# PHASE 11: CYCLICAL VALUATION HELPERS (TASK-0029, 0030)
+# =============================================================================
+
+def calculate_trimmed_normalized_eps(
+    eps_history: list[float] | None,
+) -> dict[str, Any]:
+    """Tính Normalized EPS bằng phương pháp Trimmed Mean 5 năm (TASK-0030).
+
+    Loại bỏ năm cao nhất (đỉnh bất thường) và năm thấp nhất (đáy sự cố) để
+    tìm ra mức EPS vận hành cốt lõi qua toàn bộ chu kỳ hàng hóa.
+    """
+    empty_result: dict[str, Any] = {
+        "normalized_eps": None,
+        "raw_mean_eps": None,
+        "sample_size": 0,
+        "is_normalized": False,
+    }
+    if not eps_history:
+        return empty_result
+
+    try:
+        valid_eps = [float(e) for e in eps_history if e is not None]
+    except (ValueError, TypeError):
+        return empty_result
+
+    n = len(valid_eps)
+    if n == 0:
+        return empty_result
+
+    raw_mean = sum(valid_eps) / n
+    if n < 3:
+        return {
+            "normalized_eps": round(raw_mean, 2),
+            "raw_mean_eps": round(raw_mean, 2),
+            "sample_size": n,
+            "is_normalized": False,
+        }
+
+    sorted_eps = sorted(valid_eps)
+    trimmed = sorted_eps[1:-1]
+    norm_eps = sum(trimmed) / len(trimmed)
+
+    return {
+        "normalized_eps": round(norm_eps, 2),
+        "raw_mean_eps": round(raw_mean, 2),
+        "sample_size": n,
+        "is_normalized": True,
+        "min_removed": sorted_eps[0],
+        "max_removed": sorted_eps[-1],
+    }
+
+
+
 
 if __name__ == "__main__":
     print("=== KIỂM TRA SPRINT 1: DATA ENGINE ===")

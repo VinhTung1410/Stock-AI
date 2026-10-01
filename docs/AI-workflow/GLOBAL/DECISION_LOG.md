@@ -388,3 +388,81 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
      - Xây dựng 24 unit tests chuyên biệt trong `tests/test_task_0018_context_engine.py` (23 passed, 1 env-skip).
      - `ruff check . --output-format=github` đạt exit code 0.
 - **Hệ quả:** Bổ sung trọn vẹn tầng ngữ cảnh thị trường hàng ngày từ TCBS cho AI Analyst mà vẫn giữ vững 100% tính toàn vẹn và kỷ luật thép của Quant Gate; hoàn tất thành công Phase 8 (v6.3).
+
+---
+
+### [ADR-022] Cải Tổ Toàn Diện Mô Hình Định Giá BĐS & Tập Đoàn Đa Ngành Bằng BCTC Thực (TASK-0024 -> 0028 / v7.0)
+- **Ngày quyết định:** 2026-10-01
+- **Trạng thái:** `APPROVED / IMPLEMENTED`
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề (Real Estate Valuation Blind Spots & Naive Multiple Elimination):**
+  1. Mô hình định giá BĐS trước đây trong `quant_valuation.py` sử dụng công thức giả định `current_price * 1.10 * leverage_penalty` và VIC `current_price * 1.15`, hoàn toàn không dựa vào BCTC thực, khiến Fair Value chạy theo thị giá và làm méo mó ý nghĩa của Margin of Safety (MoS).
+  2. Bỏ qua chiết khấu tập đoàn (Holding Discount): VIC có tới 63.8% vốn hóa trả cho mảng chưa niêm yết (VinFast, Vinpearl...). Nếu mảng niêm yết chiếm quá ít mà mảng chưa niêm yết đốt tiền, hệ thống vẫn khuyến nghị MUA là rủi ro nghiêm trọng.
+  3. Mù mờ chất lượng lợi nhuận: LNTT của VIC có tới 86% từ bán tài sản một lần, chỉ 14% từ kinh doanh cốt lõi. Bot đọc EPS thô và định giá rẻ mà không biết đây là "bán đồ trong nhà".
+  4. Bẫy nợ vay & EBITDA chưa chuẩn hóa: Nợ ròng / EBITDA thực tế lên tới 7-8x trong khi EBITDA công bố phồng to do lãi tài chính một lần.
+  5. Thiếu P/B Guardrail cho BĐS: P/B của VIC lên tới 10.5x (> Mean + 3σ) nhưng hệ thống vẫn có thể xếp loại "HẤP DẪN".
+- **Quyết định lựa chọn:**
+  1. **Thay thế định giá naive bằng BCTC thực (`quant_valuation.py`):**
+     - Sử dụng Book Value Per Share (BVPS thực tế) và Target P/B chuẩn hóa dựa trên ROE (1.05x - 1.45x).
+     - Chiết khấu cấu trúc nợ, chiết khấu holding, chiết khấu chất lượng lợi nhuận và chiết khấu P/B guardrail (tối đa trần 50%).
+  2. **SOTP Sanity Check (`check_sotp_holding_sanity()` - TASK-0024):**
+     - Tính tỷ lệ $\text{SOTP Ratio} = \sum (\text{Vốn hóa CTC niêm yết} \times \% \text{ sở hữu}) / \text{Vốn hóa mẹ}$.
+     - Nếu $< 50\% \rightarrow$ Cắm cờ `SOTP_ANOMALY`, hạ confidence = LOW.
+     - Nếu $< 30\% \rightarrow$ Bật cờ `SOTP_DISCOUNT_CRITICAL`, khóa khuyến nghị MUA, chiết khấu 20% Fair Value.
+  3. **Quality of Earnings Gate (`calculate_core_earnings_ratio()` - TASK-0025):**
+     - Core Ratio $= (\text{Gross Profit} - \text{SG&A}) / \text{PBT}$.
+     - Nếu $< 40\% \rightarrow$ Cắm cờ `EARNINGS_QUALITY_LOW`, chiết khấu Fair Value 15%, hạ confidence = LOW.
+     - Nếu PBT $\le 0 \rightarrow$ Cắm cờ `EARNINGS_QUALITY_NEGATIVE_PBT`, chiết khấu 20%.
+  4. **Survival Gate (`reconcile_real_estate_survival_gate()` - TASK-0026):**
+     - Chuẩn hóa EBITDA: $\text{Normalized EBITDA} = \text{EBITDA} - \text{Thu nhập tài chính bất thường} - \text{Lãi bán tài sản}$.
+     - Gate 1: Net Debt / Normalized EBITDA $> 5.0x \rightarrow$ Khóa MUA + cờ `DEBT_OVERLOAD`.
+     - Gate 2: Nợ ngắn hạn / Tổng nợ $> 40\% \rightarrow$ Chiết khấu Fair Value 10% + cờ `REFINANCING_RISK`.
+     - Gate 3: Normalized EBITDA / Lãi vay $< 1.5x \rightarrow$ Khóa MUA + cờ `INTEREST_COVERAGE_CRITICAL`.
+  5. **Mở rộng P/B Mean Reversion Guardrail cho REAL_ESTATE (TASK-0028):**
+     - Nếu P/B $> \text{Mean} + 3\sigma \rightarrow$ Khóa trần rating tối đa là "ĐỊNH GIÁ ĐỦ" (cấm xếp HẤP DẪN / RẤT RẺ), cắm cờ `PB_EXTREME_PREMIUM`, hạ confidence = LOW, chiết khấu 15%.
+     - Nếu P/B $> \text{Mean} + 2\sigma \rightarrow$ Cắm cờ `PB_ELEVATED_PREMIUM`, chiết khấu 10%.
+  6. **Mở rộng Prompt AI Analyst (TASK-0027):**
+     - Yêu cầu phân tích 3 chiều: Cash Cow vs Cash Burner, Runway tự nuôi, và Cross-Subsidy Risk khi phân tích holding company.
+  7. **Kiểm thử & Đảm bảo Chất lượng:**
+     - Bộ 21 unit tests tại `tests/test_task_0024_real_estate_valuation.py` đạt 100% pass.
+     - `ruff check . --output-format=github` đạt exit code 0.
+- **Hệ quả:** Loại bỏ hoàn toàn 5 điểm mù trong định giá BĐS & holding company; hệ thống có chốt chặn định lượng vững chắc chống bẫy giá trị và bẫy nợ; hoàn tất xuất sắc Phase 10 (v7.0).
+
+---
+
+### [ADR-023] Cải Tổ Toàn Diện Mô Hình Định Giá Cổ Phiếu Chu Kỳ (Cyclical Valuation Overhaul - Dầu Khí, Thép, Hóa Chất) (TASK-0029 -> 0032 / v7.1)
+- **Ngày quyết định:** 2026-10-01
+- **Trạng thái:** `APPROVED / IMPLEMENTED`
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề (Bẫy P/E Đỉnh Chu Kỳ & Bài Học Nghiệp Vụ từ Case Study BSR):**
+  1. **Bẫy P/E thấp tại đỉnh chu kỳ (Peak Earnings Trap):** Cổ phiếu chu kỳ hàng hóa (Dầu khí, Thép, Hóa chất) thường hiển thị P/E rất hấp dẫn ($4x - 8x$) ngay tại đỉnh lợi nhuận khi crack spread hoặc giá hàng hóa đạt đỉnh do sự kiện bất khả kháng (như BSR hưởng lợi từ xung đột Hormuz). Hệ thống nhìn thấy P/E thấp sẽ lầm tưởng là cổ phiếu "rẻ", trong khi biên lợi nhuận gộp đã bắt đầu rơi dốc (ví dụ BSR lùi từ 20.7% xuống 14.7%).
+  2. **Biến dạng EPS do lợi nhuận đột biến một lần:** EPS trailing 12 tháng bị phồng to bởi khoản lợi nhuận đột biến một lần không thể lặp lại (+15.700 tỷ 6T đầu năm). Lợi nhuận bền vững thực chất chỉ từ 5.000–8.000 tỷ/năm (EPS chuẩn hóa 1.000–1.600đ so với trailing 3.974đ). Dùng EPS trailing tính Fair Value làm lệch hẳn giá trị nội tại.
+  3. **Mù mờ tương quan định giá quốc tế (Peer Comparison):** BSR giao dịch ở P/B = 2.0x — đắt gấp đôi trung vị các nhà máy lọc dầu châu Á (Asian Refineries median P/B ~ 1.0x, P/E ~ 4.1x). Bot không có dữ liệu peer nên không cảnh báo được mức định giá đắt đỏ này.
+  4. **Thiếu cảnh báo rủi ro đặc thù ngành (Sector Risk Flags):** Các rủi ro chí mạng của ngành lọc dầu (DSI tồn kho > 45 ngày gặp giá dầu giảm, biên gộp giảm liên tiếp, rủi ro hết hạn ưu đãi thuế 30/09/2026, rủi ro 1 cụm nhà máy duy nhất) và ngành thép (HRC Trung Quốc bán phá giá, tồn kho dồn ứ) chưa được lượng hóa vào Data Gate.
+  5. **Mô hình CYCLICAL cũ mang tính tượng trưng (Naive):** Sử dụng các hệ số nhân thô `current_price * 1.02` và `current_price * 1.20`.
+- **Quyết định lựa chọn:**
+  1. **Peak Earnings Trap Detector (`check_peak_earnings_trap()` - TASK-0029):**
+     - Nếu P/E < 6.5x VÀ Biên gộp giảm liên tiếp $\ge 2$ quý (hoặc xu hướng DOWN):
+       - `is_peak_trap = True`, khóa khuyến nghị MUA (`recommendation_allowed = False`).
+       - Bắt buộc gán nhãn `VAL_RATING_EXPENSIVE` ("🔴 ĐỊNH GIÁ QUÁ ĐẮT").
+       - Áp dụng chiết khấu Fair Value 20%, hạ `confidence = "LOW"`.
+  2. **Normalized Mid-Cycle EPS & Trimmed Mean 5Y (`calculate_trimmed_normalized_eps()` - TASK-0030):**
+     - Thu thập chuỗi EPS 5 năm, loại bỏ năm cao nhất (đỉnh bất thường) và năm thấp nhất (đáy sự cố) để tính Normalized EPS trung hòa chu kỳ.
+     - Tính `normalized_pe = current_price / normalized_eps`.
+     - Áp dụng hệ số Mid-Cycle multiple 8.5x trên Normalized EPS để xác định Fair Value nền tảng.
+  3. **Regional Peer Comparison Benchmark (`check_cyclical_peer_benchmark()` - TASK-0031):**
+     - Xây dựng mỏ neo `CYCLICAL_PEER_BENCHMARKS` cho 3 phân ngành: Lọc dầu (`OIL_REFINING`), Thép (`STEEL`), và Hóa chất / Phân bón (`CHEMICAL_FERTILIZER`).
+     - Nếu P/B $> \text{Median} \times 2.0 \rightarrow$ Bật cờ `PEER_PREMIUM_EXTREME`, khóa xếp hạng HẤP DẪN / RẤT RẺ (chuyển về tối đa ĐỊNH GIÁ ĐỦ), chiết khấu Fair Value 15%.
+     - Nếu P/B $> \text{Median} \times 1.5 \rightarrow$ Bật cờ `PEER_PREMIUM_WARNING`, chiết khấu Fair Value 10%.
+  4. **Sector-Specific Risk Flags (`check_sector_risk_flags()` - TASK-0032):**
+     - Dầu khí: Cảnh báo `INVENTORY_RISK` (DSI > 45 ngày), `MARGIN_TREND_DOWN`, `POLICY_EXPIRING` (hết hạn thuế 30/09/2026), `SINGLE_PLANT_RISK`.
+     - Thép: Cảnh báo `CHINA_DUMPING_RISK` và `INVENTORY_BUILDUP` (tồn kho tăng > 20% QoQ).
+     - Tích hợp tự động vào quy trình kiểm định `reconcile_data()` của `data_gate.py`.
+  5. **Cải tổ toàn diện nhánh CYCLICAL trong `quant_valuation.py`:**
+     - Tích hợp đồng bộ 4 cấu phần trên trong `evaluate_cyclical_valuation()` và liên kết vào `calculate_fair_value_and_mos()`.
+  6. **Kiểm thử & Đảm bảo Chất lượng:**
+     - Bộ 14 unit tests tại `tests/test_task_0029_cyclical_valuation.py` đạt 100% pass.
+     - Toàn bộ test suite 383 unit tests chạy mượt mà không lỗi.
+     - `ruff check . --output-format=github` đạt exit code 0.
+     - Tuân thủ nghiêm ngặt SonarCloud S3776 (Cognitive Complexity < 15), S8572 (`logging.exception`), S1192 (hằng số cờ rủi ro).
+- **Hệ quả:** Hệ thống chính thức làm chủ nghiệp vụ định giá chu kỳ hàng hóa theo chuẩn mực quỹ đầu tư chuyên nghiệp (CFA Institute standard); xóa bỏ triệt để bẫy P/E giá rẻ ảo tại đỉnh lợi nhuận; hoàn tất xuất sắc Phase 11 (v7.1).

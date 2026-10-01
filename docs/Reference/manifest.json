@@ -1,5 +1,5 @@
 {
-  "last_updated": "2026-09-30T18:52:43.613571+00:00",
+  "last_updated": "2026-10-01T19:12:46.548847+00:00",
   "files": [
     {
       "filename": "20260930_BC_PTKT.pdf",
@@ -44,6 +44,24 @@
       "relative_path": "Insider_Trading/20260930_Giao_dich_noi_bo_nganh_Ban_le.pdf",
       "type": "INSIDER_TRADING",
       "date": "2026-09-30",
+      "source": "TCBS",
+      "processed": false,
+      "context_output": null
+    },
+    {
+      "filename": "20261001_BC_PTKT.pdf",
+      "relative_path": "PTKT_Daily/20261001_BC_PTKT.pdf",
+      "type": "PTKT_DAILY",
+      "date": "2026-10-01",
+      "source": "TCBS",
+      "processed": true,
+      "context_output": "data/market_context.json"
+    },
+    {
+      "filename": "20261001_Phan_tich_dong_von_ngoai_Thang_09_2026.pdf",
+      "relative_path": "Macro/20261001_Phan_tich_dong_von_ngoai_Thang_09_2026.pdf",
+      "type": "MACRO",
+      "date": "2026-10-01",
       "source": "TCBS",
       "processed": false,
       "context_output": null

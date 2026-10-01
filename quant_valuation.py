@@ -14,9 +14,17 @@ Integrates institutional consensus targets (SSI, HSC, Vietcap) with
 
 import logging
 from datetime import date, datetime
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Valuation Rating Constants (SonarCloud S1192)
+VAL_RATING_VERY_CHEAP = "🟢 VÙNG ĐỊNH GIÁ RẤT RẺ (MOS > 20%)"
+VAL_RATING_ATTRACTIVE = "🟢 HẤP DẪN / CÓ BIÊN AN TOÀN (MOS 12-20%)"
+VAL_RATING_FAIR_WATCH = "🟡 HỢP LÝ / THEO DÕI (MOS 5-12%)"
+VAL_RATING_FAIR_VALUE = "🟡 ĐỊNH GIÁ ĐỦ (MOS quanh 0%)"
+VAL_RATING_EXPENSIVE = "🔴 ĐỊNH GIÁ QUÁ ĐẮT (MOS Âm > 8%)"
+VAL_RATING_MANUAL_VERIFY = "CẦN XÁC MINH THỦ CÔNG"
 
 # Mỏ neo định giá trung vị tham chiếu từ các tổ chức phân tích uy tín (SSI Research, HSC, Vietcap)
 # Được cập nhật định kỳ (kèm last_updated), đóng vai trò "Trần định giá tham chiếu" (Consensus Ceiling)
@@ -179,6 +187,504 @@ def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
     return details_map.get(archetype, details_map["GROWTH_COMPOUNDER"])
 
 
+# =============================================================================
+# PHASE 10: REAL ESTATE & HOLDING COMPANY VALUATION ENGINE (TASK-0024 -> 0028)
+# =============================================================================
+
+def check_sotp_holding_sanity(
+    symbol: str,
+    parent_market_cap: float | None = None,
+    subsidiary_prices: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
+    """Kiểm tra chéo cấu trúc vốn hóa SOTP cho Holding Company / BĐS Đa ngành (TASK-0024).
+
+    Công thức:
+    SOTP Ratio = Sum(Vốn hóa CTC niêm yết * % sở hữu) / Vốn hóa Công ty mẹ
+    - < 50% -> Cắm cờ SOTP_ANOMALY, hạ confidence = LOW
+    - < 30% -> Cắm cờ SOTP_DISCOUNT_CRITICAL, khóa khuyến nghị MUA
+    - Implied Value phần chưa niêm yết = Vốn hóa mẹ - Sum(vốn hóa CTC niêm yết * % sở hữu)
+    - Nếu Implied Value chiếm > 50% vốn hóa mẹ: Cắm cờ SPECULATIVE_PREMIUM
+    """
+    from data_engine import get_holding_subsidiary_structure
+
+    sym = (symbol or "").strip().upper()
+    struct = get_holding_subsidiary_structure(sym)
+    if not struct.get("is_holding", False):
+        return {
+            "symbol": sym,
+            "is_holding": False,
+            "sotp_ratio": None,
+            "has_critical_block": False,
+            "flags": [],
+            "warnings": [],
+            "fv_discount": 0.0,
+            "implied_unlisted_value_bil": 0.0,
+        }
+
+    sub_list = struct.get("listed_subsidiaries", [])
+    default_prices = {
+        "VHM": 42.0, "VRE": 19.0, "MCH": 120.0, "MSR": 15.0,
+        "VSH": 45.0, "CHP": 22.0, "VGC": 40.0, "GEE": 35.0
+    }
+    sub_prices = dict(default_prices)
+    if subsidiary_prices:
+        sub_prices.update(subsidiary_prices)
+
+    total_listed_holding_val = 0.0
+    for sub in sub_list:
+        sub_sym = sub.get("symbol", "")
+        shares_bil = float(sub.get("shares_bil", 1.0))
+        own_pct = float(sub.get("ownership", 0.5))
+        p = float(sub_prices.get(sub_sym, 30.0))
+        sub_mcap_bil = shares_bil * p * 1000.0
+        total_listed_holding_val += (sub_mcap_bil * own_pct)
+
+    mcap_parent = float(parent_market_cap) if (parent_market_cap and parent_market_cap > 0) else 170000.0
+    sotp_ratio = total_listed_holding_val / mcap_parent if mcap_parent > 0 else 0.0
+    implied_unlisted_val = max(mcap_parent - total_listed_holding_val, 0.0)
+
+    flags: List[str] = []
+    warnings: List[str] = []
+    has_critical_block = False
+    fv_discount = 0.0
+
+    if sotp_ratio < 0.30:
+        has_critical_block = True
+        flags.append("SOTP_DISCOUNT_CRITICAL")
+        warnings.append(f"Vốn hóa mảng niêm yết chỉ chiếm {sotp_ratio*100:.1f}% vốn hóa mẹ (< 30%). Rủi ro mảng chưa niêm yết cực cao!")
+        fv_discount += 0.20
+    elif sotp_ratio < 0.50:
+        flags.append("SOTP_ANOMALY")
+        warnings.append(f"Vốn hóa mảng niêm yết chiếm {sotp_ratio*100:.1f}% vốn hóa mẹ (< 50%). Cần chiết khấu holding conglomerate.")
+        fv_discount += 0.10
+
+    if implied_unlisted_val > (mcap_parent * 0.50):
+        flags.append("SPECULATIVE_PREMIUM")
+        warnings.append("Mảng chưa niêm yết chiếm trên 50% vốn hóa mẹ nhưng chưa chứng minh dòng tiền dương bền vững.")
+
+    return {
+        "symbol": sym,
+        "is_holding": True,
+        "sotp_ratio": round(sotp_ratio, 4),
+        "total_listed_holding_val_bil": round(total_listed_holding_val, 1),
+        "implied_unlisted_value_bil": round(implied_unlisted_val, 1),
+        "has_critical_block": has_critical_block,
+        "flags": flags,
+        "warnings": warnings,
+        "fv_discount": round(fv_discount, 2),
+    }
+
+
+def check_real_estate_pb_guardrail(
+    symbol: str,
+    current_pb: float | None,
+    mean_pb_5y: float | None = None,
+    std_pb_5y: float | None = None,
+) -> Dict[str, Any]:
+    """P/B Mean Reversion Guardrail mở rộng cho REAL_ESTATE (TASK-0028).
+
+    - Nếu current_pb > Mean + 3 * Std:
+        Khóa trần xếp hạng định giá: Tối đa là 'ĐỊNH GIÁ ĐỦ' (không được xếp HẤP DẪN)
+        Cảnh báo: PB_EXTREME_PREMIUM, Confidence = LOW, chiết khấu 15%
+    - Nếu current_pb > Mean + 2 * Std:
+        Cảnh báo: PB_ELEVATED_PREMIUM, Chiết khấu 10%
+    """
+    if current_pb is None or current_pb <= 0:
+        return {
+            "guardrail_triggered": False,
+            "level": "NORMAL",
+            "warning": None,
+            "fv_discount": 0.0,
+            "cap_rating": False,
+        }
+
+    sym = (symbol or "").strip().upper()
+    if mean_pb_5y is not None and std_pb_5y is not None:
+        mean_pb = float(mean_pb_5y)
+        std_pb = float(std_pb_5y)
+    elif sym == "VIC":
+        mean_pb = 2.5
+        std_pb = 1.2
+    else:
+        mean_pb = 1.5
+        std_pb = 0.8
+
+    threshold_3sigma = round(mean_pb + 3.0 * std_pb, 2)
+    threshold_2sigma = round(mean_pb + 2.0 * std_pb, 2)
+    pb_val = float(current_pb)
+
+    if pb_val > threshold_3sigma:
+        return {
+            "guardrail_triggered": True,
+            "level": "EXTREME_PREMIUM",
+            "warning": "PB_EXTREME_PREMIUM",
+            "fv_discount": 0.15,
+            "cap_rating": True,
+            "mean_pb": mean_pb,
+            "std_pb": std_pb,
+            "threshold_3sigma": threshold_3sigma,
+            "threshold_2sigma": threshold_2sigma,
+        }
+    if pb_val > threshold_2sigma:
+        return {
+            "guardrail_triggered": True,
+            "level": "ELEVATED_PREMIUM",
+            "warning": "PB_ELEVATED_PREMIUM",
+            "fv_discount": 0.10,
+            "cap_rating": False,
+            "mean_pb": mean_pb,
+            "std_pb": std_pb,
+            "threshold_3sigma": threshold_3sigma,
+            "threshold_2sigma": threshold_2sigma,
+        }
+
+    return {
+        "guardrail_triggered": False,
+        "level": "NORMAL",
+        "warning": None,
+        "fv_discount": 0.0,
+        "cap_rating": False,
+        "mean_pb": mean_pb,
+        "std_pb": std_pb,
+        "threshold_3sigma": threshold_3sigma,
+        "threshold_2sigma": threshold_2sigma,
+    }
+
+
+def evaluate_real_estate_valuation(
+    symbol: str,
+    current_price: float,
+    fin_dict: Optional[Dict[str, Any]] = None,
+    sector: str = "",
+) -> Dict[str, Any]:
+    """Cải tổ toàn diện mô hình định giá BĐS & Holding Company bằng BCTC thực (TASK-0024 -> 0028).
+
+    Bao gồm 5 bước:
+    1. BVPS & Target P/B cơ bản (thay thế naive 'current_price * 1.10').
+    2. SOTP Sanity Check (TASK-0024).
+    3. Quality of Earnings Gate (TASK-0025).
+    4. Survival Gate (TASK-0026).
+    5. P/B Mean Reversion Guardrail (TASK-0028).
+    """
+    from data_engine import calculate_core_earnings_ratio
+    from data_gate import reconcile_real_estate_survival_gate
+
+    fin = fin_dict or {}
+    sym = (symbol or "").strip().upper()
+    pb = fin.get("pb")
+    bvps = fin.get("bvps")
+    roe = fin.get("roe", 8.0)
+    debt_equity = fin.get("debt_equity", 1.0)
+
+    # 1. Book value per share estimation
+    if bvps is not None and float(bvps) > 0:
+        bvps_val = float(bvps)
+    elif pb is not None and float(pb) > 0:
+        bvps_val = current_price / float(pb)
+    else:
+        bvps_val = current_price * 0.80
+
+    # Target P/B benchmark adjusted for ROE
+    roe_f = max(float(roe) / 100.0, 0.05) if roe is not None else 0.08
+    target_pb = round(min(max(0.95 + (roe_f * 2.0), 1.05), 1.45), 2)
+    fv_raw = bvps_val * target_pb
+
+    # 2. SOTP Check (TASK-0024)
+    parent_mcap = fin.get("market_cap_bil")
+    if parent_mcap:
+        parent_mcap = float(parent_mcap)
+    sotp_res = check_sotp_holding_sanity(sym, parent_market_cap=parent_mcap)
+    if fin.get("sotp_ratio") is not None:
+        sr = float(fin["sotp_ratio"])
+        sotp_res["sotp_ratio"] = sr
+        if sr < 0.30:
+            sotp_res["has_critical_block"] = True
+            sotp_res["fv_discount"] = max(sotp_res.get("fv_discount", 0.0), 0.20)
+            if "SOTP_DISCOUNT_CRITICAL" not in sotp_res.get("flags", []):
+                sotp_res["flags"].append("SOTP_DISCOUNT_CRITICAL")
+        elif sr < 0.50:
+            sotp_res["fv_discount"] = max(sotp_res.get("fv_discount", 0.0), 0.10)
+            if "SOTP_ANOMALY" not in sotp_res.get("flags", []):
+                sotp_res["flags"].append("SOTP_ANOMALY")
+
+    # 3. Quality of Earnings Gate (TASK-0025)
+    gp = fin.get("gross_profit")
+    sga = fin.get("sga_expense")
+    pbt = fin.get("pbt")
+    core_res = calculate_core_earnings_ratio(gp, sga, pbt)
+    if fin.get("core_earnings_ratio") is not None:
+        cr = float(fin["core_earnings_ratio"])
+        core_res["core_earnings_ratio"] = cr
+        if cr < 0.40:
+            core_res["quality_tier"] = "EARNINGS_QUALITY_LOW"
+            core_res["fv_discount"] = 0.15
+            core_res["confidence"] = "LOW"
+            core_res["warning"] = "EARNINGS_QUALITY_LOW"
+
+    # 4. Survival Gate (TASK-0026)
+    survival_res = reconcile_real_estate_survival_gate(sym, fin, sector)
+
+    # 5. P/B Guardrail (TASK-0028)
+    pb_val = float(pb) if pb is not None else None
+    pb_res = check_real_estate_pb_guardrail(sym, pb_val)
+
+    # Aggregate discounts (leverage + sotp + core earnings + survival + pb guardrail)
+    leverage_disc = 0.10 if (debt_equity and float(debt_equity) > 1.8) else 0.0
+    total_disc = min(
+        leverage_disc
+        + sotp_res.get("fv_discount", 0.0)
+        + core_res.get("fv_discount", 0.0)
+        + survival_res.get("applied_discounts", 0.0)
+        + pb_res.get("fv_discount", 0.0),
+        0.50
+    )
+
+    fv_base = round(max(fv_raw * (1.0 - total_disc), current_price * 0.40), 2)
+    fv_bear = round(fv_base * 0.80, 2)
+    fv_bull = round(fv_base * 1.20, 2)
+    price_target = round(fv_base * 1.05, 2)
+
+    # Determine confidence
+    has_risk = (
+        (debt_equity and float(debt_equity) > 1.8)
+        or pb_res.get("guardrail_triggered", False)
+        or core_res.get("quality_tier") == "EARNINGS_QUALITY_LOW"
+        or sotp_res.get("has_critical_block", False)
+        or survival_res.get("has_critical_block", False)
+    )
+    confidence = "LOW" if has_risk else "MEDIUM"
+    val_method = "SOTP / RNAV & BCTC Thực (Real Estate Model)" if sotp_res.get("is_holding") else "P/B Chuẩn Hóa BCTC & Survival Gate (Real Estate)"
+
+    return {
+        "fv_base": fv_base,
+        "fv_bear": fv_bear,
+        "fv_bull": fv_bull,
+        "price_target": price_target,
+        "confidence": confidence,
+        "valuation_method": val_method,
+        "sotp_check": sotp_res,
+        "earnings_quality": core_res,
+        "survival_gate": survival_res,
+        "pb_guardrail": pb_res,
+        "applied_discounts": round(total_disc, 2),
+        "recommendation_allowed": not (sotp_res.get("has_critical_block") or survival_res.get("has_critical_block")),
+    }
+
+
+# =============================================================================
+# PHASE 11: CYCLICAL VALUATION ENGINE (TASK-0029 -> 0032)
+# =============================================================================
+
+FLAG_PEAK_EARNINGS_TRAP = "PEAK_EARNINGS_TRAP"
+FLAG_PEER_PREMIUM_EXTREME = "PEER_PREMIUM_EXTREME"
+FLAG_PEER_PREMIUM_WARNING = "PEER_PREMIUM_WARNING"
+
+CYCLICAL_PEER_BENCHMARKS: dict[str, dict[str, Any]] = {
+    "OIL_REFINING": {
+        "sector_name": "Lọc hóa dầu châu Á",
+        "median_pb": 1.0,
+        "median_pe": 4.1,
+        "median_ev_ebitda": 3.9,
+        "peers": ["S-Oil", "SK Innovation", "Formosa Petrochemical", "Bangchak"],
+    },
+    "STEEL": {
+        "sector_name": "Thép & Luyện kim châu Á",
+        "median_pb": 0.8,
+        "median_pe": 8.5,
+        "median_ev_ebitda": 5.2,
+        "peers": ["Baosteel", "POSCO", "Tata Steel", "China Steel"],
+    },
+    "CHEMICAL_FERTILIZER": {
+        "sector_name": "Hóa chất & Phân bón khu vực",
+        "median_pb": 1.4,
+        "median_pe": 9.0,
+        "median_ev_ebitda": 6.0,
+        "peers": ["SABIC", "Yara", "Nutrien"],
+    },
+}
+
+
+def check_peak_earnings_trap(
+    symbol: str,
+    pe: float | None,
+    gross_margin_trend: str | None = None,
+    margin_quarters_down: int = 0,
+) -> Dict[str, Any]:
+    """Kiểm tra bẫy P/E thấp tại đỉnh chu kỳ lợi nhuận (TASK-0029).
+
+    Nếu P/E < 6.5x VÀ Biên gộp giảm liên tiếp >= 2 quý:
+      -> is_peak_trap = True
+      -> Khóa khuyến nghị MUA
+      -> Cảnh báo PEAK_EARNINGS_TRAP, chiết khấu Fair Value 20%
+    """
+    if pe is None:
+        return {"is_peak_trap": False, "warning": None, "fv_discount": 0.0, "cap_rating": False}
+
+    try:
+        pe_val = float(pe)
+    except (ValueError, TypeError):
+        return {"is_peak_trap": False, "warning": None, "fv_discount": 0.0, "cap_rating": False}
+
+    is_margin_down = (
+        str(gross_margin_trend or "").upper() == "DOWN"
+        or (isinstance(margin_quarters_down, (int, float)) and margin_quarters_down >= 2)
+    )
+
+    if pe_val < 6.5 and is_margin_down:
+        return {
+            "is_peak_trap": True,
+            "warning": FLAG_PEAK_EARNINGS_TRAP,
+            "fv_discount": 0.20,
+            "cap_rating": True,
+            "recommendation_allowed": False,
+        }
+
+    return {"is_peak_trap": False, "warning": None, "fv_discount": 0.0, "cap_rating": False}
+
+
+def check_cyclical_peer_benchmark(
+    symbol: str,
+    current_pb: float | None,
+    current_pe: float | None = None,
+    sector: str = "",
+) -> Dict[str, Any]:
+    """So sánh định giá với Peer quốc tế trong khu vực cho nhóm CYCLICAL (TASK-0031)."""
+    sym = (symbol or "").strip().upper()
+    sec = (sector or "").lower()
+
+    if sym in ("BSR", "PLX", "OIL") or any(o in sec for o in ("lọc dầu", "xăng dầu", "dầu khí")):
+        benchmark_key = "OIL_REFINING"
+    elif sym in ("HPG", "HSG", "NKG") or "thép" in sec:
+        benchmark_key = "STEEL"
+    elif sym in ("DGC", "DCM", "DPM") or any(c in sec for c in ("hóa chất", "phân bón")):
+        benchmark_key = "CHEMICAL_FERTILIZER"
+    else:
+        benchmark_key = "STEEL"
+
+    bench = CYCLICAL_PEER_BENCHMARKS[benchmark_key]
+    med_pb = bench["median_pb"]
+    med_pe = bench["median_pe"]
+
+    if current_pb is None or current_pb <= 0:
+        return {
+            "benchmark_key": benchmark_key,
+            "sector_name": bench["sector_name"],
+            "median_pb": med_pb,
+            "median_pe": med_pe,
+            "warning": None,
+            "fv_discount": 0.0,
+            "cap_rating": False,
+        }
+
+    pb_val = float(current_pb)
+    if pb_val > (med_pb * 2.0):
+        return {
+            "benchmark_key": benchmark_key,
+            "sector_name": bench["sector_name"],
+            "median_pb": med_pb,
+            "median_pe": med_pe,
+            "warning": FLAG_PEER_PREMIUM_EXTREME,
+            "fv_discount": 0.15,
+            "cap_rating": True,
+        }
+    if pb_val > (med_pb * 1.5):
+        return {
+            "benchmark_key": benchmark_key,
+            "sector_name": bench["sector_name"],
+            "median_pb": med_pb,
+            "median_pe": med_pe,
+            "warning": FLAG_PEER_PREMIUM_WARNING,
+            "fv_discount": 0.10,
+            "cap_rating": False,
+        }
+
+    return {
+        "benchmark_key": benchmark_key,
+        "sector_name": bench["sector_name"],
+        "median_pb": med_pb,
+        "median_pe": med_pe,
+        "warning": None,
+        "fv_discount": 0.0,
+        "cap_rating": False,
+    }
+
+
+def evaluate_cyclical_valuation(
+    symbol: str,
+    current_price: float,
+    fin_dict: Optional[Dict[str, Any]] = None,
+    sector: str = "",
+) -> Dict[str, Any]:
+    """Cải tổ toàn diện mô hình định giá cổ phiếu Chu kỳ (Phase 11 / TASK-0029 -> 0032)."""
+    from data_engine import calculate_trimmed_normalized_eps
+    from data_gate import check_sector_risk_flags
+
+    fin = fin_dict or {}
+    sym = (symbol or "").strip().upper()
+    pe = fin.get("pe")
+    pb = fin.get("pb")
+
+    # 1. Normalized EPS (Trimmed Mean 5Y) & Mid-cycle Multiple (TASK-0030)
+    eps_history = fin.get("eps_history")
+    eps_norm_res = calculate_trimmed_normalized_eps(eps_history)
+    norm_eps = eps_norm_res.get("normalized_eps")
+    if norm_eps is not None and norm_eps > 0:
+        base_eps = norm_eps
+        norm_pe = current_price / norm_eps
+    else:
+        base_eps = (current_price / pe) if (pe and float(pe) > 0) else (current_price * 0.10)
+        norm_pe = float(pe) if pe else 10.0
+
+    # 2. Peak Earnings Trap Detector (TASK-0029)
+    peak_res = check_peak_earnings_trap(
+        sym, pe,
+        gross_margin_trend=fin.get("gross_margin_trend"),
+        margin_quarters_down=fin.get("margin_quarters_down", 0)
+    )
+
+    # 3. Regional Peer Comparison Benchmark (TASK-0031)
+    peer_res = check_cyclical_peer_benchmark(sym, pb, pe, sector=sector)
+
+    # 4. Sector-Specific Risk Flags (TASK-0032)
+    sec_risk_res = check_sector_risk_flags(sym, fin, sector=sector)
+
+    # Compute Fair Value Base using Mid-Cycle multiple (8.5x)
+    mid_cycle_multiple = 8.5
+    fv_raw = base_eps * mid_cycle_multiple
+
+    total_discount = min(
+        peak_res.get("fv_discount", 0.0)
+        + peer_res.get("fv_discount", 0.0)
+        + sec_risk_res.get("fv_discount", 0.0),
+        0.50
+    )
+
+    fv_base = round(max(fv_raw * (1.0 - total_discount), current_price * 0.40), 2)
+    fv_bear = round(fv_base * 0.80, 2)
+    fv_bull = round(fv_base * 1.20, 2)
+    price_target = round(fv_base * 1.05, 2)
+
+    has_critical = peak_res.get("is_peak_trap", False) or peer_res.get("cap_rating", False)
+    confidence = "LOW" if (has_critical or total_discount >= 0.20) else "MEDIUM"
+    val_method = f"Normalized Mid-Cycle P/E ({mid_cycle_multiple}x) & Peer Benchmark"
+
+    return {
+        "fv_base": fv_base,
+        "fv_bear": fv_bear,
+        "fv_bull": fv_bull,
+        "price_target": price_target,
+        "confidence": confidence,
+        "valuation_method": val_method,
+        "normalized_eps": norm_eps,
+        "normalized_pe": round(norm_pe, 2) if norm_pe else None,
+        "peak_earnings_trap": peak_res,
+        "peer_benchmark": peer_res,
+        "sector_risks": sec_risk_res,
+        "applied_discounts": round(total_discount, 2),
+        "recommendation_allowed": not peak_res.get("is_peak_trap", False),
+    }
+
+
 def calculate_fair_value_and_mos(
     symbol: str,
     current_price: float,
@@ -239,19 +745,21 @@ def calculate_fair_value_and_mos(
     cons_source = cons_data.get("source", "N/A")
 
     confidence = "MEDIUM"
+    re_eval = None
+    cyc_eval = None
 
     # =========================================================================
     # ĐẶC BIỆT: TẬP ĐOÀN ĐA NGÀNH PHỨC TẠP (VIC - VINGROUP)
-    # Áp dụng mô hình SOTP (Sum-Of-The-Parts) / RNAV thay vì P/E đơn giản
+    # Áp dụng mô hình SOTP & BCTC Thực (Phase 10 / TASK-0024 -> 0028)
     # =========================================================================
     if sym_clean == "VIC":
-        valuation_method = "SOTP / RNAV (Sum-Of-The-Parts & Tài sản ròng)"
-        confidence = "MEDIUM"
-        # Định giá cơ sở SOTP phản ánh giá trị nắm giữ tại VHM, VRE, Vinpearl và trừ hao rủi ro VinFast
-        fv_base = round(current_price * 1.15, 2)
-        fv_bear = round(current_price * 0.85, 2)
-        fv_bull = round(current_price * 1.30, 2)
-        price_target = round(fv_base * 1.05, 2)
+        re_eval = evaluate_real_estate_valuation(sym_clean, current_price, fin_dict, sector)
+        fv_base = re_eval["fv_base"]
+        fv_bear = re_eval["fv_bear"]
+        fv_bull = re_eval["fv_bull"]
+        price_target = re_eval["price_target"]
+        confidence = re_eval["confidence"]
+        valuation_method = re_eval["valuation_method"]
 
     # =========================================================================
     # 1. NHÓM NGÂN HÀNG: MÔ HÌNH JUSTIFIED P/B (Gordon Growth)
@@ -284,7 +792,7 @@ def calculate_fair_value_and_mos(
                 "fair_value_bull": 0.0,
                 "price_target": None,
                 "mos_pct": 0.0,
-                "valuation_rating": "CẦN XÁC MINH THỦ CÔNG",
+                "valuation_rating": VAL_RATING_MANUAL_VERIFY,
                 "valuation_method": f"TẠM DỪNG: P/B={pb} ngoài ngưỡng an toàn ({lo}-{hi})",
                 "confidence": "LOW",
                 "consensus_target": cons_target,
@@ -309,40 +817,28 @@ def calculate_fair_value_and_mos(
         price_target = round(min(fv_bull, fv_base * 1.10), 2)
 
     # =========================================================================
-    # 2. NHÓM CỔ PHIẾU CHU KỲ (THÉP, DẦU KHÍ, HÓA CHẤT, PHÂN BÓN)
-    # Normalized Earnings & Mid-cycle Multiple
+    # 2. NHÓM CỔ PHIẾU CHU KỲ: NORMALIZED EPS & PEER BENCHMARK (PHASE 11 / TASK-0029 -> 0032)
     # =========================================================================
     elif archetype == "CYCLICAL":
-        valuation_method = "Normalized Mid-Cycle Multiple (Chu kỳ)"
-        confidence = "MEDIUM"
-        if pe and pe < 6.5:
-            # Đỉnh chu kỳ lợi nhuận -> P/E thấp nhưng upside thận trọng
-            fv_base = round(current_price * 1.02, 2)
-            fv_bear = round(current_price * 0.75, 2)
-            fv_bull = round(current_price * 1.15, 2)
-        elif pe and pe > 25.0:
-            # Đáy chu kỳ lợi nhuận -> Chuẩn bị phục hồi
-            fv_base = round(current_price * 1.20, 2)
-            fv_bear = round(current_price * 0.88, 2)
-            fv_bull = round(current_price * 1.35, 2)
-        else:
-            fv_base = round(current_price * 1.10, 2)
-            fv_bear = round(current_price * 0.82, 2)
-            fv_bull = round(current_price * 1.22, 2)
-
-        price_target = round(fv_base * 1.06, 2)
+        cyc_eval = evaluate_cyclical_valuation(sym_clean, current_price, fin_dict, sector)
+        fv_base = cyc_eval["fv_base"]
+        fv_bear = cyc_eval["fv_bear"]
+        fv_bull = cyc_eval["fv_bull"]
+        price_target = cyc_eval["price_target"]
+        confidence = cyc_eval["confidence"]
+        valuation_method = cyc_eval["valuation_method"]
 
     # =========================================================================
-    # 3. NHÓM BẤT ĐỘNG SẢN: P/B SÀN & ĐÒN BẨY NỢ
+    # 3. NHÓM BẤT ĐỘNG SẢN: MÔ HÌNH BCTC THỰC & SURVIVAL GATE (TASK-0024 -> 0028)
     # =========================================================================
     elif archetype == "REAL_ESTATE":
-        valuation_method = "P/B Sàn Lịch Sử & Đòn Bẩy Tài Chính"
-        confidence = "LOW" if debt_equity > 1.8 else "MEDIUM"
-        leverage_penalty = 0.90 if debt_equity > 1.8 else 1.0
-        fv_base = round(current_price * 1.10 * leverage_penalty, 2)
-        fv_bear = round(current_price * 0.80 * leverage_penalty, 2)
-        fv_bull = round(current_price * 1.25, 2)
-        price_target = round(fv_base * 1.05, 2)
+        re_eval = evaluate_real_estate_valuation(sym_clean, current_price, fin_dict, sector)
+        fv_base = re_eval["fv_base"]
+        fv_bear = re_eval["fv_bear"]
+        fv_bull = re_eval["fv_bull"]
+        price_target = re_eval["price_target"]
+        confidence = re_eval["confidence"]
+        valuation_method = re_eval["valuation_method"]
 
     # =========================================================================
     # 4. NHÓM TĂNG TRƯỞNG & BÁN LẺ / CÔNG NGHỆ (COMPOUNDER)
@@ -371,7 +867,6 @@ def calculate_fair_value_and_mos(
             price_target = cons_target
 
     # TÍNH TOÁN BIÊN AN TOÀN (MARGIN OF SAFETY - MOS %)
-    # MOS = (Fair Value Base - Current Price) / Fair Value Base * 100%
     mos_pct = round(((fv_base - current_price) / fv_base) * 100, 2) if fv_base > 0 else 0.0
 
     # Phân định MoS thực chất vs MoS suy diễn từ hệ số nhân giá cố định (Task 7.0d)
@@ -383,15 +878,47 @@ def calculate_fair_value_and_mos(
 
     # Xếp loại mức độ hấp dẫn định giá
     if mos_pct >= 20.0:
-        val_rating = "🟢 VÙNG ĐỊNH GIÁ RẤT RẺ (MOS > 20%)"
+        val_rating = VAL_RATING_VERY_CHEAP
     elif mos_pct >= 12.0:
-        val_rating = "🟢 HẤP DẪN / CÓ BIÊN AN TOÀN (MOS 12-20%)"
+        val_rating = VAL_RATING_ATTRACTIVE
     elif mos_pct >= 5.0:
-        val_rating = "🟡 HỢP LÝ / THEO DÕI (MOS 5-12%)"
+        val_rating = VAL_RATING_FAIR_WATCH
     elif mos_pct >= -8.0:
-        val_rating = "🟡 ĐỊNH GIÁ ĐỦ (MOS quanh 0%)"
+        val_rating = VAL_RATING_FAIR_VALUE
     else:
-        val_rating = "🔴 ĐỊNH GIÁ QUÁ ĐẮT (MOS Âm > 8%)"
+        val_rating = VAL_RATING_EXPENSIVE
+
+    # Áp chốt chặn định giá P/B Guardrail & Survival Gate (Phase 10)
+    if re_eval is not None:
+        pb_guard = re_eval.get("pb_guardrail", {})
+        if pb_guard.get("cap_rating"):
+            if val_rating in (VAL_RATING_VERY_CHEAP, VAL_RATING_ATTRACTIVE, VAL_RATING_FAIR_WATCH):
+                val_rating = VAL_RATING_FAIR_VALUE
+            confidence = "LOW"
+        sotp_chk = re_eval.get("sotp_check", {})
+        surv_gate = re_eval.get("survival_gate", {})
+        if sotp_chk.get("has_critical_block") or surv_gate.get("has_critical_block"):
+            if val_rating in (VAL_RATING_VERY_CHEAP, VAL_RATING_ATTRACTIVE):
+                val_rating = VAL_RATING_FAIR_VALUE
+            confidence = "LOW"
+
+    # Áp chốt chặn định giá Peak Earnings Trap & Peer Benchmark (Phase 11)
+    if cyc_eval is not None:
+        peak_res = cyc_eval.get("peak_earnings_trap", {})
+        peer_res = cyc_eval.get("peer_benchmark", {})
+        if peak_res.get("is_peak_trap"):
+            val_rating = VAL_RATING_EXPENSIVE
+            confidence = "LOW"
+        elif peer_res.get("cap_rating"):
+            if val_rating in (VAL_RATING_VERY_CHEAP, VAL_RATING_ATTRACTIVE, VAL_RATING_FAIR_WATCH):
+                val_rating = VAL_RATING_FAIR_VALUE
+            confidence = "LOW"
+
+    applied_disc = 0.0
+    if re_eval:
+        applied_disc = re_eval.get("applied_discounts", 0.0)
+    elif cyc_eval:
+        applied_disc = cyc_eval.get("applied_discounts", 0.0)
 
     return {
         "fair_value": fv_base,
@@ -408,4 +935,15 @@ def calculate_fair_value_and_mos(
         "consensus_target": cons_target,
         "consensus_source": cons_source,
         "archetype": archetype,
+        "sotp_check": re_eval.get("sotp_check") if re_eval else None,
+        "earnings_quality": re_eval.get("earnings_quality") if re_eval else None,
+        "survival_gate": re_eval.get("survival_gate") if re_eval else None,
+        "pb_guardrail": re_eval.get("pb_guardrail") if re_eval else None,
+        "applied_discounts": applied_disc,
+        "cyclical_check": cyc_eval,
+        "peak_earnings_trap": cyc_eval.get("peak_earnings_trap") if cyc_eval else None,
+        "peer_benchmark": cyc_eval.get("peer_benchmark") if cyc_eval else None,
+        "sector_risks": cyc_eval.get("sector_risks") if cyc_eval else None,
+        "normalized_eps": cyc_eval.get("normalized_eps") if cyc_eval else None,
+        "normalized_pe": cyc_eval.get("normalized_pe") if cyc_eval else None,
     }

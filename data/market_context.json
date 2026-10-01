@@ -1,33 +1,32 @@
 {
-  "date": "2026-09-30",
+  "date": "2026-10-01",
   "source": "TCBS",
-  "source_file": "20260930_BC_PTKT.pdf",
-  "extracted_at": "2026-09-30T18:52:43.611201+00:00",
+  "source_file": "20261001_BC_PTKT.pdf",
+  "extracted_at": "2026-10-01T19:12:46.548847+00:00",
   "market_regime_analyst": "DOWNTREND",
   "sentiment": "BEARISH",
-  "vnindex_close": 1768.6,
-  "vnindex_change_pts": -9.1,
-  "vnindex_change_pct": -0.5,
+  "vnindex_close": 1749.3,
+  "vnindex_change_pts": -19.3,
+  "vnindex_change_pct": -1.1,
   "vnindex_support_zones": [],
   "vnindex_resistance_zones": [],
   "focus_sectors": [
     "Bất động sản",
     "Dầu khí",
-    "Vật liệu",
-    "Tiện ích",
-    "Điện, nước & xăng dầu khí đốt",
     "Dịch vụ tài chính",
+    "Du lịch và Giải trí",
     "Bán lẻ",
-    "Ngân hàng"
+    "Ngân hàng",
+    "Hàng & Dịch vụ Công nghiệp"
   ],
   "risk_keywords": [
-    "áp lực điều chỉnh",
+    "áp lực chốt lời",
     "bán ròng",
     "sắc đỏ"
   ],
   "buy_signals": [],
   "sell_signals": [
-    "CMG"
+    "STB"
   ],
-  "raw_summary": "Phiên giao dịch ngày 30/09 mở cửa với tâm lý tương đối tích cực, VN-Index tạo một khoảng trống tăng giá 7 điểm sau ATO. Dòng tiền đổ mạnh vào nhóm cổ phiếu vốn hóa lớn, giúp VN-Index tăng tới 7 điểm trong phiên sáng, tuy nhiên áp lực chốt lời nhanh chóng gia tăng khiến chỉ số chìm trong sắc đỏ. Sau giờ nghỉ trưa, tâm lý thị trường có phần tiêu cực, áp lực điều chỉnh khiến VN-Index giảm tới 19 điểm so với mốc tham chiếu, lực cầu bắt đáy có thời điểm xuất hiện tuy vậy không đủ để chỉ số lấy lại sắc xanh vào cuối phiên. Trong bối cảnh đó, một số cổ phiếu nhóm ngành Vật liệu và Tiện ích như VGC, PTB, NT2, PC1 ngược chiều tăng điểm tích cực. Kết thúc phiên giao dịch ngày 30/09, VN-Index đóng cửa tại 1,768.6 điểm, giảm 9.1 điểm (tương đương 0.5%).Thanh khoản thị trường đạt 641 triệu cổ phiếu khớ"
+  "raw_summary": "Phiên giao dịch ngày 01/10 mở cửa trong sắc đỏ nhẹ, VN-Index giảm 3 điểm sau ATO. Đến thời điểm 09:45, áp lực chốt lời gia tăng khiến VN-Index giảm tới 13 điểm, tuy nhiên lực cầu bắt đáy đã nhanh chóng nhập cuộc giúp chỉ số thu hẹp đà giảm. Sang đến phiên chiều, diễn biến thị trường có phần tiêu cực, áp lực điều chỉnh khiến VN-Index giảm tới 31 điểm so với mốc tham chiếu, lực cầu bắt đáy có thời điểm xuất hiện tuy vậy không đủ để chỉ số lấy lại sắc xanh vào cuối phiên. Trong bối cảnh đó, một số cổ phiếu nhóm ngành Khoáng sản và Dầu khí như MSR, KSB, PLX, PVS ngược chiều tăng điểm tích cực. Kết thúc phiên giao dịch ngày 01/10, VN-Index đóng cửa tại 1,749.3 điểm, giảm 19.3 điểm (tương đương 1.1%).Thanh khoản thị trường đạt 630 triệu cổ phiếu khớp lệnh, tương ứng giá trị giao dịch xấp xỉ 15,1"
 }

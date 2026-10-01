@@ -1492,6 +1492,30 @@ def _format_committee_prompt_context(
     z_raw = z_score_res.get("z_score")
     z_eval, z_val_str = _format_z_score(z_raw, z_score_res.get("zone", ZONE_SAFE))
 
+    re_lines = []
+    sotp_chk = val_res.get("sotp_check") or {}
+    if sotp_chk.get("is_holding"):
+        sr = sotp_chk.get("sotp_ratio", 0.0)
+        flags_s = ", ".join(sotp_chk.get("flags", [])) or "Bình thường"
+        re_lines.append(f"- Cấu trúc SOTP Vốn hóa niêm yết: {sr*100:.1f}% mẹ ({flags_s})")
+        re_lines.append(f"  + Vốn hóa ngụ ý phần chưa niêm yết: {sotp_chk.get('implied_unlisted_value_bil', 0.0):,.0f} tỷ VND")
+        re_lines.append("  + Yêu cầu phân tích 3 chiều: Cash Cow (mảng tạo tiền) vs Cash Burner (mảng đốt vốn), Runway tự nuôi, và Cross-Subsidy Risk.")
+
+    core_eq = val_res.get("earnings_quality") or {}
+    if core_eq.get("core_earnings_ratio") is not None:
+        re_lines.append(f"- Chất lượng Lợi nhuận (Core Earnings Ratio): {core_eq.get('core_earnings_ratio')*100:.1f}% ({core_eq.get('quality_tier', '')})")
+
+    surv_gt = val_res.get("survival_gate") or {}
+    surv_issues = surv_gt.get("issues", []) + surv_gt.get("warnings", [])
+    if surv_issues:
+        re_lines.append(f"- Chốt chặn sinh tồn nợ (Survival Gate): {'; '.join(surv_issues)}")
+
+    pb_grd = val_res.get("pb_guardrail") or {}
+    if pb_grd.get("guardrail_triggered"):
+        re_lines.append(f"- Cảnh báo P/B Guardrail: {pb_grd.get('warning')} (Khóa trần xếp hạng định giá)")
+
+    re_prompt_snippet = "\n" + "\n".join(re_lines) if re_lines else ""
+
     return f"""Bạn là Investment Committee (Hội đồng Đầu tư Định chế) gồm 5 vai trò chuyên môn:
 1. Chuyên gia Phân tích Cơ bản (FA Analyst)
 2. Chuyên gia Kỹ thuật & Định thời điểm (TA & Timing Specialist)
@@ -1509,7 +1533,7 @@ Hãy thực hiện phân tích TUẦN TỰ cho cổ phiếu **{sym}**:
 - Mục tiêu giá (Target): {p_target:.2f}k VND | Ngưỡng dừng lỗ: {stop_loss:.2f}k VND | Tỷ lệ R:R: {rr:.1f}x
 - Điểm tài chính Piotroski F-Score: {f_val_str}
 - Sức khỏe tài chính Altman Z-Score: {z_val_str}
-- Tin tức & Xúc tác: {news_text}
+- Tin tức & Xúc tác: {news_text}{re_prompt_snippet}
 
 BẮT BUỘC PHÂN TÍCH TUẦN TỰ THEO 5 BƯỚC:
 
