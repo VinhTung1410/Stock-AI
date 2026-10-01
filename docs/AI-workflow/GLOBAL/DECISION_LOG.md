@@ -481,3 +481,23 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   - Triển khai biến `_market_scanner_cursor` chạy theo cơ chế Round-Robin.
   - Trong mỗi nhịp chạy, các slot còn trống (để max 8 mã) sẽ được tự động lấp đầy bằng mã lấy từ `BROAD_MARKET_POOL` dựa trên cursor.
 - **Hệ quả:** Radar hoạt động xoay vòng 360 độ, quét 100% các mã bluechip và midcap chất lượng sau mỗi 2-3 giờ, đảm bảo không bỏ sót bất kỳ cơ hội Deep Value nào mà không vi phạm Rate Limit.
+
+---
+
+### [ADR-025] Triệt Tiêu Ảo Ảnh Biên An Toàn MoS Tự Sinh (Anti-Synthetic MoS) & Chuẩn Hóa Target Buy (Phase 12 - v7.2)
+- **Ngày quyết định:** 2026-10-02
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead
+- **Bối cảnh & Vấn đề:**
+  - Qua trường hợp MWG, phát hiện khi mỏ neo consensus bị stale quá hạn 180 ngày, nhánh `GROWTH_COMPOUNDER` tự fallback sang công thức nhân cứng $FV = Current\_Price \times 1.18$.
+  - Khi đó, $MoS = \frac{1.18 \times P - P}{1.18 \times P} = 15.25\% \approx 15.3\%$ là một hằng số cơ học tự sinh, xuất hiện tại mọi mức giá và đánh lừa bộ quét tự động `sync_auto_watchlist()`.
+  - Bộ quét nạp nhầm `target_buy` thành `current_price = 72.6k` do fallback khi không có target_price.
+  - Hệ thống thiếu bộ lọc xu hướng trung hạn MA100/MA200 và điểm trừ bán ròng ngoại kỷ lục.
+- **Quyết định lựa chọn:**
+  1. Triển khai chốt chặn `effective_mos = mos_is_informative and mos_pct >= 15.0` trong `_build_auto_watchlist_candidate()`. Cấm tuyệt đối nạp vào Watchlist dưới cờ MoS nếu `mos_is_informative is False`.
+  2. Chuẩn hóa `target_buy`: Tuyệt đối không fallback về `current_price`. Nếu không có giá mục tiêu chốt lời định lượng, `target_buy` phải để `0.0`.
+  3. Bổ sung tính toán `MA100` và `MA200` vào `fetch_stock_technical()`. Khóa khuyến nghị `RECOMMEND_BUY` nếu giá nằm dưới `MA100 * 0.98`.
+  4. Bổ sung điểm phạt xả ròng khối ngoại (Foreign Net Flow Penalty: -5đ đến -10đ) trong `calculate_conviction_score()`.
+  5. Cập nhật mỏ neo đồng thuận MWG (`83.5k`, `last_updated: "2026-09-30"`).
+  6. Làm sạch `data/watchlist.json` loại bỏ bản ghi MWG sai lệch.
+- **Hệ quả:** Loại bỏ hoàn toàn các khuyến nghị dựa trên MoS ảo; đảm bảo tính toàn vẹn, trung thực và minh bạch 100% của danh mục Watchlist tự động. Hoàn tất Phase 12 (v7.2).
+

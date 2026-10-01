@@ -1,54 +1,44 @@
-# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 7.1
+# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 7.2
 
 **Tên dự án:** Stock-AI / AI Investment Decision & Research Platform  
-**Phiên bản:** v7.1 — Phase 11: Cyclical Valuation Overhaul (Cải tổ Toàn diện Định giá Cổ phiếu Chu kỳ — Dầu khí, Thép, Hóa chất)  
-**Trọng tâm:** *"Chấm dứt triệt để bẫy P/E thấp tại đỉnh chu kỳ lợi nhuận (Peak Earnings Trap) cho nhóm CYCLICAL (BSR, HPG, HSG, DGC...); áp dụng mô hình Normalized EPS (chuẩn hóa 5 năm), so sánh tương quan định giá với Peer quốc tế trong khu vực (P/B, EV/EBITDA), và thiết lập hệ thống cảnh báo rủi ro đặc thù ngành (Sector-Specific Risk Flags: Tồn kho, Xu hướng biên gộp, Rủi ro chính sách/hết hạn ưu đãi thuế) nhằm bảo vệ vốn tuyệt đối trước các pha đảo chiều chu kỳ hàng hóa."*
+**Phiên bản:** v7.2 — Phase 12: Compounder & Retail Valuation Integrity & Trend/Flow Gatekeeper (Chấm dứt Ảo ảnh Biên an toàn MoS Giả định, Chuẩn hóa Target Buy, và Bộ lọc Xu hướng / Dòng tiền Ngoại)  
+**Trọng tâm:** *"Triệt tiêu hoàn toàn hiện tượng biên an toàn tự sinh cơ học (Synthetic MoS Tautology $15.3\% = \frac{1.18 - 1}{1.18}$) khi dữ liệu mỏ neo định giá bị quá hạn (stale); chuẩn hóa trường `target_buy` trong Watchlist (cấm gán bằng thị giá `current_price`); thiết lập bộ lọc xu hướng trung hạn (MA100/MA200) và điểm phạt xả ròng khối ngoại (Foreign Net Flow Penalty) cho bộ chấm điểm Conviction; bổ sung ngưỡng dừng lỗ bằng số cứng (Numerical Hard Stop) cho cơ chế `LongTermHoldingShield`; và cập nhật luận điểm phân tích doanh nghiệp bán lẻ (MWG: BHX có lãi, rủi ro chiết khấu holding)."*
 
 ---
 
-## 1. MỤC TIÊU PHIÊN BẢN v7.1 (PHASE 11: CYCLICAL VALUATION OVERHAUL)
+## 1. MỤC TIÊU PHIÊN BẢN v7.2 (PHASE 12: VALUATION INTEGRITY & FLOW GATEKEEPER)
 
-1. **TASK-0029: Peak Earnings Trap Detector (Mục 11.0):**
-   - Khắc phục bẫy P/E thấp đánh lừa hệ thống khi doanh nghiệp chu kỳ đạt đỉnh lợi nhuận ngắn hạn (như BSR hưởng lợi từ xung đột Hormuz/crack spread đột biến):
-     - Khi $P/E < 6.5x$ VÀ biên lợi nhuận gộp giảm liên tiếp $\ge 2$ quý:
-       - **Khóa khuyến nghị MUA** (`recommendation_allowed = False`).
-       - Xếp hạng định giá tối đa: `"🔴 ĐỊNH GIÁ QUÁ ĐẮT (MOS Âm > 8%)"` (Peak Earnings Trap).
-       - Bật cờ cảnh báo: `PEAK_EARNINGS_TRAP`, hạ `confidence = "LOW"`.
-     - Nếu $P/E < 6.5x$ nhưng biên gộp vẫn mở rộng hoặc ổn định: Duy trì upside thận trọng.
+1. **TASK-0033: Anti-Synthetic MoS & Target Buy Integrity (Mục 12.0):**
+   - **Xóa bỏ ảo ảnh MoS tự sinh:** Khi cổ phiếu thuộc nhóm `GROWTH_COMPOUNDER` (hoặc bất kỳ nhóm nào) bị quá hạn mỏ neo định giá đồng thuận (`consensus_stale == True` hoặc `cons_target <= 0`) và phải dùng hệ số nhân cố định, hệ thống đã đánh dấu cờ `mos_is_informative = False`.
+   - **Chặn nạp Watchlist rác:** Hàm `_build_auto_watchlist_candidate()` và `sync_auto_watchlist()` trong `data_engine.py` **tuyệt đối không được sử dụng MoS giả định** này để đưa cổ phiếu vào Watchlist dưới mác `[AUTO_DISCOVERY]`.
+   - **Sửa lỗi gán nhầm Target Buy:** Cấm tuyệt đối fallback `target_p = current_price` khi `target_price` là `None`. Nếu cổ phiếu đang ở trạng thái theo dõi (`WATCH_CONFIRMATION`), `target_buy` phải để `None` hoặc tính theo vùng mua kỹ thuật chiết khấu (Entry Zone), không được biến thị giá thành giá mục tiêu mua.
+   - **Minh bạch hóa Logging:** Ghi nhận đầy đủ thông số: `current_price`, `fair_value`, `mos_pct`, `mos_is_informative`, `price_target`, `as_of_date` và công thức tính.
 
-2. **TASK-0030: Normalized EPS & Mid-Cycle Valuation (Mục 11.1):**
-   - Thay thế EPS trailing 12 tháng bằng **Normalized EPS** (trung bình 5 năm có trimmed loại bỏ năm cao nhất và thấp nhất) cho toàn bộ archetype `CYCLICAL`:
-     $$\text{Normalized\_EPS} = \text{TrimmedMean}_{5Y}(\text{EPS})$$
-     $$\text{Normalized\_PE} = \frac{\text{Current Price}}{\text{Normalized\_EPS}}$$
-   - Sử dụng $\text{Normalized\_PE}$ thay thế cho trailing P/E để xếp loại định giá thực chất và tính Fair Value cơ sở.
-   - Bóc tách 3 lớp giá trị (Core Operations vs Event Windfall vs Future Capex).
+2. **TASK-0034: Trend Filter (MA100/MA200) & Foreign Flow Penalty (Mục 12.1):**
+   - **Đánh giá Kỹ thuật đa khung thời gian:**
+     - Không chỉ nhìn MA20 ngắn hạn. Nếu thị giá nằm dưới **MA100** hoặc **MA200**, cấm gán nhãn "tích lũy trên các mốc hỗ trợ", khóa khuyến nghị `RECOMMEND_BUY`, hạ xuống trạng thái `WATCH_RECOVERY` hoặc `HIGH_RISK_REBOUND`.
+   - **Điểm phạt xả ròng Khối ngoại (Foreign Net Flow Penalty):**
+     - Tích hợp vào `calculate_conviction_score()`: Nếu khối ngoại bán ròng liên tục $\ge 3$ phiên hoặc bán ròng giá trị lớn ($> 50$ tỷ/phiên), trừ ngay **$10 - 15$ điểm Conviction** để phản ánh áp lực đè giá thực tế của dòng tiền tổ chức.
+   - **Phân tách thanh khoản:** Phân định rõ giữa thanh khoản quy mô (Volume) và gia tốc thanh khoản (Volume Decay so với bình quân các quý trước).
 
-3. **TASK-0031: Peer Comparison Benchmark — So Sánh Quốc Tế (Mục 11.2):**
-   - Thiết lập bảng mỏ neo định giá so sánh theo ngành (Regional Peer Benchmark) cho nhóm Lọc hóa dầu (Asian Refineries: Trung vị P/B ~1.0x, P/E ~4.1x), Thép và Hóa chất:
-     - Nếu $P/B_{\text{mã}} > \text{Peer\_Median} \times 2.0$:
-       - **Khóa xếp hạng "HẤP DẪN" / "RẤT RẺ"**, cắm cờ `PEER_PREMIUM_EXTREME`.
-     - Nếu $P/B_{\text{mã}} > \text{Peer\_Median} + 1\sigma$ (hoặc $> \text{Peer\_Median} \times 1.5$):
-       - Bật cảnh báo `PEER_PREMIUM_WARNING`, chiết khấu Fair Value thêm $10\%$.
+3. **TASK-0035: Numerical Exit Rules cho LongTermHoldingShield (Mục 12.2):**
+   - Khắc phục lỗ hổng thả trôi rủi ro của `LongTermHoldingShield`:
+     - Bỏ qua rung lắc $-5\%$ đến $-7\%$ là cần thiết cho tích sản, nhưng **phải có chốt chặn số cứng (Numerical Circuit Breaker)**:
+       - Cảnh báo khẩn cấp hoặc kích hoạt bán phòng vệ khi thị giá vi phạm mốc hỗ trợ trọng yếu (ví dụ: đóng cửa dưới $68.5k$ với Vol $> 1.5 \times ADV20$).
+       - Cảnh báo vỡ luận điểm kinh doanh cơ bản nếu biên lợi nhuận gộp quý gần nhất sụt giảm dưới $20\%$ hoặc nợ xấu/trả chậm gia tăng đột biến.
 
-4. **TASK-0032: Sector-Specific Risk Flags cho Dầu khí & Thép (Mục 11.3):**
-   - Bổ sung bộ kiểm tra rủi ro đặc thù ngành trong `data_gate.py`:
-     - **Nhóm Dầu khí / Lọc dầu (BSR, PVD, PVS):**
-       - `INVENTORY_RISK`: Số ngày tồn kho (DSI) $> 45$ ngày $\rightarrow$ Rủi ro trích lập giảm giá tồn kho khi giá dầu Brent giảm.
-       - `MARGIN_TREND_DOWN`: Biên gộp giảm liên tiếp $\ge 2$ quý $\rightarrow$ Crack spread bị thu hẹp.
-       - `POLICY_EXPIRING`: Ưu đãi thuế thu nhập hoặc thuế nhập khẩu sắp hết hạn.
-       - `SINGLE_PLANT_RISK`: Phụ thuộc vào một cụm nhà máy duy nhất, bảo dưỡng/sự cố = mất doanh thu.
-     - **Nhóm Thép (HPG, HSG, NKG):**
-       - `CHINA_DUMPING_RISK`: Chênh lệch giá HRC nội địa vs Trung Quốc bị ép giảm.
-       - `INVENTORY_BUILDUP`: Tồn kho thành phẩm tăng $> 20\%$ QoQ.
+4. **TASK-0036: Retail & Compounder Valuation Update (Mục 12.3):**
+   - Cập nhật dữ liệu mỏ neo định giá mới cho nhóm Bán lẻ / Compounder (MWG, PNJ, FPT) với `last_updated` mới và Target Price cập nhật từ các báo cáo CTCK gần nhất.
+   - Cập nhật luận điểm chất xúc tác: Bách Hóa Xanh đã bước qua điểm hòa vốn sang giai đoạn có lãi thực tế; bổ sung đánh giá rủi ro chiết khấu công ty mẹ (Holding discount) khi tái cấu trúc chuỗi.
 
 ---
 
-## 2. KẾ THỪA CÁC CHỐT CHẶN PHIÊN BẢN TRƯỚC (v6.1 - v7.0)
+## 2. KẾ THỪA CÁC CHỐT CHẶN PHIÊN BẢN TRƯỚC (v6.1 - v7.1)
 
-1. **Real Estate & Holding Valuation Overhaul (v7.0 - Phase 10):**
-   - SOTP Sanity Check cho Holding Company (VIC, MSN, REE, GEX), Quality of Earnings Gate (Core Earnings Ratio), Survival Gate (Normalized EBITDA, Refinancing Risk, Interest Coverage) và P/B Mean Reversion Guardrail cho BĐS.
-2. **System Rigor & De-risking (v6.4 - Phase 9):**
-   - Kelly Hard-Cap $15\%$ NAV, Hysteresis $\ge 2$ phiên cho Regime Conflict, Drawdown Breaker cấp danh mục $10\%$.
+1. **Cyclical Valuation Overhaul (v7.1 - Phase 11):**
+   - Peak Earnings Trap Detector (`check_peak_earnings_trap()`), Normalized EPS 5 năm (`calculate_normalized_cyclical_earnings()`), Regional Peer Benchmark (`check_cyclical_peer_benchmark()`), Sector Risk Flags cho Dầu khí & Thép.
+2. **Real Estate & Holding Valuation Overhaul (v7.0 - Phase 10):**
+   - SOTP Sanity Check cho Holding Company (VIC), Core Earnings Ratio, Survival Gate, P/B Mean Reversion Guardrail.
 3. **Context Engine & PTKT Hàng ngày (v6.3 - Phase 8):**
    - Trích xuất bối cảnh chuyên gia từ PDF TCBS vào `market_context.json`, Code MA200 luôn thắng nhận định chuyên gia.
 4. **Hạ tầng Bằng chứng & Audit Idempotent (v6.1 - v6.2):**
@@ -58,9 +48,9 @@
 
 ## 3. NGUYÊN TẮC QUẢN TRỊ RỦI RO & BẢO TOÀN KIẾN TRÚC
 
-- **Zero-Democracy Risk Gate:** Chu kỳ lợi nhuận hàng hóa biến động khôn lường; cấm dựa vào P/E trailing giá rẻ tại đỉnh chu kỳ để khuyến nghị tích sản.
-- **Fail-Safe & Graceful Degradation:** Thiếu dữ liệu peer quốc tế hoặc lịch sử EPS 5 năm thì tự động fallback về logic định giá chu kỳ cơ bản, cắm cờ `DATA_PARTIAL_FALLBACK`, tuyệt đối không gây crash.
-- **Single Source of Truth (SSOT):** Toàn bộ tham số định giá chu kỳ phát xuất từ `quant_valuation.py` và `data_gate.py`.
+- **Zero-Democracy Risk Gate:** MoS cơ học tự sinh ($1.18 \times P$) là dữ liệu vô giá trị (Uninformative); cấm sử dụng để kích hoạt lệnh mua hay nạp vào danh sách gợi ý.
+- **Single Source of Truth (SSOT):** Tham số định giá, trạng thái MoS (`mos_is_informative`), và vùng mua bắt nguồn từ `quant_valuation.py` và được chuẩn hóa đồng nhất trong `data_engine.py`.
+- **Fail-Safe & Graceful Degradation:** Khi mỏ neo định giá bị stale, hệ thống phải thành thật báo cáo `mos_is_informative: False`, hạ `confidence = "LOW"` và chuyển sang chế độ theo dõi kỹ thuật thuần túy, không tạo ra ảo ảnh an toàn.
 
 ---
 

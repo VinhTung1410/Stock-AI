@@ -656,24 +656,43 @@ def _build_auto_watchlist_candidate(opp: dict, manual_symbols: set) -> dict | No
         return None
 
     status = opp.get("status", "")
-    if status in ["CAUTION_TRAP", "DATA_CONFLICT"]:
+    if status in ["CAUTION_TRAP", "DATA_CONFLICT", "INSUFFICIENT_DATA"]:
         return None
 
     conv_score = float(opp.get("conviction_score", 0.0))
     mos_pct = float(opp.get("mos_pct", 0.0))
+    mos_is_informative = opp.get("mos_is_informative", True)
 
     if mos_pct < -25.0:
         return None
 
-    if conv_score >= 60.0 or mos_pct >= 15.0 or status == "RECOMMEND_BUY":
-        target_p = float(opp.get("target_price") or opp.get("current_price", 0.0))
+    # CHỐT CHẶN ANTI-SYNTHETIC MOS: Cấm dùng MoS tự sinh giả định để tự động thêm vào Watchlist
+    effective_mos = mos_is_informative and mos_pct >= 15.0
+
+    is_eligible = False
+    if status == "RECOMMEND_BUY":
+        is_eligible = True
+    elif conv_score >= 60.0 and effective_mos:
+        is_eligible = True
+    elif conv_score >= 75.0:
+        is_eligible = True
+
+    if is_eligible:
+        # Chuẩn hóa target_buy: Tuyệt đối KHÔNG gán bằng current_price khi không có giá mục tiêu
+        target_p = opp.get("target_price")
+        if target_p and float(target_p) > 0:
+            target_buy_val = round(float(target_p), 2)
+        else:
+            target_buy_val = 0.0
+
         from quant_valuation import get_stock_archetype_details
 
         arch_details = get_stock_archetype_details(sym, sector=opp.get("sector", ""))
+        mos_str = f"MoS: {mos_pct:.1f}%" if mos_is_informative else "MoS: N/A"
         return {
             "symbol": sym,
-            "target_buy": round(target_p, 2),
-            "note": f"[AUTO_DISCOVERY] [{arch_details['sector_group']}] Điểm {conv_score:.0f}/100 | MoS: {mos_pct:.1f}%",
+            "target_buy": target_buy_val,
+            "note": f"[AUTO_DISCOVERY] [{arch_details['sector_group']}] Điểm {conv_score:.0f}/100 | {mos_str}",
             "sector": arch_details["sector_group"],
             "archetype": arch_details["archetype"],
             "strategy": arch_details["default_strategy"],
@@ -1013,9 +1032,9 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             return c_data
 
     try:
-        # Lấy ngày hiện tại và 120 ngày trước để đủ tính MA50 & RSI14 & ATR
+        # Lấy ngày hiện tại và 320 ngày trước để đủ tính MA50, MA100, MA200, RSI14 & ATR
         end_date = datetime.now().strftime("%Y-%m-%d")
-        start_date = (datetime.now() - timedelta(days=120)).strftime("%Y-%m-%d")
+        start_date = (datetime.now() - timedelta(days=320)).strftime("%Y-%m-%d")
 
         df = _fetch_history_with_fallback(sym_clean, start_date, end_date)
         if df is None or df.empty:
@@ -1030,6 +1049,8 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
         # Tính các chỉ báo
         df["MA20"] = df["close"].rolling(window=20).mean()
         df["MA50"] = df["close"].rolling(window=50).mean()
+        df["MA100"] = df["close"].rolling(window=100).mean()
+        df["MA200"] = df["close"].rolling(window=200).mean()
         df["VOL_MA20"] = df["volume"].rolling(window=20).mean()
         df["RSI14"] = calculate_rsi(df["close"], period=14)
 
@@ -1051,6 +1072,8 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
 
         ma20 = float(latest["MA20"]) if pd.notnull(latest["MA20"]) else None
         ma50 = float(latest["MA50"]) if pd.notnull(latest["MA50"]) else None
+        ma100 = float(latest["MA100"]) if "MA100" in latest and pd.notnull(latest["MA100"]) else None
+        ma200 = float(latest["MA200"]) if "MA200" in latest and pd.notnull(latest["MA200"]) else None
         diff_ma20 = round(current_price - ma20, 2) if ma20 else 0.0
         diff_ma50 = round(current_price - ma50, 2) if ma50 else 0.0
         rsi14 = float(latest["RSI14"]) if pd.notnull(latest["RSI14"]) else None
@@ -1120,6 +1143,8 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             "low": low,
             "ma20": round(ma20, 2) if ma20 else None,
             "ma50": round(ma50, 2) if ma50 else None,
+            "ma100": round(ma100, 2) if ma100 else None,
+            "ma200": round(ma200, 2) if ma200 else None,
             "status_ma20": status_ma20,
             "rsi14": round(rsi14, 1) if rsi14 else None,
             "rsi": round(rsi14, 1) if rsi14 else 50.0,
@@ -1648,6 +1673,7 @@ SECTOR_MAP = {
     "DGC": "Hóa chất cơ bản",
     "DCM": "Phân bón & Hóa chất",
     "DPM": "Phân bón & Hóa chất",
+    "GVR": "Hóa chất & Cao su / KCN",
 }
 
 
@@ -1746,19 +1772,26 @@ def calculate_conviction_score(
     else:
         flow_pts += 1.0
 
+    foreign_penalty = 0.0
     if foreign_flow:
         f_status = foreign_flow.get("status", "")
         f_badge = foreign_flow.get("badge", "")
+        f_net_val = abs(float(foreign_flow.get("foreign_net_val_bil", 0.0) or 0.0))
         if f_status == "BUYING" or "MUA RÒNG" in str(f_badge).upper():
             flow_pts += 5.0
         elif f_status == "SELLING" or "BÁN RÒNG" in str(f_badge).upper():
             flow_pts += 0.0
+            if f_net_val >= 50.0:
+                foreign_penalty = 10.0
+            elif f_net_val >= 20.0:
+                foreign_penalty = 5.0
         else:
             flow_pts += 3.0
     else:
         flow_pts += 3.0
 
-    total_score = round(max(0.0, min(100.0, mos_pts + tech_pts + cat_pts + flow_pts)), 1)
+    raw_score = mos_pts + tech_pts + cat_pts + flow_pts - foreign_penalty
+    total_score = round(max(0.0, min(100.0, raw_score)), 1)
     if total_score >= HIGH_CONVICTION_THRESHOLD:
         tier = "HIGH"
     elif total_score >= MEDIUM_CONVICTION_THRESHOLD:
@@ -1769,7 +1802,13 @@ def calculate_conviction_score(
     return {
         "score": total_score,
         "tier": tier,
-        "breakdown": {"valuation": mos_pts, "technical": tech_pts, "catalyst": cat_pts, "liquidity": flow_pts},
+        "breakdown": {
+            "valuation": mos_pts,
+            "technical": tech_pts,
+            "catalyst": cat_pts,
+            "liquidity": flow_pts,
+            "foreign_penalty": foreign_penalty,
+        },
     }
 
 
@@ -1963,6 +2002,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=sector)
             fv = val_res.get("fair_value", curr_price * 1.10)
             mos_pct = val_res.get("mos_pct", 0.0)
+            mos_is_informative = val_res.get("mos_is_informative", True)
             val_method = val_res.get("valuation_method", "N/A")
             val_conf = val_res.get("confidence", "MEDIUM")
             p_target = val_res.get("price_target") or round(fv * 1.05, 2)
@@ -2051,8 +2091,14 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             vol_allowed = vol_ratio >= 0.90
             no_trap = not is_trap
 
+            # CHỐT CHẶN XU HƯỚNG TRUNG HẠN (MA100): Giá không được gãy sâu dưới MA100
+            ma100 = tech.get("ma100")
+            trend_allowed = True
+            if ma100 and curr_price < (ma100 * 0.98):
+                trend_allowed = False
+
             # A. ĐẠT CHUẨN HIGH CONVICTION (>= 70) VÀ KỸ THUẬT AN TOÀN -> KHUYẾN NGHỊ MUA
-            if conv_score >= HIGH_CONVICTION_THRESHOLD and tech_allowed and rsi_allowed and vol_allowed and no_trap:
+            if conv_score >= HIGH_CONVICTION_THRESHOLD and tech_allowed and rsi_allowed and vol_allowed and no_trap and trend_allowed:
                 target_price = p_target
                 stop_loss = round(max(ma20 * 0.95, curr_price * 0.93), 2)
                 # Đảm bảo Stop < current
@@ -2105,6 +2151,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "target_price": target_price,
                     "fair_value": fv,
                     "mos_pct": mos_pct,
+                    "mos_is_informative": mos_is_informative,
                     "valuation_method": val_method,
                     "confidence": val_conf,
                     "stop_loss": stop_loss,
@@ -2121,6 +2168,10 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                 watch_reason = []
                 if curr_price < ma20:
                     watch_reason.append(f"giá dưới MA20 ({ma20:.1f})")
+                if ma100 and curr_price < ma100:
+                    watch_reason.append(f"giá dưới MA100 ({ma100:.1f})")
+                if not trend_allowed:
+                    watch_reason.append("xu hướng trung hạn MA100 chưa xác nhận")
                 if rsi < 45:
                     watch_reason.append(f"RSI yếu ({rsi:.1f})")
                 if conv_score < HIGH_CONVICTION_THRESHOLD:
@@ -2140,6 +2191,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "current_price": curr_price,
                     "fair_value": fv,
                     "mos_pct": mos_pct,
+                    "mos_is_informative": mos_is_informative,
                     "valuation_method": val_method,
                     "confidence": val_conf,
                     "rsi": rsi,

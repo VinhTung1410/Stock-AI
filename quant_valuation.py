@@ -42,10 +42,10 @@ INSTITUTIONAL_CONSENSUS_TARGETS = {
         "last_updated": "2024-10-01",
     },
     "MWG": {
-        "consensus_target": 82.0,
-        "source": "Vietcap/SSI Research",
+        "consensus_target": 83.5,
+        "source": "VCBS/SSI Research",
         "quality_tier": "TIER_1_RETAIL",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-09-30",
     },
     "SSI": {
         "consensus_target": 24.5,
@@ -221,6 +221,7 @@ def classify_stock_archetype(symbol: str, sector: str = "") -> str:
         "DGC",
         "DCM",
         "DPM",
+        "GVR",
     ]:
         return "CYCLICAL"
     if any(s in sec for s in ["bất động sản", "địa ốc"]) or sym in [
