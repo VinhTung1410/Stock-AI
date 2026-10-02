@@ -276,6 +276,95 @@ def calculate_weighted_entry_and_rr(
     }
 
 
+def calculate_structural_stop_loss(
+    current_price: float,
+    tech_data: dict | None = None,
+    atr: float | None = None,
+) -> tuple[float, float, str]:
+    """Calculate structural stop-loss based on swing low, MA50, and ATR buffer (Phase 13 / TASK-0039).
+
+    Avoids the mechanical -7% HOSE limit-down floor trap.
+
+    Returns:
+        tuple of (stop_loss: float, risk_pct: float, method_desc: str)
+    """
+    if current_price <= 0:
+        return 0.0, 0.0, "INVALID_PRICE"
+
+    tech = tech_data or {}
+    atr_val = float(atr) if (atr and atr > 0) else float(tech.get("atr") or (current_price * 0.03))
+    atr_buffer = round(0.5 * atr_val, 2)
+
+    # 1. Structural anchors in priority: swing_low -> support_level -> ma50 -> ma20
+    swing_low = float(tech.get("swing_low") or 0.0)
+    support_lvl = float(tech.get("support_level") or tech.get("base_support") or 0.0)
+    ma50 = float(tech.get("ma50") or 0.0)
+    ma20 = float(tech.get("ma20") or 0.0)
+
+    anchor = 0.0
+    method = ""
+    if 0 < swing_low < current_price:
+        anchor = swing_low
+        method = "SWING_LOW"
+    elif 0 < support_lvl < current_price:
+        anchor = support_lvl
+        method = "BASE_SUPPORT"
+    elif 0 < ma50 < current_price:
+        anchor = ma50
+        method = "MA50_SUPPORT"
+    elif 0 < ma20 <= current_price:
+        anchor = ma20
+        method = "MA20_SUPPORT"
+
+    if anchor > 0:
+        candidate_stop = round(anchor - atr_buffer, 2)
+        # Bounded between 5% and 12% below current_price
+        min_stop = round(current_price * 0.88, 2)  # max 12% loss
+        max_stop = round(current_price * 0.95, 2)  # at least 5% room
+        stop_loss = max(min(candidate_stop, max_stop), min_stop)
+        desc = f"STRUCTURAL_{method} (Anchor: {anchor:.2f}, Buffer: -{atr_buffer:.2f})"
+    else:
+        # Dynamic ATR fallback (avoiding hardcoded -7% HOSE floor trap)
+        stop_loss = round(current_price - (2.5 * atr_val), 2)
+        stop_loss = max(min(stop_loss, round(current_price * 0.95, 2)), round(current_price * 0.90, 2))
+        desc = f"DYNAMIC_ATR_FALLBACK (2.5x ATR: {2.5 * atr_val:.2f})"
+
+    risk_pct = round(((current_price - stop_loss) / current_price) * 100, 2)
+    return stop_loss, risk_pct, desc
+
+
+def calculate_gap_risk_position_sizing(
+    kelly_f: float,
+    stop_loss_pct: float,
+    max_nav_risk: float = 0.015,
+    floor_gap_risk: float = 0.14,
+    max_position_cap: float = 0.25,
+) -> tuple[float, str]:
+    """Calculate position size incorporating gap floor risk (Phase 13 / TASK-0039).
+
+    Stress tests 2 consecutive floor limit-down sessions (-14% on HOSE) to protect portfolio NAV budget.
+
+    Returns:
+        tuple of (position_size_nav: float, note: str)
+    """
+    if kelly_f <= 0 or stop_loss_pct <= 0:
+        return 0.0, "NO_ALLOCATION (Kelly <= 0 or invalid SL)"
+
+    half_kelly = kelly_f * 0.5
+    nominal_risk = stop_loss_pct / 100.0
+    effective_risk = max(nominal_risk, floor_gap_risk)
+
+    budget_size = max_nav_risk / effective_risk
+    final_size = min(half_kelly, budget_size, max_position_cap)
+    final_size = round(final_size, 4)
+
+    note = (
+        f"GAP_STRESS_SIZING: Half-Kelly={half_kelly*100:.1f}%, "
+        f"BudgetCap={budget_size*100:.1f}% (Stress -14%), Cap={max_position_cap*100:.1f}%"
+    )
+    return final_size, note
+
+
 def evaluate_decision_hard_gates(
     current_price: float,
     p_bull: float,
@@ -327,15 +416,10 @@ def evaluate_decision_hard_gates(
     ev = (p_bull * price_bull) + (p_base * price_base) + (p_bear * price_bear)
     ev = round(float(ev), 2)
 
-    # 2. Dynamic ATR Stop-loss
-    if atr and atr > 0:
-        atr_stop = round(current_price - (2.0 * atr), 2)
-        stop_loss = max(atr_stop, round(current_price * 0.93, 2))
-    else:
-        stop_loss = round(current_price * 0.93, 2)
-
-    # Đảm bảo Stop-loss < current_price
-    stop_loss = min(round(float(stop_loss), 2), round(current_price * 0.97, 2))
+    # 2. Structural Stop-loss & Gap Risk Sizing (Phase 13 / TASK-0039)
+    stop_loss, sl_risk_pct, sl_method = calculate_structural_stop_loss(
+        current_price=current_price, tech_data=tech_data, atr=atr
+    )
 
     downside_val = max(current_price - stop_loss, 0.01)
     upside_val = max(price_target - current_price, 0.01)
@@ -348,6 +432,10 @@ def evaluate_decision_hard_gates(
     p_loss = 1.0 - p_win
     kelly_f = round(p_win - (p_loss / rr), 2) if rr > 0 else -1.0
     half_kelly_f = round(kelly_f * 0.5, 2) if kelly_f > 0 else 0.0
+
+    gap_sized_nav, gap_sizing_note = calculate_gap_risk_position_sizing(
+        kelly_f=kelly_f, stop_loss_pct=sl_risk_pct
+    )
 
     # 5. Phân loại Tín hiệu Kỹ thuật (Technical Signal)
     tech_signal = "NEUTRAL"
@@ -367,7 +455,9 @@ def evaluate_decision_hard_gates(
         tech_signal = "CONSOLIDATION_BASE"
 
     # --- HÀNG RÀO CỨNG (HARD GATES) ---
-    gate_mos_passed = mos_pct >= 12.0
+    mos_is_informative = val_model.get("mos_is_informative", True)
+    # Khóa cứng MoS uninformative hoặc không có định giá thực chất (TASK-0038)
+    gate_mos_passed = (mos_pct >= 12.0) and mos_is_informative and (fair_value > 0)
     gate_rr_passed = rr >= 1.5
     gate_kelly_passed = kelly_f > 0
     gate_trap_passed = not (trap_info and trap_info.get("is_trap"))
@@ -400,7 +490,7 @@ def evaluate_decision_hard_gates(
         # TUYỆT ĐỐI KHÔNG GÁN AVOID / TRÁNH BẪY mà chuyển thành WATCH / WAIT FOR CONFIRMATION
         can_buy = False
         action_state = "🟡 THEO DÕI"
-        if mos_pct >= 15.0:
+        if mos_pct >= 15.0 and mos_is_informative:
             decision_tag = "🟡 THEO DÕI / CHỜ XÁC NHẬN (Định giá rất rẻ nhưng Kỹ thuật đang rơi - Chờ nến cân bằng, cấm bắt dao rơi)"
         else:
             decision_tag = "🟡 THEO DÕI (Kỹ thuật nằm dưới MA20/MA50 - Chờ tích lũy ổn định)"
@@ -414,7 +504,7 @@ def evaluate_decision_hard_gates(
         decision_tag = f"🔴 GIẢM / THOÁT (Cảnh báo bẫy: {trap_msg})"
         position_size_nav = "0% NAV"
 
-    elif mos_pct >= 15.0 and gate_rr_passed and gate_kelly_passed:
+    elif mos_is_informative and mos_pct >= 15.0 and gate_rr_passed and gate_kelly_passed:
         can_buy = True
         if is_heavy_foreign_sell:
             action_state = ACTION_ACCUMULATE
@@ -466,11 +556,15 @@ def evaluate_decision_hard_gates(
         "fair_value": fair_value,
         "price_target": price_target,
         "mos_pct": mos_pct,
+        "mos_is_informative": mos_is_informative,
         "valuation_model": val_model,
         "valuation_method": val_method,
         "confidence": val_confidence,
         "stop_loss": stop_loss,
         "downside_pct": round(((current_price - stop_loss) / current_price) * 100, 1) if current_price > 0 else 0.0,
+        "structural_stop_loss_method": sl_method,
+        "gap_risk_nav_cap": gap_sized_nav,
+        "gap_risk_note": gap_sizing_note,
         "risk_reward": rr,
         "kelly_f": kelly_f,
         "half_kelly_f": half_kelly_f,

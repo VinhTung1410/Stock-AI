@@ -501,3 +501,32 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   6. Làm sạch `data/watchlist.json` loại bỏ bản ghi MWG sai lệch.
 - **Hệ quả:** Loại bỏ hoàn toàn các khuyến nghị dựa trên MoS ảo; đảm bảo tính toàn vẹn, trung thực và minh bạch 100% của danh mục Watchlist tự động. Hoàn tất Phase 12 (v7.2).
 
+---
+
+### [ADR-026] Tái Cấu Trúc Cốt Lõi Định Giá Thực Chất (Intrinsic Valuation), Quản Trị Rủi Ro Cấu Trúc & Vùng Đệm Trễ Vĩ Mô (Phase 13 - v7.3)
+- **Ngày quyết định:** 2026-10-02
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  - Qua thẩm định sâu mã nguồn `quant_valuation.py`, phát hiện công thức `fv_base = current_price * 1.18` trong nhánh `GROWTH_COMPOUNDER` tạo ra hàm số phụ thuộc thị giá ($FV = 0.708 \times P + 28.39$), biến Biên an toàn (MoS) thành một định đề toán học luôn dương giả tạo ($15.3\%$) khi thiếu consensus.
+  - Nhánh `BANK` cũng fallback `current_price * 1.12` khi thiếu P/B.
+  - Ngưỡng dừng lỗ cơ học `price * 0.93` (-7%) trùng khớp biên độ sàn 1 phiên của HOSE, gây bẫy thanh khoản và rủi ro mất khả năng thoát hàng khi cổ phiếu giảm sàn trắng bên mua.
+  - Cổng vĩ mô ngắt nhị phân khi VN-Index chạm MA200 tạo ra hiện tượng whipsaw (mua đỉnh bán đáy trong vùng thị trường đi ngang).
+  - Data Gate thiếu chốt chặn xử phạt dữ liệu đóng băng theo từng trường (`as_of_date`).
+- **Quyết định lựa chọn:**
+  1. **Xóa bỏ vĩnh viễn $P \times 1.18$ & $P \times 1.12$:**
+     - Xây dựng hàm `evaluate_compounder_valuation()` định giá nội tại thực chất dựa trên $Forward\_EPS \times Historical\_Median\_PE$ và mô hình SOTP đa mảng (MWG: ICT Core 40k + BHX 38k + Khác 7k = 85k).
+     - Áp dụng nguyên tắc Fail-Safe: Nếu thiếu dữ liệu cơ bản, trả về `fair_value = 0.0`, `mos_is_informative = False`, và `INSUFFICIENT_DATA`. Tuyệt đối cấm dẫn xuất FV từ thị giá.
+  2. **Khóa cứng MoS Uninformative (Hard Gate):**
+     - Tại `quant_engine.py`: Nếu `mos_is_informative is False` hoặc `fair_value <= 0`, khóa cứng `gate_mos_passed = False`, cấm dùng MoS để kích hoạt lệnh Mua giá trị.
+  3. **Quản lý Vòng đời Consensus Target $\le 90$ ngày:**
+     - Rút ngắn thời hạn tối đa `max_age_days = 90` (thay vì 180 ngày). Quá 90 ngày tự động de-weight về 0 và gắn cảnh báo `is_stale = True`.
+  4. **Dừng lỗ Cấu trúc & Định cỡ Vị thế Phòng vệ Gap Sàn:**
+     - Triển khai `calculate_structural_stop_loss()` neo theo Swing Low, Base Support, MA50 trừ đệm $0.5 \times ATR$.
+     - Triển khai `calculate_gap_risk_position_sizing()` stress-test kịch bản 2 cây sàn liên tiếp ($-14\%$) để đảm bảo tổn thất tối đa $\le 1.5\%$ NAV.
+  5. **Cổng Vĩ mô có Vùng Đệm Trễ (Macro Hysteresis):**
+     - Triển khai `classify_regime_ma200_hysteresis()` với vùng trễ $\pm 1.5\% - 2.0\%$ và điều kiện xác nhận 2 phiên liên tiếp (hoặc volume bán tháo đột biến $> 1.3 \times ADV20$) nhằm triệt tiêu whipsaw.
+  6. **Data Gate Field-level Freshness:**
+     - Gắn cờ `FLAG_DATA_STALE_FREEZE`, tự động khóa khuyến nghị đầu tư khi dữ liệu BCTC chậm nộp quá 180 ngày.
+- **Hệ quả:** Hệ thống đạt chuẩn CFA về tính độc lập của mô hình định giá với thị giá; triệt tiêu hoàn toàn rủi ro bẫy sàn HOSE và whipsaw MA200; 100% test suites (58/58 tests) đạt kết quả Green. Hoàn tất Phase 13 (v7.3).
+
+

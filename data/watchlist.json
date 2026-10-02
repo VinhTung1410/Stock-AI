@@ -1,10 +1,5 @@
 [
   {
-    "symbol": "VIC",
-    "target_buy": 0.0,
-    "note": "Theo dõi từ Google Sheet [⚠️ CẢNH BÁO: Dính bẫy giá (FALLING_KNIFE_TRAP)]"
-  },
-  {
     "symbol": "VPB",
     "target_buy": 0.0,
     "note": "Theo dõi từ Google Sheet"

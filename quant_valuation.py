@@ -125,11 +125,11 @@ INSTITUTIONAL_CONSENSUS_TARGETS = {
 def check_institutional_target_freshness(
     symbol: str,
     as_of_date: str | None = None,
-    max_age_days: int = 180,
+    max_age_days: int = 90,
 ) -> dict[str, Any]:
-    """Kiểm tra độ tươi của mỏ neo định giá đồng thuận từ các CTCK (Phase 6e).
+    """Kiểm tra độ tươi của mỏ neo định giá đồng thuận từ các CTCK (Phase 13 / TASK-0038).
 
-    Nếu dữ liệu cũ quá max_age_days (mặc định 180 ngày ~ 2 quý), cảnh báo rủi ro dữ liệu đóng băng (stale data).
+    Nếu dữ liệu cũ quá max_age_days (mặc định 90 ngày ~ 1 quý), cảnh báo rủi ro dữ liệu đóng băng (stale data).
     """
     sym = symbol.strip().upper() if symbol else ""
     cons_data = INSTITUTIONAL_CONSENSUS_TARGETS.get(sym)
@@ -797,6 +797,143 @@ def evaluate_cyclical_valuation(
     }
 
 
+# Benchmark multiples & Fundamental baseline for Compounders (Phase 13 / TASK-0037)
+COMPOUNDER_BENCHMARK_PE: Dict[str, float] = {
+    "retail": 15.0,
+    "bán lẻ": 15.0,
+    "tech": 19.0,
+    "công nghệ": 19.0,
+    "consumer": 16.0,
+    "tiêu dùng": 16.0,
+    "default": 14.5,
+}
+
+COMPOUNDER_FUNDAMENTAL_BENCHMARKS: Dict[str, Dict[str, Any]] = {
+    "MWG": {
+        "forward_eps": 5.0,  # 5,000 VND/cp EPS dự phóng hợp nhất
+        "historical_median_pe": 16.5,
+        "sotp_fair_value": 85.0,  # SOTP: TGDĐ/ĐMX (40k) + BHX (38k) + Khác (7k)
+        "sustainable_growth_rate": 15.0,
+    },
+    "FPT": {
+        "forward_eps": 5.80,  # 5,800 VND/cp
+        "historical_median_pe": 19.5,
+        "sotp_fair_value": 115.0,
+        "sustainable_growth_rate": 20.0,
+    },
+    "PNJ": {
+        "forward_eps": 6.80,  # 6,800 VND/cp
+        "historical_median_pe": 15.0,
+        "sotp_fair_value": 102.0,
+        "sustainable_growth_rate": 14.0,
+    },
+    "VNM": {
+        "forward_eps": 4.50,
+        "historical_median_pe": 16.5,
+        "sotp_fair_value": 74.0,
+        "sustainable_growth_rate": 6.0,
+    },
+    "REE": {
+        "forward_eps": 6.20,
+        "historical_median_pe": 11.5,
+        "sotp_fair_value": 71.5,
+        "sustainable_growth_rate": 10.0,
+    },
+}
+
+
+def evaluate_compounder_valuation(
+    symbol: str,
+    current_price: float,
+    fin_dict: Optional[Dict[str, Any]] = None,
+    sector: str = "",
+) -> Dict[str, Any]:
+    """Định giá cổ phiếu Tăng trưởng & Bán lẻ / Công nghệ (Compounder) theo phương pháp nội tại thực chất (Phase 13 / TASK-0037).
+
+    Mô hình:
+    1. Forward EPS (1-2Y) x Historical Median P/E
+    2. SOTP (Sum-Of-The-Parts) cho tập đoàn bán lẻ/holding (như MWG)
+    CẤM TUYỆT ĐỐI: Phái sinh Fair Value từ thị giá (current_price * 1.18).
+    """
+    fin = fin_dict or {}
+    sym = (symbol or "").strip().upper()
+    sec = (sector or "").lower()
+
+    roe = float(fin.get("roe") or 12.0)
+    debt_equity = float(fin.get("debt_equity") or 1.0)
+    confidence = "HIGH" if (roe >= 18.0 and debt_equity < 1.0) else "MEDIUM"
+
+    bench = COMPOUNDER_FUNDAMENTAL_BENCHMARKS.get(sym, {})
+    forward_eps = fin.get("forward_eps") or fin.get("eps_forward")
+    eps = fin.get("eps")
+
+    # Xác định Target P/E
+    sec_key = "default"
+    for k in COMPOUNDER_BENCHMARK_PE:
+        if k in sec:
+            sec_key = k
+            break
+    target_pe = float(
+        fin.get("historical_median_pe")
+        or fin.get("target_pe")
+        or bench.get("historical_median_pe")
+        or COMPOUNDER_BENCHMARK_PE.get(sec_key, 14.5)
+    )
+
+    # 1. Xác định Forward EPS từ fundamental
+    derived_eps = None
+    if forward_eps and float(forward_eps) > 0:
+        derived_eps = float(forward_eps)
+    elif eps and float(eps) > 0:
+        growth_rate = float(fin.get("growth_rate") or bench.get("sustainable_growth_rate") or min(roe * 0.7, 20.0))
+        derived_eps = round(float(eps) * (1.0 + growth_rate / 100.0), 2)
+    elif bench.get("forward_eps"):
+        derived_eps = float(bench["forward_eps"])
+
+    # 2. SOTP Value
+    sotp_val = float(fin.get("sotp_fair_value") or fin.get("sotp_value") or bench.get("sotp_fair_value") or 0.0)
+
+    # 3. Tính toán Intrinsic Fair Value (Không phụ thuộc vào thị giá)
+    if derived_eps and derived_eps > 0 and target_pe > 0:
+        pe_fv = round(derived_eps * target_pe, 2)
+        if sotp_val > 0:
+            fv_base = round((pe_fv * 0.5) + (sotp_val * 0.5), 2)
+            method = f"Forward EPS ({derived_eps:.1f}k) x Median P/E ({target_pe:.1f}x) & SOTP ({sotp_val:.1f}k)"
+        else:
+            fv_base = pe_fv
+            method = f"Forward EPS ({derived_eps:.1f}k) x Median P/E ({target_pe:.1f}x)"
+        fv_bear = round(fv_base * 0.85, 2)
+        fv_bull = round(fv_base * 1.20, 2)
+        price_target = round(min(fv_bull, fv_base * 1.10), 2)
+        is_informative = True
+    elif sotp_val > 0:
+        fv_base = sotp_val
+        fv_bear = round(sotp_val * 0.85, 2)
+        fv_bull = round(sotp_val * 1.20, 2)
+        price_target = round(min(fv_bull, sotp_val * 1.10), 2)
+        method = f"SOTP Đa mảng ({sotp_val:.1f}k)"
+        is_informative = True
+    else:
+        # FAIL-SAFE: Không có EPS/PE/SOTP -> CẤM BỊA FV TỪ THỊ GIÁ
+        fv_base = 0.0
+        fv_bear = 0.0
+        fv_bull = 0.0
+        price_target = None
+        method = "INSUFFICIENT_DATA: Thiếu BCTC/EPS để định giá Compounder"
+        confidence = "LOW"
+        is_informative = False
+
+    return {
+        "fv_base": fv_base,
+        "fv_bear": fv_bear,
+        "fv_bull": fv_bull,
+        "price_target": price_target,
+        "confidence": confidence,
+        "valuation_method": method,
+        "is_informative": is_informative,
+    }
+
+
 def calculate_fair_value_and_mos(
     symbol: str,
     current_price: float,
@@ -859,6 +996,7 @@ def calculate_fair_value_and_mos(
     confidence = "MEDIUM"
     re_eval = None
     cyc_eval = None
+    comp_eval = None
 
     # =========================================================================
     # ĐẶC BIỆT: TẬP ĐOÀN ĐA NGÀNH PHỨC TẠP (VIC - VINGROUP)
@@ -925,12 +1063,15 @@ def calculate_fair_value_and_mos(
             fv_base = round(bvps_est * target_pb, 2)
             fv_bear = round(bvps_est * max(target_pb * 0.82, 0.85), 2)
             fv_bull = round(bvps_est * (target_pb * 1.18), 2)
+            price_target = round(min(fv_bull, fv_base * 1.10), 2)
         else:
-            fv_base = round(current_price * 1.12, 2)
-            fv_bear = round(current_price * 0.90, 2)
-            fv_bull = round(current_price * 1.25, 2)
-
-        price_target = round(min(fv_bull, fv_base * 1.10), 2)
+            # Sửa triệt để v7.3: CẤM fallback current_price * 1.12
+            fv_base = 0.0
+            fv_bear = 0.0
+            fv_bull = 0.0
+            price_target = None
+            valuation_method = "INSUFFICIENT_DATA: Thiếu dữ liệu P/B để tính Justified P/B"
+            confidence = "LOW"
 
     # =========================================================================
     # 2. NHÓM CỔ PHIẾU CHU KỲ: NORMALIZED EPS & PEER BENCHMARK (PHASE 11 / TASK-0029 -> 0032)
@@ -957,42 +1098,52 @@ def calculate_fair_value_and_mos(
         valuation_method = re_eval["valuation_method"]
 
     # =========================================================================
-    # 4. NHÓM TĂNG TRƯỞNG & BÁN LẺ / CÔNG NGHỆ (COMPOUNDER)
+    # 4. NHÓM TĂNG TRƯỞNG & BÁN LẺ / CÔNG NGHỆ (COMPOUNDER - PHASE 13 / TASK-0037)
     # =========================================================================
     else:
-        valuation_method = "PEG & Sustainable EPS Growth (Tăng trưởng)"
-        confidence = "HIGH" if (roe >= 18.0 and debt_equity < 1.0) else "MEDIUM"
-        fv_base = round(current_price * 1.18, 2)
-        fv_bear = round(current_price * 0.92, 2)
-        fv_bull = round(current_price * 1.30, 2)
-        price_target = round(min(fv_bull, fv_base * 1.12), 2)
+        comp_eval = evaluate_compounder_valuation(sym_clean, current_price, fin_dict, sector)
+        fv_base = comp_eval["fv_base"]
+        fv_bear = comp_eval["fv_bear"]
+        fv_bull = comp_eval["fv_bull"]
+        price_target = comp_eval["price_target"]
+        confidence = comp_eval["confidence"]
+        valuation_method = comp_eval["valuation_method"]
 
-    # Kiểm tra mỏ neo Consensus từ CTCK lớn (Task 7.0c)
+    # Kiểm tra mỏ neo Consensus từ CTCK lớn (Task 7.0c & Phase 13 Max 90d)
     consensus_stale = False
     if cons_target > 0:
-        freshness = check_institutional_target_freshness(sym_clean)
+        freshness = check_institutional_target_freshness(sym_clean, max_age_days=90)
         if freshness.get("is_stale", False):
             consensus_stale = True
             confidence = "LOW"
             logging.warning(
-                "Consensus target của %s đã quá hạn (%s ngày), loại bỏ khỏi Fair Value.",
+                "Consensus target của %s đã quá hạn (%s ngày > 90d), loại bỏ khỏi Fair Value.",
                 sym_clean,
                 freshness.get("age_days"),
             )
         else:
             discounted_consensus = round(cons_target * 0.85, 2)
-            fv_base = round((fv_base * 0.6) + (discounted_consensus * 0.4), 2)
-            fv_bear = round(min(fv_bear, fv_base * 0.85), 2)
-            fv_bull = round(max(fv_bull, cons_target), 2)
+            if fv_base > 0:
+                fv_base = round((fv_base * 0.6) + (discounted_consensus * 0.4), 2)
+                fv_bear = round(min(fv_bear, fv_base * 0.85), 2)
+                fv_bull = round(max(fv_bull, cons_target), 2)
+            else:
+                fv_base = discounted_consensus
+                fv_bear = round(discounted_consensus * 0.85, 2)
+                fv_bull = cons_target
             price_target = cons_target
 
     # TÍNH TOÁN BIÊN AN TOÀN (MARGIN OF SAFETY - MOS %)
     mos_pct = round(((fv_base - current_price) / fv_base) * 100, 2) if fv_base > 0 else 0.0
 
-    # Phân định MoS thực chất vs MoS suy diễn từ hệ số nhân giá cố định (Task 7.0d)
+    # Phân định MoS thực chất vs MoS suy diễn (Phase 13 / TASK-0038)
     mos_is_informative = True
-    if archetype == "GROWTH_COMPOUNDER" and (cons_target <= 0 or consensus_stale):
+    if fv_base <= 0.0:
         mos_is_informative = False
+        mos_pct = 0.0
+    elif archetype == "GROWTH_COMPOUNDER":
+        if comp_eval and not comp_eval.get("is_informative", True) and (cons_target <= 0 or consensus_stale):
+            mos_is_informative = False
     elif archetype == "BANK" and (not pb or pb <= 0) and (cons_target <= 0 or consensus_stale):
         mos_is_informative = False
 

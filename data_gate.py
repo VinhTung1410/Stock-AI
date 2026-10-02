@@ -54,6 +54,7 @@ FLAG_POLICY_EXPIRING = "POLICY_EXPIRING"
 FLAG_SINGLE_PLANT_RISK = "SINGLE_PLANT_RISK"
 FLAG_CHINA_DUMPING_RISK = "CHINA_DUMPING_RISK"
 FLAG_INVENTORY_BUILDUP = "INVENTORY_BUILDUP"
+FLAG_DATA_STALE_FREEZE = "DATA_STALE_FREEZE"
 
 
 def reconcile_price(tech_data: Optional[Dict[str, Any]] = None, exchange: str = "HOSE") -> Tuple[str, float, List[str]]:
@@ -185,7 +186,7 @@ def _check_financial_freshness(latest_year: Optional[int], latest_quarter: Optio
         current_quarter = (now.month - 1) // 3 + 1
         quarters_diff = (now.year - latest_year) * 4 + (current_quarter - latest_quarter)
         if quarters_diff > 2:
-            return [f"Financial Statements (Q{latest_quarter}/{latest_year} is {quarters_diff} quarters old)"]
+            return [f"{FLAG_DATA_STALE_FREEZE}: Financial Statements (Q{latest_quarter}/{latest_year} is {quarters_diff} quarters old)"]
     except Exception:
         pass
     return []
@@ -197,6 +198,7 @@ def reconcile_financial_period(fin_data: Optional[Dict[str, Any]] = None) -> Tup
     Checks:
     - Financial statement date within last 2 quarters.
     - Consistency of TTM vs FY basis.
+    - Field-level freshness & frozen data flags (Phase 13 / TASK-0041).
 
     Returns:
         tuple of (missing_fields: list[str], stale_fields: list[str])
@@ -210,6 +212,23 @@ def reconcile_financial_period(fin_data: Optional[Dict[str, Any]] = None) -> Tup
 
     latest_year, latest_quarter = _parse_period_year_quarter(fin_data)
     stale = _check_financial_freshness(latest_year, latest_quarter)
+
+    # Field-level date freshness and frozen flag check (TASK-0041)
+    if fin_data.get("is_frozen") or fin_data.get("is_stale_freeze"):
+        stale.append(f"{FLAG_DATA_STALE_FREEZE}: Financial statements frozen by regulator or company.")
+
+    days_old = fin_data.get("days_since_statement")
+    if days_old is not None and float(days_old) > 180:
+        stale.append(f"{FLAG_DATA_STALE_FREEZE}: Financial report is {days_old} days old (> 180d threshold).")
+
+    as_of = fin_data.get("as_of_date")
+    if as_of:
+        try:
+            as_of_dt = datetime.strptime(str(as_of)[:10], "%Y-%m-%d").date()
+            if (datetime.now().date() - as_of_dt).days > 180:
+                stale.append(f"{FLAG_DATA_STALE_FREEZE}: Data as of {as_of} exceeds 180-day freshness limit.")
+        except Exception:
+            pass
 
     return missing, stale
 

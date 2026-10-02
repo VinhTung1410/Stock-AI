@@ -19,6 +19,7 @@ REGIME_SIDEWAYS: Final[str] = "SIDEWAYS"
 
 # Methodology Constants
 METHOD_MA200_SLOPE: Final[str] = "MA200_SLOPE"
+METHOD_MA200_HYSTERESIS: Final[str] = "MA200_HYSTERESIS"
 METHOD_MOMENTUM_VOLATILITY: Final[str] = "MOMENTUM_VOLATILITY"
 
 
@@ -65,6 +66,59 @@ def classify_regime_ma200_slope(
     return regimes
 
 
+def classify_regime_ma200_hysteresis(
+    df_index: pd.DataFrame,
+    ma_window: int = 200,
+    hysteresis_pct: float = 1.5,
+    reentry_pct: float = 1.0,
+    confirmation_sessions: int = 2,
+    vol_surge_mult: float = 1.3,
+) -> pd.Series:
+    """Classify regime with hysteresis buffer to eliminate whipsaws around MA200 (Phase 13 / TASK-0040).
+
+    Rules:
+    - Downtrend Trigger: Close < MA200 * (1 - hysteresis_pct/100) for >= confirmation_sessions consecutive sessions,
+      OR breakdown below MA200 with heavy volume (> vol_surge_mult * ADV20).
+    - Uptrend / Re-entry Trigger: Close > MA200 * (1 + reentry_pct/100).
+    - Buffer / Neutral: Keeps prior regime state to avoid oscillating false signals.
+    """
+    if "close" not in df_index.columns or len(df_index) < 20:
+        return pd.Series(REGIME_SIDEWAYS, index=df_index.index)
+
+    close = df_index["close"].astype(float)
+    effective_window = ma_window if len(df_index) >= ma_window else max(20, len(df_index) // 2)
+    min_p = max(10, effective_window // 4)
+    ma_series = close.rolling(window=effective_window, min_periods=min_p).mean()
+
+    volume = df_index["volume"].astype(float) if "volume" in df_index.columns else pd.Series(0.0, index=df_index.index)
+    vol_ma = volume.rolling(window=20, min_periods=5).mean()
+
+    lower_band = ma_series * (1.0 - hysteresis_pct / 100.0)
+    upper_band = ma_series * (1.0 + reentry_pct / 100.0)
+
+    is_below_lower = (close < lower_band).astype(int)
+    rolling_below_count = is_below_lower.rolling(window=confirmation_sessions, min_periods=confirmation_sessions).sum()
+    confirmed_downtrend = rolling_below_count >= confirmation_sessions
+
+    vol_surge_break = (close < ma_series) & (volume > (vol_ma * vol_surge_mult))
+    confirmed_uptrend = close >= upper_band
+
+    regimes = pd.Series(REGIME_SIDEWAYS, index=df_index.index)
+    current_state = REGIME_SIDEWAYS
+    for i in range(len(df_index)):
+        if confirmed_uptrend.iloc[i]:
+            current_state = REGIME_UPTREND
+        elif confirmed_downtrend.iloc[i] or vol_surge_break.iloc[i]:
+            current_state = REGIME_DOWNTREND
+        elif close.iloc[i] >= ma_series.iloc[i] and current_state == REGIME_DOWNTREND:
+            current_state = REGIME_SIDEWAYS
+        elif close.iloc[i] < ma_series.iloc[i] and current_state == REGIME_UPTREND:
+            current_state = REGIME_SIDEWAYS
+        regimes.iloc[i] = current_state
+
+    return regimes
+
+
 def classify_regime_momentum_volatility(
     df_index: pd.DataFrame,
     return_window: int = 60,
@@ -106,6 +160,8 @@ def classify_market_regime(
         if df_index.empty:
             return pd.Series(dtype=str)
 
+        if method == METHOD_MA200_HYSTERESIS:
+            return classify_regime_ma200_hysteresis(df_index)
         if method == METHOD_MA200_SLOPE:
             return classify_regime_ma200_slope(df_index)
         if method == METHOD_MOMENTUM_VOLATILITY:
