@@ -560,5 +560,43 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   - 100% test suites (102/102 unit/integration tests) đạt kết quả Green.
   - `ruff check . --output-format=github` đạt exit code 0. Hoàn tất Phase 14 (v7.4).
 
+---
+
+### [ADR-028] Xây Dựng Cổng Kiểm Soát Vào Lệnh Thống Nhất 7 Tầng (Unified Entry Gate Engine), Đồng Bộ Cooldown & Trọng Tài Định Lượng (Phase 15 - v7.5)
+- **Ngày quyết định:** 2026-10-02
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  - 4 luồng ra quyết định vào lệnh (`Watchlist Alert`, `scan_market_opportunities`, `2-Pass Web Report`, `Smart Investment Committee`) trước đó áp dụng các bộ quy tắc không đồng nhất, tạo ra các lỗ hổng rò rỉ rủi ro nghiêm trọng:
+    1. Market Scanner hoàn toàn bỏ qua Macro Gate (khi VN-Index Downtrend vẫn phát khuyến nghị BUY).
+    2. Ghi nhận `record_signal_cooldown` trước khi gửi Discord hoặc chạy độc lập, khiến mã bị khóa cooldown dù Discord alert thất bại (network timeout, rate limit).
+    3. 2-Pass Web report tự động fallback về `GROWTH` nếu không rõ sector.
+    4. Smart Committee cho phép LLM quyết định `STRONG_OPPORTUNITY` (BUY) ngay cả khi MoS âm hoặc vi phạm Data Gate, để ảo giác LLM ghi đè quy tắc định lượng.
+    5. Active Screener lọc trạng thái không khớp (`status != "HIGH_CONVICTION"` trong khi scanner trả về `"RECOMMEND_BUY"`).
+- **Quyết định lựa chọn:**
+  1. **Tạo module trung tâm `entry_gates.py`:**
+     - Hiện thực hóa hàm `evaluate_entry_gates()` và dataclass `EntryGateResult` thực thi tuần tự 7 tầng cổng kiểm định:
+       - Tầng 0 (Macro Regime): Chặn 100% lệnh MUA khi VN-Index Downtrend; kích hoạt Fail-safe (cảnh báo + giảm 50% size) khi mất kết nối dữ liệu vĩ mô.
+       - Tầng 1 (Data Gate): Chặn khi `quality_score < 65` hoặc dữ liệu BCTC/giá bị stale/đóng băng.
+       - Tầng 2 (Financial Health): Chặn khi F-Score $\le 3$ hoặc Z-Score $< 1.23$ (vùng kiệt quệ tài chính).
+       - Tầng 3 (Valuation & MoS): Yêu cầu `mos_is_informative = True` và $MoS \ge threshold[archetype]$.
+       - Tầng 4 (Technical Momentum): Yêu cầu tín hiệu kỹ thuật thuộc `BULLISH_SET`, cấm bắt dao rơi dưới MA20/MA50.
+       - Tầng 5 (Quant Conviction): Yêu cầu điểm Conviction $\ge 60$.
+       - Tầng 6 (PM Veto): Chặn nếu phát hiện cờ Veto rủi ro danh mục.
+  2. **Bật Macro Gate cho Scanner & Smart Committee:**
+     - Đấu nối `evaluate_entry_gates` vào `scan_market_opportunities()`, bảo đảm khi VN-Index Downtrend thì trả về 0 BUY alerts.
+  3. **Đồng bộ hóa thời điểm kích hoạt Cooldown:**
+     - Xóa bỏ việc ghi cooldown sớm bên trong `scan_market_opportunities()`.
+     - Trong `trading_bot.py`, `record_signal_cooldown` chỉ được gọi sau khi `send_trade_signal_alert()` trả về `True` (xác nhận Discord dispatch thành công).
+  4. **Chuẩn hóa 2-Pass Archetype Wiring:**
+     - Tra cứu sector thực từ `SECTOR_MAP`; nếu archetype là `UNKNOWN` và không xác định được ngành nghề $\rightarrow$ tự động Block BUY, tuyệt đối không default `GROWTH`.
+  5. **Smart Committee Quant Hard Gate Arbitrator:**
+     - Đấu nối `evaluate_entry_gates()` sau khi LLM Committee phản hồi. Nếu vi phạm cổng định lượng, tự động ghi đè khuyến nghị thành `THEO DÕI` (WATCHLIST) và ghi rõ lý do chặn trong `override_reason`.
+  6. **Đồng bộ ánh xạ trạng thái Active Screener:**
+     - Cập nhật bộ lọc Screener chấp nhận cả `HIGH_CONVICTION` và `RECOMMEND_BUY`.
+- **Hệ quả:**
+  - Thiết lập thành công cơ chế "Single Gatekeeper Architecture" chuẩn mực quỹ đầu tư, loại bỏ hoàn toàn tình trạng bypass cổng an toàn vốn.
+  - Toàn bộ 118 unit & integration tests trong regression suite đạt 100% Green.
+  - `ruff check . --output-format=github` đạt exit code 0. Hoàn tất Phase 15 (v7.5).
+
 
 

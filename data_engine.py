@@ -1915,7 +1915,7 @@ def get_active_cooldown_symbols(cooldown_days: int = COOLDOWN_DAYS) -> list:
     return list(active)
 
 
-def scan_market_opportunities(extra_symbols: list = None) -> list:
+def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = None) -> list:
     """Scan market opportunities using 2-tier Catalyst + Technical Confluence approach.
 
     1. Ingest RSS financial news to identify catalyst stocks (earnings, dividends, macro).
@@ -1926,6 +1926,15 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
     Returns:
         List of opportunity dictionaries ranked by conviction score.
     """
+    if macro_regime is None:
+        try:
+            from context_engine import load_market_context
+
+            m_ctx = load_market_context()
+            if m_ctx and m_ctx.is_valid:
+                macro_regime = getattr(m_ctx, "market_regime_analyst", getattr(m_ctx, "market_regime_code", None))
+        except Exception:
+            macro_regime = None
 
     # 1. Ingest CafeF RSS and build catalyst map
     catalyst_map = {}
@@ -2129,6 +2138,19 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             if ma100 and curr_price < (ma100 * 0.98):
                 trend_allowed = False
 
+            from entry_gates import evaluate_entry_gates
+
+            entry_gate_res = evaluate_entry_gates(
+                symbol=sym,
+                current_price=curr_price,
+                fin_dict=fin_ratios,
+                tech_data=tech,
+                sector=sector,
+                macro_regime=macro_regime,
+                caller="SCAN",
+                conviction_score=conv_score,
+            )
+
             # A. ĐẠT CHUẨN HIGH CONVICTION (>= 70) VÀ KỸ THUẬT AN TOÀN -> KHUYẾN NGHỊ MUA
             if (
                 conv_score >= HIGH_CONVICTION_THRESHOLD
@@ -2138,6 +2160,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                 and no_trap
                 and trend_allowed
                 and gate_can_buy
+                and entry_gate_res.can_buy
             ):
                 target_price = p_target
                 stop_loss = round(max(ma20 * 0.95, curr_price * 0.93), 2)
@@ -2348,11 +2371,7 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
         )
         watch_picks.append(c)
 
-    # Record cooldown for approved buy signals
-    for b in approved_buys:
-        record_signal_cooldown(
-            symbol=b["symbol"], action="RECOMMEND_BUY", conviction_score=b.get("conviction_score", 0.0)
-        )
+    # Note: Cooldown is strictly recorded by alert dispatchers upon confirmed Discord delivery (TASK-0048)
 
     # Sort watch and caution lists
     watch_picks.sort(key=lambda x: x.get("conviction_score", 0), reverse=True)

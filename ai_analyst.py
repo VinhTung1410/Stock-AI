@@ -1091,12 +1091,15 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     if refusal:
         return refusal
 
+    from data_engine import SECTOR_MAP
+
+    sector_name = SECTOR_MAP.get(symbol, "")
     curr_price = tech_data.get("current_price", 0.0)
     pe = fin_data.get("pe")
     pb = fin_data.get("pb")
-    f_score_res = calculate_piotroski_f_score(fin_data)
-    z_score_res = calculate_altman_z_score(fin_data)
-    val_triangle = calculate_valuation_triangle(curr_price, pe=pe, pb=pb)
+    f_score_res = calculate_piotroski_f_score(fin_data, sector=sector_name)
+    z_score_res = calculate_altman_z_score(fin_data, sector=sector_name)
+    val_triangle = calculate_valuation_triangle(curr_price, pe=pe, pb=pb, sector=sector_name)
 
     ff = tech_data.get("foreign_flow", {})
     ff_str = (
@@ -1190,6 +1193,19 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
     # BƯỚC 4: PYTHON TÍNH TOÁN HÀNG RÀO QUYẾT ĐỊNH ĐỊNH LƯỢNG
     # -------------------------------------------------------------
     from data_engine import SECTOR_MAP
+    from entry_gates import evaluate_entry_gates
+
+    sector_name = SECTOR_MAP.get(symbol, "")
+    entry_gate_res = evaluate_entry_gates(
+        symbol=symbol,
+        current_price=curr_price,
+        fin_dict=fin_data,
+        tech_data=tech_data,
+        sector=sector_name,
+        macro_regime=tech_data.get("status_ma20"),
+        caller="TWO_PASS",
+        conviction_score=75.0,
+    )
 
     hard_gates = evaluate_decision_hard_gates(
         current_price=curr_price,
@@ -1205,9 +1221,14 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
         adv20_billion=tech_data.get("adv20_billion", 0.0),
         symbol=symbol,
         fin_dict=fin_data,
-        sector=SECTOR_MAP.get(symbol, ""),
+        sector=sector_name,
         tech_data=tech_data,
     )
+
+    if not entry_gate_res.can_buy:
+        hard_gates["action_state"] = "🟡 THEO DÕI"
+        hard_gates["decision_tag"] = f"🟡 THEO DÕI ({'; '.join(entry_gate_res.blocking_reasons)})"
+        hard_gates["position_size_nav"] = "0% NAV"
 
     # -------------------------------------------------------------
     # BƯỚC 5: LƯỢT 2 (LLM VIẾT BÁO CÁO TRANH BIỆN ĐỊNH CHẾ HOÀN CHỈNH)
@@ -1908,6 +1929,8 @@ def _prepare_smart_committee_context(
         "market_context": market_ctx,
         "regime_conflict": has_regime_conflict,
         "tech_data": tech_data,
+        "fin_data": fin_data,
+        "sector": SECTOR_MAP.get(sym, ""),
     }
     return None, prompt, context_meta
 
@@ -2015,7 +2038,30 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
     f_res = context_meta.get("f_score") or {}
     z_res = context_meta.get("z_score") or {}
 
-    can_buy = gate_res.get("recommendation_allowed", True) and not gate_res.get("is_trap", False)
+    from entry_gates import evaluate_entry_gates
+
+    tech_d = context_meta.get("tech_data") or {}
+    curr_p = float(tech_d.get("current_price", 0.0))
+    entry_gate_res = evaluate_entry_gates(
+        symbol=sym,
+        current_price=curr_p,
+        fin_dict=context_meta.get("fin_data"),
+        tech_data=tech_d,
+        sector=context_meta.get("sector", ""),
+        macro_regime=(
+            getattr(market_ctx, "market_regime_analyst", getattr(market_ctx, "market_regime_code", None))
+            if market_ctx and market_ctx.is_valid
+            else tech_d.get("status_ma20")
+        ),
+        caller="COMMITTEE",
+        pm_output=report_text,
+    )
+
+    can_buy = (
+        gate_res.get("recommendation_allowed", True)
+        and not gate_res.get("is_trap", False)
+        and entry_gate_res.can_buy
+    )
     final_decision, is_overridden, override_reason = arbitrate_pm_decision(
         raw_decision=raw_decision,
         fa_view=views.get("fa_view", "NEUTRAL"),
@@ -2026,6 +2072,10 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         recommendation_allowed=gate_res.get("recommendation_allowed", True),
         can_buy=can_buy,
     )
+
+    if not entry_gate_res.can_buy and ("BUY" in str(raw_decision).upper() or "OPPORTUNITY" in str(raw_decision).upper()):
+        is_overridden = True
+        override_reason = f"Quant Entry Gate Veto: {'; '.join(entry_gate_res.blocking_reasons)}"
 
     _save_smart_committee_record(
         context_meta,

@@ -395,7 +395,7 @@ def _process_single_watchlist_item(item: dict, today_str: str):
     style = "⚡ LƯỚT SÓNG T+ / BREAKOUT" if "Breakout" in buy_reason else "🛡️ TÍCH SẢN VÙNG GIÁ RẺ"
 
     logging.info(f"🟢 BẮN TÍN HIỆU MUA WATCHLIST: {sym} (SL: {dynamic_sl}k{f_score_txt})")
-    send_trade_signal_alert(
+    alert_sent = send_trade_signal_alert(
         symbol=sym,
         action="MUA",
         current_price=curr_p,
@@ -415,10 +415,11 @@ def _process_single_watchlist_item(item: dict, today_str: str):
         thesis_breaker=f"Thủng hỗ trợ {dynamic_sl:,.2f}k hoặc vi phạm BCTC quý.",
         strategy_style=style,
     )
-    sent_alerts.add(alert_key)
-    _record_and_save_buy_signal(
-        sym, curr_p, target_p, dynamic_sl, buy_reason, f_score_txt, f_score_dict, tech, val_dict=val_dict
-    )
+    if alert_sent:
+        sent_alerts.add(alert_key)
+        _record_and_save_buy_signal(
+            sym, curr_p, target_p, dynamic_sl, buy_reason, f_score_txt, f_score_dict, tech, val_dict=val_dict
+        )
 
 
 def _scan_watchlist_opportunities(today_str: str):
@@ -484,7 +485,7 @@ def _process_active_screener_opportunity(opp: dict, today_str: str):
     conv_score = float(opp.get("conviction_score", 0.0))
     status = opp.get("status", "")
 
-    if conv_score < 70 or status != "HIGH_CONVICTION":
+    if conv_score < 70 or status not in ("HIGH_CONVICTION", "RECOMMEND_BUY"):
         return
 
     alert_key = (today_str, sym, "ACTIVE_MARKET_BUY")
@@ -512,7 +513,7 @@ def _process_active_screener_opportunity(opp: dict, today_str: str):
     }
 
     logging.info(f"💎 BẮN TÍN HIỆU ACTIVE SCREENER: {sym} (Score: {conv_score:.0f}, R:R: {rr:.1f}x)")
-    send_trade_signal_alert(
+    alert_sent = send_trade_signal_alert(
         symbol=sym,
         action="MUA",
         current_price=curr_p,
@@ -529,8 +530,9 @@ def _process_active_screener_opportunity(opp: dict, today_str: str):
         thesis_breaker=f"Thủng hỗ trợ {stop_loss:,.2f}k hoặc vi phạm BCTC quý.",
         strategy_style=style,
     )
-    sent_alerts.add(alert_key)
-    record_signal_cooldown(sym, action="MUA", conviction_score=conv_score)
+    if alert_sent:
+        sent_alerts.add(alert_key)
+        record_signal_cooldown(sym, action="MUA", conviction_score=conv_score)
 
 
 def _scan_active_market_opportunities(today_str: str):
