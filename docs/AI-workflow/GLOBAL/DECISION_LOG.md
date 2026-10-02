@@ -529,4 +529,36 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
      - Gắn cờ `FLAG_DATA_STALE_FREEZE`, tự động khóa khuyến nghị đầu tư khi dữ liệu BCTC chậm nộp quá 180 ngày.
 - **Hệ quả:** Hệ thống đạt chuẩn CFA về tính độc lập của mô hình định giá với thị giá; triệt tiêu hoàn toàn rủi ro bẫy sàn HOSE và whipsaw MA200; 100% test suites (58/58 tests) đạt kết quả Green. Hoàn tất Phase 13 (v7.3).
 
+---
+
+### [ADR-027] Khắc Phục Đứt Gãy Dẫn Truyền Dữ Liệu BCTC (fin_dict Plumbing), Ánh Xạ P&L Danh Mục & Kiểm Soát Độ Tươi Bối Cảnh (Phase 14 - v7.4)
+- **Ngày quyết định:** 2026-10-02
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  - Qua cuộc kiểm toán toàn diện hệ thống ngày 02/10/2026, phát hiện lỗ hổng nghiêm trọng: `fin_dict` không bao giờ được truyền vào `calculate_fair_value_and_mos()` tại các luồng thực thi nền (`scan_market_opportunities()`, `_process_single_watchlist_item()`, `evaluate_portfolio()`, `evaluate_watchlist()`, và `_prepare_smart_committee_context()`).
+  - Toàn bộ hệ thống chạy trên nhánh fallback, khiến Biên an toàn (MoS) của mọi archetype biến thành các hằng số vô nghĩa (GROWTH=15.25%, BANK=10.71%, CYCLICAL=−17.65%), làm mất đi tính khách quan của các mô hình định giá nội tại.
+  - Các tham số `symbol`, `fin_dict`, `sector`, `tech_data` bị bỏ quên khi gọi `evaluate_decision_hard_gates()` trong `generate_quantamental_2pass_report()`.
+  - Hàm `_build_portfolio_quant_summary()` và `evaluate_holding_position()` đọc key tiếng Anh trong khi DataFrame danh mục trả về các cột tiếng Việt (`"Giá TB (k)"`, `"Giá vốn (k)"`, `"Thị giá (k)"`, `"Giá hiện tại (k)"`), dẫn đến `entry_price = 0.0`, `pl_pct = 0.0%`, khiến mọi vị thế có lãi đều bị phân loại nhầm thành "LỖ" và vô hiệu hóa Trailing Stop.
+  - Cờ `mos_is_informative` trả về `True` cho CYCLICAL và REAL_ESTATE ngay cả khi `fin_dict={}` chạy trên fallback.
+  - `load_market_context()` không kiểm tra ngày hiện tại khi caller không truyền `current_date`, nạp nhầm báo cáo chuyên gia cũ vào system prompt.
+- **Quyết định lựa chọn:**
+  1. **Đấu nối toàn diện `fin_dict`:**
+     - Gọi `get_financial_ratios()` trước khi tính định giá; truyền đầy đủ `fin_dict` và `sector` vào `calculate_fair_value_and_mos()` trên toàn bộ các luồng: `scan_market_opportunities()`, `evaluate_portfolio()`, `evaluate_watchlist()`, `_calculate_item_mos()`, `_validate_quant_gate()`, và `_prepare_smart_committee_context()`.
+     - Truyền đủ `symbol`, `fin_dict`, `sector`, `tech_data` vào `evaluate_decision_hard_gates()` trong quy trình 2-Pass và Screener.
+  2. **Chuẩn hóa ánh xạ cột tiếng Việt cho P&L danh mục:**
+     - Cập nhật `evaluate_holding_position()` trong `portfolio_guard.py` và `_build_portfolio_quant_summary()` trong `ai_analyst.py` để tự động nhận diện cả tên cột tiếng Việt (`"Giá TB (k)"`, `"Giá vốn (k)"`, `"Giá hiện tại (k)"`, `"Thị giá (k)"`, `"Giá cao (k)"`, `"Mã CP"`, `"Khối lượng"`).
+     - Đảm bảo `entry_price > 0`, `pl_pct` phản ánh đúng thực tế, vị thế có lãi kích hoạt chính xác mốc `trailing_stop`.
+  3. **Khóa cứng cờ `mos_is_informative` cho CYCLICAL & REAL_ESTATE:**
+     - Nếu `fin_dict` thiếu số liệu BCTC cốt lõi (`eps_history`/`pe` cho CYCLICAL; `bvps`/`pb` cho REAL_ESTATE), gắn cờ `mos_is_informative = False`, khóa cứng khuyến nghị MUA tại Decision Hard Gates.
+  4. **Kiểm tra độ tươi ngày tháng trong `load_market_context()`:**
+     - Mặc định so khớp `report_date` với `date.today()` khi caller không truyền `current_date` và `allow_stale=False`; nếu lệch ngày trả về `is_valid = False`.
+  5. **Bổ sung mã ngân hàng vào `SECTOR_MAP`:**
+     - Thêm `BID`, `VCB`, `CTG`, `STB` vào `SECTOR_MAP` để định tuyến chính xác archetype Ngân hàng.
+- **Hệ quả:**
+  - Xóa bỏ triệt để tình trạng MoS hằng số; toàn bộ pipeline định giá chạy trên số liệu tài chính thực chất.
+  - Phục hồi hoàn hảo cơ chế Trailing Stop bảo vệ lợi nhuận cho danh mục đầu tư.
+  - 100% test suites (102/102 unit/integration tests) đạt kết quả Green.
+  - `ruff check . --output-format=github` đạt exit code 0. Hoàn tất Phase 14 (v7.4).
+
+
 

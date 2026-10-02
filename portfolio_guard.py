@@ -135,10 +135,21 @@ def _evaluate_losing_holding(
 
 def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict | None = None, sector: str = "") -> dict:
     """Evaluate an existing portfolio position and recommend action."""
-    symbol = row.get("symbol", "")
-    entry_price = float(row.get("avg_price", 0.0))
-    curr_price = float(tech_data.get("current_price") or row.get("market_price", entry_price))
-    volume = int(row.get("volume", 0))
+    symbol = str(row.get("symbol") or row.get("Mã CP", "")).strip().upper()
+    entry_price = float(
+        row.get("avg_price")
+        or row.get("Giá TB (k)")
+        or row.get("Giá vốn (k)")
+        or 0.0
+    )
+    curr_price = float(
+        tech_data.get("current_price")
+        or row.get("market_price")
+        or row.get("Giá hiện tại (k)")
+        or row.get("Thị giá (k)")
+        or entry_price
+    )
+    volume = int(row.get("volume") or row.get("Khối lượng") or 0)
 
     pl_val = (curr_price - entry_price) * volume * 1000
     pl_pct = ((curr_price - entry_price) / entry_price * 100) if entry_price > 0 else 0.0

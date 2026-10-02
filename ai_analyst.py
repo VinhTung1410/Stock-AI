@@ -246,9 +246,19 @@ def _build_portfolio_quant_summary(portfolio_df) -> str:
 
     lines = []
     for _, row in portfolio_df.iterrows():
-        sym = str(row.get("symbol", row.get("Mã CP", ""))).upper()
-        entry_p = float(row.get("avg_price", row.get("Giá vốn (k)", 0.0)))
-        curr_p = float(row.get("market_price", row.get("Thị giá (k)", entry_p)))
+        sym = str(row.get("symbol") or row.get("Mã CP", "")).strip().upper()
+        entry_p = float(
+            row.get("avg_price")
+            or row.get("Giá TB (k)")
+            or row.get("Giá vốn (k)")
+            or 0.0
+        )
+        curr_p = float(
+            row.get("market_price")
+            or row.get("Giá hiện tại (k)")
+            or row.get("Thị giá (k)")
+            or entry_p
+        )
         pl_p = ((curr_p - entry_p) / entry_p * 100) if entry_p > 0 else 0.0
 
         mock_tech = {
@@ -256,7 +266,14 @@ def _build_portfolio_quant_summary(portfolio_df) -> str:
             "atr": float(row.get("atr", 0.0)) if "atr" in row else (curr_p * 0.025),
             "ma20": float(row.get("ma20", curr_p)) if "ma20" in row else curr_p,
         }
-        eval_res = evaluate_holding_position(row.to_dict(), mock_tech)
+        normalized_row = {
+            **row.to_dict(),
+            "symbol": sym,
+            "avg_price": entry_p,
+            "market_price": curr_p,
+            "volume": int(row.get("volume") or row.get("Khối lượng") or 0),
+        }
+        eval_res = evaluate_holding_position(normalized_row, mock_tech)
         _, _, eval_res = validate_holding_position(eval_res)
 
         if eval_res["is_profit"]:
@@ -1172,6 +1189,8 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
     # -------------------------------------------------------------
     # BƯỚC 4: PYTHON TÍNH TOÁN HÀNG RÀO QUYẾT ĐỊNH ĐỊNH LƯỢNG
     # -------------------------------------------------------------
+    from data_engine import SECTOR_MAP
+
     hard_gates = evaluate_decision_hard_gates(
         current_price=curr_price,
         p_bull=p_bull,
@@ -1184,6 +1203,10 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
         trap_info=tech_data.get("trap_info"),
         foreign_flow=tech_data.get("foreign_flow"),
         adv20_billion=tech_data.get("adv20_billion", 0.0),
+        symbol=symbol,
+        fin_dict=fin_data,
+        sector=SECTOR_MAP.get(symbol, ""),
+        tech_data=tech_data,
     )
 
     # -------------------------------------------------------------
@@ -1835,10 +1858,16 @@ def _prepare_smart_committee_context(
         return rejection_res, None, None
 
     # 2. PYTHON DETERMINISTIC QUANT ENGINE
+    from data_engine import SECTOR_MAP
     from quant_engine import calculate_altman_z_score, calculate_piotroski_f_score
     from quant_valuation import calculate_fair_value_and_mos
 
-    val_res = calculate_fair_value_and_mos(symbol=sym, current_price=tech_data.get("current_price", 0.0))
+    val_res = calculate_fair_value_and_mos(
+        symbol=sym,
+        current_price=tech_data.get("current_price", 0.0) if tech_data else 0.0,
+        fin_dict=fin_data or {},
+        sector=SECTOR_MAP.get(sym, ""),
+    )
     f_score_res = calculate_piotroski_f_score(fin_data)
     z_score_res = calculate_altman_z_score(fin_data)
 

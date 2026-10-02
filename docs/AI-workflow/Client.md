@@ -1,77 +1,56 @@
-# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 7.3
+# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 7.4
 
 **Tên dự án:** Stock-AI / AI Investment Decision & Research Platform  
-**Phiên bản:** v7.3 — Phase 13: Core Valuation Re-Architecture, Structural Risk Protection & Macro Hysteresis (Tái cấu trúc Cốt lõi Định giá Thực chất, Quản trị Rủi ro Cấu trúc & Cơ chế Trễ Cổng Vĩ mô)  
-**Trọng tâm:** *"Xóa bỏ triệt để công thức định giá tự sinh cơ học ($FV = P \times 1.18$) trong nhóm Compounder để chuyển sang mô hình Forward EPS $\times$ Historical Median P/E và SOTP đa mảng; thiết lập cơ chế khóa cứng (Hard Reject) tại Data Gate khi cờ `mos_is_informative=False`; chuẩn hóa vòng đời mỏ neo đồng thuận (Consensus Lifecycle $\le 90$ ngày); thay thế dừng lỗ cứng $-7\%$ bằng Dừng lỗ Cấu trúc Kỹ thuật (Structural Stop Loss) và định cỡ vị thế phòng vệ Gap sàn (Liquidity Gap Risk Sizing); bổ sung vùng đệm trễ (Hysteresis Buffer $\pm 1.5\% - 2.0\%$) cho Cổng Vĩ mô VN-Index MA200 nhằm triệt tiêu whipsaw; và siết chặt kiểm tra độ tươi dữ liệu theo từng trường (`as_of_date` per field)."*
+**Phiên bản:** v7.4 — Phase 14: Data & Valuation Plumbing (Hệ thống Dẫn truyền Dữ liệu BCTC & Chuẩn hóa Định giá Thực chất)  
+**Trọng tâm:** *"Khắc phục triệt để lỗ hổng đứt gãy dẫn truyền dữ liệu (`fin_dict`) vào toàn bộ các tầng định giá và hard gate; bãi bỏ tình trạng định giá fallback tạo ra MoS hằng số vô nghĩa (GROWTH=15.25%, BANK=10.71%, CYCLICAL=−17.6%); chuẩn hóa việc truyền `symbol`, `sector`, `tech_data` vào `evaluate_decision_hard_gates`; sửa lỗi ánh xạ khóa cột tiếng Việt trong `_build_portfolio_quant_summary` và `portfolio_guard.py` khiến P&L luôn bằng 0 và vị thế lãi bị đánh đồng thành vị thế lỗ; khóa cứng `mos_is_informative=False` cho CYCLICAL/REAL_ESTATE khi thiếu BCTC; và bổ sung kiểm tra độ tươi ngày tháng (`current_date`) trong `load_market_context()` để triệt tiêu việc nạp báo cáo chuyên gia cũ như thông tin trong ngày."*
 
 ---
 
-## 1. MỤC TIÊU PHIÊN BẢN v7.3 (PHASE 13: VALUATION RE-ARCHITECTURE & STRUCTURAL RISK)
+## 1. MỤC TIÊU PHIÊN BẢN v7.4 (PHASE 14: DATA & VALUATION PLUMBING)
 
-1. **TASK-0037: Fundamental Compounder Valuation & Hard Ban on Synthetic Fair Value (Mục 13.0):**
-   - **Xóa bỏ vĩnh viễn công thức FV phụ thuộc thị giá:** 
-     - Loại bỏ hoàn toàn dòng code `fv_base = current_price * 1.18` và công thức hòa trộn tuyến tính `fv = fv_base * 0.6 + (consensus * 0.85) * 0.4` (bản chất là $0.708 \times P + 28.39$). Đây là lỗi sai toán học nghiêm trọng biến biên an toàn (MoS) thành định đề luôn dương giả tạo ($15.3\%$).
-   - **Triển khai Mô hình Định giá Nội tại Thực chất (Intrinsic Valuation):**
-     - **Mô hình 1 (Forward EPS & Historical Median P/E):** Định giá dựa trên $Forward\_EPS_{1-2Y} \times Median\_PE_{3-5Y}$ (đã loại trừ P/E ngoại lai ở các quý tạo đỉnh/đáy lợi nhuận bất thường).
-     - **Mô hình 2 (SOTP - Sum Of The Parts cho Tập đoàn Bán lẻ/Holding như MWG):**
-       + Chuỗi bán lẻ ICT (TGDĐ/ĐMX): Định giá theo P/E của mảng kinh doanh trưởng thành (Cash-cow, P/E $10 - 12x$).
-       + Chuỗi Bách Hóa Xanh (BHX): Định giá theo P/S hoặc DCF tương ứng với giai đoạn tăng trưởng có lãi thực tế (Turnaround Phase).
-       + Các mảng khác (An Khang, EraBlue...): Định giá theo giá trị sổ sách (P/B) hoặc chiết khấu thận trọng.
-     - **Nguyên tắc Fail-Safe:** Nếu không đủ dữ liệu tài chính hoặc dự phóng để tính Forward EPS / SOTP, hệ thống phải trả về `fair_value = None`, ghi nhận `valuation_status = "INSUFFICIENT_DATA"`. **Tuyệt đối cấm dùng bất kỳ hệ số nhân nào với thị giá hiện tại để bịa ra Fair Value.**
+1. **TASK-0042: Fix fin_dict Pipeline & Gate Parameter Wiring (Root Cause - Mục 14.0):**
+   - **Vấn đề cốt tử:** Audit hệ thống ngày 02/10/2026 phát hiện `fin_dict` không bao giờ được truyền vào `calculate_fair_value_and_mos` tại các luồng thực thi chính (`data_engine.py`, `ai_analyst.py`, `trading_bot.py`). Toàn bộ hệ thống đang chạy trên nhánh fallback, khiến MoS trở thành hằng số giả tạo.
+   - **Giải pháp:**
+     - Đấu nối `fin_dict` (từ `get_financial_ratios`) trước khi gọi `calculate_fair_value_and_mos` trong `scan_market_opportunities()`, `_process_single_watchlist_item()`, `evaluate_watchlist()`, `evaluate_portfolio()`, và `_prepare_smart_committee_context()`.
+     - Truyền đầy đủ `symbol`, `sector`, `fin_dict`, `tech_data` vào mọi lời gọi `evaluate_decision_hard_gates()` (trong `generate_quantamental_2pass_report()`, `scan_market_opportunities()`, và Smart Committee).
 
-2. **TASK-0038: MoS Informative Hard Gate & Consensus Lifecycle Management (Mục 13.1):**
-   - **Hard Gate cho cờ `mos_is_informative`:**
-     - Nếu `mos_is_informative == False` (hoặc `fair_value is None`), Data Gate và Decision Gate phải **loại bỏ hoàn toàn điểm Trụ cột Định giá (Valuation Pillar Score)**, không cấp điểm MoS trong Conviction Score.
-     - Khóa cứng khuyến nghị MUA theo trường phái Giá trị / Compounder; chỉ cho phép chuyển sang trạng thái theo dõi kỹ thuật (`WATCH_TECHNICAL`) với điều kiện kỹ thuật xuất sắc độc lập.
-   - **Chuẩn hóa Vòng đời Mỏ neo Đồng thuận (Consensus Target Lifecycle):**
-     - Mọi dữ liệu mục tiêu giá của CTCK phải kèm theo metadata đầy đủ: `as_of_date`, `source` (CTCK: SSI, HSC, VCSC, Mirae Asset...), `target_price`, `analyst_thesis`.
-     - **Ngưỡng quá hạn nghiêm ngặt (Max Staleness):** Nếu báo cáo định giá có tuổi thọ $> 90$ ngày so với ngày đánh giá hiện tại, mỏ neo bị coi là hết hạn (`is_expired = True`) và tự động bị loại khỏi mô hình định giá.
+2. **TASK-0043: Fix Portfolio P&L Key Mapping (Mục 14.1):**
+   - **Vấn đề cốt tử:** Hàm `_build_portfolio_quant_summary` và `evaluate_holding_position` đọc key tiếng Anh (`avg_price`, `market_price`), trong khi DataFrame danh mục thực tế tại Việt Nam trả về các cột tiếng Việt: `"Giá vốn (k)"`, `"Giá TB (k)"`, `"Thị giá (k)"`, `"Giá hiện tại (k)"`, `"Giá cao (k)"`. Hệ quả: `entry_price` luôn = 0, `pl_pct` luôn = 0%, mọi vị thế lãi đều bị chuyển sang nhánh "LỖ" và cơ chế Trailing Stop bảo vệ lợi nhuận bị vô hiệu hóa hoàn toàn.
+   - **Giải pháp:**
+     - Chuẩn hóa ánh xạ cột đa ngữ (Column Mapping): `"Giá TB (k)"` / `"Giá vốn (k)"` $\rightarrow$ `avg_price`, `"Giá hiện tại (k)"` / `"Thị giá (k)"` $\rightarrow$ `market_price`, `"Giá cao (k)"` $\rightarrow$ `high_price`, `"Mã CP"` $\rightarrow$ `symbol`, `"Khối lượng"` $\rightarrow$ `volume`.
+     - Đảm bảo `entry_price > 0`, `pl_pct` tính toán chính xác và các vị thế có lãi kích hoạt đúng Trailing Stop.
 
-3. **TASK-0039: Structural Stop Loss & Liquidity Gap Risk Sizing (Mục 13.2):**
-   - **Bãi bỏ Stop Loss cứng cơ học $-7\%$:**
-     - Công thức `max(price - 2*ATR, price * 0.93)` tạo ra ngưỡng cắt lỗ $-7\%$ trùng đúng biên độ sàn 1 phiên của sàn HOSE, rất dễ rơi vào vùng quét thanh khoản (Liquidity Hunt) hoặc bị mắc kẹt khi cổ phiếu giảm sàn trắng bên mua (nhốt thanh khoản).
-   - **Xác lập Dừng lỗ theo Cấu trúc Kỹ thuật (Structural Stop Loss):**
-     - Điểm dừng lỗ phải được neo vào các mốc hỗ trợ cấu trúc thị trường thực tế: Đáy swing low gần nhất, đường trung bình quan trọng (MA50/MA100), hoặc cạnh dưới của hộp tích lũy (Base Support / Volume Profile POC) trừ đi một vùng đệm dao động $0.5 \times ATR(14)$.
-   - **Định cỡ Vị thế Phòng vệ Rủi ro Gap Sàn (Liquidity Gap Risk Sizing):**
-     - Nếu khoảng cách từ giá mua đến Stop-loss cấu trúc lớn (ví dụ $> 8 - 10\%$), hệ thống không được đẩy stop-loss lên cao vô căn cứ, mà phải **giảm quy mô vị thế (Position Size)** để giữ rủi ro tối đa trên mỗi thương vụ $\le 1.0\% - 1.5\%$ NAV.
-     - Stress-test kịch bản Gap sàn 2 phiên liên tiếp (mức giảm $-14\%$) trước khi thanh khoản mở lại, đảm bảo tổn thất danh mục không vượt trần Risk Budget.
+3. **TASK-0044: Fix mos_is_informative Correctness & Fallback Hard Block (Mục 14.2):**
+   - **Vấn đề:** Khi `fin_dict={}`, archetype `CYCLICAL` và `REAL_ESTATE` tự tính Fair Value theo hệ số nhân thị giá nhưng cờ `mos_is_informative` vẫn trả về `True`.
+   - **Giải pháp:**
+     - `mos_is_informative` CHỈ ĐƯỢC PHÉP bằng `True` khi Fair Value được tính từ số liệu BCTC thực chất (với `CYCLICAL` bắt buộc có `eps_history` hoặc `pe`; với `REAL_ESTATE` bắt buộc có `bvps` hoặc `pb`).
+     - Khi `fin_dict` rỗng hoặc thiếu BCTC, `mos_is_informative = False` và Decision Hard Gates tự động khóa cứng (Block) khuyến nghị MUA.
 
-4. **TASK-0040: Macro Hysteresis Buffer & Anti-Whipsaw Filter (Mục 13.3):**
-   - **Loại bỏ cơ chế ngắt nhị phân tức thời quanh MA200:**
-     - Việc đóng/mở lệnh mua ngay khi VN-Index dao động quanh MA200 tạo ra tín hiệu giả liên tục (Whipsaw), gây thiệt hại mua đỉnh bán đáy khi thị trường đi ngang giằng co.
-   - **Thiết lập Vùng đệm Trễ (Hysteresis Band):**
-     - **Kích hoạt Phòng vệ Cứng (Hard Defensive Mode):** Chỉ kích hoạt khi VN-Index đóng cửa dưới MA200 với biên độ $> 1.5\%$ trong tối thiểu $\ge 2$ phiên liên tiếp, hoặc gãy MA200 với thanh khoản bán tháo lớn ($> 1.3 \times ADV20$).
-     - **Mở lại Giải ngân (Re-entry Recovery Mode):** Chỉ mở lại việc tìm kiếm vị thế mua khi VN-Index đóng cửa vượt lại MA200 với đệm an toàn $+1.0\%$ và có xác nhận hồi phục của dòng tiền (phiên nỗ lực hồi phục hoặc bùng nổ theo đà FTD).
-
-5. **TASK-0041: Field-Level Data Gate Freshness & Frozen Data Penalties (Mục 13.4):**
-   - **Kiểm soát độ tươi theo từng trường dữ liệu (Field-Level Freshness):**
-     - Data Gate phải theo dõi `as_of_date` cho từng nhóm chỉ tiêu tài chính: Báo cáo tài chính (Doanh thu, Lợi nhuận gộp, EPS), Chỉ số định giá thị trường (P/E, P/B, EV/EBITDA), và Dòng tiền (Operating Cash Flow).
-   - **Xử phạt Dữ liệu Đóng băng (Frozen/Stale Data Penalty):**
-     - Doanh nghiệp chậm công bố BCTC quá hạn quy định hoặc dữ liệu tài chính không có cập nhật mới $> 180$ ngày sẽ bị gắn cờ `DATA_STALE_FREEZE`, tự động trừ điểm uy tín dữ liệu và khóa quyền tham gia đề xuất đầu tư.
+4. **TASK-0045: Fix Market Context Staleness Check (Mục 14.3):**
+   - **Vấn đề:** `load_market_context()` không kiểm tra ngày hiện tại nếu caller không truyền `current_date`, dẫn đến việc file `data/market_context.json` từ ngày hôm trước (hoặc tuần trước) vẫn được nạp vào system prompt như nhận định của phiên hôm nay.
+   - **Giải pháp:**
+     - `load_market_context()` mặc định lấy ngày hiện tại (múi giờ UTC+7 / `date.today()`) khi `current_date=None` và `allow_stale=False`.
+     - Nếu ngày của báo cáo khác ngày hiện tại, trả về `MarketContext(is_valid=False)` để caller tự động xử lý kịch bản không có context (Fail-safe).
 
 ---
 
-## 2. KẾ THỪA CÁC CHỐT CHẶN PHIÊN BẢN TRƯỚC (v6.1 - v7.2)
+## 2. KẾ THỪA CÁC CHỐT CHẶN PHIÊN BẢN TRƯỚC (v6.1 - v7.3)
 
-1. **Compounder & Retail Flow Gatekeeper (v7.2 - Phase 12):**
-   - Anti-Synthetic MoS in Auto-Watchlist (`mos_is_informative == False` không được tự duyệt Watchlist), Chuẩn hóa `target_buy` (cấm gán bằng `current_price`), Bộ lọc xu hướng trung hạn MA100/MA200, Phạt xả ròng khối ngoại (Foreign Net Flow Penalty), Ngưỡng dừng số cứng cho `LongTermHoldingShield`.
-2. **Cyclical Valuation Overhaul (v7.1 - Phase 11):**
-   - Peak Earnings Trap Detector (`check_peak_earnings_trap()`), Normalized EPS 5 năm (`calculate_normalized_cyclical_earnings()`), Regional Peer Benchmark, Sector Risk Flags cho Dầu khí & Thép.
-3. **Real Estate & Holding Valuation Overhaul (v7.0 - Phase 10):**
-   - SOTP Sanity Check cho Holding Company (VIC), Core Earnings Ratio, Survival Gate, P/B Mean Reversion Guardrail.
-4. **Context Engine & PTKT Hàng ngày (v6.3 - Phase 8):**
-   - Trích xuất bối cảnh chuyên gia từ PDF TCBS vào `market_context.json`, Code MA200 luôn thắng nhận định chuyên gia.
-5. **Hạ tầng Bằng chứng & Audit Idempotent (v6.1 - v6.2):**
-   - Lưu vết 4 tầng FACT, INFERENCE, OPINION, COUNTERFACTUAL trong `decision_records`, Veto Only cho AI Committee.
+1. **Phase 13 (v7.3):** Core Valuation Re-Architecture, Structural Risk Protection & Macro Hysteresis (Forward EPS $\times$ Median P/E, SOTP MWG, Structural Stop-loss, Macro Hysteresis $\pm 1.5\%$, `FLAG_DATA_STALE_FREEZE`).
+2. **Phase 12 (v7.2):** Compounder & Retail Flow Gatekeeper (Anti-Synthetic MoS, Chuẩn hóa `target_buy`, Bộ lọc xu hướng trung hạn MA100/MA200, Phạt xả ròng khối ngoại).
+3. **Phase 11 (v7.1):** Cyclical Valuation Overhaul (Peak Earnings Trap, Normalized EPS 5 năm, Regional Peer Benchmark, Sector Risk Flags).
+4. **Phase 10 (v7.0):** Real Estate & Holding Valuation Overhaul (SOTP Sanity Check, Core Earnings Ratio, Survival Gate, P/B Mean Reversion Guardrail).
+5. **Phase 8 (v6.3):** Context Engine & PTKT Hàng ngày (Báo cáo TCBS vào `market_context.json`, Code MA200 luôn thắng nhận định chuyên gia).
+6. **Phase 1-7 (v5.1 - v6.2):** Evidence Integrity, Signal Lifecycle bất biến, Data Gate nhị phân cứng, 4 tầng Fact/Inference/Hypothesis.
 
 ---
 
 ## 3. NGUYÊN TẮC QUẢN TRỊ RỦI RO & BẢO TOÀN KIẾN TRÚC
 
-- **Zero-Synthetic Valuation Principle:** Giá trị nội tại (Fair Value) bắt buộc phải xuất phát từ các biến số cơ bản của doanh nghiệp (Doanh thu, Lợi nhuận, Dòng tiền, Tài sản). Cấm tuyệt đối mọi hình thức phái sinh Fair Value từ thị giá cổ phiếu.
-- **Structural Over Fixed Rule:** Quản trị rủi ro và điểm dừng lỗ phải thích ứng với cấu trúc thị trường, các vùng thanh khoản thực tế và biên độ biến động (ATR), không dùng các con số phần trăm cứng nhắc gây mất thanh khoản.
-- **Macro Hysteresis Stability:** Cổng vĩ mô phải có độ trễ hợp lý để lọc bỏ nhiễu ngắn hạn, bảo vệ hệ thống khỏi hiện tượng kích hoạt và đảo chiều quyết định liên tục.
-- **Single Source of Truth (SSOT):** Toàn bộ tham số định giá, trạng thái MoS, và ngưỡng rủi ro cấu trúc bắt nguồn từ `quant_valuation.py`, được kiểm duyệt qua `data_gate.py` và thực thi đồng nhất trong `quant_engine.py` và `portfolio_guard.py`.
+- **Zero-Unwired Data Principle:** Mọi mô hình định giá định lượng phải được cấp dữ liệu tài chính BCTC thực (`fin_dict`). Nghiêm cấm chạy âm thầm trên nhánh fallback mà không có cảnh báo.
+- **Strict Informative MoS Enforcement:** Cờ `mos_is_informative` là chốt an toàn tối thượng. Mọi tín hiệu fallback đều phải bị đánh dấu `mos_is_informative=False` và bị cấm mở vị thế Mua giá trị.
+- **Fail-Safe Graceful Degradation:** Mất dữ liệu bối cảnh hoặc BCTC stale $\rightarrow$ vô hiệu hóa context an toàn, không làm gián đoạn luồng vận hành nền của bot.
+- **Data Model Idempotence:** Ánh xạ dữ liệu DataFrame danh mục phải tương thích ngược cả tiếng Việt và tiếng Anh, không gây ngoại lệ KeyError.
 
 ---
 
@@ -79,5 +58,5 @@
 
 - **SonarCloud:** Cognitive Complexity < 15 (S3776), `logging.exception()` trong except (S8572), không trùng lặp chuỗi $\ge 3$ lần (S1192), duplicate lines density $\le 3.0\%$.
 - **Ruff:** `ruff check --fix .` đảm bảo exit code 0 và imports chuẩn `isort`.
-- **Test Coverage:** $\ge 80\%$ (mục tiêu $85 - 95\%+$) cho toàn bộ logic mới; 100% test case kiểm thử biên, fail-safe branch, và kịch bản gap sàn.
-- **Walk-Forward Validation:** Các tham số định lượng (RSI, ATR buffer, Hysteresis band) phải được đối soát qua dữ liệu lịch sử nhiều chu kỳ để tránh tối ưu hóa quá mức (overfitting).
+- **Test Coverage:** $\ge 80\%$ (mục tiêu $85 - 95\%+$) cho toàn bộ logic mới; 100% test case kiểm thử biên, e2e entry gates, và kịch bản fallback.
+- **TDD (Test-Driven Development):** Viết integration test `tests/test_e2e_entry_gates.py` reproduce lỗi và fail trước khi sửa code, sau đó pass 100%.

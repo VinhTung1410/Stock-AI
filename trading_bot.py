@@ -273,24 +273,32 @@ def _evaluate_watchlist_buy_trigger(target_buy: float, curr_p: float, tech: dict
     return False, ""
 
 
-def _validate_quant_gate(sym: str, tech: dict, curr_p: float) -> tuple[bool, float, dict, str]:
-    from data_engine import fetch_stock_historical, get_financial_ratios
+def _validate_quant_gate(sym: str, tech: dict, curr_p: float) -> tuple[bool, float, dict, str, dict]:
+    from data_engine import SECTOR_MAP, fetch_stock_historical, get_financial_ratios
     from quant_engine import calculate_atr, calculate_piotroski_f_score, check_data_gate
+    from quant_valuation import calculate_fair_value_and_mos
 
     dynamic_sl = round(curr_p * 0.94, 2)
     f_score_dict = {"score": 6}
+    val_dict = {}
 
     try:
         fin = get_financial_ratios(sym)
         gate = check_data_gate(sym, tech, fin)
         f_score_dict = calculate_piotroski_f_score(fin)
+        val_dict = calculate_fair_value_and_mos(
+            symbol=sym,
+            current_price=curr_p,
+            fin_dict=fin or {},
+            sector=SECTOR_MAP.get(sym, ""),
+        )
 
         if not gate["passed"]:
             logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Không đạt Data Gate ({', '.join(gate['reasons'])})")
-            return False, dynamic_sl, f_score_dict, ""
+            return False, dynamic_sl, f_score_dict, "", val_dict
         if f_score_dict["score"] <= 3:
             logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Sức khỏe tài chính yếu (F-Score: {f_score_dict['score']}/9)")
-            return False, dynamic_sl, f_score_dict, ""
+            return False, dynamic_sl, f_score_dict, "", val_dict
 
         atr_val = float(tech.get("atr14") or 0.0)
         if atr_val <= 0:
@@ -304,7 +312,7 @@ def _validate_quant_gate(sym: str, tech: dict, curr_p: float) -> tuple[bool, flo
         logging.exception(f"Lỗi khi kiểm tra quant cho {sym}")
 
     f_score_txt = f" | F-Score: {f_score_dict['score']}/9"
-    return True, dynamic_sl, f_score_dict, f_score_txt
+    return True, dynamic_sl, f_score_dict, f_score_txt, val_dict
 
 
 def _record_and_save_buy_signal(
@@ -316,12 +324,15 @@ def _record_and_save_buy_signal(
     f_score_txt: str,
     f_score_dict: dict,
     tech: dict,
+    val_dict: dict | None = None,
 ):
     from db_manager import save_quant_signal
 
     record_signal_cooldown(sym, action="MUA", conviction_score=75.0)
     try:
         act_tag = "🟢 VALUE BUY" if "Breakout" in buy_reason else "🟢 ACCUMULATE"
+        mos_val = float((val_dict or {}).get("mos_pct", 15.0))
+        is_info = bool((val_dict or {}).get("mos_is_informative", True))
         save_quant_signal(
             symbol=sym,
             action=act_tag,
@@ -330,7 +341,13 @@ def _record_and_save_buy_signal(
             market_price_at_signal=curr_p,
             target_price=target_p,
             stop_loss=dynamic_sl,
-            hard_gates={"mos_pct": 15.0, "ev": round(curr_p * 1.08, 2), "kelly_f": 0.12, "risk_reward": 2.0},
+            hard_gates={
+                "mos_pct": mos_val,
+                "ev": round(curr_p * 1.08, 2),
+                "kelly_f": 0.12,
+                "risk_reward": 2.0,
+                "mos_is_informative": is_info,
+            },
             f_score_res=f_score_dict,
             z_score_res={"z_score": 2.5},
             prob_dict={"P_bull": 0.35, "P_base": 0.50, "P_bear": 0.15, "rationale_base": buy_reason},
@@ -367,7 +384,7 @@ def _process_single_watchlist_item(item: dict, today_str: str):
     if not buy_triggered:
         return
 
-    passed, dynamic_sl, f_score_dict, f_score_txt = _validate_quant_gate(sym, tech, curr_p)
+    passed, dynamic_sl, f_score_dict, f_score_txt, val_dict = _validate_quant_gate(sym, tech, curr_p)
     if not passed or is_symbol_in_cooldown(sym, cooldown_days=5):
         return
 
@@ -399,7 +416,9 @@ def _process_single_watchlist_item(item: dict, today_str: str):
         strategy_style=style,
     )
     sent_alerts.add(alert_key)
-    _record_and_save_buy_signal(sym, curr_p, target_p, dynamic_sl, buy_reason, f_score_txt, f_score_dict, tech)
+    _record_and_save_buy_signal(
+        sym, curr_p, target_p, dynamic_sl, buy_reason, f_score_txt, f_score_dict, tech, val_dict=val_dict
+    )
 
 
 def _scan_watchlist_opportunities(today_str: str):

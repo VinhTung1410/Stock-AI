@@ -530,14 +530,15 @@ def _resolve_item_tech(sym: str, tech_map: dict | None) -> dict:
         return {}
 
 
-def _calculate_item_mos(sym: str, curr_price: float, note: str) -> float:
+def _calculate_item_mos(sym: str, curr_price: float, note: str, fin_dict: dict | None = None) -> float:
     """Calculate Margin of Safety percentage for a watchlist item."""
     if curr_price <= 0:
         return 0.0
     try:
         from quant_valuation import calculate_fair_value_and_mos
 
-        val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=note)
+        fin_data = fin_dict if fin_dict is not None else (get_financial_ratios(sym) or {})
+        val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, fin_dict=fin_data, sector=note)
         return float(val_res.get("mos_pct", 0.0))
     except Exception:
         return 0.0
@@ -1342,7 +1343,10 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
         trap_label = f"⚠️ {tr.get('trap_type', 'BẪY')}" if tr.get("is_trap") else "✅ An toàn"
 
         # Đánh giá Fair Value & MoS
-        val_res = calculate_fair_value_and_mos(symbol=symbol, current_price=curr_price, sector=note)
+        fin_dict_p = get_financial_ratios(symbol) or {}
+        val_res = calculate_fair_value_and_mos(
+            symbol=symbol, current_price=curr_price, fin_dict=fin_dict_p, sector=note
+        )
         fair_val = val_res.get("fair_value", curr_price)
         mos_pct = val_res.get("mos_pct", 0.0)
 
@@ -1445,7 +1449,10 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
         tr = tech.get("trap_info", {})
         trap_label = f"⚠️ {tr.get('trap_type', 'BẪY')}" if tr.get("is_trap") else "✅ An toàn"
 
-        val_res = calculate_fair_value_and_mos(symbol=symbol, current_price=curr_price, sector=note)
+        fin_dict_w = get_financial_ratios(symbol) or {}
+        val_res = calculate_fair_value_and_mos(
+            symbol=symbol, current_price=curr_price, fin_dict=fin_dict_w, sector=note
+        )
         fair_val = val_res.get("fair_value", curr_price)
         mos_pct = val_res.get("mos_pct", 0.0)
 
@@ -1667,6 +1674,10 @@ SECTOR_MAP = {
     "MBB": "Ngân hàng",
     "VPB": "Ngân hàng",
     "ACB": "Ngân hàng",
+    "BID": "Ngân hàng",
+    "VCB": "Ngân hàng",
+    "CTG": "Ngân hàng",
+    "STB": "Ngân hàng",
     "VHM": "Bất động sản",
     "VIC": "Bất động sản / Xe điện",
     "VNM": "Thực phẩm & Đồ uống",
@@ -1995,18 +2006,6 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
             foreign_flow = tech.get("foreign_flow", {})
             is_trap = trap_info.get("is_trap", False)
 
-            # Tích hợp định giá Fair Value & Biên an toàn MoS
-            from quant_engine import calculate_weighted_entry_and_rr
-            from quant_valuation import calculate_fair_value_and_mos
-
-            val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, sector=sector)
-            fv = val_res.get("fair_value", curr_price * 1.10)
-            mos_pct = val_res.get("mos_pct", 0.0)
-            mos_is_informative = val_res.get("mos_is_informative", True)
-            val_method = val_res.get("valuation_method", "N/A")
-            val_conf = val_res.get("confidence", "MEDIUM")
-            p_target = val_res.get("price_target") or round(fv * 1.05, 2)
-
             # --- PHASE 0: DATA RECONCILIATION GATE (TASK 7.0e: NO FAKE DEFAULTS) ---
             fin_ratios = get_financial_ratios(sym)
             if not fin_ratios or not fin_ratios.get("period"):
@@ -2020,17 +2019,50 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                     "story_tag": "THIẾU DỮ LIỆU",
                     "story": "Không thể tải báo cáo tài chính hoặc thiếu chỉ số cơ bản",
                     "current_price": curr_price,
-                    "fair_value": fv,
-                    "mos_pct": mos_pct,
-                    "valuation_method": val_method,
+                    "fair_value": curr_price * 1.10,
+                    "mos_pct": 0.0,
+                    "valuation_method": "INSUFFICIENT_DATA",
                     "confidence": "LOW",
                     "data_quality": "CRITICAL",
                     "data_quality_score": 0.0,
                     "data_badge": "THIẾU BCTC",
                     "gate_passed": False,
-                    "target_price": p_target,
+                    "target_price": round(curr_price * 1.10, 2),
                     "stop_loss": round(curr_price * 0.93, 2),
                 }
+
+            # Tích hợp định giá Fair Value & Biên an toàn MoS với fin_dict thật
+            from quant_engine import calculate_weighted_entry_and_rr, evaluate_decision_hard_gates
+            from quant_valuation import calculate_fair_value_and_mos
+
+            val_res = calculate_fair_value_and_mos(
+                symbol=sym, current_price=curr_price, fin_dict=fin_ratios, sector=sector
+            )
+            fv = val_res.get("fair_value", curr_price * 1.10)
+            mos_pct = val_res.get("mos_pct", 0.0)
+            mos_is_informative = val_res.get("mos_is_informative", True)
+            val_method = val_res.get("valuation_method", "N/A")
+            val_conf = val_res.get("confidence", "MEDIUM")
+            p_target = val_res.get("price_target") or round(fv * 1.05, 2)
+
+            hard_gates = evaluate_decision_hard_gates(
+                current_price=curr_price,
+                p_bull=0.35,
+                p_base=0.50,
+                p_bear=0.15,
+                price_bull=p_target,
+                price_base=fv,
+                price_bear=round(fv * 0.85, 2),
+                atr=tech.get("atr14", 0.0),
+                trap_info=trap_info,
+                foreign_flow=foreign_flow,
+                adv20_billion=tech.get("adv20_billion", 0.0),
+                symbol=sym,
+                fin_dict=fin_ratios,
+                sector=sector,
+                tech_data=tech,
+            )
+            gate_can_buy = hard_gates.get("gate_mos_passed", True) and mos_is_informative
 
             from data_gate import reconcile_data
 
@@ -2098,7 +2130,15 @@ def scan_market_opportunities(extra_symbols: list = None) -> list:
                 trend_allowed = False
 
             # A. ĐẠT CHUẨN HIGH CONVICTION (>= 70) VÀ KỸ THUẬT AN TOÀN -> KHUYẾN NGHỊ MUA
-            if conv_score >= HIGH_CONVICTION_THRESHOLD and tech_allowed and rsi_allowed and vol_allowed and no_trap and trend_allowed:
+            if (
+                conv_score >= HIGH_CONVICTION_THRESHOLD
+                and tech_allowed
+                and rsi_allowed
+                and vol_allowed
+                and no_trap
+                and trend_allowed
+                and gate_can_buy
+            ):
                 target_price = p_target
                 stop_loss = round(max(ma20 * 0.95, curr_price * 0.93), 2)
                 # Đảm bảo Stop < current

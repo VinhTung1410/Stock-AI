@@ -582,6 +582,7 @@ def evaluate_real_estate_valuation(
         "survival_gate": survival_res,
         "pb_guardrail": pb_res,
         "applied_discounts": round(total_disc, 2),
+        "is_informative": (bvps is not None and float(bvps) > 0) or (pb is not None and float(pb) > 0),
         "recommendation_allowed": not (sotp_res.get("has_critical_block") or survival_res.get("has_critical_block")),
     }
 
@@ -793,6 +794,7 @@ def evaluate_cyclical_valuation(
         "peer_benchmark": peer_res,
         "sector_risks": sec_risk_res,
         "applied_discounts": round(total_discount, 2),
+        "is_informative": bool(norm_eps is not None and norm_eps > 0) or bool(pe is not None and float(pe) > 0),
         "recommendation_allowed": not peak_res.get("is_peak_trap", False),
     }
 
@@ -1151,6 +1153,26 @@ def calculate_fair_value_and_mos(
             mos_is_informative = False
     elif archetype == "BANK" and (not pb or pb <= 0) and (cons_target <= 0 or consensus_stale):
         mos_is_informative = False
+    elif archetype == "CYCLICAL":
+        has_dynamic_bctc = bool(
+            fin_dict
+            and (
+                fin_dict.get("eps_history")
+                or (fin_dict.get("pe") is not None and float(fin_dict.get("pe") or 0) > 0)
+            )
+        )
+        if not has_dynamic_bctc or (cyc_eval and not cyc_eval.get("is_informative", True)):
+            mos_is_informative = False
+    elif archetype == "REAL_ESTATE":
+        has_dynamic_bctc = bool(
+            fin_dict
+            and (
+                (fin_dict.get("bvps") is not None and float(fin_dict.get("bvps") or 0) > 0)
+                or (fin_dict.get("pb") is not None and float(fin_dict.get("pb") or 0) > 0)
+            )
+        )
+        if not has_dynamic_bctc or (re_eval and not re_eval.get("is_informative", True)):
+            mos_is_informative = False
 
     # Xếp loại mức độ hấp dẫn định giá
     if mos_pct >= 20.0:

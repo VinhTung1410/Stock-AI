@@ -9,6 +9,7 @@ the quantitative MA200 code regime, and enforces graceful non-blocking fail-safe
 import json
 import logging
 from dataclasses import asdict, dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -79,13 +80,15 @@ def load_market_context(
         return MarketContext(is_valid=False)
 
     report_date = data.get("date", "")
-    if current_date and report_date != current_date and not allow_stale:
-        LOGGER.warning(
-            "[ContextEngine] Context date '%s' does not match session date '%s'. Falling back to invalid context.",
-            report_date,
-            current_date,
-        )
-        return MarketContext(is_valid=False, date=report_date)
+    if not allow_stale:
+        effective_date = current_date or str(date.today())
+        if report_date != effective_date:
+            LOGGER.warning(
+                "[ContextEngine] Context date '%s' does not match session date '%s'. Falling back to invalid context.",
+                report_date,
+                effective_date,
+            )
+            return MarketContext(is_valid=False, date=report_date)
 
     return MarketContext(
         date=report_date,
