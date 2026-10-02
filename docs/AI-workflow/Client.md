@@ -1,12 +1,12 @@
-# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 11.0
+# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 10.1
 
 **Tên dự án:** Stock-AI / AI Investment Decision & Research Platform  
-**Phiên bản:** v11.0 — Phase 21: Data Resilience & Fallback Valuation  
+**Phiên bản:** v10.1 — Phase 21: Data Resilience & Fallback Valuation  
 **Trọng tâm:** *"Sau thành công của Contrarian State Machine, hệ thống đã chạy xuất sắc trên toàn thị trường nhưng vấp phải sự cố dữ liệu rác (False Positive Tickers) và Zero FV. Trọng tâm Phase 21 là xây dựng **Resilience Engine** để bot bọc lỗi (try-except) toàn bộ khi quét thị trường, cùng với cơ chế **KBS-First Fallback Valuation** để tránh lỗi toán học khi định giá các cổ phiếu mảng Tài chính có FV = 0."*
 
 ---
 
-## 1. MỤC TIÊU PHIÊN BẢN v11.0 (PHASE 21)
+## 1. MỤC TIÊU PHIÊN BẢN v10.1 (PHASE 21)
 
 1. **TASK-0073: Data Resilience Engine (Quét toàn thị trường không Crash):**
    - **Vấn đề cốt tử:** API vnstock/VCI bị treo hoặc quăng lỗi `ValueError` khi gặp mã lạ (ví dụ "GOOD1" do RSS parser nhận nhầm).
@@ -16,13 +16,7 @@
    - **Vấn đề cốt tử:** Cổ phiếu mảng tài chính (như SSI) thỉnh thoảng bị trả về Fair Value = 0, dẫn tới lỗi `ZeroDivisionError` ở hàm tính MoS.
    - **Giải pháp:** Đã bọc điều kiện `price_base > 0` trong `quant_engine.py` và áp dụng chiến thuật KBS-First, Fallback VCI cho dữ liệu BCTC.
 
-2. **TASK-0071: Continuous Panic Score (0-100):**
-   - **Vấn đề cốt tử:** Đánh giá hoảng loạn bằng Binary (True/False cho RSI <= 30) quá cứng nhắc và mất mát thông tin.
-   - **Giải pháp:** Viết thuật toán tính điểm hoảng loạn liên tục (0-100) kết hợp đa yếu tố: RSI, khoảng cách so với MA20, Drawdown, Volume Abnormality.
 
-3. **TASK-0072: Cập Nhật Output Semantics & Test:**
-   - **Vấn đề cốt tử:** Việc dùng từ "Capitulation", "Call-margin" bừa bãi khi chưa có Volume Spike làm hỏng chất lượng lập luận của AI.
-   - **Giải pháp:** Sửa đổi hệ thống từ vựng, không gọi là Call-margin nếu không có bằng chứng. Cập nhật Output của Mocktest thành 3 nhóm rõ ràng: BUY CANDIDATE, WATCHLIST, BLOCKED để trực quan hóa năng lực nhận diện của AI.
 
 ---
 
