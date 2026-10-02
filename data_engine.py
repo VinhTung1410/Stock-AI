@@ -1979,7 +1979,7 @@ def get_active_cooldown_symbols(cooldown_days: int = COOLDOWN_DAYS) -> list:
     return list(active)
 
 
-def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = None) -> list:
+def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = None, portfolio: list = None, kill_switch_active: bool = False) -> list:
     """Scan market opportunities using 2-tier Catalyst + Technical Confluence approach.
 
     1. Ingest RSS financial news to identify catalyst stocks (earnings, dividends, macro).
@@ -2057,7 +2057,12 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
         try:
             tech = fetch_stock_technical(sym)
             if not tech:
-                return None
+                return {
+                    "symbol": sym,
+                    "status": "REJECT",
+                    "setup_type": "Không lấy được dữ liệu kỹ thuật",
+                    "primary_rejection_gate": "TECH_FETCH",
+                }
 
             curr_price = tech.get("current_price", 0.0)
             ma20 = tech.get("ma20")
@@ -2067,7 +2072,12 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
             change_pct = tech.get("change_pct", 0.0)
 
             if not curr_price or not ma20 or not rsi:
-                return None
+                return {
+                    "symbol": sym,
+                    "status": "REJECT",
+                    "setup_type": "Thiếu dữ liệu giá, MA20, hoặc RSI",
+                    "primary_rejection_gate": "TECH_INCOMPLETE",
+                }
 
             sector = SECTOR_MAP.get(sym, "Doanh nghiệp niêm yết")
             cat_info = catalyst_map.get(sym)
@@ -2221,6 +2231,9 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                 macro_regime=macro_regime,
                 caller="SCAN",
                 conviction_score=conv_score,
+                portfolio=portfolio,
+                kill_switch_active=kill_switch_active,
+                half_kelly_f=hard_gates.get("kelly_f", 0.12),
             )
 
             # A. ĐẠT CHUẨN HIGH CONVICTION (>= 70) VÀ KỸ THUẬT AN TOÀN -> KHUYẾN NGHỊ MUA
@@ -2297,6 +2310,86 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                     "rationale": f"Conviction {conv_score:.0f}/100 ({conv_tier}). Định giá MoS: {mos_pct:+.1f}% ({val_method}). Kỹ thuật: Trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}.",
                 }
 
+            # A2. CONTRARIAN PANIC BUY ENGINE (ADR-031 / Phase 18 - v8.1)
+            # Nếu cổ phiếu không thỏa mãn kỹ thuật Trend Following nhưng rơi vào trạng thái cực đoan,
+            # thẩm định qua Contrarian Module độc lập (F-Score >= 7, Z-Score > 2.0, MoS >= 20%, max 5% NAV)
+            from contrarian_engine import evaluate_contrarian_gates
+
+            fin_contrarian = {
+                **fin_ratios,
+                "mos_pct": mos_pct,
+                "mos_is_informative": mos_is_informative,
+                "fair_value": fv,
+                "f_score": val_res.get("f_score", fin_ratios.get("f_score")),
+                "z_score": val_res.get("z_score", fin_ratios.get("z_score")),
+            }
+            contrarian_res = evaluate_contrarian_gates(
+                symbol=sym,
+                current_price=curr_price,
+                tech_data=tech,
+                fin_dict=fin_contrarian,
+                sector=sector,
+                macro_regime=macro_regime,
+                portfolio=portfolio,
+                kill_switch_active=kill_switch_active,
+                half_kelly_f=hard_gates.get("kelly_f", 0.12),
+            )
+            if contrarian_res.status in ["PANIC_BUY", "NEAR_PANIC_WATCH", "EXTREME_FEAR_WATCH"]:
+                c_p_min = round(curr_price * 0.98, 2)
+                c_p_max = round(curr_price * 1.01, 2)
+                c_zone = f"{c_p_min} - {c_p_max}"
+                
+                # Default for PANIC_BUY
+                final_status = "RECOMMEND_BUY" 
+                story_tag = "BẮT ĐÁY"
+                
+                # Downgrade if just watching
+                if contrarian_res.status in ["NEAR_PANIC_WATCH", "EXTREME_FEAR_WATCH"]:
+                    final_status = "WATCH_CONFIRMATION"
+                    story_tag = "CHỜ BẮT ĐÁY"
+
+                return {
+                    "symbol": sym,
+                    "sector": sector,
+                    "status": final_status,
+                    "conviction_score": max(conv_score, 75.0) if final_status == "RECOMMEND_BUY" else 65.0,
+                    "conviction_tier": "HIGH" if final_status == "RECOMMEND_BUY" else "MEDIUM",
+                    "conviction_breakdown": conv_breakdown,
+                    "style_type": contrarian_res.style_type,
+                    "setup_type": contrarian_res.setup_type,
+                    "story_tag": story_tag,
+                    "story": story_title,
+                    "current_price": curr_price,
+                    "entry_zone": c_zone,
+                    "avg_cost": curr_price,
+                    "p_min": c_p_min,
+                    "p_max": c_p_max,
+                    "execution_plan": (
+                        f"Rải đinh thăm dò ({contrarian_res.position_size_nav}) vùng {c_zone}k. "
+                        f"Cắt lỗ cứng tại {contrarian_res.stop_loss}k (-8%)."
+                    ),
+                    "target_price": contrarian_res.target_price,
+                    "fair_value": contrarian_res.fair_value,
+                    "mos_pct": contrarian_res.mos_pct,
+                    "mos_is_informative": True,
+                    "valuation_method": val_method,
+                    "confidence": val_conf,
+                    "stop_loss": contrarian_res.stop_loss,
+                    "risk_reward": contrarian_res.risk_reward,
+                    "position_size_pct": contrarian_res.position_size_pct,
+                    "position_size_nav": contrarian_res.position_size_nav,
+                    "rsi": rsi,
+                    "vol_ratio": vol_ratio,
+                    "foreign_flow": foreign_flow,
+                    "is_contrarian": True,
+                    "f_score": contrarian_res.metrics.get("f_score", 7),
+                    "z_score": contrarian_res.metrics.get("z_score", 2.5),
+                    "rationale": (
+                        f"{contrarian_res.setup_type}. Định giá MoS: {contrarian_res.mos_pct:+.1f}%. "
+                        f"F-Score: {contrarian_res.metrics.get('f_score')}/9. Vị thế: {contrarian_res.position_size_nav}."
+                    ),
+                }
+
             # B. MEDIUM CONVICTION (55-69) HOẶC CƠ BẢN TỐT (MOS >= 8%) NHƯNG KỸ THUẬT CHƯA XÁC NHẬN
             # -> ĐƯA VÀO RADAR THEO DÕI (WATCH_CONFIRMATION) CHO LƯỚT SÓNG HOẶC CHỜ NỀN
             elif conv_score >= MEDIUM_CONVICTION_THRESHOLD or mos_pct >= 8.0:
@@ -2371,27 +2464,70 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                     "rationale": " | ".join(caution_reason) if caution_reason else "Kỹ thuật chưa đạt chuẩn an toàn.",
                 }
 
-            return None
+            return {
+                "symbol": sym,
+                "status": "REJECT",
+                "setup_type": "Kỹ thuật không đạt chuẩn mua hoặc theo dõi",
+                "primary_rejection_gate": "TECH_OR_CONVICTION",
+            }
         except Exception as e:
-            logging.debug(f"Lỗi phân tích {sym}: {e}")
-            return None
+            logging.exception(f"Lỗi phân tích {sym}: {e}")
+            return {
+                "symbol": sym,
+                "status": "REJECT",
+                "setup_type": f"Lỗi exception: {e}",
+                "primary_rejection_gate": "EXCEPTION",
+            }
 
     all_results = []
+    from db_manager import save_decision_record
+    
     for sym in pool:
         try:
             res = analyze_symbol(sym)
             if res:
                 all_results.append(res)
+                
+                st = res.get("status", "REJECT")
+                if st == "RECOMMEND_BUY":
+                    decision = "BUY"
+                    gate = "PASSED"
+                elif st == "WATCH_CONFIRMATION":
+                    decision = "WATCH"
+                    gate = "TECH_CONFIRMATION"
+                elif st == "INSUFFICIENT_DATA":
+                    decision = "REJECT"
+                    gate = "DATA_GATE"
+                elif st == "CAUTION_TRAP":
+                    decision = "REJECT"
+                    gate = "RISK_TRAP"
+                else:
+                    decision = "REJECT"
+                    gate = res.get("primary_rejection_gate", "UNKNOWN")
+                
+                save_decision_record({
+                    "symbol": res["symbol"],
+                    "session": "NOON" if datetime.now().hour < 13 else "CLOSE",
+                    "decision": decision,
+                    "primary_rejection_gate": gate,
+                    "rejection_reasons": [res.get("rationale") or res.get("setup_type") or res.get("story") or ""],
+                    "facts": {
+                        "price": res.get("current_price"),
+                        "mos_pct": res.get("mos_pct"),
+                        "conviction": res.get("conviction_score")
+                    }
+                })
+
             import time
 
             time.sleep(0.2)
         except Exception as e:
-            logging.debug(f"Lỗi khi xử lý {sym}: {e}")
+            logging.exception(f"Lỗi khi xử lý {sym}: {e}")
 
     # Tách nhóm kết quả ban đầu
-    buy_candidates = [r for r in all_results if r["status"] == "RECOMMEND_BUY"]
-    watch_picks = [r for r in all_results if r["status"] == "WATCH_CONFIRMATION"]
-    caution_picks = [r for r in all_results if r["status"] in ("CAUTION_TRAP", "INSUFFICIENT_DATA")]
+    buy_candidates = [r for r in all_results if r.get("status") == "RECOMMEND_BUY"]
+    watch_picks = [r for r in all_results if r.get("status") == "WATCH_CONFIRMATION"]
+    caution_picks = [r for r in all_results if r.get("status") in ("CAUTION_TRAP", "INSUFFICIENT_DATA")]
 
     # 1. COOLDOWN FILTER (5-DAY): Deduplicate consecutive buy signals on the same symbol
     eligible_buys = []
@@ -2707,16 +2843,22 @@ def _extract_kbs_ratios(symbol: str) -> dict:
 def get_financial_ratios(symbol: str) -> dict:
     """
     Lấy các chỉ số tài chính cơ bản & định giá chuyên sâu phục vụ báo cáo 8 trụ cột.
-    Sử dụng VCI làm nền tảng (base) vì có nhiều chỉ số (P/S, ROIC, EV/EBITDA),
-    sau đó đè các chỉ số cốt lõi (P/E, P/B, ROE) bằng dữ liệu KBS tươi mới hơn nếu có.
+    Sử dụng KBS làm nguồn ưu tiên cho chỉ số cốt lõi (PE, PB, ROE). 
+    Sau đó fallback sang VCI để bổ sung các chỉ số chuyên sâu (P/S, ROIC, EV/EBITDA).
+    Có bọc try-except để không văng lỗi toàn bộ hệ thống nếu gặp mã cổ phiếu ảo/sai định dạng.
     """
     try:
         from vnstock.api.financial import Finance
 
-        # Bước 1: Kéo VCI làm nền
-        df_ratio = Finance(symbol=symbol, source="VCI").ratio()
         metric_map = {}
         vci_period, vci_year, vci_quarter = None, None, None
+
+        # Bước 1: Kéo VCI làm nền (bọc try-except)
+        df_ratio = None
+        try:
+            df_ratio = Finance(symbol=symbol, source="VCI").ratio()
+        except Exception as e:
+            logging.warning(f"Lỗi lấy dữ liệu VCI cho {symbol}: {e}")
 
         if df_ratio is not None and not df_ratio.empty:
             data_cols = [c for c in df_ratio.columns if c not in ["item", "item_en", "item_id"]]

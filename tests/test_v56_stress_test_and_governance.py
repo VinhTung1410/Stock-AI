@@ -135,7 +135,7 @@ class TestPhase6eTargetFreshnessValidator:
         """Target updated within 180 days is classified as fresh."""
         res = check_institutional_target_freshness(
             symbol="HPG",
-            as_of_date="2024-11-01",  # 31 days after 2024-10-01
+            as_of_date="2026-11-01",  # 31 days after 2026-10-01
             max_age_days=180,
         )
         assert res["has_target"] is True
@@ -147,7 +147,7 @@ class TestPhase6eTargetFreshnessValidator:
         """Target older than 180 days triggers stale warning."""
         res = check_institutional_target_freshness(
             symbol="FPT",
-            as_of_date="2025-06-01",  # ~243 days after 2024-10-01
+            as_of_date="2027-06-01",  # ~243 days after 2026-10-01
             max_age_days=180,
         )
         assert res["has_target"] is True

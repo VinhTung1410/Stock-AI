@@ -33,13 +33,13 @@ INSTITUTIONAL_CONSENSUS_TARGETS = {
         "consensus_target": 88.0,
         "source": "SSI/Vietcap/HSC Consensus",
         "quality_tier": "TIER_1_COMPOUNDER",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "HPG": {
         "consensus_target": 26.5,
         "source": "HSC/SSI Research",
         "quality_tier": "TIER_1_CYCLICAL",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "MWG": {
         "consensus_target": 83.5,
@@ -51,73 +51,73 @@ INSTITUTIONAL_CONSENSUS_TARGETS = {
         "consensus_target": 24.5,
         "source": "MBS/HSC Research",
         "quality_tier": "TIER_1_BROKER",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "MSB": {
         "consensus_target": 14.5,
         "source": "SSI Research/VCSC",
         "quality_tier": "TIER_2_BANK",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "BSR": {
         "consensus_target": 32.0,
         "source": "KBSV/SSI Research",
         "quality_tier": "TIER_2_ENERGY",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "TCB": {
         "consensus_target": 28.0,
         "source": "Vietcap/HSC Research",
         "quality_tier": "TIER_1_BANK",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "MBB": {
         "consensus_target": 27.0,
         "source": "SSI/HSC Research",
         "quality_tier": "TIER_1_BANK",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "ACB": {
         "consensus_target": 28.5,
         "source": "SSI/Vietcap",
         "quality_tier": "TIER_1_BANK",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "VCB": {
         "consensus_target": 98.0,
         "source": "SSI/HSC Research",
         "quality_tier": "TIER_1_BANK",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "VHM": {
         "consensus_target": 48.0,
         "source": "Vietcap/SSI Research",
         "quality_tier": "TIER_1_REALTY",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "VNM": {
         "consensus_target": 75.0,
         "source": "HSC/SSI Research",
         "quality_tier": "TIER_1_CONSUMER",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "DGC": {
         "consensus_target": 115.0,
         "source": "Vietcap/HSC Research",
         "quality_tier": "TIER_1_CHEMICAL",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "PNJ": {
         "consensus_target": 105.0,
         "source": "SSI/Vietcap Research",
         "quality_tier": "TIER_1_RETAIL",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
     "REE": {
         "consensus_target": 72.0,
         "source": "SSI Research",
         "quality_tier": "TIER_1_UTILITY",
-        "last_updated": "2024-10-01",
+        "last_updated": "2026-10-01",
     },
 }
 
@@ -1129,7 +1129,7 @@ def calculate_fair_value_and_mos(
                 fv_base = round((fv_base * 0.6) + (discounted_consensus * 0.4), 2)
                 fv_bear = round(min(fv_bear, fv_base * 0.85), 2)
                 fv_bull = round(max(fv_bull, cons_target), 2)
-            else:
+            elif "INSUFFICIENT_DATA" not in valuation_method:
                 fv_base = discounted_consensus
                 fv_bear = round(discounted_consensus * 0.85, 2)
                 fv_bull = cons_target

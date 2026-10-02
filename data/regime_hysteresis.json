@@ -1,5 +1,5 @@
 {
-  "consecutive_days": 1,
-  "last_date": "2026-10-01",
-  "last_conflict_date": "2026-10-01"
+  "consecutive_days": 3,
+  "last_date": "2026-10-03",
+  "last_conflict_date": "2026-10-03"
 }

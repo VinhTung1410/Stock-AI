@@ -283,45 +283,66 @@ def _evaluate_watchlist_buy_trigger(
     return False, ""
 
 
-def _validate_quant_gate(sym: str, tech: dict, curr_p: float) -> tuple[bool, float, dict, str, dict]:
-    from data_engine import SECTOR_MAP, fetch_stock_historical, get_financial_ratios
-    from quant_engine import calculate_atr, calculate_piotroski_f_score, check_data_gate
-    from quant_valuation import calculate_fair_value_and_mos
+def _validate_quant_gate(sym: str, tech: dict, curr_p: float, portfolio: list = None, kill_switch_active: bool = False) -> tuple[bool, float, dict, str, dict]:
+    from data_engine import SECTOR_MAP, get_financial_ratios
+    from entry_gates import evaluate_entry_gates
+    from quant_engine import evaluate_decision_hard_gates
 
-    dynamic_sl = round(curr_p * 0.94, 2)
-    f_score_dict = {"score": 6}
-    val_dict = {}
+    fin = get_financial_ratios(sym)
+    sector = SECTOR_MAP.get(sym, "Doanh nghiệp niêm yết")
+    fair_value = fin.get("fair_value", curr_p * 1.1)
+    
+    hard_gates = evaluate_decision_hard_gates(
+        current_price=curr_p,
+        p_bull=0.35,
+        p_base=0.50,
+        p_bear=0.15,
+        price_bull=round(fair_value * 1.05, 2),
+        price_base=fair_value,
+        price_bear=round(fair_value * 0.85, 2),
+        atr=tech.get("atr14", 0.0),
+        trap_info=tech.get("trap_info", {}),
+        foreign_flow=tech.get("foreign_flow", {}),
+        adv20_billion=tech.get("adv20_billion", 0.0),
+        symbol=sym,
+        fin_dict=fin,
+        sector=sector,
+        tech_data=tech,
+    )
 
-    try:
-        fin = get_financial_ratios(sym)
-        gate = check_data_gate(sym, tech, fin)
-        f_score_dict = calculate_piotroski_f_score(fin)
-        val_dict = calculate_fair_value_and_mos(
-            symbol=sym,
-            current_price=curr_p,
-            fin_dict=fin or {},
-            sector=SECTOR_MAP.get(sym, ""),
-        )
+    gate_res = evaluate_entry_gates(
+        symbol=sym,
+        current_price=curr_p,
+        fin_dict=fin,
+        tech_data=tech,
+        sector=sector,
+        caller="WATCHLIST",
+        conviction_score=75.0,
+        portfolio=portfolio,
+        kill_switch_active=kill_switch_active,
+        half_kelly_f=hard_gates.get("kelly_f", 0.12),
+    )
 
-        if not gate["passed"]:
-            logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Không đạt Data Gate ({', '.join(gate['reasons'])})")
-            return False, dynamic_sl, f_score_dict, "", val_dict
-        if f_score_dict["score"] <= 3:
-            logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: Sức khỏe tài chính yếu (F-Score: {f_score_dict['score']}/9)")
-            return False, dynamic_sl, f_score_dict, "", val_dict
+    if not gate_res.can_buy:
+        logging.warning(f"⛔ HỦY BẮN TÍN HIỆU {sym}: {gate_res.blocked_by} - {gate_res.blocking_reasons}")
+        return False, 0.0, {}, "", {}
 
-        atr_val = float(tech.get("atr14") or 0.0)
-        if atr_val <= 0:
-            df_hist = fetch_stock_historical(sym, time_frame="1D", limit=30)
-            if df_hist is not None and not df_hist.empty:
-                atr_val = calculate_atr(df_hist, 14)
+    dynamic_sl = gate_res.metrics.get("stop_loss", round(curr_p * 0.94, 2))
+    f_score = gate_res.metrics.get("f_score", 6)
+    f_score_dict = {"score": f_score}
+    f_score_txt = f" | F-Score: {f_score}/9"
+    fair_value = gate_res.metrics.get("fair_value", fair_value)
 
-        if atr_val > 0:
-            dynamic_sl = round(max(curr_p * 0.93, curr_p - 1.5 * atr_val), 2)
-    except Exception:
-        logging.exception(f"Lỗi khi kiểm tra quant cho {sym}")
+    val_dict = {
+        "mos_pct": gate_res.metrics.get("mos_pct", 0.0),
+        "mos_is_informative": gate_res.metrics.get("mos_is_informative", True),
+        "fair_value": fair_value,
+        "kelly_f": hard_gates.get("kelly_f", 0.12),
+        "ev": hard_gates.get("ev", round(curr_p * 1.08, 2)),
+        "risk_reward": hard_gates.get("risk_reward", 2.0),
+        "z_score": gate_res.metrics.get("z_score", 2.5),
+    }
 
-    f_score_txt = f" | F-Score: {f_score_dict['score']}/9"
     return True, dynamic_sl, f_score_dict, f_score_txt, val_dict
 
 
@@ -353,13 +374,13 @@ def _record_and_save_buy_signal(
             stop_loss=dynamic_sl,
             hard_gates={
                 "mos_pct": mos_val,
-                "ev": round(curr_p * 1.08, 2),
-                "kelly_f": 0.12,
-                "risk_reward": 2.0,
+                "ev": (val_dict or {}).get("ev", round(curr_p * 1.08, 2)),
+                "kelly_f": (val_dict or {}).get("kelly_f", 0.12),
+                "risk_reward": (val_dict or {}).get("risk_reward", 2.0),
                 "mos_is_informative": is_info,
             },
             f_score_res=f_score_dict,
-            z_score_res={"z_score": 2.5},
+            z_score_res={"z_score": (val_dict or {}).get("z_score", 2.5)},
             prob_dict={"P_bull": 0.35, "P_base": 0.50, "P_bear": 0.15, "rationale_base": buy_reason},
             model_version="trading-bot-v2.1",
             input_snapshot={"tech": tech, "f_score": f_score_dict.get("score", 6)},
@@ -390,11 +411,13 @@ def _process_single_watchlist_item(item: dict, today_str: str):
         logging.info(f"🚫 ANTI-CHASING: Bỏ qua mua đuổi {sym}")
         return
 
-    buy_triggered, buy_reason = _evaluate_watchlist_buy_trigger(target_buy, curr_p, tech)
+    buy_triggered, buy_reason = _evaluate_watchlist_buy_trigger(
+        target_buy, curr_p, tech, strategy_type=item.get("strategy_type", "DEFAULT")
+    )
     if not buy_triggered:
         return
 
-    passed, dynamic_sl, f_score_dict, f_score_txt, val_dict = _validate_quant_gate(sym, tech, curr_p)
+    passed, dynamic_sl, f_score_dict, f_score_txt, val_dict = _validate_quant_gate(sym, tech, curr_p, portfolio=item.get("portfolio"), kill_switch_active=item.get("kill_switch_active", False))
     if not passed or is_symbol_in_cooldown(sym, cooldown_days=5):
         return
 
@@ -437,8 +460,16 @@ def _scan_watchlist_opportunities(today_str: str):
     if not watchlist:
         return
 
+    try:
+        from db_manager import load_portfolio
+        portfolio = load_portfolio()
+    except Exception:
+        portfolio = None
+
     for item in watchlist:
         try:
+            if portfolio:
+                item["portfolio"] = portfolio
             _process_single_watchlist_item(item, today_str)
         except Exception:
             logging.exception("Lỗi khi quét mục watchlist")
@@ -460,7 +491,7 @@ def check_macro_circuit_breaker(today_str: str, cache_ttl_sec: int = 300) -> boo
         return _last_macro_cash_mode
 
     from data_engine import fetch_stock_historical
-    from regime_classifier import REGIME_DOWNTREND, classify_market_regime
+    from regime_classifier import REGIME_DOWNTREND, RegimeState, get_canonical_regime
 
     alert_key = (today_str, "CIRCUIT_BREAKER_CASH_MODE")
     try:
@@ -469,10 +500,9 @@ def check_macro_circuit_breaker(today_str: str, cache_ttl_sec: int = 300) -> boo
         if df_vnindex is None or df_vnindex.empty:
             return False
 
-        regimes = classify_market_regime(df_vnindex)
-        latest_regime = regimes.iloc[-1] if not regimes.empty else "SIDEWAYS"
+        latest_regime = get_canonical_regime(vn_index_data=df_vnindex).value
 
-        if latest_regime == REGIME_DOWNTREND:
+        if latest_regime == RegimeState.DOWNTREND.value:
             _last_macro_cash_mode = True
             if alert_key not in sent_alerts:
                 vn_close = float(df_vnindex["close"].iloc[-1])
@@ -511,6 +541,7 @@ def _process_active_screener_opportunity(opp: dict, today_str: str):
     mos_pct = float(opp.get("mos_pct", 0.0))
     rr = float(opp.get("risk_reward", 2.0))
     pos_nav = str(opp.get("position_size_nav", "10% NAV"))
+    is_contrarian = bool(opp.get("is_contrarian", False))
     style = str(opp.get("style_type", "⚡ LƯỚT SÓNG T+"))
     setup_desc = str(opp.get("setup_type", "Breakout nổ Vol"))
     story = str(opp.get("story", ""))
@@ -519,15 +550,25 @@ def _process_active_screener_opportunity(opp: dict, today_str: str):
         "f_score": opp.get("f_score", 7),
         "mos_pct": mos_pct,
         "z_score": opp.get("z_score", 2.8),
-        "tech_status": opp.get("status_ma20", "TRÊN MA20"),
+        "tech_status": opp.get("status_ma20", "DƯỚI MA20 (QUÁ BÁN)" if is_contrarian else "TRÊN MA20"),
     }
 
-    logging.info(f"💎 BẮN TÍN HIỆU ACTIVE SCREENER: {sym} (Score: {conv_score:.0f}, R:R: {rr:.1f}x)")
+    if is_contrarian:
+        action_name = "🚨 BẮT ĐÁY PANIC BUY"
+        trigger_txt = f"[CONTRARIAN BUY] {setup_desc}"
+        thesis_txt = f"Thủng ngưỡng cắt lỗ {stop_loss:,.2f}k (-8%) hoặc vi phạm BCTC quý."
+        logging.info(f"🚨 BẮN TÍN HIỆU CONTRARIAN PANIC BUY: {sym} (Score: {conv_score:.0f}, MoS: {mos_pct:+.1f}%)")
+    else:
+        action_name = "MUA"
+        trigger_txt = f"[ACTIVE SCREENER] {setup_desc}"
+        thesis_txt = f"Thủng hỗ trợ {stop_loss:,.2f}k hoặc vi phạm BCTC quý."
+        logging.info(f"💎 BẮN TÍN HIỆU ACTIVE SCREENER: {sym} (Score: {conv_score:.0f}, R:R: {rr:.1f}x)")
+
     alert_sent = send_trade_signal_alert(
         symbol=sym,
-        action="MUA",
+        action=action_name,
         current_price=curr_p,
-        trigger_reason=f"[ACTIVE SCREENER] {setup_desc}",
+        trigger_reason=trigger_txt,
         target_price=target_p,
         stop_loss=stop_loss,
         entry_range=(p_min, p_max),
@@ -537,7 +578,7 @@ def _process_active_screener_opportunity(opp: dict, today_str: str):
         conviction_score=conv_score,
         quant_metrics=quant_info,
         catalysts=[story] if story else None,
-        thesis_breaker=f"Thủng hỗ trợ {stop_loss:,.2f}k hoặc vi phạm BCTC quý.",
+        thesis_breaker=thesis_txt,
         strategy_style=style,
     )
     if alert_sent:
@@ -556,7 +597,8 @@ def _scan_active_market_opportunities(today_str: str):
     logging.info("🔍 Đang kích hoạt Active Market Screener (đãi cát tìm vàng)...")
 
     try:
-        opportunities = scan_market_opportunities()
+        from db_manager import load_portfolio
+        opportunities = scan_market_opportunities(portfolio=load_portfolio(), kill_switch_active=False)
         if not opportunities:
             return
 
@@ -565,6 +607,30 @@ def _scan_active_market_opportunities(today_str: str):
 
     except Exception:
         logging.exception("Lỗi khi quét Active Market Screener")
+
+
+def _scan_contrarian_opportunities(today_str: str):
+    """Quét cơ hội Bắt Đáy Hoảng Loạn (Contrarian Panic Buy) khi thị trường sập / Cash Mode."""
+    global last_market_scan_time
+    now_ts = time.time()
+    if (now_ts - last_market_scan_time) < 900:
+        return
+
+    last_market_scan_time = now_ts
+    logging.info("🚨 Đang kích hoạt Quét Bắt Đáy Hoảng Loạn (Contrarian Screener)...")
+
+    try:
+        from db_manager import load_portfolio
+        opportunities = scan_market_opportunities(portfolio=load_portfolio(), kill_switch_active=False)
+        if not opportunities:
+            return
+
+        for opp in opportunities:
+            if opp.get("is_contrarian"):
+                _process_active_screener_opportunity(opp, today_str)
+
+    except Exception:
+        logging.exception("Lỗi khi quét Contrarian Opportunities")
 
 
 def check_realtime_risk():
@@ -578,7 +644,8 @@ def check_realtime_risk():
     # 2. Chốt chặn Macro Circuit Breaker
     is_cash_mode = check_macro_circuit_breaker(today_str)
     if is_cash_mode:
-        logging.warning("🛡️ MACRO CIRCUIT BREAKER ĐANG KÍCH HOẠT: Tạm dừng quét tín hiệu Mua mới.")
+        logging.warning("🛡️ MACRO CIRCUIT BREAKER ĐANG KÍCH HOẠT: Tạm dừng quét Mua thường. Quét cơ hội Bắt đáy Hoảng loạn...")
+        _scan_contrarian_opportunities(today_str)
         return
 
     # 3. Quét tín hiệu mua từ Watchlist

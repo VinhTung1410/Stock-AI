@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from data_gate import reconcile_data
 from indicators import calculate_altman_z_score, calculate_piotroski_f_score
+from quant_engine import LOCKED_QUANT_THRESHOLDS
 from quant_valuation import calculate_fair_value_and_mos, classify_stock_archetype
 
 # Gate Names Constants (SonarCloud S1192)
@@ -142,11 +143,12 @@ def _check_financial_health_layer(
         f_score = int(f_score)
     result.metrics["f_score"] = f_score
 
-    if f_score <= 3:
+    f_score_min = LOCKED_QUANT_THRESHOLDS["f_score_min"]
+    if f_score < f_score_min:
         result.can_buy = False
         result.blocked_by = GATE_FINANCIAL_HEALTH
         result.position_size_multiplier = 0.0
-        result.blocking_reasons.append(f"Sức khỏe tài chính yếu: Piotroski F-Score={f_score}/9 <= 3.")
+        result.blocking_reasons.append(f"Sức khỏe tài chính yếu: Piotroski F-Score={f_score}/9 < {f_score_min}.")
         return False
 
     z_score = fin.get("z_score")
@@ -157,11 +159,12 @@ def _check_financial_health_layer(
         z_score = float(z_score)
     result.metrics["z_score"] = z_score
 
-    if sector not in ("Ngân hàng", "Bất động sản") and z_score is not None and z_score < 1.23:
+    z_score_min = LOCKED_QUANT_THRESHOLDS["z_score_min"]
+    if sector not in ("Ngân hàng", "Bất động sản") and z_score is not None and z_score < z_score_min:
         result.can_buy = False
         result.blocked_by = GATE_FINANCIAL_HEALTH
         result.position_size_multiplier = 0.0
-        result.blocking_reasons.append(f"Rủi ro kiệt quệ tài chính cao: Altman Z-Score={z_score:.2f} < 1.23 (Vùng đỏ).")
+        result.blocking_reasons.append(f"Rủi ro kiệt quệ tài chính cao: Altman Z-Score={z_score:.2f} < {z_score_min} (Vùng đỏ).")
         return False
 
     result.passed_gates.append(GATE_FINANCIAL_HEALTH)
@@ -217,7 +220,7 @@ def _check_valuation_mos_layer(
     result.metrics["mos_is_informative"] = mos_is_informative
     result.metrics["valuation_method"] = val_res.get("valuation_method", "N/A")
 
-    min_mos = ARCHETYPE_MOS_THRESHOLDS.get(arch, ARCHETYPE_MOS_THRESHOLDS["DEFAULT"])
+    min_mos = LOCKED_QUANT_THRESHOLDS["mos_min_pct"]
 
     if not mos_is_informative:
         result.can_buy = False
@@ -278,14 +281,15 @@ def _check_technical_momentum_layer(
 
 def _check_quant_conviction_layer(conviction_score: Optional[float], result: EntryGateResult) -> bool:
     """Tầng 5: Điểm Conviction tổng hợp (>= 60)."""
+    conv_min = LOCKED_QUANT_THRESHOLDS["buy_conviction_min"]
     if conviction_score is not None:
         result.metrics["conviction_score"] = conviction_score
-        if conviction_score < 60.0:
+        if conviction_score < conv_min:
             result.can_buy = False
             result.blocked_by = GATE_QUANT_CONVICTION
             result.position_size_multiplier = 0.0
             result.blocking_reasons.append(
-                f"Điểm Conviction {conviction_score:.1f}/100 < 60.0 (Dưới ngưỡng an toàn định lượng)."
+                f"Điểm Conviction {conviction_score:.1f}/100 < {conv_min} (Dưới ngưỡng an toàn định lượng)."
             )
             return False
 
@@ -316,11 +320,14 @@ def _calculate_position_size_layer(
     half_kelly_f: Optional[float],
     kill_switch_active: bool,
     result: EntryGateResult,
+    sector: str = "",
+    portfolio: Optional[List[Dict[str, Any]]] = None,
 ) -> bool:
     """Tầng 7: Quản trị Rủi ro & Quy mô Vị thế (Risk Governance & Position Sizing).
 
     1. Kiểm tra ADV20: Chặn hoàn toàn nếu ADV20 < 2.0 tỷ VND.
-    2. Sizing theo Half-Kelly, Drawdown Breaker và Kill Switch.
+    2. Kiểm tra Sector Cap (Max 25% NAV/Ngành).
+    3. Sizing theo Half-Kelly, Drawdown Breaker và Kill Switch.
     """
     adv20_bil = adv20_billion
     if adv20_bil is None and tech_data:
@@ -347,6 +354,18 @@ def _calculate_position_size_layer(
     if kill_switch_active:
         calc_size = round(calc_size * 0.5, 4)
         result.blocking_reasons.append("[KILL_SWITCH] Kích hoạt giảm 50% quy mô vị thế phòng thủ.")
+
+    if portfolio and sector:
+        sector_w = sum(p.get("weight", 0.0) for p in portfolio if p.get("sector") == sector)
+        max_sector = LOCKED_QUANT_THRESHOLDS["sector_exposure_max_pct"]
+        if sector_w + calc_size > max_sector:
+            calc_size = max(0.0, max_sector - sector_w)
+            if calc_size < 0.05:
+                result.can_buy = False
+                result.blocked_by = "SECTOR_CAP"
+                result.position_size_pct = 0.0
+                result.blocking_reasons.append(f"Sector Cap: Tỷ trọng {sector} ({sector_w*100:.1f}%) đã đầy/gần đầy, không thể thêm {calc_size*100:.1f}%.")
+                return False
 
     result.position_size_pct = round(calc_size, 4)
     result.metrics["position_size_nav"] = f"{round(result.position_size_pct * 100, 1)}% NAV"
@@ -438,6 +457,8 @@ def evaluate_entry_gates(
         half_kelly_f=half_kelly_f,
         kill_switch_active=kill_switch_active,
         result=result,
+        sector=sector,
+        portfolio=portfolio,
     ):
         return result
 

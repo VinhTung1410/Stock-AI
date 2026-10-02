@@ -510,6 +510,10 @@ def send_trade_signal_alert(
         color = 0x3498DB
         icon = "📅"
         base_action = "SỰ KIỆN GDKHQ"
+    elif any(k in act_up for k in ("BẮT ĐÁY", "PANIC BUY")) or (strategy_style and "BẮT ĐÁY" in strategy_style.upper()):
+        color = 0x9B59B6
+        icon = "🚨"
+        base_action = "🚨 BẮT ĐÁY PANIC BUY"
     elif any(k in act_up for k in ("MUA", "TÍCH LŨY", "ACCUMULATE", "BUY")):
         color = 0x2ECC71
         icon = "🟢"

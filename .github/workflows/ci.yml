@@ -94,6 +94,8 @@ jobs:
             --cov=indicators \
             --cov=portfolio_guard \
             --cov=db_manager \
+            --cov=entry_gates \
+            --cov=contrarian_engine \
             --cov-report=term \
             --cov-report=xml \
             --tb=short

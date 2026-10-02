@@ -677,6 +677,17 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   - Hệ thống khiên chắn cổ tức đối soát bằng dữ liệu VSDC thực chất, bảo toàn kỷ luật cắt lỗ.
   - 100% test suites (449/449 unit & integration tests) đạt kết quả Green.
   - `ruff check . --output-format=github` đạt exit code 0. Hoàn tất Phase 17 (v8.0).
-
-
-
+### [ADR-031] Contrarian Module (Panic Buy Engine) v10.0 & Cấu trúc 4-State Machine (Phase 20)
+- **Ngày quyết định:** 2026-10-02
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:** Hệ thống Trend Following thông thường sẽ khóa 100% cơ hội khi thị trường hoảng loạn. Contrarian Module cũ (v8.1 - v9.0) giải quyết bài toán này bằng cách chỉ kích hoạt khi $RSI \le 30$. Tuy nhiên, việc đặt chốt chặn Kỹ thuật (RSI) TRƯỚC chốt chặn Cơ bản (Quality/MoS) đã dẫn đến "Single Point of Failure": Hệ thống đánh đồng cổ phiếu siêu tốt đang giảm về sát ngưỡng hoảng loạn (ví dụ FPT) với cổ phiếu rớt giá do kiểm toán/vỡ cơ bản (Value Trap như DGC, NVL). 
+- **Quyết định lựa chọn (Hợp nhất từ ADR-0008, 0009):**
+  1. Đảo ngược trình tự đánh giá: Hệ thống bắt buộc phải qua 3 cửa ải khắt khe (Governance Event Risk $\rightarrow$ Survival Quality $\rightarrow$ Deep MoS) TRƯỚC KHI đánh giá tín hiệu Kỹ thuật.
+  2. Bất cứ mã nào vi phạm rủi ro sự kiện (kiểm toán, pháp lý) hoặc tài chính suy kiệt (LNST lao dốc, F-Score thấp) đều bị BLOCK vĩnh viễn với cờ VALUE TRAP.
+  3. Cơ chế 4-State Machine (Máy 4 trạng thái): Các mã TỐT & RẺ sẽ được phân loại thành `NORMAL`, `NEAR_PANIC_WATCH` ($30 < RSI \le 35$), `EXTREME_FEAR_WATCH` ($RSI \le 30$ nhưng chưa có xác nhận) và `PANIC_BUY` ($RSI \le 30$ kèm nến đảo chiều).
+  4. Continuous Panic Score: Đánh giá cường độ rơi từ 0-100 thay vì chỉ trả về nhị phân.
+  5. Quản trị vị thế thận trọng: Vị thế trần tối đa $5.0\%$ NAV, phạt chia đôi $\text{Half-Kelly} / 2$, Hard Stop-loss cố định $-8.0\%$.
+- **Hệ quả & Đánh đổi:**
+  - Bắt đáy an toàn, triệt tiêu hoàn toàn "bẫy giá rẻ" bằng cách loại ngay rác từ vòng gửi xe. Không bỏ sót cổ phiếu chất lượng nhờ cơ chế radar "Near Panic Watch".
+  - Giữ nguyên sự trong sáng của hệ thống Trend Following cốt lõi.
+  - Hồi quy toàn bộ hệ thống test đạt 100% green. Hoàn tất Phase 20 (v10.0). Tham chiếu chi tiết tại `ADR-031-Contrarian-Module.md`.

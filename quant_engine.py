@@ -415,7 +415,8 @@ def evaluate_decision_hard_gates(
             except TypeError:
                 val_model = calculate_fair_value_and_mos(symbol, current_price, sector)
         fair_value = val_model.get("fair_value", price_base)
-        mos_pct = val_model.get("mos_pct", round(((price_base - current_price) / price_base) * 100, 2))
+        fallback_mos = round(((price_base - current_price) / price_base) * 100, 2) if price_base > 0 else 0.0
+        mos_pct = val_model.get("mos_pct", fallback_mos)
         val_method = val_model.get("valuation_method", "N/A")
         val_confidence = val_model.get("confidence", "MEDIUM")
         price_target = val_model.get("price_target") or round(fair_value * 1.08, 2)

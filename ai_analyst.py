@@ -21,7 +21,6 @@ except ImportError:
 from data_engine import evaluate_portfolio, fetch_macro_news, load_portfolio
 from quant_engine import evaluate_holding_position, evaluate_market_regime
 from quant_sanity_check import validate_holding_position, validate_trade_setup
-from quant_valuation import calculate_fair_value_and_mos
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -537,15 +536,12 @@ def generate_morning_strategy_report(
 
     for o in opportunities:
         sym = o.get("symbol", "")
-        # Lấy định giá Fair Value, Methodology, Confidence và Price Target
-        val_res = calculate_fair_value_and_mos(
-            symbol=sym, current_price=o.get("current_price", 0.0), sector=o.get("sector", "")
-        )
-        fv = val_res.get("fair_value", o.get("fair_value", 0.0))
-        mos = val_res.get("mos_pct", o.get("mos_pct", 0.0))
-        val_method = val_res.get("valuation_method", o.get("valuation_method", "N/A"))
-        val_conf = val_res.get("confidence", o.get("confidence", "MEDIUM"))
-        p_target = val_res.get("price_target") or o.get("target_price") or round(fv * 1.05, 2)
+        # Lấy định giá Fair Value, Methodology, Confidence và Price Target trực tiếp từ opportunity (đã tính chuẩn)
+        fv = o.get("fair_value", 0.0)
+        mos = o.get("mos_pct", 0.0)
+        val_method = o.get("valuation_method", "N/A")
+        val_conf = o.get("confidence", "MEDIUM")
+        p_target = o.get("target_price") or round(fv * 1.05, 2)
 
         status = o.get("status", "")
         avg_entry = o.get("avg_cost", o.get("current_price", 0.0))
