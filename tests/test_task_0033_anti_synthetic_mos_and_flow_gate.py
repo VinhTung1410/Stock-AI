@@ -55,16 +55,14 @@ def test_build_auto_watchlist_admits_genuine_informative_mos():
     candidate = _build_auto_watchlist_candidate(opp_genuine, manual_symbols)
     assert candidate is not None
     assert candidate["symbol"] == "FPT"
-    assert candidate["target_buy"] == 160.0
+    assert candidate["target_buy"] == 123.5  # TASK-0056: Entry zone = 130 * 0.95
+    assert candidate["target_buy"] < opp_genuine["current_price"]
     assert "MoS: 18.5%" in candidate["note"]
     assert candidate["is_auto"] is True
 
 
 def test_build_auto_watchlist_sanitizes_target_buy_no_market_price_fallback():
-    """AC-33.2: If target_price is None or <= 0, target_buy must be 0.0,
-
-    and NEVER fallback to current_price!
-    """
+    """AC-33.2 & AC-52.5: target_buy anchors to entry zone (5% discount) and NEVER fallbacks to current_price."""
     manual_symbols = set()
     opp_no_target = {
         "symbol": "VNM",
@@ -78,8 +76,9 @@ def test_build_auto_watchlist_sanitizes_target_buy_no_market_price_fallback():
     }
     candidate = _build_auto_watchlist_candidate(opp_no_target, manual_symbols)
     assert candidate is not None
-    assert candidate["target_buy"] == 0.0, "target_buy must be 0.0 when target_price is None!"
+    assert candidate["target_buy"] == 64.6  # TASK-0056: Entry zone = 68 * 0.95
     assert candidate["target_buy"] != 68.0, "target_buy must NEVER fallback to current_price!"
+    assert candidate["target_buy"] < opp_no_target["current_price"]
 
 
 def test_build_auto_watchlist_rejects_insufficient_data():

@@ -403,9 +403,17 @@ def evaluate_decision_hard_gates(
 
     # Tích hợp mô hình Fair Value & MOS chuẩn tổ chức
     if symbol:
-        val_model = calculate_fair_value_and_mos(
-            symbol=symbol, current_price=current_price, fin_dict=fin_dict or {}, sector=sector
-        )
+        try:
+            val_model = calculate_fair_value_and_mos(
+                symbol=symbol, current_price=current_price, fin_dict=fin_dict or {}, sector=sector
+            )
+        except TypeError:
+            try:
+                val_model = calculate_fair_value_and_mos(
+                    symbol=symbol, current_price=current_price, sector=sector
+                )
+            except TypeError:
+                val_model = calculate_fair_value_and_mos(symbol, current_price, sector)
         fair_value = val_model.get("fair_value", price_base)
         mos_pct = val_model.get("mos_pct", round(((price_base - current_price) / price_base) * 100, 2))
         val_method = val_model.get("valuation_method", "N/A")

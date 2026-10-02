@@ -22,11 +22,12 @@ from data_engine import (
     record_signal_cooldown,
     scan_market_opportunities,
 )
+from entry_gates import EntryGateResult
 
 
 @pytest.fixture(autouse=True)
 def mock_default_financial_ratios():
-    """Autouse fixture providing fresh financial statements for offline test scans."""
+    """Autouse fixture providing fresh financial statements and passing entry gates for offline signal budget scans."""
     curr_q = (datetime.now().month - 1) // 3 + 1
     fin_data = {
         "period": f"{datetime.now().year}-Q{curr_q}",
@@ -36,8 +37,25 @@ def mock_default_financial_ratios():
         "pb": 1.2,
         "roe": 18.0,
         "bvps": 25.0,
+        "f_score": 8,
+        "z_score": 3.2,
+        "mos_pct": 25.0,
+        "mos_is_informative": True,
     }
-    with patch("data_engine.get_financial_ratios", return_value=fin_data):
+    with (
+        patch("data_engine.get_financial_ratios", return_value=fin_data),
+        patch("entry_gates.evaluate_entry_gates", return_value=EntryGateResult(can_buy=True, passed_gates=["ALL"])),
+        patch(
+            "quant_engine.calculate_fair_value_and_mos",
+            side_effect=lambda *a, **k: {
+                "fair_value": 40.0,
+                "mos_pct": 30.0,
+                "valuation_method": "P/B",
+                "confidence": "HIGH",
+                "mos_is_informative": True,
+            },
+        ),
+    ):
         yield
 
 

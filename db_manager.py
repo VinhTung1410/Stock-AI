@@ -1,6 +1,6 @@
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
@@ -24,6 +24,44 @@ from supabase import Client, create_client
 
 VN_TZ = ZoneInfo("Asia/Ho_Chi_Minh")
 _supabase: Client = None
+
+BUY_ACTIONS = {"🟢 MUA", "🟢 TÍCH LŨY", "🟢 ACCUMULATE", "🟢 VALUE BUY", "RECOMMEND_BUY", "MUA", "BUY"}
+BUY_KEYWORDS = ("MUA", "TÍCH LŨY", "ACCUMULATE", "BUY")
+
+
+def count_trading_days(start_date: Any, end_date: Any, holidays: set | None = None) -> int:
+    """Calculate the number of trading days between start_date and end_date.
+
+    Excludes weekends (Saturday, Sunday) and holidays.
+    If start_date == end_date, returns 0.
+    """
+    if not start_date or not end_date:
+        return 0
+    if hasattr(start_date, "date"):
+        d1 = start_date.date()
+    elif isinstance(start_date, str):
+        d1 = datetime.fromisoformat(start_date.replace("Z", "+00:00")).date()
+    else:
+        d1 = start_date
+
+    if hasattr(end_date, "date"):
+        d2 = end_date.date()
+    elif isinstance(end_date, str):
+        d2 = datetime.fromisoformat(end_date.replace("Z", "+00:00")).date()
+    else:
+        d2 = end_date
+
+    if d1 >= d2:
+        return 0
+
+    holidays_set = holidays or set()
+    cur = d1 + timedelta(days=1)
+    trading_days = 0
+    while cur <= d2:
+        if cur.weekday() < 5 and cur not in holidays_set:
+            trading_days += 1
+        cur += timedelta(days=1)
+    return trading_days
 
 
 def get_supabase_client() -> Client:
@@ -75,6 +113,16 @@ def save_quant_signal(
     """
     client = get_supabase_client()
     if not client:
+        return None
+
+    # TASK-0052: Conditional save_quant_signal - chỉ lưu các lệnh MUA thật sự
+    action_clean = str(action or "").strip()
+    is_buy = (
+        action_clean in BUY_ACTIONS
+        or any(k in action_clean.upper() for k in BUY_KEYWORDS)
+    )
+    if not is_buy:
+        logging.info("Bỏ qua lưu quyết định non-BUY vào bảng signals: action='%s'", action)
         return None
 
     hard_gates = hard_gates or {}
@@ -172,21 +220,55 @@ def check_symbol_recent_signal(symbol: str, days: int = 5) -> bool:
     if not client:
         return False
     try:
-        from datetime import timezone
-
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        res = (
+        query = (
             client.table("signals")
             .select("id, symbol, created_at, action")
             .eq("symbol", symbol.upper().strip())
             .gte("created_at", cutoff)
-            .ilike("action", "%BUY%")
-            .execute()
         )
-        return bool(res.data and len(res.data) > 0)
+        try:
+            query = query.or_("action.ilike.%MUA%,action.ilike.%TÍCH LŨY%,action.ilike.%ACCUMULATE%,action.ilike.%BUY%")
+        except Exception:
+            pass
+        res = query.execute()
+        if not res.data:
+            return False
+
+        matching = [
+            r for r in res.data
+            if any(k in (r.get("action") or "").upper() for k in BUY_KEYWORDS)
+        ]
+        return len(matching) > 0
     except Exception as e:
         logging.debug(f"Error checking Supabase signal cooldown for {symbol}: {e}")
         return False
+
+
+def mark_non_buy_signals_invalid() -> int:
+    """Sanitize legacy signals and tracking by marking non-BUY records as INVALID.
+
+    Prevents legacy WATCH / REDUCE records from clogging OPEN positions.
+    """
+    client = get_supabase_client()
+    if not client:
+        return 0
+    try:
+        res = client.table("signals").select("id, action").execute()
+        if not res.data:
+            return 0
+        invalid_ids = []
+        for r in res.data:
+            act = str(r.get("action", "")).upper()
+            if not any(k in act for k in BUY_KEYWORDS):
+                invalid_ids.append(r["id"])
+
+        if invalid_ids:
+            client.table("signal_tracking").update({"status": "INVALID"}).in_("signal_id", invalid_ids).execute()
+        return len(invalid_ids)
+    except Exception:
+        logging.exception("Lỗi khi đánh dấu tín hiệu non-buy thành INVALID")
+        return 0
 
 
 def get_open_signals_count() -> int:
@@ -335,11 +417,27 @@ def replay_signal_path(
     exit_date = None
     t_marks: dict = {}
 
+    is_after_noon = False
+    if start_date:
+        try:
+            if isinstance(start_date, str):
+                s_dt_full = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                is_after_noon = s_dt_full.time() >= time(11, 30)
+            elif isinstance(start_date, datetime):
+                is_after_noon = start_date.time() >= time(11, 30)
+        except Exception:
+            pass
+
     for idx, (_, row) in enumerate(df.iterrows()):
         high_p = float(row.get("high", row["close"]))
         low_p = float(row.get("low", row["close"]))
         close_p = float(row["close"])
         row_time = row[time_col] if time_col else None
+
+        # TASK-0055: Tín hiệu phát sau 11:30 thì ở ngày T=0 (idx=0) chỉ dùng closing price
+        if idx == 0 and is_after_noon:
+            high_p = close_p
+            low_p = close_p
 
         mfe = round(max(mfe, high_p), 2)
         mae = round(min(mae, low_p), 2)
@@ -464,12 +562,18 @@ def update_daily_tracking() -> dict:
         high_p = float(tech.get("high", curr_p))
         low_p = float(tech.get("low", curr_p))
 
-        # Tính số ngày giao dịch trôi qua
+        # Tính số ngày giao dịch trôi qua (TASK-0055)
+        created_dt = None
         try:
             created_dt = datetime.fromisoformat(item["created_at"].replace("Z", "+00:00")).astimezone(VN_TZ)
-            days_elapsed = max(1, (now_vn.date() - created_dt.date()).days)
+            days_elapsed = count_trading_days(created_dt.date(), now_vn.date())
         except Exception:
             days_elapsed = 1
+
+        # TASK-0055: Time-Aware Audit Fill (Signal sau 11:30 chỉ khớp theo giá đóng cửa ở phiên T=0)
+        if days_elapsed == 0 and created_dt and created_dt.time() >= time(11, 30):
+            high_p = curr_p
+            low_p = curr_p
 
         # Cập nhật MFE (Đỉnh cao nhất) và MAE (Đáy thấp nhất)
         prev_mfe = float(tracking.get("max_favorable_price") or entry_p)
@@ -712,26 +816,39 @@ def save_signal_lifecycle(signal_data: dict) -> dict | None:
 
     signal_id = signal_data.get("signal_id", f"{symbol}_{datetime.now(VN_TZ).strftime('%Y%m%d_%H%M%S')}")
 
+    # TASK-0054: Adapter maps target_price & stop_loss và điền đầy đủ 5 trường calibration
+    target_val = float(signal_data.get("target_price") or signal_data.get("initial_target_price", 0.0) or 0.0)
+    stop_val = float(
+        signal_data.get("stop_loss_price")
+        or signal_data.get("initial_stop_price")
+        or signal_data.get("stop_loss", 0.0)
+        or 0.0
+    )
+    entry_val = float(signal_data.get("entry_price", 0.0) or 0.0)
+    f_score_val = int(signal_data.get("f_score", 0) or 0)
+    mos_pct_val = float(signal_data.get("mos_pct", 0.0) or 0.0)
+
     row = {
         "signal_id": signal_id,
         "symbol": symbol,
-        "entry_price": float(signal_data.get("entry_price", 0.0)),
+        "entry_price": entry_val,
         "entry_regime": signal_data.get("entry_regime", "UNKNOWN"),
         "entry_sector": signal_data.get("entry_sector", "UNKNOWN"),
-        "f_score": int(signal_data.get("f_score", 0)),
-        "z_score": float(signal_data.get("z_score", 0.0)),
-        "mos_pct": float(signal_data.get("mos_pct", 0.0)),
-        "kelly_f": float(signal_data.get("kelly_f", 0.0)),
-        "rsi14": float(signal_data.get("rsi14", 0.0)),
-        "conviction_score": float(signal_data.get("conviction_score", 0.0)),
-        "adv20_billion": float(signal_data.get("adv20_billion", 0.0)),
-        "ai_confidence": float(signal_data.get("ai_confidence", 0.0)),
+        "f_score": f_score_val,
+        "z_score": float(signal_data.get("z_score", 0.0) or 0.0),
+        "mos_pct": mos_pct_val,
+        "kelly_f": float(signal_data.get("kelly_f", 0.0) or 0.0),
+        "rsi14": float(signal_data.get("rsi14", 0.0) or 0.0),
+        "conviction_score": float(signal_data.get("conviction_score", 0.0) or 0.0),
+        "adv20_billion": float(signal_data.get("adv20_billion", 0.0) or 0.0),
+        "ai_confidence": float(signal_data.get("ai_confidence", 0.0) or 0.0),
         "ai_recommendation": signal_data.get("ai_recommendation", ""),
         "prompt_version": signal_data.get("prompt_version", "quant_2pass_v3.2"),
         "model_version": signal_data.get("model_version", "gemini-2.5-flash"),
-        "initial_stop_price": float(signal_data.get("initial_stop_price", 0.0)),
-        "stop_loss_price": float(signal_data.get("stop_loss_price", 0.0)),
-        "target_price": float(signal_data.get("target_price", 0.0)),
+        "initial_stop_price": stop_val,
+        "stop_loss_price": stop_val,
+        "target_price": target_val,
+        "initial_target_price": target_val,
         "arm": signal_data.get("arm", "QUANT_AI"),
         "status": "OPEN",
     }

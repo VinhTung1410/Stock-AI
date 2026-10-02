@@ -48,7 +48,16 @@ class TestSmartCompressedPrompt:
             "adv20_billion": 500.0,
             "status_ma20": "TRÊN MA20",
         }
-        mock_fin = {"period": "Q2/2026", "roe": 16.5, "pb": 1.45, "pe": 10.2, "f_score": 8, "z_score": 3.2}
+        mock_fin = {
+            "period": "Q2/2026",
+            "roe": 16.5,
+            "pb": 1.45,
+            "pe": 10.2,
+            "f_score": 8,
+            "z_score": 3.2,
+            "mos_pct": 20.0,
+            "mos_is_informative": True,
+        }
 
         with patch("ai_analyst.call_gemini", side_effect=mock_call_gemini):
             res = analyze_stock_with_smart_committee(

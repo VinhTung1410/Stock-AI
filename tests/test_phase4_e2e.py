@@ -43,6 +43,8 @@ class TestPhase4E2ERegression:
             "pb": 1.8,
             "latest_quarter": max(1, (datetime.now().month - 1) // 3),
             "latest_year": datetime.now().year,
+            "mos_pct": 20.0,
+            "mos_is_informative": True,
         }
         news = [{"title": "Lợi nhuận quý 1 tăng mạnh", "source": "CafeF", "tag": "KQKD"}]
 
@@ -114,7 +116,16 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
     def test_async_analyze_stock_with_smart_committee(self):
         """async_analyze_stock_with_smart_committee returns structured analysis asynchronously."""
         tech = {"current_price": 100.0, "ref_price": 99.0, "close": 100.0}
-        fin = {"roe": 25.0, "pe": 18.0, "pb": 3.0, "f_score": 8, "z_score": 4.0}
+        fin = {
+            "roe": 25.0,
+            "pe": 18.0,
+            "pb": 3.0,
+            "f_score": 8,
+            "z_score": 4.0,
+            "period": "Q2/2026",
+            "mos_pct": 20.0,
+            "mos_is_informative": True,
+        }
 
         mock_client = MagicMock()
         mock_client.aio = MagicMock()

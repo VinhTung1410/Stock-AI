@@ -598,5 +598,42 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   - Toàn bộ 118 unit & integration tests trong regression suite đạt 100% Green.
   - `ruff check . --output-format=github` đạt exit code 0. Hoàn tất Phase 15 (v7.5).
 
+---
+
+### [ADR-029] Chốt Chặn Toàn Vẹn Tín Hiệu Khuyến Nghị (Signal Integrity Filter), Ánh Xạ Vòng Đời Tín Hiệu & Bảo Vệ Danh Mục Thủ Công (Phase 16 - v7.6)
+- **Ngày quyết định:** 2026-10-02
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  1. `save_quant_signal()` ghi nhận tất cả hành động kể cả `THEO DÕI`, `GIẢM TỶ TRỌNG`, `TỪ CHỐI` vào bảng `signals`. Bảng này dùng để theo dõi hiệu suất danh mục khuyến nghị MUA, dẫn đến việc theo dõi hiệu suất bị rác và làm sai lệch thống kê PnL/Winrate.
+  2. `check_symbol_recent_signal()` chỉ so khớp cứng chuỗi `action.ilike("%MUA%")`, bỏ sót các biến thể tiếng Anh hoặc hành động gom hàng như `🟢 TÍCH LŨY`, `🟢 ACCUMULATE`, `🟢 VALUE BUY`, `RECOMMEND_BUY`, dẫn đến nguy cơ bypass bộ lọc Cooldown 5 ngày.
+  3. `save_signal_lifecycle()` adapter thiếu hỗ trợ ánh xạ khi caller truyền `initial_target_price` thay vì `target_price`, hoặc `initial_stop_price` thay vì `stop_loss_price`, làm thiếu hụt 5 trường hiệu chuẩn mô hình (`entry_price`, `target_price`, `initial_target_price`, `stop_loss_price`, `initial_stop_price`) cùng `f_score`, `mos_pct`.
+  4. Lệch pha thời gian khớp lệnh (Time-Aware Audit Fill): Khi tín hiệu phát ra sau 11:30 sáng phiên T=0, audit tracking lấy giá High/Low của toàn bộ phiên (bao gồm cả biến động buổi sáng trước khi tín hiệu xuất hiện), gây sai lệch kết quả khớp lệnh ảo. Thời gian nắm giữ `days_elapsed` tính theo ngày lịch thay vì số phiên giao dịch (`count_trading_days()`).
+  5. `target_buy` của cổ phiếu thêm tự động vào Watchlist bị gán nhầm bằng `target_price` (mục tiêu chốt lời trên đỉnh) thay vì vùng mua hỗ trợ / chiết khấu (entry zone), khiến cổ phiếu bị kích hoạt mua ngay lập tức thay vì chờ nhịp điều chỉnh.
+  6. `prune_unsuitable_watchlist()` tự động xóa các cổ phiếu do người dùng tự tay thêm vào (`added_by == "user"` hoặc `is_manual_protected == True`) khi cổ phiếu vào vùng quá mua hoặc xuất hiện bẫy rủi ro, vi phạm quyền kiểm soát của nhà đầu tư trừ phi có `force_override=True`.
+- **Quyết định lựa chọn:**
+  1. **Lọc chặt chẽ hành động trong `save_quant_signal()`:**
+     - Định nghĩa tập hợp hành động mua hợp lệ `BUY_ACTIONS = {"🟢 MUA", "🟢 TÍCH LŨY", "🟢 ACCUMULATE", "🟢 VALUE BUY", "RECOMMEND_BUY", "MUA", "BUY"}`.
+     - Chỉ lưu vào cơ sở dữ liệu `signals` khi hành động thuộc `BUY_ACTIONS`; các hành động khác (`THEO DÕI`, `GIẢM TỶ TRỌNG`, `TỪ CHỐI`) bị từ chối lưu và trả về `None`.
+     - Cung cấp hàm bảo trì `mark_non_buy_signals_invalid()` để dọn dẹp các bản ghi không phải mua cũ trong database.
+  2. **Chuẩn hóa bộ lọc Cooldown đa từ khóa:**
+     - Trong `check_symbol_recent_signal()`, truy vấn OR trên cơ sở dữ liệu và lọc in-memory với các từ khóa `%MUA%`, `%TÍCH LŨY%`, `%ACCUMULATE%`, `%BUY%`.
+  3. **Hoàn thiện Adapter `save_signal_lifecycle()`:**
+     - Tự động map fallback `target_price = kwargs.get("target_price") or kwargs.get("initial_target_price", 0.0)` và `stop_loss_price = kwargs.get("stop_loss_price") or kwargs.get("initial_stop_price", 0.0)`.
+     - Bảo đảm đồng thời lưu cả 5 trường hiệu chuẩn mô hình và `f_score`, `mos_pct`.
+  4. **Kiểm soát Khớp lệnh Theo Phiên & Tính Số Ngày Giao Dịch Thực:**
+     - Xây dựng hàm `count_trading_days(start_date, end_date, holidays)` đếm chính xác số ngày làm việc (bỏ qua Thứ Bảy, Chủ Nhật và ngày lễ Việt Nam).
+     - Trong `update_daily_tracking()` và `calculate_signal_performance_metrics()`: Đối với tín hiệu phát sau 11:30 ngày T=0, sử dụng giá đóng cửa `curr_p` thay cho `high_p` và `low_p` toàn phiên, loại trừ hoàn toàn fill ảo từ phiên sáng.
+  5. **Định vị Vùng Mua Chiết Khấu (Entry Zone Target Buy):**
+     - Trong `_build_auto_watchlist_candidate()`, gán `target_buy = support_level or current_price * 0.95`. Cổ phiếu cần điều chỉnh về vùng hỗ trợ mới kích hoạt khuyến nghị giải ngân.
+  6. **Cơ chế Bảo vệ Danh mục Theo dõi Thủ công (Manual Watchlist Protection):**
+     - Trong `_evaluate_watchlist_item_suitability()` và `prune_unsuitable_watchlist()`: Bổ sung cờ `is_manual_protected=True` (hoặc `added_by == "user"`).
+     - Mặc định giữ lại cổ phiếu bảo vệ trong danh mục và chỉ bổ sung tiền tố cảnh báo `[⚠️ CẢNH BÁO: ...]`, không xóa khỏi danh sách trừ khi có chỉ định tường minh `force_override=True`.
+- **Hệ quả:**
+  - Bảng tín hiệu và audit hoàn toàn sạch sẽ, chỉ theo dõi các khuyến nghị MUA thực thụ.
+  - Loại bỏ hoàn toàn lỗi khớp lệnh ảo buổi sáng trên các tín hiệu phát sinh phiên chiều.
+  - Bảo toàn tuyệt đối danh mục theo dõi chủ động của người dùng.
+  - 100% test suites (437/437 unit & integration tests) đạt kết quả Green.
+  - `ruff check . --output-format=github` đạt exit code 0. Hoàn tất Phase 16 (v7.6).
+
 
 

@@ -538,7 +538,10 @@ def _calculate_item_mos(sym: str, curr_price: float, note: str, fin_dict: dict |
         from quant_valuation import calculate_fair_value_and_mos
 
         fin_data = fin_dict if fin_dict is not None else (get_financial_ratios(sym) or {})
-        val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, fin_dict=fin_data, sector=note)
+        try:
+            val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, fin_dict=fin_data, sector=note)
+        except TypeError:
+            val_res = calculate_fair_value_and_mos(sym, curr_price, note)
         return float(val_res.get("mos_pct", 0.0))
     except Exception:
         return 0.0
@@ -559,7 +562,7 @@ def _collect_watchlist_reasons(tech: dict, mos_pct: float) -> list[str]:
 
 
 def _evaluate_watchlist_item_suitability(
-    item: dict, tech_map: dict | None, prune_manual: bool
+    item: dict, tech_map: dict | None, prune_manual: bool, force_override: bool = False
 ) -> tuple[dict | None, dict | None]:
     """Evaluate whether a single watchlist item should be pruned or retained."""
     sym = item.get("symbol", "").upper().strip()
@@ -567,6 +570,7 @@ def _evaluate_watchlist_item_suitability(
         return None, None
 
     is_auto = bool(item.get("is_auto", False))
+    is_protected = bool(item.get("is_manual_protected", False))
     target_buy = float(item.get("target_buy", 0.0))
     note = str(item.get("note", ""))
 
@@ -579,11 +583,20 @@ def _evaluate_watchlist_item_suitability(
         return item, None
 
     reason_str = "; ".join(reasons)
-    if is_auto or prune_manual:
+
+    # TASK-0057: Bảo vệ danh mục do người dùng thiết lập trừ khi ép buộc ghi đè
+    if is_protected and not force_override:
+        warning_tag = f"[⚠️ CẢNH BÁO: {reason_str}]"
+        if warning_tag not in note:
+            item["note"] = f"{note} {warning_tag}".strip()
+        return item, None
+
+    if is_auto or (prune_manual and not is_protected) or force_override:
         pruned_dict = {
             "symbol": sym,
             "reason": reason_str,
             "is_auto": is_auto,
+            "is_manual_protected": is_protected,
             "current_price": curr_price,
             "rsi": tech.get("rsi14"),
             "mos_pct": mos_pct,
@@ -602,11 +615,13 @@ def prune_unsuitable_watchlist(
     prune_manual: bool = True,
     tech_map: dict = None,
     notify_discord: bool = True,
+    force_override: bool = False,
 ) -> tuple[list, list]:
-    """
-    Thanh lọc các cổ phiếu trong Watchlist đang QUÁ HOT hoặc KHÔNG PHÙ HỢP:
+    """Thanh lọc các cổ phiếu trong Watchlist đang QUÁ HOT hoặc KHÔNG PHÙ HỢP:
+
     - Tiêu chí Quá hot (Overheated / FOMO): RSI(14) > 75 hoặc MoS < -25% (bong bóng định giá).
     - Tiêu chí Không phù hợp (Unsuitable): Dính bẫy giá (is_trap == True), hoặc bị Data Gate chặn.
+    - Bảo vệ người dùng: Bỏ qua các mã có cờ is_manual_protected=True trừ khi force_override=True.
     """
     try:
         if watchlist is None:
@@ -619,7 +634,9 @@ def prune_unsuitable_watchlist(
         pruned_items = []
 
         for item in watchlist:
-            retained, pruned = _evaluate_watchlist_item_suitability(item, tech_map, prune_manual)
+            retained, pruned = _evaluate_watchlist_item_suitability(
+                item, tech_map, prune_manual, force_override=force_override
+            )
             if pruned:
                 pruned_items.append(pruned)
                 _SESSION_PRUNED_SYMBOLS.add(pruned["symbol"].upper().strip())
@@ -679,10 +696,13 @@ def _build_auto_watchlist_candidate(opp: dict, manual_symbols: set) -> dict | No
         is_eligible = True
 
     if is_eligible:
-        # Chuẩn hóa target_buy: Tuyệt đối KHÔNG gán bằng current_price khi không có giá mục tiêu
-        target_p = opp.get("target_price")
-        if target_p and float(target_p) > 0:
-            target_buy_val = round(float(target_p), 2)
+        # TASK-0056: Neo target_buy theo vùng giá chiết khấu/hỗ trợ an toàn (support level hoặc 5% pullback)
+        curr_p = float(opp.get("current_price", 0.0))
+        support_p = opp.get("support_level") or (opp.get("tech") or {}).get("support_level")
+        if support_p and float(support_p) > 0 and (curr_p <= 0 or float(support_p) <= curr_p):
+            target_buy_val = round(float(support_p), 2)
+        elif curr_p > 0:
+            target_buy_val = round(curr_p * 0.95, 2)
         else:
             target_buy_val = 0.0
 
@@ -2044,9 +2064,17 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
             from quant_engine import calculate_weighted_entry_and_rr, evaluate_decision_hard_gates
             from quant_valuation import calculate_fair_value_and_mos
 
-            val_res = calculate_fair_value_and_mos(
-                symbol=sym, current_price=curr_price, fin_dict=fin_ratios, sector=sector
-            )
+            try:
+                val_res = calculate_fair_value_and_mos(
+                    symbol=sym, current_price=curr_price, fin_dict=fin_ratios, sector=sector
+                )
+            except TypeError:
+                try:
+                    val_res = calculate_fair_value_and_mos(
+                        symbol=sym, current_price=curr_price, sector=sector
+                    )
+                except TypeError:
+                    val_res = calculate_fair_value_and_mos(sym, curr_price, sector)
             fv = val_res.get("fair_value", curr_price * 1.10)
             mos_pct = val_res.get("mos_pct", 0.0)
             mos_is_informative = val_res.get("mos_is_informative", True)

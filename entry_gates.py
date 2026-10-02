@@ -195,9 +195,17 @@ def _check_valuation_mos_layer(
         result.blocking_reasons.append("Không xác định được ngành nghề / Archetype định giá hợp lệ. Chặn mở vị thế.")
         return False
 
-    val_res = calculate_fair_value_and_mos(
-        symbol=symbol, current_price=current_price, fin_dict=fin_dict, sector=sector
-    )
+    if fin_dict and "mos_pct" in fin_dict and "mos_is_informative" in fin_dict:
+        val_res = {
+            "mos_pct": float(fin_dict["mos_pct"]),
+            "mos_is_informative": bool(fin_dict["mos_is_informative"]),
+            "fair_value": float(fin_dict.get("fair_value", current_price * (1.0 + float(fin_dict["mos_pct"]) / 100.0))),
+            "valuation_method": str(fin_dict.get("valuation_method", "PROVIDED")),
+        }
+    else:
+        val_res = calculate_fair_value_and_mos(
+            symbol=symbol, current_price=current_price, fin_dict=fin_dict, sector=sector
+        )
     mos_pct = float(val_res.get("mos_pct", 0.0))
     mos_is_informative = bool(val_res.get("mos_is_informative", False))
     fair_value = float(val_res.get("fair_value", 0.0))

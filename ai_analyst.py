@@ -2042,10 +2042,19 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
 
     tech_d = context_meta.get("tech_data") or {}
     curr_p = float(tech_d.get("current_price", 0.0))
+    fin_d = dict(context_meta.get("fin_data") or {})
+    val_meta = context_meta.get("val_res") or {}
+    if "mos_pct" in val_meta and "mos_pct" not in fin_d:
+        fin_d["mos_pct"] = val_meta["mos_pct"]
+    if "mos_is_informative" in val_meta and "mos_is_informative" not in fin_d:
+        fin_d["mos_is_informative"] = val_meta["mos_is_informative"]
+    if "fair_value" in val_meta and "fair_value" not in fin_d:
+        fin_d["fair_value"] = val_meta["fair_value"]
+
     entry_gate_res = evaluate_entry_gates(
         symbol=sym,
         current_price=curr_p,
-        fin_dict=context_meta.get("fin_data"),
+        fin_dict=fin_d,
         tech_data=tech_d,
         sector=context_meta.get("sector", ""),
         macro_regime=(
