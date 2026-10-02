@@ -402,15 +402,24 @@ def evaluate_decision_hard_gates(
         return {}
 
     # Tích hợp mô hình Fair Value & MOS chuẩn tổ chức
-    val_model = calculate_fair_value_and_mos(
-        symbol=symbol, current_price=current_price, fin_dict=fin_dict or {}, sector=sector
-    )
-
-    fair_value = val_model.get("fair_value", price_base)
-    mos_pct = val_model.get("mos_pct", round(((price_base - current_price) / price_base) * 100, 2))
-    val_method = val_model.get("valuation_method", "N/A")
-    val_confidence = val_model.get("confidence", "MEDIUM")
-    price_target = val_model.get("price_target") or round(fair_value * 1.08, 2)
+    if symbol:
+        val_model = calculate_fair_value_and_mos(
+            symbol=symbol, current_price=current_price, fin_dict=fin_dict or {}, sector=sector
+        )
+        fair_value = val_model.get("fair_value", price_base)
+        mos_pct = val_model.get("mos_pct", round(((price_base - current_price) / price_base) * 100, 2))
+        val_method = val_model.get("valuation_method", "N/A")
+        val_confidence = val_model.get("confidence", "MEDIUM")
+        price_target = val_model.get("price_target") or round(fair_value * 1.08, 2)
+        mos_is_informative = val_model.get("mos_is_informative", True)
+    else:
+        val_model = {}
+        fair_value = price_base
+        mos_pct = round(((price_base - current_price) / price_base) * 100, 2) if price_base > 0 else 0.0
+        val_method = "SCENARIO_INPUT"
+        val_confidence = "HIGH"
+        price_target = price_bull
+        mos_is_informative = True
 
     # 1. Expected Value
     ev = (p_bull * price_bull) + (p_base * price_base) + (p_bear * price_bear)
@@ -455,7 +464,6 @@ def evaluate_decision_hard_gates(
         tech_signal = "CONSOLIDATION_BASE"
 
     # --- HÀNG RÀO CỨNG (HARD GATES) ---
-    mos_is_informative = val_model.get("mos_is_informative", True)
     # Khóa cứng MoS uninformative hoặc không có định giá thực chất (TASK-0038)
     gate_mos_passed = (mos_pct >= 12.0) and mos_is_informative and (fair_value > 0)
     gate_rr_passed = rr >= 1.5

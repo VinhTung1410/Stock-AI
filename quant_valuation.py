@@ -1142,7 +1142,12 @@ def calculate_fair_value_and_mos(
         mos_is_informative = False
         mos_pct = 0.0
     elif archetype == "GROWTH_COMPOUNDER":
-        if comp_eval and not comp_eval.get("is_informative", True) and (cons_target <= 0 or consensus_stale):
+        if cons_target <= 0 or consensus_stale:
+            # Khi không có mỏ neo CTCK hợp lệ, bắt buộc phải có BCTC thực tế trong fin_dict (EPS/P/E)
+            has_dynamic_bctc = bool(fin_dict and (fin_dict.get("eps") or fin_dict.get("forward_eps")))
+            if not has_dynamic_bctc:
+                mos_is_informative = False
+        elif comp_eval and not comp_eval.get("is_informative", True):
             mos_is_informative = False
     elif archetype == "BANK" and (not pb or pb <= 0) and (cons_target <= 0 or consensus_stale):
         mos_is_informative = False
