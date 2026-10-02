@@ -497,10 +497,28 @@ def send_trade_signal_alert(
     Gửi thẻ tín hiệu MUA hoặc BÁN bảo mật chuẩn Quỹ (Institutional Trade Signal Card)
     trực tiếp vào Tin nhắn riêng (DM) của bạn.
     """
-    is_buy = "MUA" in action.upper()
-    color = 0x2ECC71 if is_buy else 0xE74C3C
-    icon = "🟢" if is_buy else "🔴"
-    base_action = "MUA / TÍCH LŨY" if is_buy else "BÁN / HẠ TỶ TRỌNG"
+    act_up = action.upper()
+    if any(k in act_up for k in ("THEO DÕI", "WATCH")):
+        color = 0xF1C40F
+        icon = "🟡"
+        base_action = "THEO DÕI"
+    elif any(k in act_up for k in ("CẢNH BÁO", "CAUTION")):
+        color = 0xE67E22
+        icon = "⚠️"
+        base_action = "CẢNH BÁO — KHÔNG PHẢI BÁN"
+    elif "GDKHQ" in act_up:
+        color = 0x3498DB
+        icon = "📅"
+        base_action = "SỰ KIỆN GDKHQ"
+    elif any(k in act_up for k in ("MUA", "TÍCH LŨY", "ACCUMULATE", "BUY")):
+        color = 0x2ECC71
+        icon = "🟢"
+        base_action = "MUA / TÍCH LŨY"
+    else:
+        color = 0xE74C3C
+        icon = "🔴"
+        base_action = "BÁN / HẠ TỶ TRỌNG"
+
     action_str = f"{base_action} ({strategy_style})" if strategy_style else base_action
 
     fields = _format_execution_fields(

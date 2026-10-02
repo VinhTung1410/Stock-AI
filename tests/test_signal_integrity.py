@@ -266,7 +266,9 @@ class TestSignalIntegrityTASK52To57:
     # --------------------------------------------------------------------------
     # TASK-0057: Manual Watchlist Protection Flag (is_manual_protected)
     # --------------------------------------------------------------------------
-    def test_prune_unsuitable_watchlist_preserves_manual_protected_items(self, tmp_path):
+    @patch("data_engine.update_google_sheet_watchlist")
+    @patch("data_engine._calculate_item_mos", return_value=10.0)
+    def test_prune_unsuitable_watchlist_preserves_manual_protected_items(self, mock_mos, mock_sheet, tmp_path):
         """AC-52.6: Items with is_manual_protected=True are skipped by prune, even when overheated/trap."""
         test_file = tmp_path / "watchlist_protected.json"
 

@@ -27,6 +27,7 @@ GATE_VALUATION_MOS = "VALUATION_MOS"
 GATE_TECHNICAL_MOMENTUM = "TECHNICAL_MOMENTUM"
 GATE_QUANT_CONVICTION = "QUANT_CONVICTION"
 GATE_PM_VETO = "PM_VETO"
+GATE_ADV20_LIQUIDITY = "ADV20_LIQUIDITY"
 
 # Action State Constants
 ACTION_BUY = "🟢 MUA"
@@ -65,6 +66,7 @@ class EntryGateResult:
     metrics: Dict[str, Any] = field(default_factory=dict)
     position_size_multiplier: float = 1.0
     action_state: str = ACTION_WATCH
+    position_size_pct: float = 0.0
 
 
 def _check_macro_regime_layer(macro_regime: Optional[str], result: EntryGateResult) -> bool:
@@ -308,6 +310,50 @@ def _check_pm_veto_layer(pm_veto: bool, pm_output: Optional[str], result: EntryG
     return True
 
 
+def _calculate_position_size_layer(
+    tech_data: Optional[Dict[str, Any]],
+    adv20_billion: Optional[float],
+    half_kelly_f: Optional[float],
+    kill_switch_active: bool,
+    result: EntryGateResult,
+) -> bool:
+    """Tầng 7: Quản trị Rủi ro & Quy mô Vị thế (Risk Governance & Position Sizing).
+
+    1. Kiểm tra ADV20: Chặn hoàn toàn nếu ADV20 < 2.0 tỷ VND.
+    2. Sizing theo Half-Kelly, Drawdown Breaker và Kill Switch.
+    """
+    adv20_bil = adv20_billion
+    if adv20_bil is None and tech_data:
+        adv20_bil = tech_data.get("adv20_billion")
+        if adv20_bil is None and "adv20_vnd" in tech_data:
+            adv20_bil = tech_data["adv20_vnd"] / 1_000_000_000.0
+
+    if adv20_bil is not None and adv20_bil < 2.0:
+        result.can_buy = False
+        result.blocked_by = GATE_ADV20_LIQUIDITY
+        result.position_size_pct = 0.0
+        result.position_size_multiplier = 0.0
+        result.blocking_reasons.append(
+            f"Thanh khoản ADV20 ({adv20_bil:.2f} tỷ VND) < 2.0 tỷ VND. Chặn mở vị thế đối với cổ phiếu kém thanh khoản."
+        )
+        return False
+
+    base_f = half_kelly_f if (half_kelly_f is not None and half_kelly_f > 0) else 0.12
+    calc_size = min(base_f, 0.15)
+
+    if result.position_size_multiplier < 1.0:
+        calc_size *= result.position_size_multiplier
+
+    if kill_switch_active:
+        calc_size = round(calc_size * 0.5, 4)
+        result.blocking_reasons.append("[KILL_SWITCH] Kích hoạt giảm 50% quy mô vị thế phòng thủ.")
+
+    result.position_size_pct = round(calc_size, 4)
+    result.metrics["position_size_nav"] = f"{round(result.position_size_pct * 100, 1)}% NAV"
+    result.passed_gates.append(GATE_ADV20_LIQUIDITY)
+    return True
+
+
 def evaluate_entry_gates(
     symbol: str,
     current_price: float,
@@ -320,6 +366,10 @@ def evaluate_entry_gates(
     conviction_score: Optional[float] = None,
     pm_veto: bool = False,
     pm_output: Optional[str] = None,
+    adv20_billion: Optional[float] = None,
+    half_kelly_f: Optional[float] = None,
+    portfolio: Optional[List[Dict[str, Any]]] = None,
+    kill_switch_active: bool = False,
     **kwargs,
 ) -> EntryGateResult:
     """Thực thi kiểm định Cổng vào lệnh 7 tầng (Unified Entry Gate).
@@ -332,6 +382,7 @@ def evaluate_entry_gates(
     - Tầng 4: Xu hướng Kỹ thuật & Momentum
     - Tầng 5: Quant Conviction
     - Tầng 6: PM Veto / Governance
+    - Tầng 7: Risk Governance & Position Sizing (Float)
     """
     sym = (symbol or "").strip().upper()
     result = EntryGateResult(
@@ -348,6 +399,7 @@ def evaluate_entry_gates(
         result.can_buy = False
         result.blocked_by = GATE_DATA_GATE
         result.position_size_multiplier = 0.0
+        result.position_size_pct = 0.0
         result.blocking_reasons.append(f"Thị giá không hợp lệ ({current_price}k <= 0).")
         return result
 
@@ -379,7 +431,17 @@ def evaluate_entry_gates(
     if not _check_pm_veto_layer(pm_veto, pm_output, result):
         return result
 
-    # Đạt chuẩn toàn bộ 7 tầng
+    # 7. Tầng Quản trị Rủi ro & Position Sizing
+    if not _calculate_position_size_layer(
+        tech_data=tech_data,
+        adv20_billion=adv20_billion,
+        half_kelly_f=half_kelly_f,
+        kill_switch_active=kill_switch_active,
+        result=result,
+    ):
+        return result
+
+    # Đạt chuẩn toàn bộ các tầng
     tech_sig = result.metrics.get("tech_signal", "")
     result.action_state = ACTION_ACCUMULATE if tech_sig == "CONSOLIDATION_BASE" else ACTION_BUY
     return result

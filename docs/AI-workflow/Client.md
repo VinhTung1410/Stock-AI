@@ -1,52 +1,60 @@
-# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 7.6
+# 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 8.0
 
 **Tên dự án:** Stock-AI / AI Investment Decision & Research Platform  
-**Phiên bản:** v7.6 — Phase 16: Signal Integrity & Audit Cleanup (Chuẩn Hóa Dữ Liệu Tín Hiệu & Dọn Dẹp Bảng Kiểm Toán)  
-**Trọng tâm:** *"Khắc phục triệt để tình trạng ô nhiễm dữ liệu có hệ thống tại bảng `signals` và `signal_lifecycle` do việc lưu vô điều kiện các quyết định THEO DÕI / GIẢM / HẠ TỶ TRỌNG như lệnh mua thật, làm sai lệch kết quả kiểm định Alpha/Sharpe và làm nghẽn trần mở vị thế MAX_OPEN_POSITIONS; sửa lỗi truy vấn Cooldown Supabase chỉ lọc '%BUY%' làm sót các lệnh '🟢 MUA'; chuẩn hóa adapter `save_signal_lifecycle` giải quyết xung đột key `target_price` vs `initial_target_price` để phục hồi pipeline Calibration/IC/A-B Testing; chuẩn hóa cơ chế khớp giá kiểm toán Time-Aware và đếm `days_elapsed` theo phiên giao dịch thực tế; sửa lỗi `target_buy` trong Watchlist tự động tránh kích hoạt tức thì sau cooldown; và bổ sung cờ `is_manual_protected` bảo vệ danh mục người dùng theo dõi."*
+**Phiên bản:** v8.0 — Phase 17: Risk Governance Completion (Hoàn Thiện Tầng Quản Trị Rủi Ro & Chuẩn Hóa Vị Thế)  
+**Trọng tâm:** *"Đấu nối hoàn chỉnh Tầng 7 (Risk Governance & Position Sizing) vào `evaluate_entry_gates()`; chuyển đổi quy mô vị thế `position_size_pct` sang số thực `float` có tính toán thay vì chuỗi hard-code; thiết lập chuẩn enum canonical `RegimeState` và chuẩn hóa `check_regime_conflict`; khắc phục ánh xạ nhãn cảnh báo `send_trade_signal_alert` (THEO DÕI màu vàng 🟡, CẢNH BÁO màu cam ⚠️, không ngộ nhận thành BÁN 🔴); nâng cấp `detect_gdkhq_event` đối soát với lịch sự kiện doanh nghiệp thực `fetch_corporate_dividends` để tránh nhầm lẫn Gap-Down do tin xấu với chia cổ tức; bảo đảm Kill Switch thực sự cắt giảm $\ge 30\%$ quy mô giải ngân thực tế (số thực); và chuẩn hóa vùng kích hoạt Watchlist Value Buy RSI $\in [30, 50]$ kèm kiểm tra MoS và Macro."*
 
 ---
 
-## 1. MỤC TIÊU PHIÊN BẢN v7.6 (PHASE 16: SIGNAL INTEGRITY & AUDIT CLEANUP)
+## 1. MỤC TIÊU PHIÊN BẢN v8.0 (PHASE 17: RISK GOVERNANCE COMPLETION)
 
-1. **TASK-0052: Conditional `save_quant_signal` (Mục 16.0):**
-   - **Vấn đề cốt tử:** Hàm `save_quant_signal` hiện đang lưu mọi quyết định (kể cả "THEO DÕI", "GIẢM / THOÁT", "TỪ CHỐI") vào bảng `signals`. Hậu quả: các bản ghi theo dõi bị đối soát như lệnh mua Long đang mở, chiếm dụng hạn mức tối đa `MAX_OPEN_POSITIONS` và tạo cooldown giả.
+1. **TASK-0058: Canonical `RegimeState` Enum & Conflict Resolver (Mục 17.0):**
+   - **Vấn đề cốt tử:** Tồn tại hai định nghĩa regime song song (MA20/MA50 ngắn hạn vs MA200 dài hạn) và kiểm tra bằng chuỗi tự do, khiến `check_regime_conflict` có thể sai lệch hoặc thiếu chuẩn hóa.
    - **Giải pháp:**
-     - Thiết lập bộ lọc `BUY_ACTIONS = {"🟢 MUA", "🟢 TÍCH LŨY", "🟢 ACCUMULATE", "🟢 VALUE BUY", "RECOMMEND_BUY", "MUA", "BUY"}`.
-     - `save_quant_signal` CHỈ ĐƯỢC GHI vào bảng `signals` khi hành động nằm trong `BUY_ACTIONS`.
+     - Thiết lập enum canonical `RegimeState`: `UPTREND`, `SIDEWAYS`, `DOWNTREND`, `UNKNOWN`.
+     - Cung cấp hàm `get_canonical_regime()` làm nguồn chân lý duy nhất (Single Source of Truth) từ MA200 hysteresis.
+     - Cập nhật `check_regime_conflict()` làm việc trực tiếp hoặc chuẩn hóa qua `RegimeState`.
 
-2. **TASK-0053: Cooldown Key Matching Fix (Mục 16.1):**
-   - **Vấn đề cốt tử:** Hàm `check_symbol_recent_signal` và truy vấn database Supabase chỉ lọc `action LIKE '%BUY%'`, trong khi hệ thống lưu nhãn tiếng Việt `action = '🟢 MUA'` hoặc `'🟢 TÍCH LŨY'`. Hậu quả: Cooldown Supabase bỏ sót hầu hết các tín hiệu Mua thực tế, dẫn đến việc bắn cảnh báo lặp lại cho cùng một mã.
+2. **TASK-0059: Wire Tầng 7 vào `evaluate_entry_gates()` & Position Sizing Float (Mục 17.1):**
+   - **Vấn đề cốt tử:** Các hàm quản trị rủi ro `check_adv20_liquidity_absorption()`, `check_sector_concentration()`, `calculate_drawdown_controlled_sizing()` chưa được gọi trong Unified Entry Gate; `position_size_nav` trả về chuỗi hard-code `"15-20% NAV"`.
    - **Giải pháp:**
-     - Mở rộng điều kiện kiểm tra cooldown: `WHERE action LIKE '%MUA%' OR action LIKE '%TÍCH LŨY%' OR action LIKE '%ACCUMULATE%' OR action LIKE '%BUY%'`.
+     - Đấu nối Tầng 7 (Risk Governance & Position Sizing) vào `evaluate_entry_gates()`.
+     - Chặn tuyệt đối (`can_buy = False`, `position_size_pct = 0.0`) khi thanh khoản ADV20 < 2.0 tỷ VND.
+     - Tính toán `position_size_pct: float` dựa trên Half-Kelly, Drawdown Breaker, Hysteresis Penalty và Liquidity Absorption.
 
-3. **TASK-0054: `save_signal_lifecycle` Adapter & Calibration Fields (Mục 16.2):**
-   - **Vấn đề:** Caller truyền `initial_target_price` nhưng `save_signal_lifecycle` đọc key `target_price`, dẫn đến trường giá mục tiêu trong DB bị ghi nhận bằng 0 (`target=0`), làm tê liệt các pipeline AI Calibration, Spearman IC, và A/B Testing.
+3. **TASK-0060: Fix Alert Label & Color Mapping trong `send_trade_signal_alert` (Mục 17.2):**
+   - **Vấn đề:** Mọi non-MUA action đều bị map thành "BÁN / HẠ TỶ TRỌNG" với màu đỏ `0xE74C3C`, khiến cảnh báo "THEO DÕI" hoặc "CẢNH BÁO" làm người dùng hoang mang như tín hiệu cắt lỗ/bán tháo.
    - **Giải pháp:**
-     - Bổ sung adapter: `target_price = kwargs.get("target_price") or kwargs.get("initial_target_price", 0.0)`.
-     - Đảm bảo điền đầy đủ 5 trường hiệu chuẩn: `entry_price`, `target_price`, `stop_loss`, `f_score`, `mos_pct`.
+     - Thiết lập bảng ánh xạ `ACTION_DISPLAY` chuẩn mực:
+       - `MUA` / `TÍCH LŨY` / `BUY` $\rightarrow$ `🟢 MUA / TÍCH LŨY` (Xanh lá `0x2ECC71`).
+       - `THEO DÕI` / `WATCH` $\rightarrow$ `🟡 THEO DÕI` (Vàng `0xF1C40F`).
+       - `GIẢM` / `THOÁT` $\rightarrow$ `🔴 GIẢM / THOÁT` (Đỏ `0xE74C3C`).
+       - `CẢNH BÁO` $\rightarrow$ `⚠️ CẢNH BÁO — KHÔNG PHẢI BÁN` (Cam `0xE67E22`).
+       - `GDKHQ` $\rightarrow$ `📅 SỰ KIỆN GDKHQ` (Xanh dương `0x3498DB`).
 
-4. **TASK-0055: Time-Aware Audit Fill & Trading Days Elapsed (Mục 16.3):**
-   - **Vấn đề:** Khớp lệnh kiểm toán (Audit Fill) đang lấy giá High/Low của toàn phiên mà không quan tâm giờ phát tín hiệu (nếu tín hiệu phát lúc 14:15 nhưng khớp giá Low buổi sáng là phi thực tế). Ngoài ra `days_elapsed` đang tính theo ngày lịch làm sai lệch chu kỳ T+5, T+20, T+60.
+4. **TASK-0061: Corporate Actions Shield với `fetch_corporate_dividends` Thật (Mục 17.3):**
+   - **Vấn đề:** `detect_gdkhq_event` chỉ dựa trên suy đoán Opening Gap $\le -4.5\%$ và VN-Index $\ge -1.5\%$. Nếu cổ phiếu gap-down do tin xấu bất ngờ, hệ thống bỏ qua Stop-Loss vì ngộ nhận là chia cổ tức.
    - **Giải pháp:**
-     - Tín hiệu phát sau 11:30 chỉ được khớp theo giá đóng cửa (Closing price) của phiên.
-     - Tính `days_elapsed` dựa trên số ngày giao dịch thực tế (bỏ qua Thứ 7, Chủ Nhật và ngày lễ).
+     - Tích hợp đối soát với sự kiện chia cổ tức thực qua `fetch_corporate_dividends()`.
+     - Nếu có ngày GDKHQ hôm nay $\rightarrow$ xác nhận `"GDKHQ_CONFIRMED"`.
+     - Nếu không có sự kiện GDKHQ $\rightarrow$ phân loại `"GAP_DOWN_NEWS"` để kiểm tra ngay ngưỡng Stop-Loss.
 
-5. **TASK-0056: Entry Zone `target_buy` (Mục 16.4):**
-   - **Vấn đề:** Hàm tạo ứng viên Watchlist tự động gán `target_buy = target_price` hoặc bằng thị giá hiện tại, khiến mã vừa hết 5 ngày cooldown là lại tự động kích hoạt bắn Mua ngay lập tức.
+5. **TASK-0062: Kill Switch Giảm Quy Mô Vị Thế Bằng Số Thực (Mục 17.4):**
+   - **Vấn đề:** Khi kích hoạt Kill Switch phòng thủ, hệ thống chỉ nối chuỗi văn bản cảnh báo mà không thực sự cắt giảm `position_size_pct`.
    - **Giải pháp:**
-     - Neo `target_buy` theo vùng giá chiết khấu/hỗ trợ an toàn: `target_buy = tech_data.get("support_level", current_price * 0.95)` (yêu cầu chiết khấu tối thiểu 3-5% từ đỉnh hiện tại mới kích hoạt).
+     - Khi Kill Switch hoặc Regime Conflict Hysteresis hoạt động, nhân giảm $50\%$ giá trị `position_size_pct` thật (`actual_size = base_size * 0.5`).
 
-6. **TASK-0057: Manual Watchlist Protection Flag (Mục 16.5):**
-   - **Vấn đề:** Cơ chế tự động dọn dẹp Watchlist (`prune_unsuitable_watchlist`) có thể xóa nhầm các mã cổ phiếu chiến lược do người dùng tự tay thêm vào khi thị trường điều chỉnh ngắn hạn (dính FALLING_KNIFE tạm thời).
+6. **TASK-0063: Chuẩn Hóa Vùng Kích Hoạt Watchlist Value Buy (Mục 17.5):**
+   - **Vấn đề:** Điều kiện kích hoạt cũ `RSI <= 32` là hành vi bắt đáy dao rơi rủi ro, mâu thuẫn với chiến lược Value Buy đầu tư giá trị trung dài hạn.
    - **Giải pháp:**
-     - Bổ sung cờ `is_manual_protected: True` và `added_by: "user"`.
-     - Hàm prune bắt buộc bỏ qua không xóa các mục có `is_manual_protected=True` trừ khi có cờ `force_override=True`.
+     - Điều kiện kích hoạt Value Buy chuẩn mực: $RSI \in [30, 50]$ AND `tech_signal` $\in$ `BULLISH_SET` AND $MoS \ge threshold$ AND Macro $\ne$ `DOWNTREND`.
 
 ---
 
-## 2. KẾ THỪA CÁC CHỐT CHẶN PHIÊN BẢN TRƯỚC (v6.1 - v7.5)
+## 2. KẾ THỪA CÁC CHỐT CHẶN PHIÊN BẢN TRƯỚC (v6.1 - v7.6)
 
-1. **Phase 15 (v7.5):** Unified Entry Gate (`entry_gates.py` 7 tầng thống nhất, Macro Gate toàn tuyến, Discord-confirmed cooldown, 2-Pass chuẩn hóa ngành, Smart Committee Quant Arbitrator).
+1. **Phase 16 (v7.6):** Signal Integrity & Audit Cleanup (Chỉ lưu `BUY_ACTIONS`, Cooldown Multi-key, Adapter Lifecycle đầy đủ 5 trường calibration, Time-aware Audit fill, Entry Zone 5% discount, Bảo vệ Watchlist thủ công `is_manual_protected`).
+2. **Phase 15 (v7.5):** Unified Entry Gate (`entry_gates.py` 7 tầng thống nhất, Macro Gate toàn tuyến, Discord-confirmed cooldown, 2-Pass chuẩn hóa ngành, Smart Committee Quant Arbitrator).
 2. **Phase 14 (v7.4):** Data & Valuation Plumbing (Dẫn truyền `fin_dict` thực vào toàn bộ mô hình định giá, sửa ánh xạ cột tiếng Việt danh mục P&L/Trailing Stop, khóa cứng `mos_is_informative=False` cho Cyclical/BĐS khi thiếu BCTC).
 3. **Phase 13 (v7.3):** Core Valuation Re-Architecture, Structural Risk Protection & Macro Hysteresis (Forward EPS $\times$ Median P/E, SOTP MWG, Structural Stop-loss, Macro Hysteresis $\pm 1.5\%$).
 4. **Phase 12 (v7.2):** Compounder & Retail Flow Gatekeeper (Anti-Synthetic MoS, Chuẩn hóa `target_buy`, Bộ lọc xu hướng trung hạn MA100/MA200, Phạt xả ròng khối ngoại).

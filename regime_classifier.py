@@ -7,6 +7,7 @@ Provides deterministic and objective market regime classification
 from __future__ import annotations
 
 import logging
+from enum import Enum
 from typing import Final
 
 import numpy as np
@@ -16,6 +17,17 @@ import pandas as pd
 REGIME_UPTREND: Final[str] = "UPTREND"
 REGIME_DOWNTREND: Final[str] = "DOWNTREND"
 REGIME_SIDEWAYS: Final[str] = "SIDEWAYS"
+REGIME_UNKNOWN: Final[str] = "UNKNOWN"
+
+
+class RegimeState(str, Enum):
+    """Canonical Market Regime State (Phase 17 / TASK-0058)."""
+
+    UPTREND = "UPTREND"
+    SIDEWAYS = "SIDEWAYS"
+    DOWNTREND = "DOWNTREND"
+    UNKNOWN = "UNKNOWN"
+
 
 # Methodology Constants
 METHOD_MA200_SLOPE: Final[str] = "MA200_SLOPE"
@@ -198,3 +210,46 @@ def is_macro_circuit_breaker_active(
         return True, "VN-INDEX_DOWNTREND_CIRCUIT_BREAKER"
 
     return False, "MARKET_HEALTHY_OR_SIDEWAYS"
+
+
+def get_canonical_regime(
+    symbol_data: dict | pd.DataFrame | None = None,
+    vn_index_data: dict | pd.DataFrame | None = None,
+) -> RegimeState:
+    """MA200 hysteresis -> Single source of truth cho toàn bộ hệ thống (TASK-0058).
+
+    Supports dictionary (e.g. {'current_price': ..., 'ma200': ...}) or DataFrame.
+    """
+    data = vn_index_data if vn_index_data is not None else symbol_data
+    if data is None:
+        return RegimeState.UNKNOWN
+
+    if isinstance(data, dict):
+        if not data:
+            return RegimeState.UNKNOWN
+        curr_p = float(data.get("current_price") or data.get("close") or 0.0)
+        ma200 = float(data.get("ma200") or 0.0)
+        if curr_p <= 0 or ma200 <= 0:
+            return RegimeState.UNKNOWN
+        # MA200 Hysteresis buffer +/- 1.5%
+        if curr_p > ma200 * 1.015:
+            return RegimeState.UPTREND
+        if curr_p < ma200 * 0.985:
+            return RegimeState.DOWNTREND
+        return RegimeState.SIDEWAYS
+
+    if isinstance(data, pd.DataFrame):
+        if data.empty or "close" not in data.columns:
+            return RegimeState.UNKNOWN
+        regimes = classify_regime_ma200_hysteresis(data)
+        if regimes.empty:
+            return RegimeState.UNKNOWN
+        val = str(regimes.iloc[-1]).upper()
+        if "UP" in val:
+            return RegimeState.UPTREND
+        if "DOWN" in val:
+            return RegimeState.DOWNTREND
+        return RegimeState.SIDEWAYS
+
+    return RegimeState.UNKNOWN
+

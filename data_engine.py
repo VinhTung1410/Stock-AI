@@ -1257,38 +1257,82 @@ def fetch_corporate_dividends(symbol: str):
         return None
 
 
-def detect_gdkhq_event(symbol: str, tech_dict: dict, vnindex_chg_pct: float = 0.0) -> dict:
-    """
-    KHIÊN CHẮN NGÀY GIAO DỊCH KHÔNG HƯỞNG QUYỀN (GDKHQ / CORPORATE ACTION SHIELD):
+def detect_gdkhq_event(
+    symbol: str, tech_dict: dict, vnindex_chg_pct: float = 0.0, event_date: str = None
+) -> dict:
+    """KHIÊN CHẮN NGÀY GIAO DỊCH KHÔNG HƯỞNG QUYỀN (GDKHQ / CORPORATE ACTION SHIELD).
+
     Phát hiện hiện tượng sụt giảm giá kỹ thuật do chia cổ tức bằng tiền mặt hoặc cổ phiếu thưởng.
-    - Dấu hiệu: Thị giá sụt giảm sâu so với phiên trước (Gap Down đầu phiên <= -4.0%)
-      trong khi VN-Index không bán tháo diện rộng (VN-Index > -1.5%).
-    - Mục đích: Ngăn chặn triệt để tình trạng Trading Bot hoảng loạn bắn Stop-Loss sai.
+    - Dấu hiệu: Thị giá sụt giảm sâu so với phiên trước (Gap Down đầu phiên <= -4.5%).
+    - Đối soát thực tế (TASK-0061): Kiểm tra lịch chia cổ tức thực qua fetch_corporate_dividends(symbol).
+      + Nếu có sự kiện GDKHQ hôm nay -> "GDKHQ_CONFIRMED".
+      + Nếu KHÔNG có sự kiện cổ tức -> "GAP_DOWN_NEWS" (kiểm tra Stop-Loss ngay).
     """
     if not tech_dict:
-        return {"is_gdkhq": False, "reason": ""}
+        return {"is_gdkhq": False, "event_type": "NORMAL", "reason": ""}
 
     curr_p = tech_dict.get("current_price", 0.0)
     ref_p = tech_dict.get("ref_price", curr_p)
     open_p = tech_dict.get("open", curr_p)
-    change_pct = tech_dict.get("change_pct", 0.0)
 
     # 1. Kiểm tra bước nhảy giá đầu phiên (Opening Gap) so với giá tham chiếu
     opening_gap_pct = ((open_p - ref_p) / ref_p * 100) if ref_p > 0 else 0.0
 
-    # Nếu cổ phiếu rơi mạnh bất thường ngay từ đầu phiên nhưng thị trường chung ổn định
-    if opening_gap_pct <= -4.5 and vnindex_chg_pct >= -1.5:
-        return {
-            "is_gdkhq": True,
-            "gap_pct": round(opening_gap_pct, 2),
-            "reason": (
-                f"Phát hiện Gap Down kỹ thuật bất thường ({opening_gap_pct:+.1f}%) "
-                f"trong khi VN-Index bình ổn ({vnindex_chg_pct:+.1f}%). "
-                f"Khả năng cao là ngày GDKHQ (chia cổ tức / phát hành thêm). Tạm dừng cắt lỗ cơ học!"
-            ),
-        }
+    if opening_gap_pct <= -4.5:
+        if vnindex_chg_pct < -1.5:
+            return {
+                "is_gdkhq": False,
+                "event_type": "MARKET_CRASH",
+                "gap_pct": round(opening_gap_pct, 2),
+                "reason": f"Thị trường chung bán tháo ({vnindex_chg_pct:+.1f}%). Không phải GDKHQ.",
+            }
 
-    return {"is_gdkhq": False, "reason": ""}
+        from datetime import date
+
+        target_date = event_date or date.today().isoformat()
+        has_div_event = False
+        div_df = None
+        try:
+            div_df = fetch_corporate_dividends(symbol)
+            if div_df is not None and not div_df.empty:
+                ex_cols = [c for c in div_df.columns if any(k in c.lower() for k in ("ex", "gdkhq", "date", "ngay"))]
+                for col in ex_cols:
+                    if any(str(val)[:10] == target_date for val in div_df[col].dropna()):
+                        has_div_event = True
+                        break
+        except Exception:
+            logging.exception("Lỗi kiểm tra sự kiện cổ tức cho %s", symbol)
+
+        if div_df is not None:
+            if has_div_event:
+                return {
+                    "is_gdkhq": True,
+                    "event_type": "GDKHQ_CONFIRMED",
+                    "gap_pct": round(opening_gap_pct, 2),
+                    "reason": f"Xác nhận ngày GDKHQ (sự kiện chia cổ tức/thưởng ngày {target_date}). Tạm dừng cắt lỗ!",
+                }
+            else:
+                return {
+                    "is_gdkhq": False,
+                    "event_type": "GAP_DOWN_NEWS",
+                    "gap_pct": round(opening_gap_pct, 2),
+                    "reason": (
+                        f"Gap-Down kỹ thuật ({opening_gap_pct:+.1f}%) nhưng không kèm sự kiện cổ tức. "
+                        f"Cảnh báo tin xấu (GAP_DOWN_NEWS), kích hoạt thẩm định Stop-Loss!"
+                    ),
+                }
+        else:
+            return {
+                "is_gdkhq": True,
+                "event_type": "GDKHQ_UNCONFIRMED",
+                "gap_pct": round(opening_gap_pct, 2),
+                "reason": (
+                    f"Phát hiện Gap Down kỹ thuật bất thường ({opening_gap_pct:+.1f}%) "
+                    f"trong khi VN-Index bình ổn ({vnindex_chg_pct:+.1f}%). Tạm dừng cắt lỗ cơ học!"
+                ),
+            }
+
+    return {"is_gdkhq": False, "event_type": "NORMAL", "reason": ""}
 
 
 def evaluate_portfolio(portfolio: list) -> pd.DataFrame:

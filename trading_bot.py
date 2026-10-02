@@ -259,17 +259,27 @@ def _audit_portfolio_risk(today_str: str):
         _check_single_holding_risk(row, today_str, vnindex_chg_pct)
 
 
-def _evaluate_watchlist_buy_trigger(target_buy: float, curr_p: float, tech: dict) -> tuple[bool, str]:
+def _evaluate_watchlist_buy_trigger(
+    target_buy: float, curr_p: float, tech: dict, strategy_type: str = "DEFAULT"
+) -> tuple[bool, str]:
     status_ma20 = tech.get("status_ma20", "")
     vol_r = tech.get("vol_ratio", 1.0)
-    rsi = tech.get("rsi14")
+    rsi = tech.get("rsi14", tech.get("rsi"))
 
     if target_buy > 0 and curr_p <= target_buy:
         return True, f"Thị giá ({curr_p}k) đã chạm/về dưới vùng giá chờ mua ({target_buy}k)!"
     if "TRÊN" in status_ma20 and vol_r >= 1.3:
         return True, f"Phát hiện điểm nổ Breakout MA20 kèm thanh khoản gấp {vol_r:.1f}x TB20 phiên!"
-    if isinstance(rsi, (int, float)) and rsi <= 32:
-        return True, f"RSI({rsi:.1f}) rơi vào vùng QUÁ BÁN sâu (< 32)!"
+
+    # Disciplined Value Buy: RSI in [30, 50] with healthy base, avoiding falling knife (TASK-0063)
+    if isinstance(rsi, (int, float)):
+        if strategy_type == "VALUE_BUY":
+            if 30.0 <= rsi <= 50.0:
+                return True, f"RSI({rsi:.1f}) thuộc vùng tích lũy định giá hấp dẫn [30, 50] (VALUE BUY)!"
+            return False, ""
+        elif rsi <= 32:
+            return True, f"RSI({rsi:.1f}) rơi vào vùng QUÁ BÁN sâu (< 32)!"
+
     return False, ""
 
 

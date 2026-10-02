@@ -111,8 +111,10 @@ def load_market_context(
     )
 
 
-def _normalize_regime_str(regime_str: Optional[str]) -> str:
-    """Helper to uppercase and strip regime string."""
+def _normalize_regime_str(regime_str: Any) -> str:
+    """Helper to uppercase and strip regime string or extract value from Enum."""
+    if hasattr(regime_str, "value"):
+        return str(regime_str.value).strip().upper()
     return str(regime_str or "").strip().upper()
 
 

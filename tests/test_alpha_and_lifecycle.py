@@ -21,14 +21,20 @@ class TestGDKHQShield:
     """Detect ex-dividend gap-downs and prevent false stop-loss triggers."""
 
     def test_detects_genuine_gdkhq(self):
-        """Stock gaps down -6% while VN-Index only drops -0.2% → GDKHQ detected."""
+        """Stock gaps down -6% while VN-Index only drops -0.2% and ex-dividend exists → GDKHQ detected."""
+        from datetime import date
+        from unittest.mock import patch
+
+        import pandas as pd
+
         tech = {
             "current_price": 47.2,
             "ref_price": 50.0,
             "open": 47.0,
             "change_pct": -5.6,
         }
-        result = detect_gdkhq_event("MSB", tech, vnindex_chg_pct=-0.2)
+        with patch("data_engine.fetch_corporate_dividends", return_value=pd.DataFrame([{"ex_date": date.today().isoformat()}])):
+            result = detect_gdkhq_event("MSB", tech, vnindex_chg_pct=-0.2)
 
         assert result["is_gdkhq"] is True
         assert "GDKHQ" in result["reason"]

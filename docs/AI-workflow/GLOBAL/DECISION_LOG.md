@@ -635,5 +635,48 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   - 100% test suites (437/437 unit & integration tests) đạt kết quả Green.
   - `ruff check . --output-format=github` đạt exit code 0. Hoàn tất Phase 16 (v7.6).
 
+---
+
+### [ADR-030] Hoàn Thiện Tầng Quản Trị Rủi Ro & Sizing Số Thực, Canonical RegimeState và Chuẩn Hóa Cảnh Báo Discord (Phase 17 - v8.0)
+- **Ngày quyết định:** 2026-10-02
+- **Người tham gia:** Client, PO, Finance Lead, Senior Dev, QA Lead, Independent Reviewer
+- **Bối cảnh & Vấn đề:**
+  1. Tầng 7 Quản trị Rủi ro bị tách rời: Các hàm `check_adv20_liquidity_absorption()`, `check_sector_concentration()`, `calculate_drawdown_controlled_sizing()` đã viết nhưng không được gọi trong `evaluate_entry_gates()`. Trường `position_size_nav` trả về chuỗi hard-code `"15-20% NAV"`, không phản ánh thanh khoản và sụt giảm vốn thực tế.
+  2. Phân mảnh định nghĩa Regime: Tồn tại 2 định nghĩa regime song song (ngắn hạn MA20/MA50 vs trung hạn MA200) và kiểm tra bằng chuỗi tự do, gây nguy cơ xung đột logic khi gọi `check_regime_conflict`.
+  3. Ánh xạ nhãn cảnh báo Discord sai lệch: Trong `send_trade_signal_alert`, mọi non-MUA action đều bị map thành "BÁN / HẠ TỶ TRỌNG" màu đỏ `0xE74C3C`. Tín hiệu "THEO DÕI" hoặc "CẢNH BÁO" bị hiển thị như tín hiệu bán tháo/cắt lỗ gây hoang mang cho nhà đầu tư.
+  4. Suy đoán ngày GDKHQ thiếu bằng chứng: `detect_gdkhq_event` chỉ nhìn bước nhảy giá đầu phiên $\le -4.5\%$ để kết luận chia cổ tức. Nếu cổ phiếu gap-down do tin xấu bất ngờ, hệ thống bỏ qua Stop-Loss vì ngộ nhận là chia cổ tức.
+  5. Kill Switch chỉ nối chuỗi văn bản: Khi kích hoạt Kill Switch phòng thủ, hệ thống chỉ ghi chú vào text mà không thực sự cắt giảm `position_size_pct` dạng số học.
+  6. Trigger Watchlist Value Buy bắt đáy dao rơi: Điều kiện kích hoạt cũ `RSI <= 32` là hành vi bắt đáy dao rơi rủi ro, mâu thuẫn với chiến lược Value Buy đầu tư giá trị trung dài hạn.
+- **Quyết định lựa chọn:**
+  1. **Canonical `RegimeState` Enum & Source of Truth:**
+     - Thiết lập enum `RegimeState(str, Enum)`: `UPTREND`, `SIDEWAYS`, `DOWNTREND`, `UNKNOWN` trong `regime_classifier.py`.
+     - Cung cấp hàm `get_canonical_regime()` làm nguồn chân lý duy nhất từ MA200 Hysteresis $\pm 1.5\%$.
+     - `check_regime_conflict()` trong `context_engine.py` hỗ trợ trực tiếp cả `RegimeState` enum và chuỗi chuẩn hóa.
+  2. **Đấu Nối Tầng 7 (Risk Governance & Position Sizing Float):**
+     - Đấu nối `_calculate_position_size_layer()` vào cuối `evaluate_entry_gates()`.
+     - Chặn tuyệt đối (`can_buy = False`, `blocked_by = "ADV20_LIQUIDITY"`, `position_size_pct = 0.0`) khi thanh khoản ADV20 < 2.0 tỷ VND.
+     - Tính toán `position_size_pct` dạng số thực `float` dựa trên Half-Kelly, Drawdown Breaker và Liquidity Absorption.
+  3. **Chuẩn Hóa Ánh Xạ Nhãn & Màu Sắc Discord Alert:**
+     - Cập nhật `send_trade_signal_alert` phân định rõ 5 nhóm trạng thái:
+       - `MUA` / `TÍCH LŨY` / `BUY` $\rightarrow$ `🟢 MUA / TÍCH LŨY` (Xanh lá `0x2ECC71`).
+       - `THEO DÕI` / `WATCH` $\rightarrow$ `🟡 THEO DÕI` (Vàng `0xF1C40F`).
+       - `GIẢM` / `THOÁT` $\rightarrow$ `🔴 GIẢM / THOÁT` (Đỏ `0xE74C3C`).
+       - `CẢNH BÁO` $\rightarrow$ `⚠️ CẢNH BÁO — KHÔNG PHẢI BÁN` (Cam `0xE67E22`).
+       - `GDKHQ` $\rightarrow$ `📅 SỰ KIỆN GDKHQ` (Xanh dương `0x3498DB`).
+  4. **Đối Soát Lịch Sự Kiện Doanh Nghiệp Thật (Corporate Actions Shield):**
+     - `detect_gdkhq_event()` đối soát ngày GDKHQ thực tế thông qua `fetch_corporate_dividends()`.
+     - Nếu có sự kiện GDKHQ hôm nay $\rightarrow$ xác nhận `"GDKHQ_CONFIRMED"`, tạm dừng cắt lỗ.
+     - Nếu không có sự kiện GDKHQ $\rightarrow$ gắn cờ `"GAP_DOWN_NEWS"`, `is_gdkhq = False` và kích hoạt ngay kiểm tra Stop-Loss.
+  5. **Kill Switch Cắt Giảm Vị Thế Bằng Số Thực:**
+     - Khi Kill Switch hoặc Hysteresis Defense hoạt động, nhân giảm $50\%$ giá trị `position_size_pct` thật (`actual_size = base_size * 0.5`).
+  6. **Chuẩn Hóa Vùng Kích Hoạt Watchlist Value Buy:**
+     - Trong `_evaluate_watchlist_buy_trigger()`: Giá trị Value Buy kích hoạt khi $RSI \in [30, 50]$, loại bỏ hoàn toàn bẫy bắt đáy dao rơi $RSI < 30$.
+- **Hệ quả:**
+  - Quy mô giải ngân vốn hoàn toàn định lượng, số thực hóa, phản ánh thanh khoản và rủi ro danh mục thực tế.
+  - Xóa bỏ triệt để hiện tượng cảnh báo Discord sai màu gây hoang mang cho nhà đầu tư.
+  - Hệ thống khiên chắn cổ tức đối soát bằng dữ liệu VSDC thực chất, bảo toàn kỷ luật cắt lỗ.
+  - 100% test suites (449/449 unit & integration tests) đạt kết quả Green.
+  - `ruff check . --output-format=github` đạt exit code 0. Hoàn tất Phase 17 (v8.0).
+
 
 
