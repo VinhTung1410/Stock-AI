@@ -123,3 +123,21 @@ def test_downtrend_macro_regime_hurdle(fpt_derating_data):
     assert res_down.status == STATE_BLOCKED
     assert res_down.blocked_by == "VALUATION_MOS"
     assert any("L4 Stress-MoS" in r for r in res_down.blocking_reasons)
+
+def test_hpg_cyclical_cfo_positive(dgc_value_trap_data):
+    tech, fin = dgc_value_trap_data
+    tech["risk_keywords"] = []
+    fin["cfo"] = 1500.0
+    fin["fair_value"] = 200.0
+    res = evaluate_contrarian_gates("HPG", 60.0, tech_data=tech, fin_dict=fin, sector="Thép")
+    assert res.blocked_by != "SURVIVAL_QUALITY"
+
+def test_hpg_cyclical_cfo_negative(dgc_value_trap_data):
+    tech, fin = dgc_value_trap_data
+    tech["risk_keywords"] = []
+    fin["cfo"] = -500.0
+    res = evaluate_contrarian_gates("HPG", 60.0, tech_data=tech, fin_dict=fin, sector="Thép")
+    assert res.can_buy is False
+    assert res.status == "BLOCKED"
+    assert res.blocked_by == "SURVIVAL_QUALITY"
+    assert any("Dòng tiền cạn kiệt" in r for r in res.blocking_reasons)

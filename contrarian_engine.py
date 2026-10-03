@@ -295,16 +295,25 @@ def _check_fundamental_integrity(
     if is_earnings_declining:
         from quant_valuation import classify_stock_archetype
         archetype = classify_stock_archetype(symbol, sector)
-        if archetype == "CYCLICAL":
+        
+        cfo_indicator = fin_dict.get("cfo") or fin_dict.get("operating_cash_flow") or fin_dict.get("p_cf")
+        is_cfo_negative = False
+        if cfo_indicator is not None:
+            is_cfo_negative = float(cfo_indicator) <= 0.0
+
+        if archetype == "CYCLICAL" and not is_cfo_negative:
             result.metrics["cyclical_damage"] = True
             # Không block, nhưng sẽ ghi nhận để tăng haircut ở L4 và giảm size ở L6
-            result.blocking_reasons.append("Lợi nhuận giảm (Đáy chu kỳ). Sẽ áp dụng chiết khấu sâu & giảm vốn.")
+            result.blocking_reasons.append("Lợi nhuận giảm (Đáy chu kỳ) nhưng CFO dương/an toàn. Sẽ áp dụng chiết khấu sâu & giảm vốn.")
         else:
             result.can_buy = False
             result.status = STATE_BLOCKED
             result.action_state = ACTION_BLOCKED
             result.blocked_by = GATE_SURVIVAL
-            result.blocking_reasons.append("Lợi nhuận/Biên gộp lao dốc (Structural Damage). VALUE TRAP!")
+            if archetype == "CYCLICAL" and is_cfo_negative:
+                result.blocking_reasons.append("Cổ phiếu chu kỳ nhưng CFO âm (Dòng tiền cạn kiệt). VALUE TRAP!")
+            else:
+                result.blocking_reasons.append("Lợi nhuận/Biên gộp lao dốc (Structural Damage). VALUE TRAP!")
             return False
 
     # 3. Valuation & L4 Stress-MoS

@@ -730,18 +730,28 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
 
 ---
 
-### [ADR-034] Phase 23.1 - Advanced F-Score 3-Tier Architecture & Macro Overlays
-- **Ng�y quy?t d?nh:** 2026-10-03
-- **Ngu?i tham gia:** Client, PO, Senior Dev
-- **B?i c?nh & V?n d?:**
-  1. H? th?ng cu s? d?ng ngu?ng F-Score tinh (Hard Gate < 7 l� ch?n). �i?u n�y d?n d?n vi?c b? l? c�c c? phi?u t?t dang ? v�ng d�y l?i nhu?n (Cyclical) ho?c c� d?u hi?u ph?c h?i nhung F-Score ch? d?t 4-6.
-  2. Ph? thu?c qu� nhi?u v�o F-Score m� thi?u c�c m�ng l?c (Risk Overlays) r?i ro vi m� nhu thanh kho?n (ADV20) hay kh? nang ph� s?n (Z-Score) v� n? vay (D/E).
-  3. ��nh d?ng c�c m� thi?u d? li?u F-Score v?i c�c m� c� s?c kh?e t�i ch�nh y?u k�m th?c s?.
-- **Quy?t d?nh l?a ch?n:**
-  1. **Ki?n tr�c F-Score 3-Tier:** Chuy?n d?i sang h? th?ng 3 t?ng: Tier 1 (F < 4: Hard Block), Tier 2 (F t? 4-6: C?n qua Risk Overlays), Tier 3 (F >= 7: B? qua Risk Overlays).
-  2. **Risk Overlays d?c l?p:** B? sung c�c ch?t ch?n Z-Score, Debt/Equity theo t?ng Archetype (B?t d?ng s?n, Ng�n h�ng, v.v.).
-  3. **Ph�n bi?t Value Trap v� Cyclical:** C�c m� chu k? (Cyclical) c� F-Score th?p kh�ng b? ch?n t?c th?i m� b? �p d?ng Haircut (gi?m gi� tr? th?c) m?nh ? bu?c Valuation MoS, ngan r?i ro Value Trap m?t c�ch h?p l�.
-- **H? qu?:**
-  - H? th?ng Contrarian d� ph?n ?ng linh ho?t hon v?i nh�m c? phi?u c� F-Score 4-6, k?t h?p ch?t ch? v?i c�c ch? s? r?i ro (Z-Score, D/E).
-  - Vu?t qua to�n b? 19/19 test cases, d?m b?o h? th?ng ch?n ch�nh x�c Value Trap m� kh�ng b? ch?n l?m m� t?t.
+---
 
+### [ADR-034] Phase 23.1 - Advanced F-Score 3-Tier Architecture & Macro Overlays
+- **Ngày quyết định:** 2026-10-03
+- **Người tham gia:** Client, PO, Senior Dev
+- **Bối cảnh & Vấn đề:**
+  1. Hệ thống cũ sử dụng ngưỡng F-Score tĩnh (Hard Gate < 7 là chặn). Điều này dẫn đến việc bỏ lỡ các cổ phiếu tốt đang ở vùng đáy lợi nhuận (Cyclical) hoặc có dấu hiệu phục hồi nhưng F-Score chỉ đạt 4-6.
+  2. Phụ thuộc quá nhiều vào F-Score mà thiếu các màng lọc (Risk Overlays) rủi ro vĩ mô như thanh khoản (ADV20) hay khả năng phá sản (Z-Score) và nợ vay (D/E).
+  3. Đánh đồng các mã thiếu dữ liệu F-Score với các mã có sức khỏe tài chính yếu kém thực sự.
+- **Quyết định lựa chọn:**
+  1. **Kiến trúc F-Score 3-Tier:** Chuyển đổi sang hệ thống 3 tầng: Tier 1 (F < 4: Hard Block), Tier 2 (F từ 4-6: Cần qua Risk Overlays), Tier 3 (F >= 7: Bỏ qua Risk Overlays).
+  2. **Risk Overlays độc lập:** Bổ sung các chốt chặn Z-Score, Debt/Equity theo từng Archetype (Bất động sản, Ngân hàng, v.v.).
+  3. **Phân biệt Value Trap và Cyclical:** Các mã chu kỳ (Cyclical) có F-Score thấp không bị chặn tức thời mà bị áp dụng Haircut (giảm giá trị thực) mạnh ở bước Valuation MoS, ngăn rủi ro Value Trap một cách hợp lý.
+- **Hệ quả:**
+  - Hệ thống Contrarian đã phản ứng linh hoạt hơn với nhóm cổ phiếu có F-Score 4-6, kết hợp chặt chẽ với các chỉ số rủi ro (Z-Score, D/E).
+  - Vượt qua toàn bộ 19/19 test cases, đảm bảo hệ thống chặn chính xác Value Trap mà không bị chặn lầm mã tốt.
+
+---
+
+### [ADR-035] Phase 23.2 - Fundamental Quality Conditional Gate (CFO Validation)
+- **Ngày quyết định:** 2026-10-03
+- **Người tham gia:** Client, PO, Senior Dev
+- **Bối cảnh & Vấn đề:** Đối với các cổ phiếu chu kỳ (Cyclical), lợi nhuận và biên gộp có thể chạm đáy (Earnings Revision Down), nhưng nếu dòng tiền hoạt động kinh doanh (CFO) vẫn dương, đó là tổn thất mang tính chu kỳ (temporary). Ngược lại, nếu CFO âm, rủi ro vỡ nợ hiện hữu và đó là một Value Trap thực sự.
+- **Quyết định lựa chọn:** Thêm điều kiện kiểm tra CFO (`cfo` hoặc `p_cf`) vào Gate Survival. Nếu doanh nghiệp thuộc nhóm Cyclical và có xu hướng giảm lợi nhuận, bắt buộc CFO phải > 0 để được tiếp tục pass (với án phạt Haircut L4). Nếu CFO <= 0, chặn ngay lập tức với lý do: "Cổ phiếu chu kỳ nhưng CFO âm (Dòng tiền cạn kiệt). VALUE TRAP!".
+- **Hệ quả:** Hoàn thiện Conditional Gate cho nhóm cổ phiếu F-Score 4-6, đảm bảo bộ lọc bắt đáy phân biệt được sự hoảng loạn ngắn hạn và sự suy thoái dòng tiền cấu trúc, bảo vệ an toàn vốn tuyệt đối.
