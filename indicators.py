@@ -75,9 +75,10 @@ def _calc_profitability_points(fin_dict: dict, passed: list, failed: list, unkno
 
 
 def _calc_leverage_and_efficiency_points(fin_dict: dict, passed: list, failed: list, unknown: list) -> int:
-    f5 = _evaluate_fscore_metric("Debt/Equity", fin_dict.get("debt_equity"), lambda x: x < 1.5, passed, failed, unknown)
+    # debt_equity and financial_leverage from vnstock are in % (e.g. 90.28 = 90.28% = 0.9028x)
+    f5 = _evaluate_fscore_metric("Debt/Equity", fin_dict.get("debt_equity") or fin_dict.get("debt_on_equity") or fin_dict.get("debt_to_equity"), lambda x: (x / 100.0) < 1.5, passed, failed, unknown)
     f6 = _evaluate_fscore_metric("Current Ratio", fin_dict.get("current_ratio"), lambda x: x >= 1.2, passed, failed, unknown)
-    f7 = _evaluate_fscore_metric("Financial Leverage", fin_dict.get("financial_leverage"), lambda x: x < 2.5, passed, failed, unknown)
+    f7 = _evaluate_fscore_metric("Financial Leverage", fin_dict.get("financial_leverage"), lambda x: (x / 100.0) < 2.5, passed, failed, unknown)
     f8 = _evaluate_fscore_metric("Gross Margin", fin_dict.get("gross_margin"), lambda x: x >= 15.0, passed, failed, unknown)
     f9 = _evaluate_fscore_metric("ROIC", fin_dict.get("roic"), lambda x: x >= 8.0, passed, failed, unknown)
     return f5 + f6 + f7 + f8 + f9

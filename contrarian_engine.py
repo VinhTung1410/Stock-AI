@@ -197,17 +197,17 @@ def _check_fundamental_integrity(
     elif is_sec:
         margin_ratio = fin_dict.get("financial_leverage") or fin_dict.get("Đòn bẩy tài chính")
         if margin_ratio is not None:
-            result.metrics["financial_leverage"] = float(margin_ratio)
+            result.metrics["financial_leverage"] = float(margin_ratio) / 100.0
     elif is_re:
-        debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_to_equity")
+        debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_on_equity") or fin_dict.get("debt_to_equity")
         if debt_equity is not None:
-            result.metrics["debt_equity"] = float(debt_equity)
+            result.metrics["debt_equity"] = float(debt_equity) / 100.0
     else:
         z_score = _extract_z_score(fin_dict, sector)
         result.metrics["z_score"] = z_score
-        debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_to_equity")
+        debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_on_equity") or fin_dict.get("debt_to_equity")
         if debt_equity is not None:
-            result.metrics["debt_equity"] = float(debt_equity)
+            result.metrics["debt_equity"] = float(debt_equity) / 100.0
 
     # 0. Hard Veto Risk Overlays (Độc lập với F-Score - Phase 23.3)
     if is_bank and "npl" in result.metrics:
