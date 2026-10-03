@@ -2978,6 +2978,7 @@ def get_financial_ratios(symbol: str) -> dict:
                         })
                         base_data["audit_trail"]["vci_supplemented"] = True
                     else:
+                        base_data["audit_trail"]["is_stale_legacy"] = True
                         logging.debug(f"[DATA-INTEGRITY] Bỏ qua VCI của {symbol} do đóng băng ở {vci_period}")
         except Exception as e:
             logging.debug(f"Không thể lấy VCI cho {symbol}: {e}")

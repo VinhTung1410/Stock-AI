@@ -1,4 +1,4 @@
-"""
+﻿"""
 Unit tests for Contrarian Module / Panic Buy Engine (Phase 20 - v10.0).
 """
 
@@ -27,7 +27,7 @@ def valid_contrarian_data():
         "ma20": 100.0,
         "current_price": 82.0,  # Below MA20 * 0.85
         "adv20_billion": 5.0,  # >= 2.0B
-        "price_confirmation": True,
+        "price_confirmation": True, "is_backtest": True,
     }
     fin = {
         "f_score": 8,  # >= 7
@@ -35,7 +35,7 @@ def valid_contrarian_data():
         "debt_equity": 0.5,  # <= 1.0
         "mos_pct": 28.0,  # >= 20.0%
         "mos_is_informative": True,
-        "fair_value": 115.0,
+        "fair_value": 140.0,
     }
     return tech, fin
 
@@ -63,7 +63,7 @@ def test_extreme_fear_trigger_panic_score():
         "ma20": 100.0,
         "current_price": 95.0,
         "adv20_billion": 5.0,
-        "price_confirmation": True,
+        "price_confirmation": True, "is_backtest": True,
     }
     fin = {
         "f_score": 7,
@@ -71,7 +71,7 @@ def test_extreme_fear_trigger_panic_score():
         "debt_equity": 0.4,
         "mos_pct": 22.0,
         "mos_is_informative": True,
-        "fair_value": 125.0,
+        "fair_value": 150.0,
     }
     res = evaluate_contrarian_gates("HPG", 95.0, tech_data=tech, fin_dict=fin, sector="Thép")
     assert res.can_buy is True
@@ -126,7 +126,7 @@ def test_survival_gate_banking_sector_exemption(valid_contrarian_data):
 
 def test_valuation_mos_rejection(valid_contrarian_data):
     tech, fin = valid_contrarian_data
-    fin["mos_pct"] = 18.0
+    fin["fair_value"] = 100.0
 
     res = evaluate_contrarian_gates("VNM", 82.0, tech_data=tech, fin_dict=fin, sector="Tiêu dùng")
     assert res.can_buy is False

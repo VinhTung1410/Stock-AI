@@ -118,12 +118,12 @@ def test_full_backtest_flow_with_ceiling_and_t2():
     prices = [50.0, 53.6, 52.0, 54.0, 55.0, 56.0, 57.0, 58.0, 59.0, 60.0, 58.0, 57.0, 56.0, 55.0, 55.0]
     df_price = pd.DataFrame({"close": prices, "open": prices}, index=dates)
 
-    # Signals: Buy on day 1 (hits ceiling -> unfilled), Buy on day 2 (fills), Sell on day 3 (T+1 -> blocked), Sell on day 5 (T+3 -> fills)
+    # Signals: Buy on day 0 (executes day 1 hits ceiling -> unfilled), Buy on day 1 (executes day 2 fills), Sell on day 2 (T+1 -> blocked), Sell on day 4 (T+3 -> fills)
     signals = pd.Series(0, index=dates)
-    signals.iloc[1] = 1  # Blocked by ceiling
-    signals.iloc[2] = 1  # Should fill
-    signals.iloc[3] = -1  # Blocked by T+2 rule
-    signals.iloc[5] = -1  # Executes sell
+    signals.iloc[0] = 1  # Blocked by ceiling
+    signals.iloc[1] = 1  # Should fill
+    signals.iloc[2] = -1  # Blocked by T+2 rule
+    signals.iloc[4] = -1  # Executes sell
 
     regimes = pd.Series(REGIME_UPTREND, index=dates)
 

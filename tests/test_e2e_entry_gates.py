@@ -249,6 +249,9 @@ def test_quantamental_2pass_passes_full_params_to_hard_gates():
         patch("data_engine.get_financial_ratios", return_value=mock_fin),
         patch("data_engine.fetch_macro_news", return_value=[]),
         patch("ai_analyst.call_gemini", return_value='{"P_bull": 0.4, "P_base": 0.4, "P_bear": 0.2}'),
+        patch("data_engine.is_symbol_in_cooldown", return_value=False),
+        patch("data_engine.get_today_buy_signal_count", return_value=0),
+        patch("data_engine.load_portfolio", return_value={}),
         patch("quant_engine.evaluate_decision_hard_gates") as mock_gate,
     ):
         mock_gate.return_value = {
