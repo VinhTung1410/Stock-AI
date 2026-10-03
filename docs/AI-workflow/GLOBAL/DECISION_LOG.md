@@ -1,4 +1,4 @@
-# 📓 GLOBAL: DECISION LOG (NHẬT KÝ QUYẾT ĐỊNH HỆ THỐNG - ADR)
+﻿# 📓 GLOBAL: DECISION LOG (NHẬT KÝ QUYẾT ĐỊNH HỆ THỐNG - ADR)
 
 Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Trọng yếu (Architectural Decision Records - ADR) của dự án Stock-AI nhằm đảm bảo tính kế thừa, minh bạch lý do đằng sau các thay đổi và tránh lặp lại sai lầm trong quá khứ.
 
@@ -691,3 +691,19 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   - Bắt đáy an toàn, triệt tiêu hoàn toàn "bẫy giá rẻ" bằng cách loại ngay rác từ vòng gửi xe. Không bỏ sót cổ phiếu chất lượng nhờ cơ chế radar "Near Panic Watch".
   - Giữ nguyên sự trong sáng của hệ thống Trend Following cốt lõi.
   - Hồi quy toàn bộ hệ thống test đạt 100% green. Hoàn tất Phase 20 (v10.0). Tham chiếu chi tiết tại `ADR-031-Contrarian-Module.md`.
+
+---
+
+### [ADR-032] L0-L7 Contrarian 5-Layer Framework & 4-State Machine (Phase 20 / v10.0)
+- **Ng�y quy?t d?nh:** 2026-10-03
+- **Tr?ng th�i:** APPROVED / IMPLEMENTED
+- **Ngu?i tham gia:** Client, PO, Senior Dev
+- **B?i c?nh & V?n d? (The Panic Trap):** H? th?ng Contrarian v8.1 b?t d�y d?a tr�n m?t di?m ch?m nh? ph�n qu� th� (RSI <= 30). H?u qu? l� c�c c? phi?u r�c d�nh b?y (Value Trap) do r?i ro n?i t?i l?i du?c duy?t mua ch? v� gi� gi?m m?nh, trong khi c�c c? phi?u c� n?n t?ng xu?t s?c (v� d? FPT) v?a roi v? v�ng gi� tr? h?p d?n (RSI 31-35) th� l?i b? th?ng tay lo?i b? v� kh�ng d�p ?ng Hard Gate c?ng ng?c.
+- **Quy?t d?nh l?a ch?n:**
+  1. Thay th? Hard Gate b?ng 4 tr?ng th�i: NORMAL, NEAR_PANIC_WATCH, EXTREME_FEAR_WATCH, PANIC_BUY.
+  2. B? sung L1 Governance & Event Veto: Ch?n c�c r?i ro tin t?c ti�u c?c (h?y ni�m y?t, b?t b?).
+  3. B? sung L2 Survival Archetype: N?i l?ng D/E <= 1.0 th� r�p, thay b?ng N? x?u Bank < 3%, D/E B�S < 1.5, ��n b?y CK < 3.
+  4. B? sung L4 Stress-MoS: Ph?t Fair Value 20% m� ph?ng EPS s?p, y�u c?u bi�n an to�n th?c ch?t.
+  5. B? sung L5 Structural Confirmation: Ch? x�c nh?n mua khi c� volume c?n ki?t, c?u tr�c d�y sau cao hon v� sau 14:15.
+- **H? qu?:** Ho�n to�n lo?i b? r?i ro Value Trap, gi? l?i c�c m� t?t ? tr?ng th�i WATCH thay v� REJECT, ch?ng l?i h?i ch?ng Falling Knife.
+

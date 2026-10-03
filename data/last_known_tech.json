@@ -1183,8 +1183,7 @@
       "warning_msg": "Kỹ thuật đạt chuẩn, không có dấu hiệu bẫy phân phối hay rủi ro bán tháo.",
       "severity": "NONE",
       "icon": "🟢"
-    },
-    "risk_keywords": ""
+    }
   },
   "PVT": {
     "symbol": "PVT",

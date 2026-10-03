@@ -113,7 +113,7 @@ def _extract_f_score(fin: Dict[str, Any]) -> int:
     f_score = fin.get("f_score")
     if f_score is None:
         f_res = calculate_piotroski_f_score(fin)
-        return int(f_res.get("f_score", 0))
+        return int(f_res.get("score", 0))
     return int(f_score)
 
 
@@ -153,8 +153,47 @@ def _check_fundamental_integrity(
         result.blocking_reasons.append(f"F-Score={f_score}/9 < {CONTRARIAN_MIN_FSCORE}.")
         return False
 
-    is_bank = sector in (SECTOR_BANKING, "Bank", "Banking")
-    if not is_bank:
+    is_bank = sector in (SECTOR_BANKING, "Bank", "Banking", "Ngân hàng")
+    is_re = sector in ("Bất động sản", "Real Estate", "Bất động sản Khu công nghiệp")
+    is_sec = sector in ("Chứng khoán", "Financial Services")
+
+    if is_bank:
+        npl = fin_dict.get("Tỷ lệ nợ xấu") or fin_dict.get("npl")
+        if npl is not None:
+            npl_val = float(npl)
+            result.metrics["npl"] = npl_val
+            if npl_val > 3.0:
+                result.can_buy = False
+                result.status = STATE_BLOCKED
+                result.action_state = ACTION_BLOCKED
+                result.blocked_by = GATE_SURVIVAL
+                result.blocking_reasons.append(f"L2 Archetype: Ngân hàng có nợ xấu cao (NPL={npl_val}% > 3%). Rủi ro vỡ nợ!")
+                return False
+    elif is_sec:
+        margin_ratio = fin_dict.get("financial_leverage") or fin_dict.get("Đòn bẩy tài chính")
+        if margin_ratio is not None:
+            lev_val = float(margin_ratio)
+            result.metrics["financial_leverage"] = lev_val
+            if lev_val > 3.0:
+                result.can_buy = False
+                result.status = STATE_BLOCKED
+                result.action_state = ACTION_BLOCKED
+                result.blocked_by = GATE_SURVIVAL
+                result.blocking_reasons.append(f"L2 Archetype: Công ty CK dùng đòn bẩy quá rủi ro (Leverage={lev_val}x > 3.0x).")
+                return False
+    elif is_re:
+        debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_to_equity")
+        if debt_equity is not None:
+            de_val = float(debt_equity)
+            result.metrics["debt_equity"] = de_val
+            if de_val > 1.5:
+                result.can_buy = False
+                result.status = STATE_BLOCKED
+                result.action_state = ACTION_BLOCKED
+                result.blocked_by = GATE_SURVIVAL
+                result.blocking_reasons.append(f"L2 Archetype: BĐS rủi ro thanh khoản (D/E={de_val}x > 1.5x).")
+                return False
+    else:
         z_score = _extract_z_score(fin_dict, sector)
         result.metrics["z_score"] = z_score
         if z_score is not None and z_score <= CONTRARIAN_MIN_ZSCORE:
@@ -162,7 +201,7 @@ def _check_fundamental_integrity(
             result.status = STATE_BLOCKED
             result.action_state = ACTION_BLOCKED
             result.blocked_by = GATE_SURVIVAL
-            result.blocking_reasons.append(f"Z-Score={z_score:.2f} <= {CONTRARIAN_MIN_ZSCORE}.")
+            result.blocking_reasons.append(f"L2 Archetype: Z-Score={z_score:.2f} <= {CONTRARIAN_MIN_ZSCORE} (Rủi ro phá sản).")
             return False
 
         debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_to_equity")
@@ -174,7 +213,7 @@ def _check_fundamental_integrity(
                 result.status = STATE_BLOCKED
                 result.action_state = ACTION_BLOCKED
                 result.blocked_by = GATE_SURVIVAL
-                result.blocking_reasons.append(f"D/E={de_val:.2f}x > {CONTRARIAN_MAX_DEBT_EQUITY:.1f}x.")
+                result.blocking_reasons.append(f"L2 Archetype: Đòn bẩy cao (D/E={de_val:.2f}x > {CONTRARIAN_MAX_DEBT_EQUITY:.1f}x).")
                 return False
 
     # 2. Earnings Revision (Value Trap Check)
@@ -187,7 +226,7 @@ def _check_fundamental_integrity(
         result.blocking_reasons.append("Lợi nhuận/Biên gộp đang lao dốc (Fundamental Damage). VALUE TRAP!")
         return False
 
-    # 3. Valuation
+    # 3. Valuation & L4 Stress-MoS
     if "mos_pct" in fin_dict and "mos_is_informative" in fin_dict:
         val_res = {
             "mos_pct": float(fin_dict["mos_pct"]),
@@ -199,14 +238,20 @@ def _check_fundamental_integrity(
             symbol=symbol, current_price=current_price, fin_dict=fin_dict, sector=sector
         )
 
-    mos_pct = float(val_res.get("mos_pct", 0.0))
+    base_mos_pct = float(val_res.get("mos_pct", 0.0))
     mos_is_informative = bool(val_res.get("mos_is_informative", False))
     fair_value = float(val_res.get("fair_value", 0.0))
 
-    result.mos_pct = mos_pct
-    result.fair_value = fair_value
-    result.metrics["mos_pct"] = mos_pct
-    result.metrics["fair_value"] = fair_value
+    # L4: Stress-MoS (Haircut Valuation by 20% to simulate earnings crash)
+    stress_fair_value = fair_value * 0.80
+    stress_mos_pct = ((stress_fair_value - current_price) / current_price) * 100.0 if current_price > 0 else 0.0
+
+    result.mos_pct = stress_mos_pct # Gán MoS đã stress vào kết quả để UI hiện
+    result.fair_value = stress_fair_value
+    result.metrics["base_mos_pct"] = base_mos_pct
+    result.metrics["mos_pct"] = stress_mos_pct
+    result.metrics["base_fair_value"] = fair_value
+    result.metrics["fair_value"] = stress_fair_value
     result.metrics["mos_is_informative"] = mos_is_informative
 
     if not mos_is_informative:
@@ -217,12 +262,12 @@ def _check_fundamental_integrity(
         result.blocking_reasons.append("Thiếu dữ liệu định giá tin cậy (mos_is_informative=False).")
         return False
 
-    if mos_pct < required_mos:
+    if stress_mos_pct < required_mos:
         result.can_buy = False
         result.status = STATE_BLOCKED
         result.action_state = ACTION_BLOCKED
         result.blocked_by = GATE_VALUATION
-        result.blocking_reasons.append(f"MoS={mos_pct:+.1f}% < Yêu cầu {required_mos:.1f}%.")
+        result.blocking_reasons.append(f"L4 Stress-MoS={stress_mos_pct:+.1f}% < Yêu cầu {required_mos:.1f}%.")
         return False
 
     result.passed_gates.append(GATE_SURVIVAL)
@@ -291,11 +336,27 @@ def _check_price_confirmation(tech_data: Dict[str, Any], result: ContrarianResul
     has_reversal = tech_data.get("has_reversal_pattern", False)
     bullish_div = tech_data.get("bullish_divergence", False)
     price_confirmation = tech_data.get("price_confirmation", False)
+    volume_contraction = tech_data.get("volume_contraction", False)
+    higher_low = tech_data.get("higher_low", False)
 
-    if not (has_reversal or bullish_div or price_confirmation):
+    # L5: Yêu cầu xác nhận bằng Cấu trúc (Higher-low) hoặc Cạn cung (Volume contraction) + Reversal
+    is_structurally_confirmed = higher_low or (has_reversal and volume_contraction) or bullish_div or price_confirmation
+
+    import datetime
+    now = datetime.datetime.now()
+    is_late_session = now.hour >= 14 and now.minute >= 15
+    is_backtest = tech_data.get("is_backtest", False)
+
+    if not is_structurally_confirmed:
         result.can_buy = False
         result.blocked_by = GATE_PRICE_CONFIRM
-        result.blocking_reasons.append("Động lượng suy yếu cực độ nhưng chưa có xác nhận đảo chiều (Dao đang rơi).")
+        result.blocking_reasons.append("L5 Structure: Chưa có cấu trúc xác nhận đáy (Thiếu Higher-Low hoặc Cạn cung). Dao đang rơi!")
+        return False
+
+    if not is_late_session and not is_backtest:
+        result.can_buy = False
+        result.blocked_by = GATE_PRICE_CONFIRM
+        result.blocking_reasons.append("L5 Structure: Chưa qua 14:15. Bắt đáy phiên sáng rất dễ dính Bull-trap (Fake reversal).")
         return False
 
     result.passed_gates.append(GATE_PRICE_CONFIRM)

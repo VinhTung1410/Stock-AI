@@ -25,6 +25,7 @@ def fpt_derating_data():
         "adv20_billion": 50.0,
         "risk_keywords": "",
         "price_confirmation": True,  # Có tín hiệu đảo chiều
+        "is_backtest": True,
     }
     fin = {
         "f_score": 8,
@@ -33,7 +34,7 @@ def fpt_derating_data():
         "mos_pct": 35.0,
         "mos_is_informative": True,
         "margin_trend": "stable",
-        "fair_value": 115.0,
+        "fair_value": 140.0,
     }
     return tech, fin
 
@@ -47,6 +48,7 @@ def dgc_value_trap_data():
         "adv20_billion": 30.0,
         "risk_keywords": ["kiểm toán ngoại trừ"],  # Event Risk!
         "price_confirmation": True,
+        "is_backtest": True,
     }
     fin = {
         "f_score": 7,
@@ -55,7 +57,7 @@ def dgc_value_trap_data():
         "mos_pct": 40.0,
         "mos_is_informative": True,
         "margin_trend": "down_2_quarters",  # Fundamental Damage!
-        "fair_value": 85.0,
+        "fair_value": 100.0,
     }
     return tech, fin
 
@@ -104,7 +106,7 @@ def test_dgc_value_trap_fundamental_damage(dgc_value_trap_data):
 def test_downtrend_macro_regime_hurdle(fpt_derating_data):
     """Trong DOWNTREND, yêu cầu MoS >= 30% thay vì 20%."""
     tech, fin = fpt_derating_data
-    fin["mos_pct"] = 25.0  # Pass ở Uptrend (25 > 20) nhưng Fail ở Downtrend (25 < 30)
+    fin["fair_value"] = 128.0  # Tạo Stress-MoS ~24.8% (Pass ở Uptrend nhưng Fail ở Downtrend)
     
     # 1. Uptrend -> Pass Quality Gate (Vào Near Panic)
     res_up = evaluate_contrarian_gates("FPT", 82.0, tech_data=tech, fin_dict=fin, sector="Công nghệ", macro_regime="UPTREND")
@@ -115,4 +117,4 @@ def test_downtrend_macro_regime_hurdle(fpt_derating_data):
     assert res_down.can_buy is False
     assert res_down.status == STATE_BLOCKED
     assert res_down.blocked_by == "VALUATION_MOS"
-    assert any("MoS=+25.0% < Yêu cầu 30.0%" in r for r in res_down.blocking_reasons)
+    assert any("L4 Stress-MoS" in r for r in res_down.blocking_reasons)

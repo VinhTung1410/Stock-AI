@@ -86,14 +86,24 @@ Stock - learning/
 ├── quant_valuation.py          # 🎯 4-ARCHETYPE VALUATION ENGINE
 │                               # - Sector archetype classification (Bank, Cyclical, Real Estate, Growth)
 │                               # - Valuation models: P/B regression, Historical Median, SOTP, DCF/Graham
+│                               # - Fallback valuation logic defending against ZeroDivisionError (v11.0)
 │                               # - Deterministic Margin of Safety (MoS %) calculation
 │
 ├── quant_sanity_check.py       # 🛡️ MATHEMATICAL CONSISTENCY & SANITY GUARD
 │                               # - Enforces 6 invariant financial rules (e.g., Profitable != Cut Loss)
 │                               # - Dynamic Trailing Stop clamping: Clamped strictly < Current Price
 │
+├── contrarian_engine.py        # 🩸 L0-L7 CONTRARIAN PANIC BUY ENGINE (v10.0)
+│                               # - 4-State Machine: NORMAL, NEAR_PANIC_WATCH, EXTREME_FEAR, PANIC_BUY
+│                               # - L0 Market Panic Gauge (Stress/Capitulation macro filtering)
+│                               # - L1 Governance & Event Veto (News-based risk keyword injection)
+│                               # - L2 Survival Archetype (Banks NPL < 3%, Real Estate D/E < 1.5, Securities Lev < 3.0)
+│                               # - L4 Stress-MoS (Simulated EPS haircut -20% evaluation)
+│                               # - L5 Structural Confirmation (Higher-Low, Vol contraction, Time > 14:15 filter)
+│
 ├── data_engine.py              # ⚙️ DATA INGESTION & RISK ENGINE
 │                               # - Market data feeds: Vnstock (VCI source), Google News, CafeF RSS
+│                               # - Data resilience & invalid ticker defense preventing crashes (v11.0)
 │                               # - Prompt Injection Defense: `sanitize_news_for_llm` isolating untrusted RSS text
 │                               # - Historical index feeds: `fetch_index_historical("VNINDEX")` for benchmark tracking
 │                               # - Technical indicators: MA20, MA50, RSI14, Vol/SMA20, Smart Money Flow

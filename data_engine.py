@@ -443,6 +443,7 @@ def load_portfolio(filepath: str = PATH_PORTFOLIO_JSON) -> list:
     Ưu tiên kéo từ Google Sheet (nếu cấu hình GOOGLE_SHEET_URL).
     Tự động sao lưu dự phòng sang portfolio.json và fallback khi offline.
     """
+    p_data = []
     sheet_url = os.environ.get("GOOGLE_SHEET_URL", "").strip()
     if sheet_url and filepath == PATH_PORTFOLIO_JSON:
         p_data, _ = fetch_google_sheet_data(sheet_url)
@@ -451,16 +452,32 @@ def load_portfolio(filepath: str = PATH_PORTFOLIO_JSON) -> list:
                 save_portfolio(p_data, filepath)
             except Exception:
                 pass
-            return p_data
 
-    if not os.path.exists(filepath):
-        return []
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        logging.exception(f"Lỗi đọc {filepath}")
-        return []
+    if not p_data and os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                p_data = json.load(f)
+        except Exception:
+            logging.exception(f"Lỗi đọc {filepath}")
+            return []
+            
+    total_nav = 0.0
+    for item in p_data:
+        vol = _parse_numeric(item.get("volume"), 0)
+        cost = _parse_numeric(item.get("cost_price"), 0.0)
+        nav = vol * cost
+        item["_nav"] = nav
+        total_nav += nav
+        if "sector" not in item:
+            item["sector"] = SECTOR_MAP.get(item.get("symbol", "").upper(), "Khác")
+            
+    for item in p_data:
+        if total_nav > 0:
+            item["weight"] = item.get("_nav", 0) / total_nav
+        else:
+            item["weight"] = 0.0
+
+    return p_data
 
 
 def load_watchlist(filepath: str = PATH_WATCHLIST_JSON) -> list:
@@ -1907,6 +1924,16 @@ def save_signal_cooldown(data: dict):
     except Exception as e:
         logging.warning(f"Could not persist signal cooldown to disk: {e}")
 
+def get_today_buy_signal_count() -> int:
+    """Count how many buy signals were recorded today."""
+    history = load_signal_cooldown()
+    from datetime import datetime
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    count = 0
+    for sym, rec in history.items():
+        if rec.get("last_signal_date", "").startswith(today_str):
+            count += 1
+    return count
 
 def is_symbol_in_cooldown(symbol: str, cooldown_days: int = COOLDOWN_DAYS) -> bool:
     """Check if a ticker is currently within the active cooldown window.
@@ -2315,6 +2342,14 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
             # thẩm định qua Contrarian Module độc lập (F-Score >= 7, Z-Score > 2.0, MoS >= 20%, max 5% NAV)
             from contrarian_engine import evaluate_contrarian_gates
 
+            if cat_info:
+                news_text = (cat_info.get("title", "") + " " + cat_info.get("summary", "")).lower()
+                tech["risk_keywords"] = []
+                for kw in ["kiểm toán ngoại trừ", "khởi tố", "bắt bớ", "thanh tra", "hủy niêm yết", "bán tháo lãnh đạo"]:
+                    if kw in news_text:
+                        tech["risk_keywords"].append(kw)
+
+
             fin_contrarian = {
                 **fin_ratios,
                 "mos_pct": mos_pct,
@@ -2644,8 +2679,8 @@ def get_vnindex_valuation_data() -> pd.DataFrame:
             pb_list = []
             for i, val in enumerate(df["close"]):
                 ratio = val / latest_idx
-                pe_val = round(base_pe * ratio + (i % 5 - 2) * 0.04, 1)
-                pb_val = round(base_pb * ratio + (i % 4 - 1.5) * 0.015, 2)
+                pe_val = round(base_pe * ratio, 2)
+                pb_val = round(base_pb * ratio, 2)
                 pe_list.append(max(9.5, pe_val))
                 pb_list.append(max(1.1, pb_val))
 
@@ -2840,6 +2875,8 @@ def _extract_kbs_ratios(symbol: str) -> dict:
         return {}
 
 
+_FIN_RATIO_CACHE: dict[str, tuple[float, dict]] = {}
+
 def get_financial_ratios(symbol: str) -> dict:
     """
     Lấy các chỉ số tài chính cơ bản & định giá chuyên sâu phục vụ báo cáo 8 trụ cột.
@@ -2847,129 +2884,110 @@ def get_financial_ratios(symbol: str) -> dict:
     Sau đó fallback sang VCI để bổ sung các chỉ số chuyên sâu (P/S, ROIC, EV/EBITDA).
     Có bọc try-except để không văng lỗi toàn bộ hệ thống nếu gặp mã cổ phiếu ảo/sai định dạng.
     """
+    import time
+    global _FIN_RATIO_CACHE
+    now = time.time()
+    sym_clean = symbol.upper().strip()
+    
+    if sym_clean in _FIN_RATIO_CACHE:
+        c_time, c_data = _FIN_RATIO_CACHE[sym_clean]
+        if now - c_time < 12 * 3600 and c_data:
+            return c_data
+
     try:
         from vnstock.api.financial import Finance
 
         metric_map = {}
-        vci_period, vci_year, vci_quarter = None, None, None
 
-        # Bước 1: Kéo VCI làm nền (bọc try-except)
-        df_ratio = None
-        try:
-            df_ratio = Finance(symbol=symbol, source="VCI").ratio()
-        except Exception as e:
-            logging.warning(f"Lỗi lấy dữ liệu VCI cho {symbol}: {e}")
-
-        if df_ratio is not None and not df_ratio.empty:
-            data_cols = [c for c in df_ratio.columns if c not in ["item", "item_en", "item_id"]]
-            if data_cols:
-                vci_period = data_cols[-1]
-                vci_year, vci_quarter = _parse_period_year_quarter(vci_period)
-                for _, row in df_ratio.iterrows():
-                    item_name = str(row.get("item", "")).strip()
-                    val = row.get(vci_period)
-                    try:
-                        metric_map[item_name] = float(val) if pd.notnull(val) else None
-                    except (ValueError, TypeError):
-                        pass
-
-        def get_m(name, default=None):
-            return metric_map.get(name, default)
-
-        # Xử lý VCI base metrics
-        is_stale_legacy = vci_year is not None and vci_year < 2024
-        pb_raw = get_m("P/B")
-        pb = None if is_stale_legacy else pb_raw
-        if is_stale_legacy and pb_raw is not None:
-            logging.warning(
-                "[DATA-INTEGRITY] Bỏ qua P/B=%s của %s do nguồn VCI bị đóng băng ở kỳ cũ %s", pb_raw, symbol, vci_period
-            )
-
-        roe = get_m("ROE (%)")
-        if roe is not None and roe < 1.0:
-            roe *= 100
-        roa = get_m("ROA (%)")
-        if roa is not None and roa < 1.0:
-            roa *= 100
-        roic = get_m("ROIC")
-        if roic is not None and roic < 1.0:
-            roic *= 100
-        gross_margin = get_m("Biên LN gộp (%)")
-        if gross_margin is not None and gross_margin < 1.0:
-            gross_margin *= 100
-        net_margin = get_m("Biên LN sau thuế (%)")
-        if net_margin is not None and net_margin < 1.0:
-            net_margin *= 100
-        dividend_yield = get_m("Tỷ suất cổ tức (%)")
-        if dividend_yield is not None and dividend_yield < 1.0:
-            dividend_yield *= 100
-        market_cap = get_m("Vốn hóa")
-
-        base_data = {
-            "symbol": symbol,
-            "period": vci_period,
-            "latest_year": vci_year,
-            "latest_quarter": vci_quarter,
-            "pe": get_m("P/E"),
-            "pb": pb,
-            "bvps": get_m("BVPS"),
-            "ps": get_m("P/S"),
-            "ev_ebitda": get_m("EV/EBITDA"),
-            "p_cf": get_m("Giá/ Dòng tiền"),
-            "roe": roe,
-            "roa": roa,
-            "roic": roic,
-            "debt_equity": get_m("Nợ/Vốn chủ") or get_m("Nợ trên vốn chủ"),
-            "financial_leverage": get_m("Đòn bẩy tài chính"),
-            "gross_margin": gross_margin,
-            "net_margin": net_margin,
-            "current_ratio": get_m("Hệ số thanh toán hiện hành"),
-            "quick_ratio": get_m("Hệ số thanh toán nhanh"),
-            "market_cap_bil": round(market_cap / 1e9, 1) if market_cap is not None else None,
-            "dividend_yield": dividend_yield,
-            "audit_trail": {"source": "VCI_Base", "period": vci_period, "is_stale_legacy": is_stale_legacy},
-        }
-
-        # Bước 2: Kéo KBS và ghi đè nếu dữ liệu tươi hơn
+        # Bước 1: Kéo KBS làm nền vì KBS chính xác và cập nhật nhất
         kbs_data = _extract_kbs_ratios(symbol)
         kbs_period = kbs_data.get("period")
         kbs_year, kbs_quarter = _parse_period_year_quarter(kbs_period)
+        
+        base_data = {
+            "symbol": symbol,
+            "period": kbs_period,
+            "latest_year": kbs_year,
+            "latest_quarter": kbs_quarter,
+            "pe": kbs_data.get("pe"),
+            "pb": kbs_data.get("pb"),
+            "bvps": kbs_data.get("bvps"),
+            "roe": kbs_data.get("roe"),
+            "roa": kbs_data.get("roa"),
+            "dividend_yield": kbs_data.get("dividend_yield"),
+            "ps": None,
+            "ev_ebitda": None,
+            "p_cf": None,
+            "roic": None,
+            "debt_equity": None,
+            "financial_leverage": None,
+            "gross_margin": None,
+            "net_margin": None,
+            "current_ratio": None,
+            "quick_ratio": None,
+            "market_cap_bil": None,
+            "audit_trail": {"source": "KBS_Primary", "period": kbs_period},
+        }
 
-        if kbs_data and kbs_year and kbs_year >= 2024:
-            base_data.update(
-                {
-                    "period": kbs_period,
-                    "latest_year": kbs_year,
-                    "latest_quarter": kbs_quarter,
-                }
-            )
-            if kbs_data.get("pe") is not None:
-                base_data["pe"] = kbs_data["pe"]
-            if kbs_data.get("pb") is not None:
-                base_data["pb"] = kbs_data["pb"]
-            if kbs_data.get("bvps") is not None:
-                base_data["bvps"] = kbs_data["bvps"]
-            if kbs_data.get("roe") is not None:
-                base_data["roe"] = kbs_data["roe"]
-            if kbs_data.get("roa") is not None:
-                base_data["roa"] = kbs_data["roa"]
-            if kbs_data.get("dividend_yield") is not None:
-                base_data["dividend_yield"] = kbs_data["dividend_yield"]
-            base_data["audit_trail"] = {
-                "source": "KBS_Merged_VCI",
-                "period": kbs_period,
-                "vci_period": vci_period,
-                "kbs_pb": kbs_data.get("pb"),
-                "vci_pb_stale": pb_raw,
-            }
+        # Bước 2: Kéo VCI để bổ sung các chỉ số chuyên sâu (chỉ dùng nếu VCI không bị đóng băng)
+        try:
+            df_ratio = Finance(symbol=symbol, source="VCI").ratio()
+            if df_ratio is not None and not df_ratio.empty:
+                data_cols = [c for c in df_ratio.columns if c not in ["item", "item_en", "item_id"]]
+                if data_cols:
+                    vci_period = data_cols[-1]
+                    vci_year, _ = _parse_period_year_quarter(vci_period)
+                    
+                    # CẢNH BÁO: VCI thường bị đóng băng ở 2018. Nếu cũ, ta bỏ qua hoàn toàn VCI để tránh làm sai lệch dữ liệu KBS
+                    if vci_year is not None and vci_year >= 2024:
+                        metric_map = {}
+                        for _, row in df_ratio.iterrows():
+                            item_name = str(row.get("item", "")).strip()
+                            val = row.get(vci_period)
+                            try:
+                                metric_map[item_name] = float(val) if pd.notnull(val) else None
+                            except (ValueError, TypeError):
+                                pass
+                        
+                        def get_m(name):
+                            return metric_map.get(name)
+
+                        roic = get_m("ROIC")
+                        if roic is not None and roic < 1.0:
+                            roic *= 100
+                        gross_margin = get_m("Biên LN gộp (%)")
+                        if gross_margin is not None and gross_margin < 1.0:
+                            gross_margin *= 100
+                        net_margin = get_m("Biên LN sau thuế (%)")
+                        if net_margin is not None and net_margin < 1.0:
+                            net_margin *= 100
+                        market_cap = get_m("Vốn hóa")
+
+                        base_data.update({
+                            "ps": get_m("P/S"),
+                            "ev_ebitda": get_m("EV/EBITDA"),
+                            "p_cf": get_m("Giá/ Dòng tiền"),
+                            "roic": roic,
+                            "debt_equity": get_m("Nợ/Vốn chủ") or get_m("Nợ trên vốn chủ"),
+                            "financial_leverage": get_m("Đòn bẩy tài chính"),
+                            "gross_margin": gross_margin,
+                            "net_margin": net_margin,
+                            "current_ratio": get_m("Hệ số thanh toán hiện hành"),
+                            "quick_ratio": get_m("Hệ số thanh toán nhanh"),
+                            "market_cap_bil": round(market_cap / 1e9, 1) if market_cap is not None else None,
+                        })
+                        base_data["audit_trail"]["vci_supplemented"] = True
+                    else:
+                        logging.debug(f"[DATA-INTEGRITY] Bỏ qua VCI của {symbol} do đóng băng ở {vci_period}")
+        except Exception as e:
+            logging.debug(f"Không thể lấy VCI cho {symbol}: {e}")
 
         # Round all values
         for k, v in base_data.items():
-            if k not in ["symbol", "period", "latest_year", "latest_quarter", "audit_trail"] and isinstance(
-                v, (int, float)
-            ):
+            if k not in ["symbol", "period", "latest_year", "latest_quarter", "audit_trail"] and isinstance(v, (int, float)):
                 base_data[k] = round(v, 2) if v is not None else None
 
+        _FIN_RATIO_CACHE[sym_clean] = (now, base_data)
         return base_data
 
     except Exception:

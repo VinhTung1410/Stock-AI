@@ -21,6 +21,7 @@ except ImportError:
 from data_engine import evaluate_portfolio, fetch_macro_news, load_portfolio
 from quant_engine import evaluate_holding_position, evaluate_market_regime
 from quant_sanity_check import validate_holding_position, validate_trade_setup
+from regime_classifier import get_canonical_regime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -1079,6 +1080,59 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     )
 
     symbol = symbol.strip().upper()
+    
+    # --- WEBHOOK 2-PASS GUARDS ---
+    from data_engine import (
+        MAX_DAILY_BUY_SIGNALS,
+        MAX_OPEN_POSITIONS,
+        get_today_buy_signal_count,
+        is_symbol_in_cooldown,
+        load_portfolio,
+    )
+    if is_symbol_in_cooldown(symbol):
+        refusal_msg = f"⛔ TỪ CHỐI: MÃ {symbol} ĐANG TRONG THỜI GIAN COOLDOWN (5 NGÀY)."
+        return {
+            "status": "BLOCKED_COOLDOWN",
+            "symbol": symbol,
+            "can_buy": False,
+            "action_state": "TỪ CHỐI",
+            "decision_tag": refusal_msg,
+            "position_size_nav": "0% NAV",
+            "primary_rejection_gate": "COOLDOWN_GATE",
+            "rejection_reasons": ["Mã đang trong thời gian Cooldown 5 ngày."],
+            "report_text": refusal_msg
+        }
+
+    if get_today_buy_signal_count() >= MAX_DAILY_BUY_SIGNALS:
+        refusal_msg = f"⛔ TỪ CHỐI: HẾT NGÂN SÁCH TÍN HIỆU NGÀY ({MAX_DAILY_BUY_SIGNALS}/{MAX_DAILY_BUY_SIGNALS})."
+        return {
+            "status": "BLOCKED_DAILY_BUDGET",
+            "symbol": symbol,
+            "can_buy": False,
+            "action_state": "TỪ CHỐI",
+            "decision_tag": refusal_msg,
+            "position_size_nav": "0% NAV",
+            "primary_rejection_gate": "DAILY_BUDGET_GATE",
+            "rejection_reasons": ["Hết ngân sách tín hiệu mua trong ngày."],
+            "report_text": refusal_msg
+        }
+
+    portfolio = load_portfolio()
+    if len(portfolio) >= MAX_OPEN_POSITIONS:
+        refusal_msg = f"⛔ TỪ CHỐI: DANH MỤC ĐÃ ĐẠT MAX POSITIONS ({MAX_OPEN_POSITIONS}/{MAX_OPEN_POSITIONS})."
+        return {
+            "status": "BLOCKED_MAX_POSITIONS",
+            "symbol": symbol,
+            "can_buy": False,
+            "action_state": "TỪ CHỐI",
+            "decision_tag": refusal_msg,
+            "position_size_nav": "0% NAV",
+            "primary_rejection_gate": "PORTFOLIO_LIMIT_GATE",
+            "rejection_reasons": ["Danh mục đã đạt số lượng mã tối đa."],
+            "report_text": refusal_msg
+        }
+    # -----------------------------
+
     tech_data = fetch_stock_technical(symbol)
     fin_data = get_financial_ratios(symbol)
     news_items = fetch_macro_news(limit=10, tracked_symbols=[symbol])
@@ -1198,7 +1252,7 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
         fin_dict=fin_data,
         tech_data=tech_data,
         sector=sector_name,
-        macro_regime=tech_data.get("status_ma20"),
+        macro_regime=get_canonical_regime(symbol_data=tech_data).value if tech_data else None,
         caller="TWO_PASS",
         conviction_score=75.0,
     )
@@ -2056,7 +2110,7 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         macro_regime=(
             getattr(market_ctx, "market_regime_analyst", getattr(market_ctx, "market_regime_code", None))
             if market_ctx and market_ctx.is_valid
-            else tech_d.get("status_ma20")
+            else get_canonical_regime(symbol_data=tech_d).value if tech_d else None
         ),
         caller="COMMITTEE",
         pm_output=report_text,

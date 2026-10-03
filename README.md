@@ -26,6 +26,12 @@ Stock-AI enforces **strict architectural separation**:
 
 ---
 
+## 🆕 Recent Updates (v12.0)
+- **API Caching & TTL:** Introduced a 12-hour TTL cache for `vnstock` financial endpoints to prevent rate-limit blocks and speed up execution.
+- **Webhook 2-Pass Governance:** Enforced Cooldown (5 days), Daily Signal Budget, and Max Open Positions limits directly on Webhook 2-Pass and UI flows.
+- **Data Integrity:** Removed stochastic noise from P/E and P/B market valuations for strictly deterministic reports.
+- **Canonical Regime Tracking:** Implemented Single Source of Truth macro tracking via `get_canonical_regime()` to synchronize portfolio allocation.
+
 ## 🏗️ System Architecture
 
 ```mermaid
@@ -70,6 +76,7 @@ flowchart TD
 | **Quantitative Rigor** | **Financial Health & Bankruptcy Scoring** | Full Piotroski F-Score (0–9) across profitability, leverage, and efficiency; Altman Z-Score (Safe/Grey/Distress). |
 | | **4-Archetype Intrinsic Valuation** | Dedicated valuation models tailored for Banks (P/B vs ROE), Cyclicals, Real Estate (RNAV), and Growth (DCF/DDM). |
 | | **Dynamic Risk & Position Sizing** | Dynamic ATR stop-loss clamping, Half-Kelly criterion, and HOSE 20-day liquidity tiering (ADV20). |
+| | **Data Resilience (v11.0)** | Robust fallback valuation and invalid ticker defenses eliminating pipeline crashes via ZeroDivisionError. |
 | **Signal Credibility** | **4-Pillar Conviction Matrix** | Strict 100-point gate (Valuation 40%, Technical 25%, Catalyst 20%, Liquidity 15%). Buy threshold ≥ 70 pts. |
 | | **Budget & Overload Defense** | Hard cap of Max 2 BUY signals/day; 5-day ticker cooldown; maximum 8 concurrent open positions. |
 | | **Market Microstructure Shields** | **GDKHQ Shield** (ignores dividend gap-downs) + **Anti-Chasing Filter** (blocks buying at HOSE ceiling +6.85%). |

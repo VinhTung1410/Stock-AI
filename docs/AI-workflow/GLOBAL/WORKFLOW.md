@@ -34,7 +34,7 @@ Quy trình phát triển phần mềm và tối ưu hóa hệ thống định l�
     ▼
 [Phase 7: Client Review, Release, Workspace Hygiene & Post-Push CI/CD Monitoring]
         Bàn giao báo cáo nghiệm thu (Walkthrough) -> Client duyệt / Yêu cầu Push ->
-        Cập nhật DECISION_LOG.md -> Kiểm tra .gitignore -> Commit (English Only) & Push an toàn ->
+        Cập nhật tài liệu (DECISION_LOG.md, PRODUCT_CASE_STUDY.md, PROJECT_STRUCTURE.md, README.md) -> Kiểm tra .gitignore -> Commit (English Only) & Push an toàn ->
         Theo dõi GitHub Actions & SonarCloud CI/CD -> Khắc phục ngay nếu có lỗi (Fast Remediation)
 ```
 
@@ -163,15 +163,16 @@ Nếu ở bất kỳ giai đoạn nào tiêu chuẩn không đạt, task sẽ k�
   1. Trình diễn báo cáo nghiệm thu tóm tắt (Walkthrough) cho Client.
   2. Client bấm duyệt nghiệm thu hoặc ra lệnh *"push lên cho tôi"*.
   3. Ghi lại các quyết định kỹ thuật/nghiệp vụ quan trọng vào `docs/AI-workflow/GLOBAL/DECISION_LOG.md`.
-  4. **Bảo vệ Tài liệu Nội bộ Local (Local Workspace Hygiene Rule):**
+  4. **Cập nhật Tài liệu Dự án (Nếu cần thiết):** Chủ động rà soát và cập nhật nội dung cho các file `docs/PRODUCT_CASE_STUDY.md`, `docs/PROJECT_STRUCTURE.md`, và `README.md` để đảm bảo đồng bộ với những thay đổi về kiến trúc, tính năng mới.
+  5. **Bảo vệ Tài liệu Nội bộ Local (Local Workspace Hygiene Rule):**
      - Các file nghiên cứu cá nhân, chiến lược phác thảo, tài liệu đánh giá của Client (ví dụ: `danh_gia_he_thong_quy_fund.md`, `stock_ai_roadmap.md`, `idea.md`...) được định danh là **TÀI NGUYÊN NỘI BỘ (LOCAL ONLY)**.
      - Bắt buộc khai báo các file này trong `.gitignore`.
      - Tuyệt đối không đưa vào `git add`, không tạo commit chứa các file này, và không push lên remote repository.
-  5. **Quy chuẩn Git Commit Message & Push (BẮT BUỘC TIẾNG ANH - 100% ENGLISH ONLY):**
+  6. **Quy chuẩn Git Commit Message & Push (BẮT BUỘC TIẾNG ANH - 100% ENGLISH ONLY):**
      - Khi Client yêu cầu push lên Git, **mọi Git Commit Message (Title + Description) và Release Notes BẮT BUỘC PHẢI VIẾT BẰNG TIẾNG ANH 100% (ENGLISH ONLY)** theo chuẩn Conventional Commits (ví dụ: `feat(quant): ...`, `fix(security): ...`, `chore(docs): ...`).
      - Tuyệt đối **KHÔNG** viết Git commit message bằng tiếng Việt để bảo đảm tính chuyên nghiệp, dễ theo dõi trong CI/CD, và đáp ứng chuẩn mực mã nguồn quốc tế trên GitHub.
-  6. Thực hiện `git commit` và `git push` mã nguồn chính thức lên GitHub an toàn.
-  7. **Giám Sát CI/CD & Khắc Phục Lỗi Kịp Thời Sau Khi Push (Post-Push Pipeline Monitoring & Fast Remediation):**
+  7. Thực hiện `git commit` và `git push` mã nguồn chính thức lên GitHub an toàn.
+  8. **Giám Sát CI/CD & Khắc Phục Lỗi Kịp Thời Sau Khi Push (Post-Push Pipeline Monitoring & Fast Remediation):**
      - Sau khi push, AI Agent / Developer **BẮT BUỘC chủ động theo dõi pipeline GitHub Actions và SonarCloud Quality Gate** trên remote repository (qua GitHub CLI `gh run list` / `gh run watch` hoặc giao diện GitHub).
      - **Nếu phát hiện bất kỳ step nào FAILED** (lỗi unit test trên môi trường remote, flake test, lỗi dependency, ruff lint, hoặc SonarCloud Quality Gate RED):
        + Tuyệt đối **KHÔNG ĐƯỢC BỎ MẶC** hoặc tự ý kết thúc task khi build đang đỏ.

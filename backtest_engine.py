@@ -794,6 +794,8 @@ class RegimeBacktestEngine:
         if df_price.empty or "close" not in df_price.columns:
             return BacktestResult()
 
+        signals = signals.shift(1).fillna(0)
+
         trades: list[TradeRecord] = []
         equity = [self.initial_capital]
         cash = self.initial_capital

@@ -4,7 +4,7 @@
 **Author:** Technical Business Analyst / AI Product Owner  
 **Project:** Stock-AI (Vietnamese Equities Quantamental Screening Platform)  
 **Target Audience:** Engineering Managers, Product Leaders, Technical Recruiters, and Domain Analysts  
-**Status:** Hardened in Production · 222 Tests Passing (100%) · v8.0 Advanced Risk Governance & Unified Entry Gate Released  
+**Status:** Hardened in Production · 100% Tests Passing · v11.0 Data Resilience & Fallback Valuation Released  
 
 ---
 
@@ -55,6 +55,8 @@ timeline
     v5.5 : Advanced Portfolio Engine : Monte Carlo Tail Risk (2k) : Risk Parity 25% Cap : Multi-Factor Beta : Partial Profit Lock
     v7.0-v7.4 : Intrinsic Valuation Overhaul : SOTP & Normalized EPS : Real Estate & Cyclical Models : Anti-Synthetic MoS
     v7.5-v8.0 : Unified Risk Governance : 7-Tier Entry Gate & PM Veto : Float Sizing (Half-Kelly + ADV20) : Signal Integrity Audit
+    v8.1-v11.0 : Data Resilience & Fallback : Invalid Ticker Defense : ZeroDivisionError Prevention
+    v12.0 : API Caching & Webhook Governance : 12h TTL : Signal Budget Enforcement
 ```
 
 ### Milestone Comparison Matrix
@@ -75,6 +77,8 @@ timeline
 | **v5.5** | **Fat-Tail Blindness, Naive Weighting & Premature Profit Exits**<br/>• Single historical drawdown hiding sequential loss risks.<br/>• Equal weighting concentrating 80% risk in high-beta assets.<br/>• All-in/all-out exits leaving profits vulnerable to reversals. | **Advanced Quantitative Portfolio Engine**<br/>• Monte Carlo Tail Risk: 2,000 resamples for P95/P99 Drawdown and (	ext{DD} > 15\%)$.<br/>• Risk Parity / ERC Sizing with inverse-volatility weighting and 25% single-stock cap.<br/>• Multi-Factor Beta: OLS Market Beta, Sector Beta & Idiosyncratic Alpha.<br/>• Partial Profit Lock: 50% profit lock at +12% target, trailing stop raised to break-even (+0.3%). | Institutional fund-grade portfolio construction; tail-risk resilience; protected capital with upside capture; 222 tests passing. |
 | **v7.0 - v7.4** | **Synthetic MoS & Archetype Blindness**<br/>• Compounder/Growth defaulted to  	imes 1.18$ when targets expired, causing 100% false-positive MoS.<br/>• Cyclical stocks looked cheap at peak earnings.<br/>• Real Estate ignored RNAV discounts. | **Intrinsic Valuation & Anti-Synthetic MoS**<br/>• Removed all static price multipliers. Real Estate uses P/B & RNAV. Cyclical uses Normalized EPS & Mid-Cycle.<br/>• SOTP for Retail (e.g. MWG: ICT + BHX).<br/>• mos_is_informative hard lock preventing MoS bypass. | True CFA-grade intrinsic valuation. Completely eliminated false value traps. |
 | **v7.5 - v8.0** | **Fragmented Risk Gates, Slippage & Signal Spillage**<br/>• Multiple modules triggered BUYs bypassing Macro checks.<br/>• Signal table spammed with non-BUY tracking noise.<br/>• Sizing was hardcoded string, ignoring ADV20 liquidity.<br/>• Stop-loss hit on Ex-Dividend (GDKHQ) dates. | **Unified Risk Governance & Float Sizing**<br/>• **7-Tier Unified Entry Gate**: Macro -> Data -> Health -> MoS -> Momentum -> Conviction -> PM Veto.<br/>• Float-based Kelly sizing strictly cut if ADV20 < 2B VND.<br/>• Verified Corporate Actions API shield for ex-dividend gaps.<br/>• Signal DB strict filtering (BUYs only). | Consolidated, airtight fund governance. Zero leakage of hallucinated trades. 449 tests passing. |
+| **v8.1 - v11.0** | **Data Fragility & Edge Case Crashes**<br/>• Crashes due to invalid tickers.<br/>• ZeroDivisionErrors during valuation anomalies. | **Data Resilience & Fallback Valuation (Phase 21)**<br/>• Strict invalid ticker defense.<br/>• ZeroDivisionError prevention with robust fallback valuation. | Prevents system downtime during live scans. Guaranteed pipeline uptime. |
+| **v12.0** | **Rate Limiting & Webhook Governance**<br/>• `vnstock` rate-limiting issues.<br/>• Webhook 2-Pass bypassing Cooldown and Signal Budgets. | **API Caching & Hard Gates**<br/>• Implemented 12-hour TTL cache for financial ratios.<br/>• Enforced Cooldown, Daily Budget, and Max-Positions on UI/Webhook 2-Pass flows. | Significant performance boost; ensures strict portfolio governance across all execution paths. |
 
 ---
 
@@ -361,4 +365,31 @@ Following the stabilization of the deterministic backtest engine in v4.0, Stock-
 | **Test Suite Coverage** | 35 tests | 151 tests | **222 tests (100% Pass, Coverage $\ge 80\%$)** |
 | **Regulatory & Security** | Open Discord alerts | Static disclaimer | Legal Firewall (`SIGNAL_DISCLAIMER`) + News Sanitizer + Heartbeat |
 
+
+
+---
+
+## ?? Part V: Deep-Dive Case Study � Contrarian Engine Redesign (v8.1 - v10.0)
+
+### 1. Problem Discovery (The Panic Trap)
+In highly volatile periods, the original Contrarian Engine (v8.1) relied on a simple **Hard Gate** (RSI <= 30) to define panic. This led to a single point of failure:
+- **False Positives (Value Traps):** Stocks crashing due to fundamental decay (e.g., severe audit event, earnings crash) would hit RSI <= 30 and trigger a PANIC_BUY despite structural risks.
+- **False Negatives (Missed Opportunities):** Fundamentally exceptional stocks (e.g., FPT) dropping to highly attractive valuations (RSI ~31-35) were blocked because they hadn't hit the arbitrary <= 30 threshold.
+
+### 2. Architecture Decision Record: The 4-State Machine & 5-Layer Framework
+
+To resolve this, the system was completely overhauled with an institutional L0-L7 Architecture:
+
+1. **L0 - Market Panic Gauge:** Macro-level restriction allowing contrarian buys only when VN-Index is in STRESS or CAPITULATION.
+2. **L1 - Governance & Event Veto:** Dynamic injection of news keywords ('kh?i t?', 'h?y ni�m y?t') to instantly block event-driven crashes.
+3. **L2 - Survival Archetype:** Sector-specific constraints (e.g., Banks NPL < 3%, Real Estate D/E < 1.5, Securities Leverage < 3.0).
+4. **L4 - Stress-MoS (Margin of Safety):** Replaced static P/E caps with a 20% haircut on Fair Value to simulate EPS crashes.
+5. **L5 - Structural Confirmation:** Mandatory structural reversal via Higher-Low or Volume Contraction, gated by time (after 14:15) to avoid intraday bull traps.
+
+**State Machine Output:**
+Instead of binary BLOCKED/BUY, the output transitions through 4 fluid states: NORMAL, NEAR_PANIC_WATCH, EXTREME_FEAR_WATCH, PANIC_BUY.
+
+### 3. Business Impact
+- **Zero Value Traps:** System successfully filters out structurally damaged companies despite heavy price drops.
+- **Optimal Entry:** Capitalizes on temporary panic in fundamentally sound companies with precision timing.
 

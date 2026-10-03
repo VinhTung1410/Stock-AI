@@ -461,7 +461,7 @@ def _scan_watchlist_opportunities(today_str: str):
         return
 
     try:
-        from db_manager import load_portfolio
+        from data_engine import load_portfolio
         portfolio = load_portfolio()
     except Exception:
         portfolio = None
@@ -597,7 +597,7 @@ def _scan_active_market_opportunities(today_str: str):
     logging.info("🔍 Đang kích hoạt Active Market Screener (đãi cát tìm vàng)...")
 
     try:
-        from db_manager import load_portfolio
+        from data_engine import load_portfolio
         opportunities = scan_market_opportunities(portfolio=load_portfolio(), kill_switch_active=False)
         if not opportunities:
             return
@@ -620,7 +620,7 @@ def _scan_contrarian_opportunities(today_str: str):
     logging.info("🚨 Đang kích hoạt Quét Bắt Đáy Hoảng Loạn (Contrarian Screener)...")
 
     try:
-        from db_manager import load_portfolio
+        from data_engine import load_portfolio
         opportunities = scan_market_opportunities(portfolio=load_portfolio(), kill_switch_active=False)
         if not opportunities:
             return
