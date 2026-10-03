@@ -209,7 +209,53 @@ def _check_fundamental_integrity(
         if debt_equity is not None:
             result.metrics["debt_equity"] = float(debt_equity)
 
-    # 3-Tier F-Score Gating (Task-23.1)
+    # 0. Hard Veto Risk Overlays (Độc lập với F-Score - Phase 23.3)
+    if is_bank and "npl" in result.metrics:
+        npl_val = result.metrics["npl"]
+        if npl_val > 3.0:
+            result.can_buy = False
+            result.status = STATE_BLOCKED
+            result.action_state = ACTION_BLOCKED
+            result.blocked_by = GATE_SURVIVAL
+            result.blocking_reasons.append(f"L2 Archetype: Ngân hàng có nợ xấu cao (NPL={npl_val}% > 3%). Rủi ro vỡ nợ!")
+            return False
+    elif is_sec and "financial_leverage" in result.metrics:
+        lev_val = result.metrics["financial_leverage"]
+        if lev_val > 3.0:
+            result.can_buy = False
+            result.status = STATE_BLOCKED
+            result.action_state = ACTION_BLOCKED
+            result.blocked_by = GATE_SURVIVAL
+            result.blocking_reasons.append(f"L2 Archetype: Công ty CK dùng đòn bẩy quá rủi ro (Leverage={lev_val}x > 3.0x).")
+            return False
+    elif is_re and "debt_equity" in result.metrics:
+        de_val = result.metrics["debt_equity"]
+        if de_val > 1.5:
+            result.can_buy = False
+            result.status = STATE_BLOCKED
+            result.action_state = ACTION_BLOCKED
+            result.blocked_by = GATE_SURVIVAL
+            result.blocking_reasons.append(f"L2 Archetype: BĐS rủi ro thanh khoản (D/E={de_val}x > 1.5x).")
+            return False
+    elif not (is_bank or is_sec or is_re):
+        z_score = result.metrics.get("z_score")
+        if z_score is not None and z_score <= CONTRARIAN_MIN_ZSCORE:
+            result.can_buy = False
+            result.status = STATE_BLOCKED
+            result.action_state = ACTION_BLOCKED
+            result.blocked_by = GATE_SURVIVAL
+            result.blocking_reasons.append(f"L2 Archetype: Phi Tài chính có nguy cơ phá sản (Z-Score={z_score:.2f} <= {CONTRARIAN_MIN_ZSCORE}).")
+            return False
+        de_val = result.metrics.get("debt_equity")
+        if de_val is not None and de_val > CONTRARIAN_MAX_DEBT_EQUITY:
+            result.can_buy = False
+            result.status = STATE_BLOCKED
+            result.action_state = ACTION_BLOCKED
+            result.blocked_by = GATE_SURVIVAL
+            result.blocking_reasons.append(f"L2 Archetype: Đòn bẩy cao (D/E={de_val:.2f}x > {CONTRARIAN_MAX_DEBT_EQUITY:.1f}x).")
+            return False
+
+    # 1. 3-Tier F-Score Gating (Task-23.1)
     if f_score < 4:
         # TIER 1: BLOCK UNCONDITIONALLY (Value Trap)
         if data_comp < 0.7:
@@ -228,7 +274,7 @@ def _check_fundamental_integrity(
             return False
 
     elif f_score < CONTRARIAN_MIN_FSCORE:
-        # TIER 2: CONDITIONAL PASS (Requires Overlays)
+        # TIER 2: CONDITIONAL PASS (Requires Overlays, which are already checked globally above)
         if data_comp < 0.7:
             result.can_buy = False
             result.status = STATE_BLOCKED
@@ -236,56 +282,8 @@ def _check_fundamental_integrity(
             result.blocked_by = GATE_SURVIVAL
             result.blocking_reasons.append(f"F-Score={f_score}/9 (Tier 2) nhưng thiếu dữ liệu (Completeness={data_comp*100:.0f}%). Không đủ cơ sở đánh giá.")
             return False
-            
-        # Check Risk Overlays
-        if is_bank and "npl" in result.metrics:
-            npl_val = result.metrics["npl"]
-            if npl_val > 3.0:
-                result.can_buy = False
-                result.status = STATE_BLOCKED
-                result.action_state = ACTION_BLOCKED
-                result.blocked_by = GATE_SURVIVAL
-                result.blocking_reasons.append(f"L2 Archetype: Ngân hàng có nợ xấu cao (NPL={npl_val}% > 3%). Rủi ro vỡ nợ!")
-                return False
-        elif is_sec and "financial_leverage" in result.metrics:
-            lev_val = result.metrics["financial_leverage"]
-            if lev_val > 3.0:
-                result.can_buy = False
-                result.status = STATE_BLOCKED
-                result.action_state = ACTION_BLOCKED
-                result.blocked_by = GATE_SURVIVAL
-                result.blocking_reasons.append(f"L2 Archetype: Công ty CK dùng đòn bẩy quá rủi ro (Leverage={lev_val}x > 3.0x).")
-                return False
-        elif is_re and "debt_equity" in result.metrics:
-            de_val = result.metrics["debt_equity"]
-            if de_val > 1.5:
-                result.can_buy = False
-                result.status = STATE_BLOCKED
-                result.action_state = ACTION_BLOCKED
-                result.blocked_by = GATE_SURVIVAL
-                result.blocking_reasons.append(f"L2 Archetype: BĐS rủi ro thanh khoản (D/E={de_val}x > 1.5x).")
-                return False
-        elif not (is_bank or is_sec or is_re):
-            z_score = result.metrics.get("z_score")
-            if z_score is not None and z_score <= CONTRARIAN_MIN_ZSCORE:
-                result.can_buy = False
-                result.status = STATE_BLOCKED
-                result.action_state = ACTION_BLOCKED
-                result.blocked_by = GATE_SURVIVAL
-                result.blocking_reasons.append(f"L2 Archetype: Phi Tài chính có nguy cơ phá sản (Z-Score={z_score:.2f} <= {CONTRARIAN_MIN_ZSCORE}).")
-                return False
-            de_val = result.metrics.get("debt_equity")
-            if de_val is not None and de_val > CONTRARIAN_MAX_DEBT_EQUITY:
-                result.can_buy = False
-                result.status = STATE_BLOCKED
-                result.action_state = ACTION_BLOCKED
-                result.blocked_by = GATE_SURVIVAL
-                result.blocking_reasons.append(f"L2 Archetype: Đòn bẩy cao (D/E={de_val:.2f}x > {CONTRARIAN_MAX_DEBT_EQUITY:.1f}x).")
-                return False
-
     else:
         # TIER 3: FULL PASS (f_score >= 7)
-        # Bypass Risk Overlays. Do not block.
         pass
 
     # 2. Earnings Revision (Value Trap Check)

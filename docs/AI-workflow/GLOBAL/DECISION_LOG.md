@@ -755,3 +755,12 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
 - **Bối cảnh & Vấn đề:** Đối với các cổ phiếu chu kỳ (Cyclical), lợi nhuận và biên gộp có thể chạm đáy (Earnings Revision Down), nhưng nếu dòng tiền hoạt động kinh doanh (CFO) vẫn dương, đó là tổn thất mang tính chu kỳ (temporary). Ngược lại, nếu CFO âm, rủi ro vỡ nợ hiện hữu và đó là một Value Trap thực sự.
 - **Quyết định lựa chọn:** Thêm điều kiện kiểm tra CFO (`cfo` hoặc `p_cf`) vào Gate Survival. Nếu doanh nghiệp thuộc nhóm Cyclical và có xu hướng giảm lợi nhuận, bắt buộc CFO phải > 0 để được tiếp tục pass (với án phạt Haircut L4). Nếu CFO <= 0, chặn ngay lập tức với lý do: "Cổ phiếu chu kỳ nhưng CFO âm (Dòng tiền cạn kiệt). VALUE TRAP!".
 - **Hệ quả:** Hoàn thiện Conditional Gate cho nhóm cổ phiếu F-Score 4-6, đảm bảo bộ lọc bắt đáy phân biệt được sự hoảng loạn ngắn hạn và sự suy thoái dòng tiền cấu trúc, bảo vệ an toàn vốn tuyệt đối.
+
+---
+
+### [ADR-036] Phase 23.3 - Hard Veto Risk Overlays Independence
+- **Ngày quyết định:** 2026-10-03
+- **Người tham gia:** Client, PO, Senior Dev
+- **Bối cảnh & Vấn đề:** Trong phiên bản trước, các lớp bảo vệ rủi ro vĩ mô (Z-Score, Debt/Equity, NPL) chỉ được kiểm tra nếu F-Score rơi vào Tier 2 (F-Score từ 4 đến 6). Các cổ phiếu có F-Score >= 7 (Tier 3) được đi thẳng, dẫn đến rủi ro bỏ lọt các doanh nghiệp tốt nhưng lạm dụng đòn bẩy quá mức hoặc có rủi ro thanh khoản tiềm ẩn.
+- **Quyết định lựa chọn:** Tách toàn bộ module kiểm tra Hard Veto Risk Overlays ra độc lập và đặt lên trước logic chấm điểm F-Score. Bất kỳ mã nào vi phạm Z-Score, D/E hoặc Event Risk đều bị loại ngay lập tức, bất chấp F-Score cao đến đâu.
+- **Hệ quả:** Hoàn thiện Phase 23. Hệ thống bắt đáy hoạt động vững chãi, độc lập hoàn toàn với điểm số phân tích cơ bản trong việc quản trị rủi ro vỡ nợ, đảm bảo không có ngoại lệ (No Exceptions).
