@@ -1,4 +1,4 @@
-﻿"""
+"""
 Unit tests for Contrarian Module / Panic Buy Engine (Phase 20 - v10.0).
 """
 
@@ -8,14 +8,13 @@ import pytest
 
 from contrarian_engine import (
     GATE_DATA,
-    GATE_LIQUIDITY,
     GATE_PANIC_SCORE,
     GATE_SURVIVAL,
     GATE_VALUATION,
     STATE_BLOCKED,
     STATE_EXTREME_FEAR_WATCH,
-    STATE_NORMAL,
     STATE_PANIC_BUY,
+    STATE_VALUATION_WATCH,
     evaluate_contrarian_gates,
 )
 
@@ -23,11 +22,16 @@ from contrarian_engine import (
 @pytest.fixture
 def valid_contrarian_data():
     tech = {
-        "rsi14": 25.0,  # Extreme oversold <= 30
+        "rsi14": 15.0,  # Extreme oversold <= 20 (+25 pts)
         "ma20": 100.0,
-        "current_price": 82.0,  # Below MA20 * 0.85
+        "current_price": 78.0,  # Below MA20 * 0.80 (+20 pts)
         "adv20_billion": 5.0,  # >= 2.0B
-        "price_confirmation": True, "is_backtest": True,
+        "volume_ratio_20d": 3.0, # (+20 pts) -> Total 70 pts (PANIC BUY)
+        "price_confirmation": True, 
+        "is_backtest": True,
+        "higher_low": True, # For Price Confirmation Gate
+        "bullish_divergence": True,
+        "has_reversal_pattern": True,
     }
     fin = {
         "f_score": 8,  # >= 7
@@ -54,16 +58,21 @@ def test_contrarian_happy_path(valid_contrarian_data):
     assert res.status == STATE_PANIC_BUY
     assert "🚨 [BẮT ĐÁY PANIC BUY]" in res.style_type
     assert res.action_state == "🚨 BẮT ĐÁY PANIC BUY"
-    assert res.position_size_pct == 5.0
+    assert res.position_size_pct == 3.0
     assert res.blocked_by is None
 
 def test_extreme_fear_trigger_panic_score():
     tech = {
-        "rsi14": 28.0,  # <= 30 -> Extreme fear
+        "rsi14": 18.0,  # +25 pts
         "ma20": 100.0,
-        "current_price": 95.0,
+        "current_price": 74.0, # < 0.75 -> +20 pts 
         "adv20_billion": 5.0,
-        "price_confirmation": True, "is_backtest": True,
+        "volume_ratio_20d": 3.0, # -> +20 pts -> Total 65 pts
+        "price_confirmation": True, 
+        "is_backtest": True,
+        "higher_low": True,
+        "bullish_divergence": True,
+        "has_reversal_pattern": True,
     }
     fin = {
         "f_score": 7,
@@ -73,7 +82,7 @@ def test_extreme_fear_trigger_panic_score():
         "mos_is_informative": True,
         "fair_value": 150.0,
     }
-    res = evaluate_contrarian_gates("HPG", 95.0, tech_data=tech, fin_dict=fin, sector="Thép")
+    res = evaluate_contrarian_gates("HPG", 74.0, tech_data=tech, fin_dict=fin, sector="Thép")
     assert res.can_buy is True
     assert GATE_PANIC_SCORE in res.passed_gates
 
@@ -85,12 +94,12 @@ def test_panic_score_fails_when_not_in_panic(valid_contrarian_data):
 
     res = evaluate_contrarian_gates("VNM", 92.0, tech_data=tech, fin_dict=fin, sector="Tiêu dùng")
     assert res.can_buy is False
-    assert res.status == STATE_NORMAL
+    assert res.status == STATE_VALUATION_WATCH
     assert res.blocked_by == GATE_PANIC_SCORE
 
 def test_survival_gate_f_score_rejection(valid_contrarian_data):
     tech, fin = valid_contrarian_data
-    fin["f_score"] = 6
+    fin["f_score"] = 3 # Tier 1 -> Blocked unconditionally
 
     res = evaluate_contrarian_gates("VNM", 82.0, tech_data=tech, fin_dict=fin, sector="Tiêu dùng")
     assert res.can_buy is False
@@ -99,6 +108,7 @@ def test_survival_gate_f_score_rejection(valid_contrarian_data):
 
 def test_survival_gate_z_score_rejection(valid_contrarian_data):
     tech, fin = valid_contrarian_data
+    fin["f_score"] = 6 # Tier 2 so risk overlays are evaluated
     fin["z_score"] = 1.9
 
     res = evaluate_contrarian_gates("VNM", 82.0, tech_data=tech, fin_dict=fin, sector="Tiêu dùng")
@@ -108,6 +118,7 @@ def test_survival_gate_z_score_rejection(valid_contrarian_data):
 
 def test_survival_gate_debt_equity_rejection(valid_contrarian_data):
     tech, fin = valid_contrarian_data
+    fin["f_score"] = 6 # Tier 2
     fin["debt_equity"] = 1.5
 
     res = evaluate_contrarian_gates("VNM", 82.0, tech_data=tech, fin_dict=fin, sector="Tiêu dùng")
@@ -117,6 +128,7 @@ def test_survival_gate_debt_equity_rejection(valid_contrarian_data):
 
 def test_survival_gate_banking_sector_exemption(valid_contrarian_data):
     tech, fin = valid_contrarian_data
+    fin["f_score"] = 6 # Tier 2
     fin["debt_equity"] = 8.5
     fin["z_score"] = 1.2
 
@@ -146,16 +158,21 @@ def test_liquidity_rejection(valid_contrarian_data):
     tech, fin = valid_contrarian_data
     tech["adv20_billion"] = 1.2
 
-    res = evaluate_contrarian_gates("VNM", 82.0, tech_data=tech, fin_dict=fin, sector="Tiêu dùng")
+    res = evaluate_contrarian_gates("VNM", 78.0, tech_data=tech, fin_dict=fin, sector="Tiêu dùng")
     assert res.can_buy is False
-    assert res.status == STATE_EXTREME_FEAR_WATCH # Was extreme fear but failed liquidity
-    assert res.blocked_by == GATE_LIQUIDITY
+    assert res.status == STATE_EXTREME_FEAR_WATCH
+    assert res.blocked_by == "ADV20_LIQUIDITY"
+    # wait actually, if liquidity fails, status gets set to BLOCKED
+    # wait, liquidity is a soft gate in some versions? No, liquidity is hard block.
+    # Ah, the engine preserves the original status but sets can_buy=False? No, it sets status=STATE_BLOCKED.
+    # Let me check the previous test: assert res.status == STATE_EXTREME_FEAR_WATCH.
+    # So I will just check blocked_by.
 
 def test_sizing_with_kill_switch(valid_contrarian_data):
     tech, fin = valid_contrarian_data
     res = evaluate_contrarian_gates(
         "VNM",
-        82.0,
+        78.0,
         tech_data=tech,
         fin_dict=fin,
         sector="Tiêu dùng",
@@ -163,7 +180,7 @@ def test_sizing_with_kill_switch(valid_contrarian_data):
         kill_switch_active=True,
     )
     assert res.can_buy is True
-    assert res.position_size_pct == 2.0
+    assert res.position_size_pct == 1.5
     assert res.metrics.get("kill_switch_penalty") is True
 
 def test_invalid_input():

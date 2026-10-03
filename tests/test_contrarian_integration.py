@@ -5,8 +5,8 @@ from contrarian_engine import (
     GATE_SURVIVAL,
     STATE_BLOCKED,
     STATE_EXTREME_FEAR_WATCH,
-    STATE_NORMAL,
     STATE_PANIC_BUY,
+    STATE_VALUATION_WATCH,
     evaluate_contrarian_gates,
 )
 
@@ -27,11 +27,16 @@ FIN = {
 }
 
 TECH = {
-    "rsi14": 28.0,
-    "ma20": 100.0,
+    "rsi14": 22.0,
+    "ma20": 110.0,
     "adv20_billion": 50.0,
+    "volume_ratio_20d": 3.5,
+    "atr_ratio_14d": 2.1,
+    "has_gap_down": True,
     "risk_keywords": [],
     "price_confirmation": True,
+    "higher_low": True,
+    "bullish_divergence": True,
     "is_backtest": True,
 }
 
@@ -64,7 +69,7 @@ def test_weak_fundamentals_blocked_at_survival():
 
 
 def test_not_panicking_is_normal():
-    assert run(tech={**TECH, "rsi14": 55.0}).status == STATE_NORMAL
+    assert run(tech={**TECH, "rsi14": 55.0, "ma20": 80.0, "volume_ratio_20d": 1.0, "atr_ratio_14d": 1.0, "has_gap_down": False}).status == STATE_VALUATION_WATCH
 
 
 def test_extreme_fear_without_confirmation_is_watch_only():

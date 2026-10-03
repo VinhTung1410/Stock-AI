@@ -26,6 +26,9 @@ def test_get_financial_ratios_with_modern_api():
             "2026-Q2": [15.5, 2.1, 30000.0, 22.5],
         }
     )
+    from data_engine import _financial_cache
+    _financial_cache.clear()
+
     with mock.patch("vnstock.api.financial.Finance.ratio", return_value=mock_df_kbs):
         ratios = get_financial_ratios("FPT")
         assert ratios["symbol"] == "FPT"

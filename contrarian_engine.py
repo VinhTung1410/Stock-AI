@@ -19,13 +19,14 @@ from quant_valuation import calculate_fair_value_and_mos
 CONTRARIAN_MIN_FSCORE = 7
 CONTRARIAN_MIN_ZSCORE = 2.0
 CONTRARIAN_MAX_DEBT_EQUITY = 1.0
-CONTRARIAN_MIN_MOS_PCT = 20.0
-CONTRARIAN_DEEP_MOS_PCT = 30.0  # Require deeper MoS in DOWNTREND
+CONTRARIAN_MIN_MOS_PCT = 15.0  # Tương đương ~17.6% Upside
+CONTRARIAN_DEEP_MOS_PCT = 20.0  # Require deeper MoS in DOWNTREND (Tương đương 25% Upside)
 CONTRARIAN_MAX_RSI_NORMAL = 35.0  # > 35 is NORMAL
 CONTRARIAN_MAX_RSI_WATCH = 35.0   # <= 35 is NEAR-PANIC WATCH
 CONTRARIAN_MAX_RSI_EXTREME = 30.0 # <= 30 is EXTREME FEAR
 CONTRARIAN_MIN_ADV20_BILLION = 2.0
 CONTRARIAN_MAX_POSITION_SIZE_PCT = 5.0
+CONTRARIAN_MAX_PANIC_SIZE_PCT = 3.0 # Giảm size bắt đáy dao rơi xuống 3% tối đa
 CONTRARIAN_STOP_LOSS_PCT = 0.08
 
 # Gate Names
@@ -42,6 +43,7 @@ GATE_DATA = "DATA_GATE"
 STATE_NORMAL = "NORMAL"
 STATE_NEAR_PANIC_WATCH = "NEAR_PANIC_WATCH"
 STATE_EXTREME_FEAR_WATCH = "EXTREME_FEAR_WATCH"
+STATE_VALUATION_WATCH = "VALUATION_WATCH"
 STATE_PANIC_BUY = "PANIC_BUY"
 STATE_BLOCKED = "BLOCKED"
 
@@ -77,6 +79,7 @@ class ContrarianResult:
     stop_loss: float = 0.0
     fair_value: float = 0.0
     mos_pct: float = 0.0
+    upside_pct: float = 0.0
     risk_reward: float = 0.0
     metrics: Dict[str, Any] = field(default_factory=dict)
 
@@ -126,10 +129,43 @@ def _extract_z_score(fin: Dict[str, Any], sector: str) -> Optional[float]:
     return float(z_score)
 
 
+def _get_stress_haircut(symbol: str, sector: str, fin_dict: Dict[str, Any], tech_data: Dict[str, Any], result: ContrarianResult) -> float:
+    from quant_valuation import classify_stock_archetype
+    archetype = classify_stock_archetype(symbol, sector)
+    
+    haircut = 0.15 # Base haircut cho doanh nghiệp chất lượng
+    
+    if archetype == "REAL_ESTATE":
+        haircut = 0.25
+    elif archetype == "CYCLICAL":
+        haircut = 0.25
+        if result.metrics.get("cyclical_damage", False):
+            haircut = 0.35 # Haircut sâu hơn cho CP chu kỳ đang ở đáy lợi nhuận
+    elif archetype == "BANK":
+        haircut = 0.20
+        npl = float(fin_dict.get("Tỷ lệ nợ xấu") or fin_dict.get("npl") or 0.0)
+        if npl > 2.0:
+            haircut += 0.10
+    else: # GROWTH_COMPOUNDER
+        haircut = 0.15
+        
+    risk_kw = tech_data.get("risk_keywords", "")
+    if isinstance(risk_kw, list):
+        risk_kw = " ".join(risk_kw)
+    if "phạt" in risk_kw.lower() or "cảnh báo" in risk_kw.lower() or "kiểm soát" in risk_kw.lower():
+        haircut += 0.15
+        
+    core_ratio = fin_dict.get("core_earnings_ratio")
+    if core_ratio is not None and float(core_ratio) < 0.5:
+        haircut += 0.10
+        
+    return min(haircut, 0.60)
+
 def _check_fundamental_integrity(
     symbol: str,
     current_price: float,
     fin_dict: Optional[Dict[str, Any]],
+    tech_data: Dict[str, Any],
     sector: str,
     required_mos: float,
     result: ContrarianResult,
@@ -141,27 +177,69 @@ def _check_fundamental_integrity(
         result.blocked_by = GATE_SURVIVAL
         result.blocking_reasons.append("Thiếu báo cáo tài chính.")
         return False
-
-    # 1. Sinh tồn
-    f_score = _extract_f_score(fin_dict)
+    from indicators import calculate_piotroski_f_score
+    f_res = calculate_piotroski_f_score(fin_dict or {}, sector)
+    f_score = f_res.get("score", 0)
+    data_comp = f_res.get("data_completeness", 1.0)
+    
     result.metrics["f_score"] = f_score
-    if f_score < CONTRARIAN_MIN_FSCORE:
-        result.can_buy = False
-        result.status = STATE_BLOCKED
-        result.action_state = ACTION_BLOCKED
-        result.blocked_by = GATE_SURVIVAL
-        result.blocking_reasons.append(f"F-Score={f_score}/9 < {CONTRARIAN_MIN_FSCORE}.")
-        return False
-
+    result.metrics["f_score_details"] = f_res
+    
     is_bank = sector in (SECTOR_BANKING, "Bank", "Banking", "Ngân hàng")
     is_re = sector in ("Bất động sản", "Real Estate", "Bất động sản Khu công nghiệp")
     is_sec = sector in ("Chứng khoán", "Financial Services")
 
+    # Extract metrics independently so they're available for L4 Stress-MoS
     if is_bank:
         npl = fin_dict.get("Tỷ lệ nợ xấu") or fin_dict.get("npl")
         if npl is not None:
-            npl_val = float(npl)
-            result.metrics["npl"] = npl_val
+            result.metrics["npl"] = float(npl)
+    elif is_sec:
+        margin_ratio = fin_dict.get("financial_leverage") or fin_dict.get("Đòn bẩy tài chính")
+        if margin_ratio is not None:
+            result.metrics["financial_leverage"] = float(margin_ratio)
+    elif is_re:
+        debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_to_equity")
+        if debt_equity is not None:
+            result.metrics["debt_equity"] = float(debt_equity)
+    else:
+        z_score = _extract_z_score(fin_dict, sector)
+        result.metrics["z_score"] = z_score
+        debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_to_equity")
+        if debt_equity is not None:
+            result.metrics["debt_equity"] = float(debt_equity)
+
+    # 3-Tier F-Score Gating (Task-23.1)
+    if f_score < 4:
+        # TIER 1: BLOCK UNCONDITIONALLY (Value Trap)
+        if data_comp < 0.7:
+            result.can_buy = False
+            result.status = STATE_BLOCKED
+            result.action_state = "DATA / FUNDAMENTAL REVIEW REQUIRED"
+            result.blocked_by = GATE_SURVIVAL
+            result.blocking_reasons.append(f"F-Score={f_score}/9 nhưng thiếu dữ liệu (Completeness={data_comp*100:.0f}%). Yêu cầu Audit Data.")
+            return False
+        else:
+            result.can_buy = False
+            result.status = STATE_BLOCKED
+            result.action_state = ACTION_BLOCKED
+            result.blocked_by = GATE_SURVIVAL
+            result.blocking_reasons.append(f"F-Score={f_score}/9 < 4 (Dữ liệu xác nhận). VALUE TRAP RÕ RÀNG!")
+            return False
+
+    elif f_score < CONTRARIAN_MIN_FSCORE:
+        # TIER 2: CONDITIONAL PASS (Requires Overlays)
+        if data_comp < 0.7:
+            result.can_buy = False
+            result.status = STATE_BLOCKED
+            result.action_state = "DATA / FUNDAMENTAL REVIEW REQUIRED"
+            result.blocked_by = GATE_SURVIVAL
+            result.blocking_reasons.append(f"F-Score={f_score}/9 (Tier 2) nhưng thiếu dữ liệu (Completeness={data_comp*100:.0f}%). Không đủ cơ sở đánh giá.")
+            return False
+            
+        # Check Risk Overlays
+        if is_bank and "npl" in result.metrics:
+            npl_val = result.metrics["npl"]
             if npl_val > 3.0:
                 result.can_buy = False
                 result.status = STATE_BLOCKED
@@ -169,11 +247,8 @@ def _check_fundamental_integrity(
                 result.blocked_by = GATE_SURVIVAL
                 result.blocking_reasons.append(f"L2 Archetype: Ngân hàng có nợ xấu cao (NPL={npl_val}% > 3%). Rủi ro vỡ nợ!")
                 return False
-    elif is_sec:
-        margin_ratio = fin_dict.get("financial_leverage") or fin_dict.get("Đòn bẩy tài chính")
-        if margin_ratio is not None:
-            lev_val = float(margin_ratio)
-            result.metrics["financial_leverage"] = lev_val
+        elif is_sec and "financial_leverage" in result.metrics:
+            lev_val = result.metrics["financial_leverage"]
             if lev_val > 3.0:
                 result.can_buy = False
                 result.status = STATE_BLOCKED
@@ -181,11 +256,8 @@ def _check_fundamental_integrity(
                 result.blocked_by = GATE_SURVIVAL
                 result.blocking_reasons.append(f"L2 Archetype: Công ty CK dùng đòn bẩy quá rủi ro (Leverage={lev_val}x > 3.0x).")
                 return False
-    elif is_re:
-        debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_to_equity")
-        if debt_equity is not None:
-            de_val = float(debt_equity)
-            result.metrics["debt_equity"] = de_val
+        elif is_re and "debt_equity" in result.metrics:
+            de_val = result.metrics["debt_equity"]
             if de_val > 1.5:
                 result.can_buy = False
                 result.status = STATE_BLOCKED
@@ -193,22 +265,17 @@ def _check_fundamental_integrity(
                 result.blocked_by = GATE_SURVIVAL
                 result.blocking_reasons.append(f"L2 Archetype: BĐS rủi ro thanh khoản (D/E={de_val}x > 1.5x).")
                 return False
-    else:
-        z_score = _extract_z_score(fin_dict, sector)
-        result.metrics["z_score"] = z_score
-        if z_score is not None and z_score <= CONTRARIAN_MIN_ZSCORE:
-            result.can_buy = False
-            result.status = STATE_BLOCKED
-            result.action_state = ACTION_BLOCKED
-            result.blocked_by = GATE_SURVIVAL
-            result.blocking_reasons.append(f"L2 Archetype: Z-Score={z_score:.2f} <= {CONTRARIAN_MIN_ZSCORE} (Rủi ro phá sản).")
-            return False
-
-        debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_to_equity")
-        if debt_equity is not None:
-            de_val = float(debt_equity)
-            result.metrics["debt_equity"] = de_val
-            if de_val > CONTRARIAN_MAX_DEBT_EQUITY:
+        elif not (is_bank or is_sec or is_re):
+            z_score = result.metrics.get("z_score")
+            if z_score is not None and z_score <= CONTRARIAN_MIN_ZSCORE:
+                result.can_buy = False
+                result.status = STATE_BLOCKED
+                result.action_state = ACTION_BLOCKED
+                result.blocked_by = GATE_SURVIVAL
+                result.blocking_reasons.append(f"L2 Archetype: Phi Tài chính có nguy cơ phá sản (Z-Score={z_score:.2f} <= {CONTRARIAN_MIN_ZSCORE}).")
+                return False
+            de_val = result.metrics.get("debt_equity")
+            if de_val is not None and de_val > CONTRARIAN_MAX_DEBT_EQUITY:
                 result.can_buy = False
                 result.status = STATE_BLOCKED
                 result.action_state = ACTION_BLOCKED
@@ -216,22 +283,38 @@ def _check_fundamental_integrity(
                 result.blocking_reasons.append(f"L2 Archetype: Đòn bẩy cao (D/E={de_val:.2f}x > {CONTRARIAN_MAX_DEBT_EQUITY:.1f}x).")
                 return False
 
+    else:
+        # TIER 3: FULL PASS (f_score >= 7)
+        # Bypass Risk Overlays. Do not block.
+        pass
+
     # 2. Earnings Revision (Value Trap Check)
     margin_trend = fin_dict.get("margin_trend", "")
-    if margin_trend == "down_2_quarters" or fin_dict.get("earnings_declining"):
-        result.can_buy = False
-        result.status = STATE_BLOCKED
-        result.action_state = ACTION_BLOCKED
-        result.blocked_by = GATE_SURVIVAL
-        result.blocking_reasons.append("Lợi nhuận/Biên gộp đang lao dốc (Fundamental Damage). VALUE TRAP!")
-        return False
+    is_earnings_declining = margin_trend == "down_2_quarters" or fin_dict.get("earnings_declining")
+    
+    if is_earnings_declining:
+        from quant_valuation import classify_stock_archetype
+        archetype = classify_stock_archetype(symbol, sector)
+        if archetype == "CYCLICAL":
+            result.metrics["cyclical_damage"] = True
+            # Không block, nhưng sẽ ghi nhận để tăng haircut ở L4 và giảm size ở L6
+            result.blocking_reasons.append("Lợi nhuận giảm (Đáy chu kỳ). Sẽ áp dụng chiết khấu sâu & giảm vốn.")
+        else:
+            result.can_buy = False
+            result.status = STATE_BLOCKED
+            result.action_state = ACTION_BLOCKED
+            result.blocked_by = GATE_SURVIVAL
+            result.blocking_reasons.append("Lợi nhuận/Biên gộp lao dốc (Structural Damage). VALUE TRAP!")
+            return False
 
     # 3. Valuation & L4 Stress-MoS
     if "mos_pct" in fin_dict and "mos_is_informative" in fin_dict:
+        mos_val = float(fin_dict["mos_pct"])
+        calc_fv = current_price / (1.0 - mos_val / 100.0) if mos_val < 100.0 else current_price * 10.0
         val_res = {
-            "mos_pct": float(fin_dict["mos_pct"]),
+            "mos_pct": mos_val,
             "mos_is_informative": bool(fin_dict["mos_is_informative"]),
-            "fair_value": float(fin_dict.get("fair_value", current_price * (1.0 + float(fin_dict["mos_pct"]) / 100.0))),
+            "fair_value": float(fin_dict.get("fair_value", calc_fv)),
         }
     else:
         val_res = calculate_fair_value_and_mos(
@@ -242,14 +325,20 @@ def _check_fundamental_integrity(
     mos_is_informative = bool(val_res.get("mos_is_informative", False))
     fair_value = float(val_res.get("fair_value", 0.0))
 
-    # L4: Stress-MoS (Haircut Valuation by 20% to simulate earnings crash)
-    stress_fair_value = fair_value * 0.80
-    stress_mos_pct = ((stress_fair_value - current_price) / current_price) * 100.0 if current_price > 0 else 0.0
+    # L4: Dynamic Stress-MoS (Haircut Valuation)
+    stress_haircut = _get_stress_haircut(symbol, sector, fin_dict, tech_data, result)
+    result.metrics["stress_haircut_applied"] = stress_haircut
+    
+    stress_fair_value = fair_value * (1.0 - stress_haircut)
+    stress_upside_pct = ((stress_fair_value - current_price) / current_price) * 100.0 if current_price > 0 else 0.0
+    stress_mos_pct = ((stress_fair_value - current_price) / stress_fair_value) * 100.0 if stress_fair_value > 0 else 0.0
 
     result.mos_pct = stress_mos_pct # Gán MoS đã stress vào kết quả để UI hiện
+    result.upside_pct = stress_upside_pct
     result.fair_value = stress_fair_value
     result.metrics["base_mos_pct"] = base_mos_pct
     result.metrics["mos_pct"] = stress_mos_pct
+    result.metrics["upside_pct"] = stress_upside_pct
     result.metrics["base_fair_value"] = fair_value
     result.metrics["fair_value"] = stress_fair_value
     result.metrics["mos_is_informative"] = mos_is_informative
@@ -279,46 +368,63 @@ def _calculate_panic_score(current_price: float, tech_data: Dict[str, Any]) -> f
     rsi = float(tech_data.get("rsi14") or tech_data.get("rsi") or 50.0)
     ma20 = float(tech_data.get("ma20") or 0.0)
     
-    rsi_score = 0.0
+    score = 0.0
+    
+    # 1. RSI Score (Max 30)
     if rsi <= 25.0:
-        rsi_score = 70.0
-    elif rsi <= 30.0:
-        rsi_score = 50.0 + (30.0 - rsi) / 5.0 * 20.0
+        score += 30.0
     elif rsi <= 35.0:
-        rsi_score = 25.0 + (35.0 - rsi) / 5.0 * 25.0
-    elif rsi <= 40.0:
-        rsi_score = (40.0 - rsi) / 5.0 * 25.0
+        score += 30.0 - (rsi - 25.0) * 3.0
         
-    dev_score = 0.0
+    # 2. Drawdown / Deviation from MA20 (Max 20)
     if ma20 > 0:
         pct_below = (1.0 - (current_price / ma20)) * 100.0
-        if pct_below >= 20.0:
-            dev_score = 30.0
+        if pct_below >= 15.0:
+            score += 20.0
         elif pct_below > 5.0:
-            dev_score = (pct_below - 5.0) / 15.0 * 30.0
+            score += (pct_below - 5.0) * 2.0
             
-    return round(min(100.0, rsi_score + dev_score), 1)
+    # 3. Volume Shock (Max 20)
+    vol_ratio = float(tech_data.get("volume_ratio_20d") or 1.0)
+    if vol_ratio >= 3.0:
+        score += 20.0
+    elif vol_ratio > 1.5:
+        score += (vol_ratio - 1.5) * 13.33
+        
+    # 4. ATR Expansion / Volatility (Max 15)
+    atr_ratio = float(tech_data.get("atr_ratio_14d") or 1.0)
+    if atr_ratio >= 2.0:
+        score += 15.0
+    elif atr_ratio > 1.2:
+        score += (atr_ratio - 1.2) * 18.75
+        
+    # 5. Gap Shock / Velocity (Max 15)
+    if tech_data.get("has_gap_down", False):
+        score += 15.0
+        
+    return round(min(100.0, score), 1)
 
 
 def _evaluate_panic_state(current_price: float, tech_data: Dict[str, Any], result: ContrarianResult) -> bool:
     panic_score = _calculate_panic_score(current_price, tech_data)
     result.metrics["panic_score"] = panic_score
-    rsi = float(tech_data.get("rsi14") or tech_data.get("rsi") or 50.0)
     
-    if rsi > CONTRARIAN_MAX_RSI_WATCH:
+    if panic_score < 40.0:
         result.can_buy = False
-        result.status = STATE_NORMAL
-        result.action_state = ACTION_NO_SETUP
+        result.status = STATE_VALUATION_WATCH
+        result.action_state = "👀 ĐỊNH GIÁ RẺ (VALUATION WATCH)"
+        result.style_type = STYLE_WATCH_ZONE
+        result.setup_type = f"👀 ĐỊNH GIÁ RẺ (Score={panic_score:.0f}, MoS: {result.mos_pct:+.1f}%)"
         result.blocked_by = GATE_PANIC_SCORE
-        result.blocking_reasons.append("Chưa kích hoạt trạng thái hoảng loạn cực đoan.")
+        result.blocking_reasons.append(f"Chưa kích hoạt trạng thái hoảng loạn (Score={panic_score} < 40), chuyển sang theo dõi định giá.")
         return False
         
     result.passed_gates.append(GATE_PANIC_SCORE)
     
-    trigger_txt = f"RSI={rsi:.1f} & Score={panic_score}/100"
+    trigger_txt = f"Score={panic_score:.0f}/100"
     result.metrics["extreme_fear_trigger"] = trigger_txt
     
-    if rsi <= CONTRARIAN_MAX_RSI_EXTREME:
+    if panic_score >= 70.0:
         result.status = STATE_EXTREME_FEAR_WATCH
         result.action_state = ACTION_WATCH_EXTREME
         result.style_type = STYLE_WATCH_ZONE
@@ -332,25 +438,41 @@ def _evaluate_panic_state(current_price: float, tech_data: Dict[str, Any], resul
     return True
 
 
-def _check_price_confirmation(tech_data: Dict[str, Any], result: ContrarianResult) -> bool:
+def _check_price_confirmation(current_price: float, tech_data: Dict[str, Any], result: ContrarianResult) -> bool:
     has_reversal = tech_data.get("has_reversal_pattern", False)
     bullish_div = tech_data.get("bullish_divergence", False)
     price_confirmation = tech_data.get("price_confirmation", False)
     volume_contraction = tech_data.get("volume_contraction", False)
     higher_low = tech_data.get("higher_low", False)
+    ma20 = float(tech_data.get("ma20") or 0.0)
 
-    # L5: Yêu cầu xác nhận bằng Cấu trúc (Higher-low) hoặc Cạn cung (Volume contraction) + Reversal
-    is_structurally_confirmed = higher_low or (has_reversal and volume_contraction) or bullish_div or price_confirmation
+    conf_score = 0
+    if higher_low:
+        conf_score += 25
+    if bullish_div:
+        conf_score += 20
+    if price_confirmation:
+        conf_score += 20
+    if current_price > ma20 and ma20 > 0:
+        conf_score += 20
+    if has_reversal:
+        conf_score += 15
+    if volume_contraction:
+        conf_score += 10
+    
+    result.metrics["price_confirmation_score"] = conf_score
+    is_structurally_confirmed = conf_score >= 60
 
-    import datetime
-    now = datetime.datetime.now()
-    is_late_session = now.hour >= 14 and now.minute >= 15
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+    is_late_session = now.hour > 14 or (now.hour == 14 and now.minute >= 15)
     is_backtest = tech_data.get("is_backtest", False)
 
     if not is_structurally_confirmed:
         result.can_buy = False
         result.blocked_by = GATE_PRICE_CONFIRM
-        result.blocking_reasons.append("L5 Structure: Chưa có cấu trúc xác nhận đáy (Thiếu Higher-Low hoặc Cạn cung). Dao đang rơi!")
+        result.blocking_reasons.append(f"L5 Structure: Score={conf_score} < 60. Chưa có cấu trúc xác nhận đáy mạnh. Dao đang rơi!")
         return False
 
     if not is_late_session and not is_backtest:
@@ -381,7 +503,13 @@ def _check_liquidity_and_size(
         return False
 
     penalized_kelly = (max(0.01, half_kelly_f) / 2.0) * 100.0
-    base_size = min(CONTRARIAN_MAX_POSITION_SIZE_PCT, max(1.0, penalized_kelly))
+    
+    # Bắt đáy Panic Buy cần position size nhỏ hơn bình thường để thăm dò
+    max_size = CONTRARIAN_MAX_PANIC_SIZE_PCT
+    if result.metrics.get("cyclical_damage", False):
+        max_size = min(max_size, 2.0) # Dao rơi ngành chu kỳ tối đa 2%
+        
+    base_size = min(max_size, max(1.0, penalized_kelly))
 
     if kill_switch_active:
         base_size = round(base_size * 0.5, 2)
@@ -426,14 +554,14 @@ def evaluate_contrarian_gates(
     if not _check_governance_and_event_risk(tech_data or {}, res):
         return res
 
-    if not _check_fundamental_integrity(symbol, current_price, fin_dict, sector, required_mos, res):
+    if not _check_fundamental_integrity(symbol, current_price, fin_dict, tech_data or {}, sector, required_mos, res):
         return res
 
     if not _evaluate_panic_state(current_price, tech_data or {}, res):
         return res
         
     if res.status == STATE_EXTREME_FEAR_WATCH:
-        if _check_price_confirmation(tech_data or {}, res):
+        if _check_price_confirmation(current_price, tech_data or {}, res):
             if _check_liquidity_and_size(current_price, tech_data, half_kelly_f, kill_switch_active, res):
                 res.status = STATE_PANIC_BUY
                 res.can_buy = True

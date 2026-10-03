@@ -19,9 +19,9 @@ from contrarian_engine import (
 def fpt_derating_data():
     """FPT: Bị bán lây, tài chính vững mạnh, không có event risk."""
     tech = {
-        "rsi14": 32.0,  # NEAR PANIC WATCH
+        "rsi14": 25.0,  # <= 25 -> 30 pts
         "ma20": 100.0,
-        "current_price": 82.0,
+        "current_price": 82.0, # 18% drawdown -> 20 pts (Total 50 pts -> NEAR_PANIC_WATCH)
         "adv20_billion": 50.0,
         "risk_keywords": "",
         "price_confirmation": True,  # Có tín hiệu đảo chiều
@@ -42,9 +42,10 @@ def fpt_derating_data():
 def dgc_value_trap_data():
     """DGC: Bị bán tháo do sự kiện kiểm toán hoặc LN suy giảm (Value Trap)."""
     tech = {
-        "rsi14": 20.0,
+        "rsi14": 15.0, # 30 pts
         "ma20": 80.0,
-        "current_price": 60.0,
+        "current_price": 60.0, # 25% drawdown -> 20 pts
+        "volume_ratio_20d": 3.0, # 20 pts (Total 70 pts)
         "adv20_billion": 30.0,
         "risk_keywords": ["kiểm toán ngoại trừ"],  # Event Risk!
         "price_confirmation": True,
@@ -74,7 +75,11 @@ def test_fpt_derating_watch_only(fpt_derating_data):
 def test_fpt_derating_buy(fpt_derating_data):
     """FPT rớt thêm (RSI <= 30), có confirm -> Mua."""
     tech, fin = fpt_derating_data
-    tech["rsi14"] = 28.0
+    tech["rsi14"] = 15.0
+    tech["volume_ratio_20d"] = 3.0
+    tech["higher_low"] = True
+    tech["bullish_divergence"] = True
+    tech["has_reversal_pattern"] = True
     res = evaluate_contrarian_gates("FPT", 82.0, tech_data=tech, fin_dict=fin, sector="Công nghệ")
     assert res.can_buy is True
     assert res.status == STATE_PANIC_BUY
@@ -92,11 +97,11 @@ def test_dgc_value_trap_event_risk(dgc_value_trap_data):
     assert any("kiểm toán ngoại trừ" in r for r in res.blocking_reasons)
 
 
-def test_dgc_value_trap_fundamental_damage(dgc_value_trap_data):
-    """DGC bị chặn vì LNST/biên gộp lao dốc (Earnings Revision down), dù RSI 20."""
+def test_mwg_value_trap_fundamental_damage(dgc_value_trap_data):
+    """MWG bị chặn vì LNST/biên gộp lao dốc (Earnings Revision down), dù RSI 20."""
     tech, fin = dgc_value_trap_data
     tech["risk_keywords"] = []  # Bỏ event risk để test fundamental damage
-    res = evaluate_contrarian_gates("DGC", 60.0, tech_data=tech, fin_dict=fin, sector="Hóa chất")
+    res = evaluate_contrarian_gates("MWG", 60.0, tech_data=tech, fin_dict=fin, sector="Tiêu dùng")
     assert res.can_buy is False
     assert res.status == STATE_BLOCKED
     assert res.blocked_by == "SURVIVAL_QUALITY"
@@ -104,9 +109,9 @@ def test_dgc_value_trap_fundamental_damage(dgc_value_trap_data):
 
 
 def test_downtrend_macro_regime_hurdle(fpt_derating_data):
-    """Trong DOWNTREND, yêu cầu MoS >= 30% thay vì 20%."""
+    """Trong DOWNTREND, yêu cầu MoS >= 20% thay vì 15%."""
     tech, fin = fpt_derating_data
-    fin["fair_value"] = 128.0  # Tạo Stress-MoS ~24.8% (Pass ở Uptrend nhưng Fail ở Downtrend)
+    fin["fair_value"] = 120.0  # Tạo Stress-MoS ~19.6% (Pass ở Uptrend 15% nhưng Fail ở Downtrend 20%)
     
     # 1. Uptrend -> Pass Quality Gate (Vào Near Panic)
     res_up = evaluate_contrarian_gates("FPT", 82.0, tech_data=tech, fin_dict=fin, sector="Công nghệ", macro_regime="UPTREND")

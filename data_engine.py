@@ -2834,6 +2834,16 @@ KBS_RATIO_MAPPING = {
     "ROE bình quân 4 quý gần nhất": "roe",
     "ROA bình quân 4 quý gần nhất": "roa",
     "Tỷ suất cổ tức": "dividend_yield",
+    "Tỷ suất lợi nhuận gộp biên": "gross_margin",
+    "Tỷ suất sinh lợi trên doanh thu thuần": "net_margin",
+    "Chỉ số giá thị trường trên doanh thu thuần (P/S)": "ps",
+    "Giá trị doanh nghiệp trên lợi nhuận trước thuế, khấu hao và lãi vay (EV/EBITDA)": "ev_ebitda",
+    "Tỷ số thanh toán hiện hành (ngắn hạn)": "current_ratio",
+    "Tỷ số thanh toán nhanh": "quick_ratio",
+    "Tỷ số Nợ vay trên Vốn chủ sở hữu": "debt_equity",
+    "Tỷ số Nợ trên Vốn chủ sở hữu": "financial_leverage",
+    "Tỷ suất sinh lợi trên vốn dài hạn bình quân (ROCE)": "roic",
+    "Dòng tiền từ HĐKD trên Tổng tài sản": "p_cf",
 }
 
 
@@ -2915,16 +2925,16 @@ def get_financial_ratios(symbol: str) -> dict:
             "roe": kbs_data.get("roe"),
             "roa": kbs_data.get("roa"),
             "dividend_yield": kbs_data.get("dividend_yield"),
-            "ps": None,
-            "ev_ebitda": None,
-            "p_cf": None,
-            "roic": None,
-            "debt_equity": None,
-            "financial_leverage": None,
-            "gross_margin": None,
-            "net_margin": None,
-            "current_ratio": None,
-            "quick_ratio": None,
+            "ps": kbs_data.get("ps"),
+            "ev_ebitda": kbs_data.get("ev_ebitda"),
+            "p_cf": kbs_data.get("p_cf"),
+            "roic": kbs_data.get("roic"),
+            "debt_equity": kbs_data.get("debt_equity"),
+            "financial_leverage": kbs_data.get("financial_leverage"),
+            "gross_margin": kbs_data.get("gross_margin"),
+            "net_margin": kbs_data.get("net_margin"),
+            "current_ratio": kbs_data.get("current_ratio"),
+            "quick_ratio": kbs_data.get("quick_ratio"),
             "market_cap_bil": None,
             "audit_trail": {"source": "KBS_Primary", "period": kbs_period},
         }
@@ -2963,7 +2973,7 @@ def get_financial_ratios(symbol: str) -> dict:
                             net_margin *= 100
                         market_cap = get_m("Vốn hóa")
 
-                        base_data.update({
+                        new_data = {
                             "ps": get_m("P/S"),
                             "ev_ebitda": get_m("EV/EBITDA"),
                             "p_cf": get_m("Giá/ Dòng tiền"),
@@ -2975,7 +2985,10 @@ def get_financial_ratios(symbol: str) -> dict:
                             "current_ratio": get_m("Hệ số thanh toán hiện hành"),
                             "quick_ratio": get_m("Hệ số thanh toán nhanh"),
                             "market_cap_bil": round(market_cap / 1e9, 1) if market_cap is not None else None,
-                        })
+                        }
+                        for k, v in new_data.items():
+                            if v is not None and base_data.get(k) is None:
+                                base_data[k] = v
                         base_data["audit_trail"]["vci_supplemented"] = True
                     else:
                         base_data["audit_trail"]["is_stale_legacy"] = True

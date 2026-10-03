@@ -1,4 +1,4 @@
-﻿# 📓 GLOBAL: DECISION LOG (NHẬT KÝ QUYẾT ĐỊNH HỆ THỐNG - ADR)
+# 📓 GLOBAL: DECISION LOG (NHẬT KÝ QUYẾT ĐỊNH HỆ THỐNG - ADR)
 
 Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Trọng yếu (Architectural Decision Records - ADR) của dự án Stock-AI nhằm đảm bảo tính kế thừa, minh bạch lý do đằng sau các thay đổi và tránh lặp lại sai lầm trong quá khứ.
 
@@ -706,4 +706,42 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   4. B? sung L4 Stress-MoS: Ph?t Fair Value 20% m� ph?ng EPS s?p, y�u c?u bi�n an to�n th?c ch?t.
   5. B? sung L5 Structural Confirmation: Ch? x�c nh?n mua khi c� volume c?n ki?t, c?u tr�c d�y sau cao hon v� sau 14:15.
 - **H? qu?:** Ho�n to�n lo?i b? r?i ro Value Trap, gi? l?i c�c m� t?t ? tr?ng th�i WATCH thay v� REJECT, ch?ng l?i h?i ch?ng Falling Knife.
+
+
+---
+
+### [ADR-033] Phase 22 - Contrarian Engine v11.1 (MoS Semantics, Valuation Watch, Dynamic Size/Haircut)
+- **Ngày quyết định:** 2026-10-03
+- **Người tham gia:** Client, PO, Senior Dev
+- **Bối cảnh & Vấn đề:**
+  1. Sai lệch hệ quy chiếu MoS: Thuật ngữ Margin of Safety bị tính nhầm thành Upside = `(FV - Price) / Price` trong tầng contrarian.
+  2. Bẫy giờ server: Lỗi lệch múi giờ trên production (`now.hour >= 14 and now.minute >= 15`) do máy chủ chạy UTC dẫn đến bot đánh giá sai giờ ATC.
+  3. Tư duy "Trắng - Đen" trong kiến trúc: Cổ phiếu rơi khỏi Panic Gate (RSI > 35) bị trả về `STATE_NORMAL` cào bằng, lãng phí cơ hội quan sát định giá rẻ.
+  4. Trừng phạt cứng nhắc Value Trap: Cổ phiếu chu kỳ (Cyclical) ở đáy lợi nhuận bị block cứng.
+- **Quyết định lựa chọn:**
+  1. **Chuẩn hóa công thức MoS:** Sử dụng `mos_pct = (FV - Price) / FV`, song song tính `upside_pct`.
+  2. **ZoneInfo & Timezone Check:** Force `Asia/Ho_Chi_Minh` và sửa logic giờ.
+  3. **Kiến trúc phân lớp trạng thái:** Sinh ra trạng thái `VALUATION_WATCH` cho các mã RSI ổn định nhưng định giá siêu hấp dẫn.
+  4. **Cyclical Exemption:** Không block cứng Value Trap nếu `archetype == "CYCLICAL"`.
+  5. **Dynamic Haircut & Sizing:** Tùy biến stress haircut (15% - 60%) dựa trên sector và rủi ro. Giảm max position size bắt đáy về 3.0%.
+  6. **Định lượng đa biến (Multi-factor):** Panic Score 100 điểm với 5 tham số. Price Confirmation Score 100 điểm (pass >= 60).
+- **Hệ quả:**
+  - Hoàn thiện module bắt đáy với sự thận trọng tuyệt đối. Codebase pass 100% test suites.
+
+---
+
+### [ADR-034] Phase 23.1 - Advanced F-Score 3-Tier Architecture & Macro Overlays
+- **Ng�y quy?t d?nh:** 2026-10-03
+- **Ngu?i tham gia:** Client, PO, Senior Dev
+- **B?i c?nh & V?n d?:**
+  1. H? th?ng cu s? d?ng ngu?ng F-Score tinh (Hard Gate < 7 l� ch?n). �i?u n�y d?n d?n vi?c b? l? c�c c? phi?u t?t dang ? v�ng d�y l?i nhu?n (Cyclical) ho?c c� d?u hi?u ph?c h?i nhung F-Score ch? d?t 4-6.
+  2. Ph? thu?c qu� nhi?u v�o F-Score m� thi?u c�c m�ng l?c (Risk Overlays) r?i ro vi m� nhu thanh kho?n (ADV20) hay kh? nang ph� s?n (Z-Score) v� n? vay (D/E).
+  3. ��nh d?ng c�c m� thi?u d? li?u F-Score v?i c�c m� c� s?c kh?e t�i ch�nh y?u k�m th?c s?.
+- **Quy?t d?nh l?a ch?n:**
+  1. **Ki?n tr�c F-Score 3-Tier:** Chuy?n d?i sang h? th?ng 3 t?ng: Tier 1 (F < 4: Hard Block), Tier 2 (F t? 4-6: C?n qua Risk Overlays), Tier 3 (F >= 7: B? qua Risk Overlays).
+  2. **Risk Overlays d?c l?p:** B? sung c�c ch?t ch?n Z-Score, Debt/Equity theo t?ng Archetype (B?t d?ng s?n, Ng�n h�ng, v.v.).
+  3. **Ph�n bi?t Value Trap v� Cyclical:** C�c m� chu k? (Cyclical) c� F-Score th?p kh�ng b? ch?n t?c th?i m� b? �p d?ng Haircut (gi?m gi� tr? th?c) m?nh ? bu?c Valuation MoS, ngan r?i ro Value Trap m?t c�ch h?p l�.
+- **H? qu?:**
+  - H? th?ng Contrarian d� ph?n ?ng linh ho?t hon v?i nh�m c? phi?u c� F-Score 4-6, k?t h?p ch?t ch? v?i c�c ch? s? r?i ro (Z-Score, D/E).
+  - Vu?t qua to�n b? 19/19 test cases, d?m b?o h? th?ng ch?n ch�nh x�c Value Trap m� kh�ng b? ch?n l?m m� t?t.
 

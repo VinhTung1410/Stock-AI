@@ -50,42 +50,36 @@ def _get_f_score_rating(score: int) -> str:
     return "YẾU / RỦI RO"
 
 
-def _calc_profitability_points(fin_dict: dict, breakdown: dict) -> int:
-    roa = fin_dict.get("roa")
-    p_cf = fin_dict.get("p_cf")
-    roe = fin_dict.get("roe")
-    net_margin = fin_dict.get("net_margin")
+def _evaluate_fscore_metric(name: str, value: Any, condition_fn, passed_list, failed_list, unknown_list) -> int:
+    if value is None:
+        unknown_list.append(name)
+        return 0
+    
+    try:
+        if condition_fn(value):
+            passed_list.append(name)
+            return 1
+        else:
+            failed_list.append(name)
+            return 0
+    except Exception:
+        unknown_list.append(name)
+        return 0
 
-    f1 = 1 if roa and roa > 0 else 0
-    f2 = 1 if p_cf and p_cf > 0 else 0
-    f3 = 1 if roe and roe >= 10.0 else 0
-    f4 = 1 if net_margin and net_margin >= 5.0 else 0
-
-    breakdown["ROA_duong"] = f1
-    breakdown["Dong_tien_HDKD_duong"] = f2
-    breakdown["ROE_tren_10pct"] = f3
-    breakdown["Bien_LN_rong_tich_cuc"] = f4
+def _calc_profitability_points(fin_dict: dict, passed: list, failed: list, unknown: list) -> int:
+    f1 = _evaluate_fscore_metric("ROA", fin_dict.get("roa"), lambda x: x > 0, passed, failed, unknown)
+    f2 = _evaluate_fscore_metric("CFO", fin_dict.get("p_cf"), lambda x: x > 0, passed, failed, unknown) # Warning: p_cf is Price/CashFlow, if >0 then CFO>0 usually, but better to check if it's > 0
+    f3 = _evaluate_fscore_metric("ROE", fin_dict.get("roe"), lambda x: x >= 10.0, passed, failed, unknown)
+    f4 = _evaluate_fscore_metric("Net Margin", fin_dict.get("net_margin"), lambda x: x >= 5.0, passed, failed, unknown)
     return f1 + f2 + f3 + f4
 
 
-def _calc_leverage_and_efficiency_points(fin_dict: dict, breakdown: dict) -> int:
-    debt_equity = fin_dict.get("debt_equity")
-    current_ratio = fin_dict.get("current_ratio")
-    fin_leverage = fin_dict.get("financial_leverage")
-    gross_margin = fin_dict.get("gross_margin")
-    roic = fin_dict.get("roic")
-
-    f5 = 1 if debt_equity is not None and debt_equity < 1.5 else 0
-    f6 = 1 if current_ratio and current_ratio >= 1.2 else 0
-    f7 = 1 if fin_leverage and fin_leverage < 2.5 else 0
-    f8 = 1 if gross_margin and gross_margin >= 15.0 else 0
-    f9 = 1 if roic and roic >= 8.0 else 0
-
-    breakdown["No_vay_an_toan"] = f5
-    breakdown["Thanh_toan_hien_hanh_khoe"] = f6
-    breakdown["Don_bay_vua_phai"] = f7
-    breakdown["Bien_LN_gop_tot"] = f8
-    breakdown["ROIC_tren_8pct"] = f9
+def _calc_leverage_and_efficiency_points(fin_dict: dict, passed: list, failed: list, unknown: list) -> int:
+    f5 = _evaluate_fscore_metric("Debt/Equity", fin_dict.get("debt_equity"), lambda x: x < 1.5, passed, failed, unknown)
+    f6 = _evaluate_fscore_metric("Current Ratio", fin_dict.get("current_ratio"), lambda x: x >= 1.2, passed, failed, unknown)
+    f7 = _evaluate_fscore_metric("Financial Leverage", fin_dict.get("financial_leverage"), lambda x: x < 2.5, passed, failed, unknown)
+    f8 = _evaluate_fscore_metric("Gross Margin", fin_dict.get("gross_margin"), lambda x: x >= 15.0, passed, failed, unknown)
+    f9 = _evaluate_fscore_metric("ROIC", fin_dict.get("roic"), lambda x: x >= 8.0, passed, failed, unknown)
     return f5 + f6 + f7 + f8 + f9
 
 
@@ -103,21 +97,49 @@ def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
     if (
         fin_dict
         and fin_dict.get("f_score") is not None
-        and not any(k in fin_dict for k in ("roa", "current_ratio", "debt_equity"))
+        and not any(k in fin_dict for k in ("roa", "current_ratio", "roic"))
     ):
         raw_s = int(fin_dict["f_score"])
         return {
             "score": raw_s,
             "max_score": 9,
             "rating": _get_f_score_rating(raw_s),
+            "passed": ["Precomputed"],
+            "failed": [],
+            "unknown": [],
+            "data_completeness": 1.0,
+            "confidence": "HIGH CONFIDENCE (PRECOMPUTED)",
             "breakdown": {"precomputed": raw_s},
         }
 
     fin_dict = fin_dict or {}
-    breakdown = {}
-    score = _calc_profitability_points(fin_dict, breakdown) + _calc_leverage_and_efficiency_points(fin_dict, breakdown)
+    passed = []
+    failed = []
+    unknown = []
+    score = _calc_profitability_points(fin_dict, passed, failed, unknown) + _calc_leverage_and_efficiency_points(fin_dict, passed, failed, unknown)
 
-    return {"score": score, "max_score": 9, "rating": _get_f_score_rating(score), "breakdown": breakdown}
+    total_criteria = 9
+    available = total_criteria - len(unknown)
+    data_completeness = round(available / total_criteria, 2)
+    
+    if available == 9:
+        confidence = "HIGH CONFIDENCE"
+    elif available >= 7:
+        confidence = "MEDIUM CONFIDENCE"
+    else:
+        confidence = "INVALID FOR GATING (<7/9 criteria)"
+
+    return {
+        "score": score, 
+        "max_score": 9, 
+        "rating": _get_f_score_rating(score),
+        "passed": passed,
+        "failed": failed,
+        "unknown": unknown,
+        "data_completeness": data_completeness,
+        "confidence": confidence,
+        "breakdown": {}
+    }
 
 
 def _resolve_z_zone(z: float) -> tuple[str, str]:
