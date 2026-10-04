@@ -1074,8 +1074,8 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     from data_engine import fetch_macro_news, fetch_stock_technical, get_financial_ratios
     from quant_engine import (
         calculate_altman_z_score,
-        calculate_piotroski_f_score,
         calculate_valuation_triangle,
+        calculate_vibe_quality_score,
         evaluate_decision_hard_gates,
     )
 
@@ -1147,7 +1147,7 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     curr_price = tech_data.get("current_price", 0.0)
     pe = fin_data.get("pe")
     pb = fin_data.get("pb")
-    f_score_res = calculate_piotroski_f_score(fin_data, sector=sector_name)
+    f_score_res = calculate_vibe_quality_score(fin_data, sector=sector_name)
     z_score_res = calculate_altman_z_score(fin_data, sector=sector_name)
     val_triangle = calculate_valuation_triangle(curr_price, pe=pe, pb=pb, sector=sector_name)
 
@@ -1930,7 +1930,7 @@ def _prepare_smart_committee_context(
 
     # 2. PYTHON DETERMINISTIC QUANT ENGINE
     from data_engine import SECTOR_MAP
-    from quant_engine import calculate_altman_z_score, calculate_piotroski_f_score
+    from quant_engine import calculate_altman_z_score, calculate_vibe_quality_score
     from quant_valuation import calculate_fair_value_and_mos
 
     val_res = calculate_fair_value_and_mos(
@@ -1939,7 +1939,7 @@ def _prepare_smart_committee_context(
         fin_dict=fin_data or {},
         sector=SECTOR_MAP.get(sym, ""),
     )
-    f_score_res = calculate_piotroski_f_score(fin_data)
+    f_score_res = calculate_vibe_quality_score(fin_data)
     z_score_res = calculate_altman_z_score(fin_data)
 
     from context_engine import check_regime_conflict, load_market_context

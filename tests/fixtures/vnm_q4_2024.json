@@ -1,0 +1,37 @@
+{
+  "symbol": "VNM",
+  "period": "2024-Q4",
+  "price": 68.0,
+  "sector": "Tiêu dùng",
+  "tech": {
+    "rsi14": 24.5,
+    "ma20": 76.0,
+    "current_price": 68.0,
+    "adv20_billion": 45.0,
+    "volume_ratio_20d": 2.5,
+    "atr_ratio_14d": 1.7,
+    "has_gap_down": false,
+    "risk_keywords": [],
+    "price_confirmation": true,
+    "higher_low": true,
+    "bullish_divergence": true,
+    "has_reversal_pattern": true,
+    "is_backtest": true
+  },
+  "fin": {
+    "f_score": 7,
+    "z_score": 4.1,
+    "roa": 15.5,
+    "roe": 31.0,
+    "gross_margin": 42.0,
+    "net_margin": 19.2,
+    "debt_equity": 22.0,
+    "current_ratio": 2.4,
+    "cfo": 10500.0,
+    "p_cf": 9.2,
+    "mos_pct": 30.6,
+    "mos_is_informative": true,
+    "fair_value": 98.0,
+    "margin_trend": "stable"
+  }
+}

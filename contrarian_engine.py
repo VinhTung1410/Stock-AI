@@ -12,7 +12,7 @@ Lớp 5: Price Confirmation Layer - Yêu cầu xác nhận đảo chiều (chố
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from indicators import calculate_altman_z_score, calculate_piotroski_f_score
+from indicators import calculate_altman_z_score, calculate_vibe_quality_score
 from quant_valuation import calculate_fair_value_and_mos
 
 # Constants - Numerical Thresholds
@@ -21,13 +21,13 @@ CONTRARIAN_MIN_ZSCORE = 2.0
 CONTRARIAN_MAX_DEBT_EQUITY = 1.0
 CONTRARIAN_MIN_MOS_PCT = 15.0  # Tương đương ~17.6% Upside
 CONTRARIAN_DEEP_MOS_PCT = 20.0  # Require deeper MoS in DOWNTREND (Tương đương 25% Upside)
-CONTRARIAN_MAX_RSI_NORMAL = 35.0  # > 35 is NORMAL
 CONTRARIAN_MAX_RSI_WATCH = 35.0   # <= 35 is NEAR-PANIC WATCH
-CONTRARIAN_MAX_RSI_EXTREME = 30.0 # <= 30 is EXTREME FEAR
+CONTRARIAN_MAX_RSI_EXTREME = 30.0 # <= 30 is EXTREME FEAR / PANIC BUY
 CONTRARIAN_MIN_ADV20_BILLION = 2.0
 CONTRARIAN_MAX_POSITION_SIZE_PCT = 5.0
 CONTRARIAN_MAX_PANIC_SIZE_PCT = 3.0 # Giảm size bắt đáy dao rơi xuống 3% tối đa
 CONTRARIAN_STOP_LOSS_PCT = 0.08
+SHADOW_MODE_ACTIVE = True  # Mặc định kích hoạt chế độ shadow 60 phiên (TASK-0074)
 
 # Gate Names
 GATE_REGIME = "MARKET_REGIME"
@@ -39,7 +39,7 @@ GATE_PRICE_CONFIRM = "PRICE_CONFIRMATION"
 GATE_LIQUIDITY = "ADV20_LIQUIDITY"
 GATE_DATA = "DATA_GATE"
 
-# States
+# States (ADR-0009 Standardized)
 STATE_NORMAL = "NORMAL"
 STATE_NEAR_PANIC_WATCH = "NEAR_PANIC_WATCH"
 STATE_EXTREME_FEAR_WATCH = "EXTREME_FEAR_WATCH"
@@ -49,8 +49,8 @@ STATE_BLOCKED = "BLOCKED"
 
 # Actions
 ACTION_NO_SETUP = "KHÔNG CÓ SETUP (NORMAL)"
-ACTION_WATCH_NEAR_PANIC = "👀 THEO DÕI (NEAR PANIC)"
-ACTION_WATCH_EXTREME = "👀 CHỜ ĐÁY (EXTREME FEAR)"
+ACTION_WATCH_NEAR_PANIC = "👀 THEO DÕI (NEAR PANIC WATCH)"
+ACTION_WATCH_EXTREME = "👀 CHỜ ĐÁY (EXTREME FEAR WATCH)"
 ACTION_PANIC_BUY_STR = "🚨 BẮT ĐÁY PANIC BUY"
 ACTION_BLOCKED = "❌ BỊ CHẶN (BLOCKED)"
 
@@ -115,7 +115,7 @@ def _check_governance_and_event_risk(tech_data: Dict[str, Any], result: Contrari
 def _extract_f_score(fin: Dict[str, Any]) -> int:
     f_score = fin.get("f_score")
     if f_score is None:
-        f_res = calculate_piotroski_f_score(fin)
+        f_res = calculate_vibe_quality_score(fin)
         return int(f_res.get("score", 0))
     return int(f_score)
 
@@ -161,47 +161,52 @@ def _get_stress_haircut(symbol: str, sector: str, fin_dict: Dict[str, Any], tech
         
     return min(haircut, 0.60)
 
-def _check_fundamental_integrity(
-    symbol: str,
-    current_price: float,
-    fin_dict: Optional[Dict[str, Any]],
-    tech_data: Dict[str, Any],
+def _check_archetype_specific_gates(
     sector: str,
-    required_mos: float,
+    fin_dict: Dict[str, Any],
     result: ContrarianResult,
 ) -> bool:
-    if not fin_dict:
-        result.can_buy = False
-        result.status = STATE_BLOCKED
-        result.action_state = ACTION_BLOCKED
-        result.blocked_by = GATE_SURVIVAL
-        result.blocking_reasons.append("Thiếu báo cáo tài chính.")
-        return False
-    from indicators import calculate_piotroski_f_score
-    f_res = calculate_piotroski_f_score(fin_dict or {}, sector)
-    f_score = f_res.get("score", 0)
-    data_comp = f_res.get("data_completeness", 1.0)
-    
-    result.metrics["f_score"] = f_score
-    result.metrics["f_score_details"] = f_res
-    
+    """Kiểm tra các chốt chặn sinh tồn đặc thù theo Archetype (Nhánh B)."""
     is_bank = sector in (SECTOR_BANKING, "Bank", "Banking", "Ngân hàng")
     is_re = sector in ("Bất động sản", "Real Estate", "Bất động sản Khu công nghiệp")
     is_sec = sector in ("Chứng khoán", "Financial Services")
 
-    # Extract metrics independently so they're available for L4 Stress-MoS
     if is_bank:
         npl = fin_dict.get("Tỷ lệ nợ xấu") or fin_dict.get("npl")
         if npl is not None:
-            result.metrics["npl"] = float(npl)
+            npl_val = float(npl)
+            result.metrics["npl"] = npl_val
+            if npl_val > 3.0:
+                result.can_buy = False
+                result.status = STATE_BLOCKED
+                result.action_state = ACTION_BLOCKED
+                result.blocked_by = GATE_SURVIVAL
+                result.blocking_reasons.append(f"L2 Archetype: Ngân hàng có nợ xấu cao (NPL={npl_val}% > 3%). Rủi ro vỡ nợ!")
+                return False
     elif is_sec:
         margin_ratio = fin_dict.get("financial_leverage") or fin_dict.get("Đòn bẩy tài chính")
         if margin_ratio is not None:
-            result.metrics["financial_leverage"] = float(margin_ratio) / 100.0
+            lev_val = float(margin_ratio) / 100.0
+            result.metrics["financial_leverage"] = lev_val
+            if lev_val > 3.0:
+                result.can_buy = False
+                result.status = STATE_BLOCKED
+                result.action_state = ACTION_BLOCKED
+                result.blocked_by = GATE_SURVIVAL
+                result.blocking_reasons.append(f"L2 Archetype: Công ty CK dùng đòn bẩy quá rủi ro (Leverage={lev_val}x > 3.0x).")
+                return False
     elif is_re:
         debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_on_equity") or fin_dict.get("debt_to_equity")
         if debt_equity is not None:
-            result.metrics["debt_equity"] = float(debt_equity) / 100.0
+            de_val = float(debt_equity) / 100.0
+            result.metrics["debt_equity"] = de_val
+            if de_val > 1.5:
+                result.can_buy = False
+                result.status = STATE_BLOCKED
+                result.action_state = ACTION_BLOCKED
+                result.blocked_by = GATE_SURVIVAL
+                result.blocking_reasons.append(f"L2 Archetype: BĐS rủi ro thanh khoản (D/E={de_val}x > 1.5x).")
+                return False
     else:
         z_score = _extract_z_score(fin_dict, sector)
         result.metrics["z_score"] = z_score
@@ -209,36 +214,6 @@ def _check_fundamental_integrity(
         if debt_equity is not None:
             result.metrics["debt_equity"] = float(debt_equity) / 100.0
 
-    # 0. Hard Veto Risk Overlays (Độc lập với F-Score - Phase 23.3)
-    if is_bank and "npl" in result.metrics:
-        npl_val = result.metrics["npl"]
-        if npl_val > 3.0:
-            result.can_buy = False
-            result.status = STATE_BLOCKED
-            result.action_state = ACTION_BLOCKED
-            result.blocked_by = GATE_SURVIVAL
-            result.blocking_reasons.append(f"L2 Archetype: Ngân hàng có nợ xấu cao (NPL={npl_val}% > 3%). Rủi ro vỡ nợ!")
-            return False
-    elif is_sec and "financial_leverage" in result.metrics:
-        lev_val = result.metrics["financial_leverage"]
-        if lev_val > 3.0:
-            result.can_buy = False
-            result.status = STATE_BLOCKED
-            result.action_state = ACTION_BLOCKED
-            result.blocked_by = GATE_SURVIVAL
-            result.blocking_reasons.append(f"L2 Archetype: Công ty CK dùng đòn bẩy quá rủi ro (Leverage={lev_val}x > 3.0x).")
-            return False
-    elif is_re and "debt_equity" in result.metrics:
-        de_val = result.metrics["debt_equity"]
-        if de_val > 1.5:
-            result.can_buy = False
-            result.status = STATE_BLOCKED
-            result.action_state = ACTION_BLOCKED
-            result.blocked_by = GATE_SURVIVAL
-            result.blocking_reasons.append(f"L2 Archetype: BĐS rủi ro thanh khoản (D/E={de_val}x > 1.5x).")
-            return False
-    elif not (is_bank or is_sec or is_re):
-        z_score = result.metrics.get("z_score")
         if z_score is not None and z_score <= CONTRARIAN_MIN_ZSCORE:
             result.can_buy = False
             result.status = STATE_BLOCKED
@@ -255,32 +230,65 @@ def _check_fundamental_integrity(
             result.blocking_reasons.append(f"L2 Archetype: Đòn bẩy cao (D/E={de_val:.2f}x > {CONTRARIAN_MAX_DEBT_EQUITY:.1f}x).")
             return False
 
-    # 1. 3-Tier F-Score Gating (Task-23.1)
+    return True
+
+
+def _check_fundamental_integrity(
+    symbol: str,
+    current_price: float,
+    fin_dict: Optional[Dict[str, Any]],
+    tech_data: Dict[str, Any],
+    sector: str,
+    required_mos: float,
+    result: ContrarianResult,
+) -> bool:
+    if not fin_dict:
+        result.can_buy = False
+        result.status = STATE_BLOCKED
+        result.action_state = ACTION_BLOCKED
+        result.blocked_by = GATE_SURVIVAL
+        result.blocking_reasons.append("Thiếu báo cáo tài chính.")
+        return False
+    from indicators import calculate_vibe_quality_score
+    f_res = calculate_vibe_quality_score(fin_dict or {}, sector)
+    f_score = f_res.get("score", 0)
+    data_comp = f_res.get("data_completeness", 1.0)
+    
+    result.metrics["f_score"] = f_score
+    result.metrics["f_score_details"] = f_res
+
+    # 0. Hard Veto Risk Overlays (Nhánh B - Archetype Overlays)
+    if not _check_archetype_specific_gates(sector, fin_dict, result):
+        return False
+
+    is_bank = sector in (SECTOR_BANKING, "Bank", "Banking", "Ngân hàng")
+
+    # 1. 3-Tier FQ-Score Gating (Task-23.1)
     if f_score < 4:
         # TIER 1: BLOCK UNCONDITIONALLY (Value Trap)
-        if data_comp < 0.7:
+        if data_comp < 0.7 and not is_bank:
             result.can_buy = False
             result.status = STATE_BLOCKED
             result.action_state = "DATA / FUNDAMENTAL REVIEW REQUIRED"
             result.blocked_by = GATE_SURVIVAL
-            result.blocking_reasons.append(f"F-Score={f_score}/9 nhưng thiếu dữ liệu (Completeness={data_comp*100:.0f}%). Yêu cầu Audit Data.")
+            result.blocking_reasons.append(f"FQ-Score={f_score}/9 nhưng thiếu dữ liệu (Completeness={data_comp*100:.0f}%). Yêu cầu Audit Data.")
             return False
         else:
             result.can_buy = False
             result.status = STATE_BLOCKED
             result.action_state = ACTION_BLOCKED
             result.blocked_by = GATE_SURVIVAL
-            result.blocking_reasons.append(f"F-Score={f_score}/9 < 4 (Dữ liệu xác nhận). VALUE TRAP RÕ RÀNG!")
+            result.blocking_reasons.append(f"FQ-Score={f_score}/9 < 4 (Dữ liệu xác nhận). VALUE TRAP RÕ RÀNG!")
             return False
 
     elif f_score < CONTRARIAN_MIN_FSCORE:
         # TIER 2: CONDITIONAL PASS (Requires Overlays, which are already checked globally above)
-        if data_comp < 0.7:
+        if data_comp < 0.7 and not is_bank:
             result.can_buy = False
             result.status = STATE_BLOCKED
             result.action_state = "DATA / FUNDAMENTAL REVIEW REQUIRED"
             result.blocked_by = GATE_SURVIVAL
-            result.blocking_reasons.append(f"F-Score={f_score}/9 (Tier 2) nhưng thiếu dữ liệu (Completeness={data_comp*100:.0f}%). Không đủ cơ sở đánh giá.")
+            result.blocking_reasons.append(f"FQ-Score={f_score}/9 (Tier 2) nhưng thiếu dữ liệu (Completeness={data_comp*100:.0f}%). Không đủ cơ sở đánh giá.")
             return False
     else:
         # TIER 3: FULL PASS (f_score >= 7)
@@ -546,6 +554,7 @@ def evaluate_contrarian_gates(
     portfolio: Optional[List[Dict[str, Any]]] = None,
     kill_switch_active: bool = False,
     half_kelly_f: float = 0.12,
+    shadow_mode: bool = SHADOW_MODE_ACTIVE,
 ) -> ContrarianResult:
     res = ContrarianResult(symbol=symbol.upper(), can_buy=False)
 
@@ -571,8 +580,14 @@ def evaluate_contrarian_gates(
         if _check_price_confirmation(current_price, tech_data or {}, res):
             if _check_liquidity_and_size(current_price, tech_data, half_kelly_f, kill_switch_active, res):
                 res.status = STATE_PANIC_BUY
-                res.can_buy = True
-                res.action_state = ACTION_PANIC_BUY_STR
+                is_backtest = bool(tech_data and tech_data.get("is_backtest", False))
+                if shadow_mode and not is_backtest:
+                    res.can_buy = False
+                    res.action_state = "🔭 SHADOW BUY (60-phiên trial)"
+                    res.metrics["shadow_mode"] = True
+                else:
+                    res.can_buy = True
+                    res.action_state = ACTION_PANIC_BUY_STR
                 res.style_type = STYLE_CONTRARIAN_PANIC_BUY
                 trigger_txt = res.metrics.get("extreme_fear_trigger", "")
                 res.setup_type = f"🚨 BẮT ĐÁY HOẢNG LOẠN ({trigger_txt}, MoS: {res.mos_pct:+.1f}%)"

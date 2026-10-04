@@ -1,5 +1,6 @@
 import logging
 import os
+from collections import Counter
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -947,6 +948,41 @@ def get_decision_records(filters: Optional[dict] = None, limit: int = 50) -> lis
         return []
 
 
+def get_scan_block_distribution(session_id: str, limit: int = 500) -> dict:
+    """Aggregate rejection reasons and data completeness ratio for a scan session (TASK-0073).
+    
+    Returns:
+        dict with total_scanned, total_blocked, block_rate, gate_distribution,
+        data_completeness_ratio, and alarm_100pct_same_gate.
+    """
+    records = get_decision_records(filters={"session": session_id}, limit=limit)
+    total = len(records)
+    if total == 0:
+        return {
+            "total_scanned": 0,
+            "total_blocked": 0,
+            "block_rate": 0.0,
+            "gate_distribution": {},
+            "data_completeness_ratio": 1.0,
+            "alarm_100pct_same_gate": False,
+        }
+
+    blocked = [r for r in records if r.get("decision") in ("REJECT", "BLOCKED")]
+    gate_counts = Counter(r.get("primary_rejection_gate") or "UNKNOWN" for r in blocked)
+    completeness = sum(1 for r in records if bool(r.get("facts"))) / total
+
+    is_alarm = len(blocked) == total and len(gate_counts) == 1 and total >= 3
+
+    return {
+        "total_scanned": total,
+        "total_blocked": len(blocked),
+        "block_rate": round(len(blocked) / total, 3),
+        "gate_distribution": dict(gate_counts),
+        "data_completeness_ratio": round(completeness, 3),
+        "alarm_100pct_same_gate": is_alarm,
+    }
+
+
 def update_decision_forward_returns(decision_id: str, returns_data: dict) -> bool:
     """Save or update forward returns for a decision record."""
     client = get_supabase_client()
@@ -972,6 +1008,23 @@ def update_decision_forward_returns(decision_id: str, returns_data: dict) -> boo
     except Exception:
         logging.exception("Error saving forward returns for %s", decision_id)
         return False
+
+
+def get_decision_forward_returns(decision_ids: Optional[list[str]] = None, limit: int = 500) -> list[dict]:
+    """Query decision forward returns records."""
+    client = get_supabase_client()
+    if not client:
+        return []
+
+    try:
+        query = client.table("decision_forward_returns").select("*").limit(limit)
+        if decision_ids:
+            query = query.in_("decision_id", decision_ids)
+        res = query.execute()
+        return res.data or []
+    except Exception:
+        logging.exception("Error querying decision forward returns")
+        return []
 
 
 def check_evidence_kill_switch(lookback_trades: int = 20) -> dict:

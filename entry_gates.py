@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from data_gate import reconcile_data
-from indicators import calculate_altman_z_score, calculate_piotroski_f_score
+from indicators import calculate_altman_z_score, calculate_vibe_quality_score
 from quant_engine import LOCKED_QUANT_THRESHOLDS
 from quant_valuation import calculate_fair_value_and_mos, classify_stock_archetype
 
@@ -137,7 +137,7 @@ def _check_financial_health_layer(
     # Ưu tiên lấy f_score có sẵn trong fin_dict nếu hợp lệ
     f_score = fin.get("f_score")
     if f_score is None:
-        f_res = calculate_piotroski_f_score(fin, sector=sector)
+        f_res = calculate_vibe_quality_score(fin, sector=sector)
         f_score = f_res.get("score", 6)
     else:
         f_score = int(f_score)

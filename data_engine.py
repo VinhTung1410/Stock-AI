@@ -2375,9 +2375,13 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                 c_zone = f"{c_p_min} - {c_p_max}"
                 
                 # Default for PANIC_BUY
-                final_status = "RECOMMEND_BUY" 
-                story_tag = "BẮT ĐÁY"
-                
+                if contrarian_res.metrics.get("shadow_mode"):
+                    final_status = "SHADOW_BUY"
+                    story_tag = "BẮT ĐÁY SHADOW"
+                else:
+                    final_status = "RECOMMEND_BUY"
+                    story_tag = "BẮT ĐÁY"
+
                 # Downgrade if just watching
                 if contrarian_res.status in ["NEAR_PANIC_WATCH", "EXTREME_FEAR_WATCH"]:
                     final_status = "WATCH_CONFIRMATION"
@@ -2387,8 +2391,8 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                     "symbol": sym,
                     "sector": sector,
                     "status": final_status,
-                    "conviction_score": max(conv_score, 75.0) if final_status == "RECOMMEND_BUY" else 65.0,
-                    "conviction_tier": "HIGH" if final_status == "RECOMMEND_BUY" else "MEDIUM",
+                    "conviction_score": max(conv_score, 75.0) if final_status in ("RECOMMEND_BUY", "SHADOW_BUY") else 65.0,
+                    "conviction_tier": "HIGH" if final_status == "RECOMMEND_BUY" else ("SHADOW" if final_status == "SHADOW_BUY" else "MEDIUM"),
                     "conviction_breakdown": conv_breakdown,
                     "style_type": contrarian_res.style_type,
                     "setup_type": contrarian_res.setup_type,
@@ -2417,6 +2421,10 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
                     "is_contrarian": True,
+                    "contrarian_state": contrarian_res.status,
+                    "panic_score": contrarian_res.metrics.get("panic_score", 0),
+                    "shadow_mode": contrarian_res.metrics.get("shadow_mode", False),
+                    "can_buy": contrarian_res.can_buy,
                     "f_score": contrarian_res.metrics.get("f_score", 7),
                     "z_score": contrarian_res.metrics.get("z_score", 2.5),
                     "rationale": (
@@ -2527,6 +2535,9 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                 if st == "RECOMMEND_BUY":
                     decision = "BUY"
                     gate = "PASSED"
+                elif st == "SHADOW_BUY":
+                    decision = "SHADOW_BUY"
+                    gate = "SHADOW_MODE"
                 elif st == "WATCH_CONFIRMATION":
                     decision = "WATCH"
                     gate = "TECH_CONFIRMATION"
@@ -2539,8 +2550,8 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                 else:
                     decision = "REJECT"
                     gate = res.get("primary_rejection_gate", "UNKNOWN")
-                
-                save_decision_record({
+
+                record_payload = {
                     "symbol": res["symbol"],
                     "session": "NOON" if datetime.now().hour < 13 else "CLOSE",
                     "decision": decision,
@@ -2548,10 +2559,17 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                     "rejection_reasons": [res.get("rationale") or res.get("setup_type") or res.get("story") or ""],
                     "facts": {
                         "price": res.get("current_price"),
+                        "snapshot_price": res.get("current_price"),
                         "mos_pct": res.get("mos_pct"),
-                        "conviction": res.get("conviction_score")
-                    }
-                })
+                        "conviction": res.get("conviction_score"),
+                    },
+                }
+                if res.get("is_contrarian"):
+                    record_payload["facts"]["contrarian_state"] = res.get("contrarian_state")
+                    record_payload["facts"]["panic_score"] = res.get("panic_score")
+                    record_payload["facts"]["shadow_mode"] = res.get("shadow_mode", False)
+
+                save_decision_record(record_payload)
 
             import time
 
@@ -2843,7 +2861,7 @@ KBS_RATIO_MAPPING = {
     "Tỷ số Nợ vay trên Vốn chủ sở hữu": "debt_equity",
     "Tỷ số Nợ trên Vốn chủ sở hữu": "financial_leverage",
     "Tỷ suất sinh lợi trên vốn dài hạn bình quân (ROCE)": "roic",
-    "Dòng tiền từ HĐKD trên Tổng tài sản": "p_cf",
+    "Dòng tiền từ HĐKD trên Tổng tài sản": "cfo_to_assets",
 }
 
 
@@ -2927,7 +2945,8 @@ def get_financial_ratios(symbol: str) -> dict:
             "dividend_yield": kbs_data.get("dividend_yield"),
             "ps": kbs_data.get("ps"),
             "ev_ebitda": kbs_data.get("ev_ebitda"),
-            "p_cf": kbs_data.get("p_cf"),
+            "p_cf": None,
+            "cfo_to_assets": kbs_data.get("cfo_to_assets"),
             "roic": kbs_data.get("roic"),
             "debt_equity": kbs_data.get("debt_equity"),
             "financial_leverage": kbs_data.get("financial_leverage"),

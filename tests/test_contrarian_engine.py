@@ -36,7 +36,7 @@ def valid_contrarian_data():
     fin = {
         "f_score": 8,  # >= 7
         "z_score": 3.2,  # > 2.0
-        "debt_equity": 0.5,  # <= 1.0
+        "debt_equity": 50,  # <= 1.0
         "mos_pct": 28.0,  # >= 20.0%
         "mos_is_informative": True,
         "fair_value": 140.0,
@@ -77,7 +77,7 @@ def test_extreme_fear_trigger_panic_score():
     fin = {
         "f_score": 7,
         "z_score": 2.5,
-        "debt_equity": 0.4,
+        "debt_equity": 40,
         "mos_pct": 22.0,
         "mos_is_informative": True,
         "fair_value": 150.0,
@@ -119,7 +119,7 @@ def test_survival_gate_z_score_rejection(valid_contrarian_data):
 def test_survival_gate_debt_equity_rejection(valid_contrarian_data):
     tech, fin = valid_contrarian_data
     fin["f_score"] = 6 # Tier 2
-    fin["debt_equity"] = 1.5
+    fin["debt_equity"] = 150.0
 
     res = evaluate_contrarian_gates("VNM", 82.0, tech_data=tech, fin_dict=fin, sector="Tiêu dùng")
     assert res.can_buy is False
@@ -129,7 +129,7 @@ def test_survival_gate_debt_equity_rejection(valid_contrarian_data):
 def test_survival_gate_banking_sector_exemption(valid_contrarian_data):
     tech, fin = valid_contrarian_data
     fin["f_score"] = 6 # Tier 2
-    fin["debt_equity"] = 8.5
+    fin["debt_equity"] = 850.0
     fin["z_score"] = 1.2
 
     res = evaluate_contrarian_gates("VCB", 82.0, tech_data=tech, fin_dict=fin, sector="Ngân hàng")

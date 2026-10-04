@@ -57,7 +57,7 @@ def test_web_to_discord_hook_triggers_on_buy(monkeypatch):
                             "quant_engine.check_data_gate", return_value={"passed": True, "daily_value_billion": 10.0}
                         ):
                             with mock.patch(
-                                "quant_engine.calculate_piotroski_f_score",
+                                "quant_engine.calculate_vibe_quality_score",
                                 return_value={"score": 7, "rating": "RẤT MẠNH"},
                             ):
                                 with mock.patch(

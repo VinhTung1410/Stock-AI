@@ -161,7 +161,7 @@ class TestFailSafePass1Parser:
                                 return_value={"passed": True, "daily_value_billion": 20.0},
                             ):
                                 with mock.patch(
-                                    "quant_engine.calculate_piotroski_f_score",
+                                    "quant_engine.calculate_vibe_quality_score",
                                     return_value={"score": 8, "rating": "RẤT MẠNH"},
                                 ):
                                     with mock.patch(
@@ -234,7 +234,7 @@ class TestProvenanceTracking:
                                 return_value={"passed": True, "daily_value_billion": 20.0},
                             ):
                                 with mock.patch(
-                                    "quant_engine.calculate_piotroski_f_score",
+                                    "quant_engine.calculate_vibe_quality_score",
                                     return_value={"score": 8, "rating": "RẤT MẠNH"},
                                 ):
                                     with mock.patch(
@@ -253,14 +253,16 @@ class TestProvenanceTracking:
                                                     "position_size_nav": "5% NAV",
                                                 },
                                             ):
-                                                with mock.patch("db_manager.save_quant_signal", return_value=123):
-                                                    res = generate_quantamental_2pass_report("FPT")
-                                                    assert "prompt_hash" in res
-                                                    assert len(res["prompt_hash"]) == 64
-                                                    assert "input_hash" in res
-                                                    assert len(res["input_hash"]) == 64
-                                                    assert res["model_id"] == MODEL_NAME
-                                                    assert res["temperature"] == 0.0
+                                                with mock.patch("data_engine.is_symbol_in_cooldown", return_value=False):
+                                                    with mock.patch("data_engine.get_today_buy_signal_count", return_value=0):
+                                                        with mock.patch("db_manager.save_quant_signal", return_value=123):
+                                                            res = generate_quantamental_2pass_report("FPT")
+                                                            assert "prompt_hash" in res
+                                                            assert len(res["prompt_hash"]) == 64
+                                                            assert "input_hash" in res
+                                                            assert len(res["input_hash"]) == 64
+                                                            assert res["model_id"] == MODEL_NAME
+                                                            assert res["temperature"] == 0.0
 
 
 class TestCalibrationHorizonAndScenarioBrier:

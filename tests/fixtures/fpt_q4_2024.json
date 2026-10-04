@@ -1,0 +1,37 @@
+{
+  "symbol": "FPT",
+  "period": "2024-Q4",
+  "price": 82.0,
+  "sector": "Công nghệ",
+  "tech": {
+    "rsi14": 26.0,
+    "ma20": 98.0,
+    "current_price": 82.0,
+    "adv20_billion": 65.0,
+    "volume_ratio_20d": 2.8,
+    "atr_ratio_14d": 1.9,
+    "has_gap_down": true,
+    "risk_keywords": [],
+    "price_confirmation": true,
+    "higher_low": true,
+    "bullish_divergence": true,
+    "has_reversal_pattern": true,
+    "is_backtest": true
+  },
+  "fin": {
+    "f_score": 8,
+    "z_score": 4.6,
+    "roa": 14.2,
+    "roe": 27.5,
+    "gross_margin": 39.1,
+    "net_margin": 18.0,
+    "debt_equity": 38.0,
+    "current_ratio": 2.1,
+    "cfo": 9200.0,
+    "p_cf": 11.5,
+    "mos_pct": 32.0,
+    "mos_is_informative": true,
+    "fair_value": 120.0,
+    "margin_trend": "stable"
+  }
+}

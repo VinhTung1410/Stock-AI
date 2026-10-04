@@ -1,0 +1,38 @@
+{
+  "symbol": "HPG",
+  "period": "2022-Q3",
+  "price": 21.0,
+  "sector": "Thép",
+  "tech": {
+    "rsi14": 18.0,
+    "ma20": 26.0,
+    "current_price": 21.0,
+    "adv20_billion": 95.0,
+    "volume_ratio_20d": 3.2,
+    "atr_ratio_14d": 2.2,
+    "has_gap_down": true,
+    "risk_keywords": [],
+    "price_confirmation": true,
+    "higher_low": true,
+    "bullish_divergence": true,
+    "has_reversal_pattern": true,
+    "is_backtest": true
+  },
+  "fin": {
+    "f_score": 7,
+    "z_score": 3.0,
+    "roa": 7.5,
+    "roe": 15.0,
+    "gross_margin": 16.0,
+    "net_margin": 8.0,
+    "debt_equity": 35.0,
+    "current_ratio": 1.8,
+    "cfo": -1500.0,
+    "p_cf": -8.5,
+    "mos_pct": 35.0,
+    "mos_is_informative": true,
+    "fair_value": 35.0,
+    "margin_trend": "down_2_quarters",
+    "earnings_declining": true
+  }
+}

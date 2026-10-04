@@ -764,3 +764,33 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
 - **Bối cảnh & Vấn đề:** Trong phiên bản trước, các lớp bảo vệ rủi ro vĩ mô (Z-Score, Debt/Equity, NPL) chỉ được kiểm tra nếu F-Score rơi vào Tier 2 (F-Score từ 4 đến 6). Các cổ phiếu có F-Score >= 7 (Tier 3) được đi thẳng, dẫn đến rủi ro bỏ lọt các doanh nghiệp tốt nhưng lạm dụng đòn bẩy quá mức hoặc có rủi ro thanh khoản tiềm ẩn.
 - **Quyết định lựa chọn:** Tách toàn bộ module kiểm tra Hard Veto Risk Overlays ra độc lập và đặt lên trước logic chấm điểm F-Score. Bất kỳ mã nào vi phạm Z-Score, D/E hoặc Event Risk đều bị loại ngay lập tức, bất chấp F-Score cao đến đâu.
 - **Hệ quả:** Hoàn thiện Phase 23. Hệ thống bắt đáy hoạt động vững chãi, độc lập hoàn toàn với điểm số phân tích cơ bản trong việc quản trị rủi ro vỡ nợ, đảm bảo không có ngoại lệ (No Exceptions).
+---
+
+### [ADR-037] Phase 23.4 - F-Score Semantic Correction & State Machine Standardization
+- **Ng�y quy?t d?nh:** 2026-10-03
+- **Ngu?i tham gia:** Client, PO, Senior Dev
+- **B?i c?nh & V?n d?:** H? th?ng cu s? d?ng t�n g?i "Piotroski F-Score" d? ch?m di?m nhung th?c t? l?i d?a tr�n c�c ngu?ng tuy?t d?i (v� d? ROE > 10, Net Margin > 5) thay v� do lu?ng delta YoY nhu Piotroski nguy�n b?n. �i?u n�y d?n d?n s? hi?u l?m v? m?t h?c thu?t. Th�m v�o d�, b? tr?ng th�i d?u ra (Status) chua r� r�ng, nh?m l?n gi?a d?nh gi� r? v� co h?i b?t d�y th?c s?.
+- **Quy?t d?nh l?a ch?n:** 
+  1. �?i t�n ho�n to�n calculate_piotroski_f_score th�nh calculate_vibe_quality_score (Fundamental Quality Score - FQ-Score).
+  2. Ghi nh?n t�nh h?p l� to�n h?c c?a vi?c d�ng bi?n p_cf (Price/Cashflow) > 0 l�m proxy boolean cho d�ng ti?n H�KD (CFO) > 0.
+  3. Chu?n h�a Contrarian State Machine th�nh 4 tr?ng th�i r?ch r�i: VALUATION_WATCH (R? nhung chua ho?ng lo?n), FUNDAMENTAL_CONDITIONAL (FQ-Score 4-6, ch? duy?t CFO), PANIC_WATCH (B�n th�o, RSI < 35), ENTRY_ELIGIBLE (X�c nh?n d?o chi?u - chu?n b? cho Phase 24).
+- **H? qu?:** H? th?ng d�ng bang logic d�nh gi� Quality Gate, ho�n to�n minh b?ch v� c� th? Audit. T?o n?n m�ng v?ng ch?c chuy?n sang Phase 24 (X�c nh?n d?o chi?u b?ng k? thu?t).
+
+---
+
+### [ADR-038] Phase 25 - Contrarian P0 Remediation, Golden Fixtures, Scan Observability & Shadow Mode (v14.0)
+- **Ngày quyết định:** 2026-10-04
+- **Người tham gia:** Client, Finance Lead, PO, Senior Dev, QA Lead, Reviewer
+- **Bối cảnh & Vấn đề:** 
+  1. Hằng số trạng thái Contrarian bị lệch danh pháp (PANIC_WATCH, ENTRY_ELIGIBLE thay vì NEAR_PANIC_WATCH, EXTREME_FEAR_WATCH, NORMAL) và trùng lặp ngưỡng RSI (L24-25).
+  2. Nhánh B (Archetype Overlays cho Ngân hàng, BĐS, Chứng khoán) nằm lẫn trong logic chấm điểm chất lượng chung.
+  3. Regression test phụ thuộc API mạng hoặc mock giả lập, chưa có golden fixtures kiểm định từ BCTC thật.
+  4. Thiếu cơ chế phát hiện 100% mã bị chặn cùng một gate.
+  5. Contrarian chưa qua thử nghiệm an toàn trong 60 phiên thực tế trước khi phát tín hiệu mua thật.
+- **Quyết định lựa chọn:**
+  1. Chuẩn hóa toàn bộ Enum State: STATE_NEAR_PANIC_WATCH, STATE_EXTREME_FEAR_WATCH, STATE_NORMAL. Sửa ngưỡng RSI 30/35.
+  2. Tách helper _check_archetype_specific_gates() độc lập xử lý riêng rẽ rủi ro theo ngành.
+  3. Tạo thư mục tests/fixtures/ lưu snapshot BCTC thật (FPT, VNM, HPG); xây dựng tests/test_golden_contrarian.py chạy 100% offline.
+  4. Thêm get_scan_block_distribution() và cờ alarm_100pct_same_gate bắn Discord alert khi toàn bộ mã bị block bởi cùng một gate.
+  5. Kích hoạt SHADOW_MODE_ACTIVE = True: chỉ phát SHADOW_BUY trong 60 phiên đầu; yêu cầu tối thiểu 30 mẫu T+10 với Hit rate > 55% mới được xét tốt nghiệp.
+- **Hệ quả:** Hoàn thành toàn diện Phase 25 (v14.0). Hệ thống đạt 100% unit tests pass (45/45 tests), Ruff exit code 0, bảo đảm tính an toàn và minh bạch tuyệt đối trước khi giao dịch thật.

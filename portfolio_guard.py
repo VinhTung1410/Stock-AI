@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-from indicators import calculate_altman_z_score, calculate_piotroski_f_score
+from indicators import calculate_altman_z_score, calculate_vibe_quality_score
 
 MAX_POSITIONS_PER_SECTOR: int = 3
 
@@ -90,7 +90,7 @@ def _evaluate_losing_holding(
     thesis_msg = "Luận điểm tăng trưởng doanh nghiệp cốt lõi vẫn được bảo toàn."
 
     if fin_dict:
-        f_score = calculate_piotroski_f_score(fin_dict, sector).get("score", 6)
+        f_score = calculate_vibe_quality_score(fin_dict, sector).get("score", 6)
         z_data = calculate_altman_z_score(fin_dict, sector)
         if f_score < 4 or "ĐỎ" in z_data.get("zone", ""):
             thesis_intact = False

@@ -39,8 +39,8 @@ def calculate_atr(df_history: pd.DataFrame, period: int = 14) -> float:
         return 0.0
 
 
-def _get_f_score_rating(score: int) -> str:
-    """Return institutional qualitative rating based on Piotroski F-Score."""
+def _get_fq_score_rating(score: int) -> str:
+    """Return institutional qualitative rating based on Fundamental Quality Score."""
     if score >= 8:
         return "XUẤT SẮC"
     if score >= 6:
@@ -68,7 +68,14 @@ def _evaluate_fscore_metric(name: str, value: Any, condition_fn, passed_list, fa
 
 def _calc_profitability_points(fin_dict: dict, passed: list, failed: list, unknown: list) -> int:
     f1 = _evaluate_fscore_metric("ROA", fin_dict.get("roa"), lambda x: x > 0, passed, failed, unknown)
-    f2 = _evaluate_fscore_metric("CFO", fin_dict.get("p_cf"), lambda x: x > 0, passed, failed, unknown) # Warning: p_cf is Price/CashFlow, if >0 then CFO>0 usually, but better to check if it's > 0
+    # cfo_to_assets = CFO / Total Assets from KBS. If > 0, operating cash flow is positive.
+    # Falls back to p_cf (Price/Cash Flow from VCI) if cfo_to_assets is unavailable.
+    # KBS returns 0.0 as sentinel for missing quarterly cash flow data (real values
+    # only appear in Q4 annual periods), so treat 0.0 as None (unknown, not failed).
+    cfo_val = fin_dict.get("cfo_to_assets")
+    if cfo_val is None or cfo_val == 0.0:
+        cfo_val = fin_dict.get("p_cf") or None
+    f2 = _evaluate_fscore_metric("CFO", cfo_val, lambda x: x > 0, passed, failed, unknown)
     f3 = _evaluate_fscore_metric("ROE", fin_dict.get("roe"), lambda x: x >= 10.0, passed, failed, unknown)
     f4 = _evaluate_fscore_metric("Net Margin", fin_dict.get("net_margin"), lambda x: x >= 5.0, passed, failed, unknown)
     return f1 + f2 + f3 + f4
@@ -84,8 +91,8 @@ def _calc_leverage_and_efficiency_points(fin_dict: dict, passed: list, failed: l
     return f5 + f6 + f7 + f8 + f9
 
 
-def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
-    """Score financial health using Piotroski F-Score model (0-9 scale).
+def calculate_vibe_quality_score(fin_dict: dict, sector: str = "") -> dict:
+    """Score financial health using Vibe Fundamental Quality (FQ) Score (0-9 scale).
 
     Evaluates three pillars:
     - Profitability (max 4 pts): ROA, cash flow, ROE, net margin
@@ -93,7 +100,17 @@ def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
     - Operating Efficiency (max 2 pts): gross margin, ROIC
     """
     if sector in ["Ngân hàng", "Bất động sản"]:
-        return {"score": 6, "max_score": 9, "rating": "TRUNG BÌNH - (Ngoại lệ Ngành)", "breakdown": {}}
+        return {
+            "score": 6,
+            "max_score": 9,
+            "rating": "TRUNG BÌNH - (Ngoại lệ Ngành)",
+            "passed": [],
+            "failed": [],
+            "unknown": ["ALL (sector-exempt)"],
+            "data_completeness": 0.0,
+            "confidence": "LOW CONFIDENCE (SECTOR EXEMPT)",
+            "breakdown": {},
+        }
 
     if (
         fin_dict
@@ -104,7 +121,7 @@ def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
         return {
             "score": raw_s,
             "max_score": 9,
-            "rating": _get_f_score_rating(raw_s),
+            "rating": _get_fq_score_rating(raw_s),
             "passed": ["Precomputed"],
             "failed": [],
             "unknown": [],
@@ -133,7 +150,7 @@ def calculate_piotroski_f_score(fin_dict: dict, sector: str = "") -> dict:
     return {
         "score": score, 
         "max_score": 9, 
-        "rating": _get_f_score_rating(score),
+        "rating": _get_fq_score_rating(score),
         "passed": passed,
         "failed": failed,
         "unknown": unknown,
@@ -210,7 +227,7 @@ def calculate_valuation_triangle(current_price: float, pe: float = None, pb: flo
 
 
 def _score_fundamental_pillar(fin_dict: dict) -> float:
-    f_res = calculate_piotroski_f_score(fin_dict)
+    f_res = calculate_vibe_quality_score(fin_dict)
     f_pts = min(round((f_res.get("score", 5) / 9.0) * 18, 1), 18.0)
 
     z_res = calculate_altman_z_score(fin_dict)

@@ -8,8 +8,8 @@ from indicators import (
     calculate_altman_z_score,
     calculate_atr,
     calculate_factor_exposures,
-    calculate_piotroski_f_score,
     calculate_valuation_triangle,
+    calculate_vibe_quality_score,
     evaluate_smart_money_flow,
 )
 
@@ -38,16 +38,24 @@ class TestIndicators:
         assert calculate_atr(df_bad) == 0.0
 
     def test_piotroski_f_score_special_sectors(self):
-        res_bank = calculate_piotroski_f_score({}, sector="Ngân hàng")
+        res_bank = calculate_vibe_quality_score({}, sector="Ngân hàng")
         assert res_bank["score"] == 6
         assert "Ngoại lệ" in res_bank["rating"]
+        # P0 regression: ensure downstream keys are present (not None)
+        assert isinstance(res_bank["passed"], list)
+        assert isinstance(res_bank["failed"], list)
+        assert isinstance(res_bank["unknown"], list)
+        assert res_bank["data_completeness"] == 0.0
+        assert "SECTOR EXEMPT" in res_bank["confidence"]
 
-        res_re = calculate_piotroski_f_score({}, sector="Bất động sản")
+        res_re = calculate_vibe_quality_score({}, sector="Bất động sản")
         assert res_re["score"] == 6
+        assert isinstance(res_re["passed"], list)
+        assert isinstance(res_re["unknown"], list)
 
     def test_piotroski_f_score_precomputed(self):
         fin = {"f_score": 8}
-        res = calculate_piotroski_f_score(fin)
+        res = calculate_vibe_quality_score(fin)
         assert res["score"] == 8
         assert res["rating"] == "XUẤT SẮC"
 
@@ -59,29 +67,61 @@ class TestIndicators:
             "net_margin": 15.0,
             "debt_equity": 0.5,
             "current_ratio": 2.0,
-            "financial_leverage": 1.5,
+            "financial_leverage": 150.0,
             "gross_margin": 25.0,
             "roic": 12.0,
         }
-        res = calculate_piotroski_f_score(fin_perfect)
+        res = calculate_vibe_quality_score(fin_perfect)
         assert res["score"] == 9
         assert res["rating"] == "XUẤT SẮC"
-        assert res["breakdown"]["ROA_duong"] == 1
+        assert 'ROA' in res['passed']
 
         fin_weak = {
             "roa": -2.0,
             "p_cf": -5.0,
             "roe": 3.0,
             "net_margin": 1.0,
-            "debt_equity": 3.0,
+            "debt_equity": 200.0,
             "current_ratio": 0.8,
-            "financial_leverage": 4.0,
+            "financial_leverage": 400.0,
             "gross_margin": 5.0,
             "roic": 2.0,
         }
-        res_w = calculate_piotroski_f_score(fin_weak)
+        res_w = calculate_vibe_quality_score(fin_weak)
         assert res_w["score"] == 0
         assert res_w["rating"] == "YẾU / RỦI RO"
+
+    def test_cfo_scoring_prefers_cfo_to_assets(self):
+        """cfo_to_assets (KBS) takes priority over p_cf (VCI) for CFO scoring."""
+        base = {
+            "roa": 5.0, "roe": 15.0, "net_margin": 10.0,
+            "debt_equity": 50.0, "current_ratio": 2.0,
+            "financial_leverage": 100.0, "gross_margin": 25.0, "roic": 10.0,
+        }
+        # cfo_to_assets positive → CFO passed
+        fin_pos = {**base, "cfo_to_assets": 0.08}
+        res = calculate_vibe_quality_score(fin_pos)
+        assert "CFO" in res["passed"]
+
+        # cfo_to_assets = 0.0 → KBS sentinel for missing data → unknown
+        fin_zero = {**base, "cfo_to_assets": 0.0}
+        res_zero = calculate_vibe_quality_score(fin_zero)
+        assert "CFO" in res_zero["unknown"]
+
+        # cfo_to_assets = 0.0 but p_cf available → fallback to VCI
+        fin_zero_vci = {**base, "cfo_to_assets": 0.0, "p_cf": 8.5}
+        res_zv = calculate_vibe_quality_score(fin_zero_vci)
+        assert "CFO" in res_zv["passed"]
+
+        # cfo_to_assets negative → real value, CFO failed
+        fin_neg = {**base, "cfo_to_assets": -0.05}
+        res_neg = calculate_vibe_quality_score(fin_neg)
+        assert "CFO" in res_neg["failed"]
+
+        # No cfo_to_assets, fallback to p_cf
+        fin_fallback = {**base, "p_cf": 8.5}
+        res_fb = calculate_vibe_quality_score(fin_fallback)
+        assert "CFO" in res_fb["passed"]
 
     def test_altman_z_score_special_sectors_and_empty(self):
         res_bank = calculate_altman_z_score({}, sector="Ngân hàng")

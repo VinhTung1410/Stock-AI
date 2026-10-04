@@ -18,7 +18,7 @@ FIN = {
     "net_margin": 15.0,
     "debt_equity": 0.3,
     "current_ratio": 2.0,
-    "financial_leverage": 1.5,
+     "financial_leverage": 150.0,
     "gross_margin": 30.0,
     "roic": 18.0,
     "mos_pct": 28.0,

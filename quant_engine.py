@@ -25,13 +25,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 
 # Re-exported from sub-modules for backwards compatibility
 from indicators import (  # noqa: F401
-    _get_f_score_rating,
+    _get_fq_score_rating,
     calculate_100_point_score,
     calculate_altman_z_score,
     calculate_atr,
     calculate_factor_exposures,
-    calculate_piotroski_f_score,
     calculate_valuation_triangle,
+    calculate_vibe_quality_score,
     evaluate_smart_money_flow,
 )
 from portfolio_guard import (  # noqa: F401

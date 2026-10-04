@@ -12,6 +12,7 @@ python_functions = ["test_*"]
 markers = [
     "offline: Tests that run without external APIs",
     "integration: Tests requiring Supabase or live API keys",
+    "live: Tests requiring live network API, excluded from CI",
 ]
 
 [tool.ruff]

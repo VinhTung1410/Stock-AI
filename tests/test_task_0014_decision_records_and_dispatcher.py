@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 from db_manager import (
     check_evidence_kill_switch,
     get_decision_records,
+    get_scan_block_distribution,
     save_decision_record,
     update_decision_forward_returns,
 )
@@ -208,3 +209,47 @@ class TestEvidenceKillSwitch:
         assert res["is_triggered"] is False
         assert res["expectancy_r"] > 0.0
         assert res["size_reduction_pct"] == 0.0
+
+
+# =============================================================================
+# TASK-0073: SCAN BLOCK DISTRIBUTION & 100% HOMOGENEOUS GATE ALARM
+# =============================================================================
+class TestScanBlockDistribution:
+    """Test TASK-0073: Aggregate block reasons and alert on 100% same-gate blocks."""
+
+    @patch("db_manager.get_decision_records")
+    def test_get_scan_block_distribution_empty(self, mock_get):
+        mock_get.return_value = []
+        res = get_scan_block_distribution("SESSION_1")
+        assert res["total_scanned"] == 0
+        assert res["alarm_100pct_same_gate"] is False
+
+    @patch("db_manager.get_decision_records")
+    def test_alarm_triggered_on_100pct_same_gate(self, mock_get):
+        """When 100% of scanned stocks (>=3) are blocked by the exact same gate, trigger alarm."""
+        mock_get.return_value = [
+            {"symbol": "HPG", "decision": "REJECT", "primary_rejection_gate": "SURVIVAL_QUALITY", "facts": {"price": 25}},
+            {"symbol": "VNM", "decision": "REJECT", "primary_rejection_gate": "SURVIVAL_QUALITY", "facts": {"price": 68}},
+            {"symbol": "FPT", "decision": "REJECT", "primary_rejection_gate": "SURVIVAL_QUALITY", "facts": {"price": 120}},
+        ]
+        res = get_scan_block_distribution("SESSION_2")
+        assert res["total_scanned"] == 3
+        assert res["total_blocked"] == 3
+        assert res["block_rate"] == 1.0
+        assert res["gate_distribution"] == {"SURVIVAL_QUALITY": 3}
+        assert res["data_completeness_ratio"] == 1.0
+        assert res["alarm_100pct_same_gate"] is True
+
+    @patch("db_manager.get_decision_records")
+    def test_no_alarm_when_gates_are_diverse(self, mock_get):
+        """When rejection gates are diverse or some pass, no alarm."""
+        mock_get.return_value = [
+            {"symbol": "HPG", "decision": "REJECT", "primary_rejection_gate": "SURVIVAL_QUALITY", "facts": {}},
+            {"symbol": "VNM", "decision": "REJECT", "primary_rejection_gate": "VALUATION_MOS", "facts": {"price": 68}},
+            {"symbol": "FPT", "decision": "BUY", "primary_rejection_gate": None, "facts": {"price": 120}},
+        ]
+        res = get_scan_block_distribution("SESSION_3")
+        assert res["total_scanned"] == 3
+        assert res["total_blocked"] == 2
+        assert res["alarm_100pct_same_gate"] is False
+
