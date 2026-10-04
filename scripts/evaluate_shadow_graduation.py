@@ -52,7 +52,7 @@ def evaluate_shadow_graduation(limit: int = 500) -> Dict[str, Any]:
         fwd_records = get_decision_forward_returns(decision_ids=dec_ids, limit=limit)
         fwd_map = {f["decision_id"]: f for f in fwd_records if "decision_id" in f}
 
-    distinct_sessions = len(set(r.get("session") or r.get("created_at", "")[:10] for r in records))
+    distinct_sessions = len({r.get("session") or r.get("created_at", "")[:10] for r in records})
     with_t10 = []
     for r in records:
         dec_id = r.get("decision_id")

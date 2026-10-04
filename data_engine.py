@@ -2387,12 +2387,19 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                     final_status = "WATCH_CONFIRMATION"
                     story_tag = "CHỜ BẮT ĐÁY"
 
+                if final_status == "RECOMMEND_BUY":
+                    conv_tier = "HIGH"
+                elif final_status == "SHADOW_BUY":
+                    conv_tier = "SHADOW"
+                else:
+                    conv_tier = "MEDIUM"
+
                 return {
                     "symbol": sym,
                     "sector": sector,
                     "status": final_status,
                     "conviction_score": max(conv_score, 75.0) if final_status in ("RECOMMEND_BUY", "SHADOW_BUY") else 65.0,
-                    "conviction_tier": "HIGH" if final_status == "RECOMMEND_BUY" else ("SHADOW" if final_status == "SHADOW_BUY" else "MEDIUM"),
+                    "conviction_tier": conv_tier,
                     "conviction_breakdown": conv_breakdown,
                     "style_type": contrarian_res.style_type,
                     "setup_type": contrarian_res.setup_type,

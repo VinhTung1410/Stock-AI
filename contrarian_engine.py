@@ -58,6 +58,7 @@ STYLE_CONTRARIAN_PANIC_BUY = "🚨 [BẮT ĐÁY PANIC BUY]"
 STYLE_WATCH_ZONE = "👀 [WATCH/ACCUMULATION ZONE]"
 
 SECTOR_BANKING = "Ngân hàng"
+SECTOR_BANK_NAMES = (SECTOR_BANKING, "Bank", "Banking")
 RISK_KEYWORDS_VETO = ["kiểm toán ngoại trừ", "khởi tố", "bắt bớ", "thanh tra", "hủy niêm yết", "bán tháo lãnh đạo"]
 
 
@@ -133,20 +134,16 @@ def _get_stress_haircut(symbol: str, sector: str, fin_dict: Dict[str, Any], tech
     from quant_valuation import classify_stock_archetype
     archetype = classify_stock_archetype(symbol, sector)
     
-    haircut = 0.15 # Base haircut cho doanh nghiệp chất lượng
-    
     if archetype == "REAL_ESTATE":
         haircut = 0.25
     elif archetype == "CYCLICAL":
-        haircut = 0.25
-        if result.metrics.get("cyclical_damage", False):
-            haircut = 0.35 # Haircut sâu hơn cho CP chu kỳ đang ở đáy lợi nhuận
+        haircut = 0.35 if result.metrics.get("cyclical_damage", False) else 0.25
     elif archetype == "BANK":
         haircut = 0.20
         npl = float(fin_dict.get("Tỷ lệ nợ xấu") or fin_dict.get("npl") or 0.0)
         if npl > 2.0:
             haircut += 0.10
-    else: # GROWTH_COMPOUNDER
+    else:  # GROWTH_COMPOUNDER
         haircut = 0.15
         
     risk_kw = tech_data.get("risk_keywords", "")
@@ -167,7 +164,7 @@ def _check_archetype_specific_gates(
     result: ContrarianResult,
 ) -> bool:
     """Kiểm tra các chốt chặn sinh tồn đặc thù theo Archetype (Nhánh B)."""
-    is_bank = sector in (SECTOR_BANKING, "Bank", "Banking", "Ngân hàng")
+    is_bank = sector in SECTOR_BANK_NAMES
     is_re = sector in ("Bất động sản", "Real Estate", "Bất động sản Khu công nghiệp")
     is_sec = sector in ("Chứng khoán", "Financial Services")
 
@@ -261,7 +258,7 @@ def _check_fundamental_integrity(
     if not _check_archetype_specific_gates(sector, fin_dict, result):
         return False
 
-    is_bank = sector in (SECTOR_BANKING, "Bank", "Banking", "Ngân hàng")
+    is_bank = sector in SECTOR_BANK_NAMES
 
     # 1. 3-Tier FQ-Score Gating (Task-23.1)
     if f_score < 4:
@@ -557,6 +554,7 @@ def evaluate_contrarian_gates(
     shadow_mode: bool = SHADOW_MODE_ACTIVE,
 ) -> ContrarianResult:
     res = ContrarianResult(symbol=symbol.upper(), can_buy=False)
+    _ = portfolio  # Reserved for cross-portfolio allocation gates
 
     if not symbol or current_price <= 0:
         res.status = STATE_BLOCKED

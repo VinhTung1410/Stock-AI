@@ -108,10 +108,15 @@ def run_scan():
             print(f"⚠️ Lỗi: {e}")
             time.sleep(1)
 
-    print("\n" + "="*70)
+    _print_scan_summary(watch_candidates, blocked_records, len(symbols))
+
+
+def _print_scan_summary(watch_candidates: list, blocked_records: list, total_count: int) -> None:
+    """In bảng tổng kết kết quả quét và cảnh báo phân phối gate."""
+    print("\n" + "=" * 70)
     print("📊 KẾT QUẢ TỔNG HỢP LIVE SCAN")
-    print("="*70)
-    
+    print("=" * 70)
+
     if watch_candidates:
         print(f"\n🎯 CÁC MÃ ĐẠT TIÊU CHUẨN THEO DÕI / WATCHLIST ({len(watch_candidates)} mã):")
         for c in watch_candidates:
@@ -130,11 +135,13 @@ def run_scan():
         print(f"  - {gate}: {count}/{len(blocked_records)} mã ({pct:.1f}%)")
 
     # Alarm check (TASK-0073)
-    if len(gate_counts) == 1 and len(blocked_records) == len(symbols):
-        print(f"\n⚠️ BÁO ĐỘNG (alarm_100pct_same_gate): 100% mã bị chặn cùng gate '{list(gate_counts.keys())[0]}'! Kiểm tra lại cấu hình.")
+    if len(gate_counts) == 1 and len(blocked_records) == total_count:
+        first_gate = next(iter(gate_counts))
+        print(f"\n⚠️ BÁO ĐỘNG (alarm_100pct_same_gate): 100% mã bị chặn cùng gate '{first_gate}'! Kiểm tra lại cấu hình.")
     else:
         print("\n✅ Phân phối lý do block đa dạng, hệ thống phân loại bình thường.")
-    print("="*70)
+    print("=" * 70)
+
 
 if __name__ == "__main__":
     run_scan()

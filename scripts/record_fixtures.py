@@ -16,8 +16,10 @@ def save_fixture(symbol: str, data: Dict[str, Any], filename: str) -> Path:
     """Save an immutable JSON snapshot fixture."""
     FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
     out_path = FIXTURES_DIR / filename
+    payload = dict(data)
+    payload["symbol"] = symbol.upper()
     with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
     return out_path
 
 

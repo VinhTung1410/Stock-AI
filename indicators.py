@@ -73,7 +73,7 @@ def _calc_profitability_points(fin_dict: dict, passed: list, failed: list, unkno
     # KBS returns 0.0 as sentinel for missing quarterly cash flow data (real values
     # only appear in Q4 annual periods), so treat 0.0 as None (unknown, not failed).
     cfo_val = fin_dict.get("cfo_to_assets")
-    if cfo_val is None or cfo_val == 0.0:
+    if cfo_val is None or abs(float(cfo_val)) < 1e-6:
         cfo_val = fin_dict.get("p_cf") or None
     f2 = _evaluate_fscore_metric("CFO", cfo_val, lambda x: x > 0, passed, failed, unknown)
     f3 = _evaluate_fscore_metric("ROE", fin_dict.get("roe"), lambda x: x >= 10.0, passed, failed, unknown)
