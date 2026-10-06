@@ -1,67 +1,112 @@
 # 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 14.0
 
 **Tên dự án:** Stock-AI / AI Investment Decision & Research Platform  
-**Phiên bản:** v14.0 — Phase 25: Contrarian P0 Remediation, Golden Fixtures, Scan Observability & Shadow Mode  
-**Trọng tâm:** *"Sửa lỗi P0 (tên trạng thái, bộ feature, nhánh B) trước khi tinh chỉnh bất kỳ ngưỡng nào. Chuyển đổi toàn bộ test sang Golden Test dùng fixture ghi lại từ BCTC thật (không gọi API sống). Bổ sung biểu đồ phân phối lý do block & completeness kèm cảnh báo khẩn cấp khi 100% mã bị chặn cùng lý do. Kích hoạt Contrarian ở chế độ Shadow/Report-only trong 60 phiên, lưu vết vào decision_records & decision_forward_returns để lấy bằng chứng thực nghiệm trước khi cấp quyền RECOMMEND_BUY."*
+**Phiên bản:** v14.0 — Phase 25: Contrarian P0 Remediation, Golden Fixtures, Scan Observability & Shadow Mode Evaluation  
+**Trọng tâm cốt lõi:**  
+> *"Tôi sẽ phân biệt rõ: **ĐÃ HOÀN TẤT TRIỂN KHAI SHADOW MODE ≠ ĐÃ CHỨNG MINH CHIẾN LƯỢC BẮT ĐÁY CÓ LỢI THẾ ĐẦU TƯ (EDGE/ALPHA)**.  
+> Hoàn thành triển khai code chỉ là điều kiện cần về mặt kỹ thuật, không phải bằng chứng kinh tế để kết luận chiến lược có lợi thế đầu tư."*
 
 ---
 
-## 1. MỤC TIÊU PHIÊN BẢN v14.0 (PHASE 25)
+## 1. ĐÁNH GIÁ NHANH PHASE 25 — v14.0
 
-1. **TASK-0071: Fix P0 State Machine, Feature Set & Branch B (P0):**
-   - Chuẩn hóa Enum State đồng nhất với spec TASK-0070 §1.2: `STATE_NEAR_PANIC_WATCH`, `STATE_EXTREME_FEAR_WATCH`, `STATE_NORMAL`.
-   - Tách biệt độc lập Nhánh B (Archetype Overlays cho Banking, Real Estate, Securities, Non-financial) thành helper `_check_archetype_specific_gates`.
-   - Sửa lỗi trùng lặp ngưỡng L24–25 (`CONTRARIAN_MAX_RSI_NORMAL` trùng `CONTRARIAN_MAX_RSI_WATCH = 35.0`).
-   - Ban hành văn bản kiến trúc `ADR-0009-Contrarian-State-Machine.md`.
+| Hạng mục | Thực trạng đánh giá | Kết luận / Trạng thái |
+|---|---|:---:|
+| **An toàn vận hành** | Không phát sinh lệnh mua thật; Shadow Mode đang bật. | `Đạt theo báo cáo` |
+| **Lưu vết quyết định** | Đã ghi nhận snapshot vào Supabase và có script theo dõi forward returns. | `Đạt theo báo cáo` |
+| **Bằng chứng về hiệu quả đầu tư** | Mới bắt đầu thu thập; chưa đủ dữ liệu để kết luận có alpha. | `Chưa kiểm chứng` |
+| **Kiểm thử và chất lượng code** | 19/19 unit tests và Ruff Exit code 0 theo kết quả báo cáo. | `Đạt theo báo cáo` |
 
-2. **TASK-0072: Golden Tests bằng Fixture Ghi Lại (No Live API):**
-   - Thu thập snapshot BCTC thật qua `scripts/record_fixtures.py`, lưu JSON tĩnh tại `tests/fixtures/` (`fpt_q4_2024.json`, `vnm_q4_2024.json`, `hpg_cfo_neg.json`).
-   - Xây dựng `tests/test_golden_contrarian.py` kiểm định: FPT/VNM với BCTC thật phải pass Survival Gate (tier $\ge 2$); mã có CFO âm bắt buộc bị chặn tại `SURVIVAL_QUALITY`.
-   - Phân lập test live bằng marker `@pytest.mark.live` (loại khỏi CI).
-
-3. **TASK-0073: Scan Block Distribution & 100% Homogeneous Gate Alarm:**
-   - Xây dựng `get_scan_block_distribution(session_id: str) -> dict` trong `db_manager.py`.
-   - Thiết lập cơ chế phát hiện bất thường: nếu 100% mã bị chặn bởi cùng một gate duy nhất, kích hoạt cờ `alarm_100pct_same_gate` và gửi cảnh báo khẩn qua Discord.
-   - Thêm biểu đồ Bar chart phân phối Gate và đồng hồ Completeness ratio vào Streamlit tab `tab_alpha_tracker.py`.
-
-4. **TASK-0074: Contrarian Shadow/Report-Only Mode 60 Phiên:**
-   - Mặc định bật `SHADOW_MODE_ACTIVE = True`: không phát lệnh `RECOMMEND_BUY` thật, chuyển trạng thái thành `SHADOW_BUY` (`can_buy = False`).
-   - Ghi nhận đầy đủ facts/context vào `decision_records` với `primary_rejection_gate = "SHADOW_MODE"`.
-   - Cron script `scripts/update_shadow_returns.py` cập nhật forward returns T+1, T+5, T+10, T+20.
-   - Cổng tốt nghiệp shadow (`should_graduate_from_shadow()`): $\ge 60$ phiên, $\ge 30$ mẫu T+10, Hit rate $> 55\%$.
+> [!NOTE]
+> **Lưu ý:** Đây là đánh giá dựa trên kết quả báo cáo, chưa phải xác minh trực tiếp code, dữ liệu Supabase hay các bài test độc lập.
 
 ---
 
-## 2. KẾ THỪA CÁC CHỐT CHẶN PHIÊN BẢN TRƯỚC (v6.1 - v13.0)
+## 2. BỐN TÍN HIỆU CẦN CHÚ Ý NHẤT & GÓC NHÌN PHẢN BIỆN
 
-1. **Phase 24 (v13.0):** Reversal Confirmed & Entry Eligible Layer (Price Action, Higher Low, Volume Confirm).
-2. **Phase 23 (v12.0):** Advanced FQ-Score 3-Tier Architecture & Risk Overlays (CFO Proxy, Decoupled Hard Veto).
-3. **Phase 22 (v11.1):** Contrarian Quant & Architecture Upgrade (Valuation Watch, F-Score Data Confidence).
-4. **Phase 21 (v10.1):** Data Resilience & Fallback Valuation.
-5. **Phase 20 (v10.0):** Contrarian 4-State Machine (Continuous Panic Score).
-6. **Phase 19 (v9.0):** Contrarian 5-Layer Framework (Quality De-rating vs Value Trap, Event Risk VETO).
-7. **Phase 18 (v8.1):** Contrarian Panic Buy Module cơ bản (RSI <= 30).
-8. **Phase 17 (v8.0):** Risk Governance Completion.
-9. **Phase 16 (v7.6):** Signal Integrity & Audit Cleanup.
-10. **Phase 15 (v7.5):** Unified Entry Gate (7 tầng thống nhất, Macro Gate toàn tuyến).
-11. **Phase 14 (v7.4):** Data & Valuation Plumbing.
-12. **Phase 13 (v7.3):** Core Valuation Re-Architecture.
+| Mã | Tín hiệu hiện tại | Góc nhìn phản biện |
+|:---:|---|---|
+| **PNJ** | RSI 9.2, Panic 50/100, F-Score 7/9 | Quá bán cực mạnh đáng nghiên cứu, nhưng **chưa chứng minh giá đã tạo đáy**. |
+| **FPT** | RSI 31.4, MoS +25.7% | Cần xác minh Fair Value và **tính hữu ích thực sự của MoS** trước khi gọi là định giá hấp dẫn. |
+| **DXG** | MoS +99.9%, F-Score 6/9 | Mức MoS rất lớn cần **kiểm tra giả định định giá, chất lượng tài sản và đòn bẩy**. |
+| **DIG** | MoS +99.9%, F-Score 6/9 | Rủi ro tương tự DXG; **giá rẻ theo mô hình không đồng nghĩa cổ phiếu rẻ theo giá trị nội tại đáng tin cậy**. |
+
+### Nhận định kỹ thuật bổ sung:
+- **PNJ:** RSI 9.2 nhưng Panic Score chỉ 50/100. Đây không nhất thiết là lỗi: RSI và điểm hoảng loạn có thể đo hai khái niệm khác nhau. Tuy nhiên, cần ghi rõ công thức Panic Score và các thành phần đóng góp để hiểu vì sao hai chỉ báo không đồng thuận.
+- **DXG & DIG:** Ưu tiên kiểm toán nguồn Fair Value trước khi phân tích sâu hơn tín hiệu bắt đáy.
 
 ---
 
-## 3. NGUYÊN TẮC QUẢN TRỊ RỦI RO & BẢO TOÀN KIẾN TRÚC
+## 3. BA ĐIỂM KIỂM TRA TRƯỚC KHI CHO SHADOW MODE TỐT NGHIỆP
 
-- **P0 First Before Thresholds:** Không bao giờ tinh chỉnh ngưỡng định lượng khi cấu trúc state machine và danh pháp enum đang bị lệch.
-- **Evidence-First (Không Test API Sống):** Golden test dựa trên fixture thực nghiệm bất biến. Không để CI phụ thuộc vào tính sẵn sàng của mạng hoặc API bên ngoài.
-- **Observability Over False Positives:** Không ăn mừng khi 100% mã bị chặn; một đợt quét đồng nhất 100% cùng lý do là dấu hiệu hỏng hóc hệ thống cần báo động khẩn cấp.
-- **Shadow Mode Quarantine:** Chiến lược mới bắt buộc phải trải qua 60 phiên thử nghiệm và đạt kỳ vọng xác suất thực tế trước khi cấp quyền can thiệp vào tài khoản vốn thật.
+### A. Expectancy Nhất Quán Với Profit Factor & Bổ Sung Expectancy Theo Đơn Vị R
+- Cổng tốt nghiệp ban đầu yêu cầu 60 phiên, tối thiểu 30 mẫu T+10 và Win rate trên 55%. Đây là điều kiện khởi đầu, nhưng **chưa đủ để chứng minh lợi thế**.
+- **Nghịch lý Win Rate:** Thắng 60% với +1% và thua 40% với -3% dẫn đến kỳ vọng toán học âm nặng:
+  $$\mathbb{E}(R) = 0.6(1\%) - 0.4(3\%) = -0.6\%$$
+- **Thống nhất phương pháp đo lường & R-Multiple:**
+  1. **Expectancy (%):** Lợi nhuận kỳ vọng trung bình sau chi phí giả định (0.35%).
+  2. **Expectancy (R-Multiple):** Chuẩn hóa theo mức rủi ro gánh chịu ($R = \frac{P_{\text{exit}} - P_{\text{entry}}}{P_{\text{entry}} - P_{\text{stop}}}$) để đánh giá đúng chất lượng chiến lược khi quy mô vị thế và độ biến động giữa các cổ phiếu là khác nhau.
+  3. **Profit Factor:** Tổng lãi của các lệnh thắng chia tổng lỗ của các lệnh thua ($\ge 1.2$).
+  4. **Benchmark Alpha:** Hiệu quả tương đối so với VN-Index hoặc VN30 trong cùng kỳ.
+  5. **MAE/MFE:** Mức giảm bất lợi lớn nhất và mức tăng thuận lợi lớn nhất sau tín hiệu.
+  - *Lưu ý:* T+10 là một chân trời đánh giá, không phải bằng chứng đủ để cho phép mở lệnh thật.
+
+### B. Phân Biệt Rạch Ròi 4 Khái Niệm Cỡ Mẫu (Signal Clustering & Effective Sample Size)
+- Gom tín hiệu cùng mã trong vòng 5 ngày (`deduplicate_signal_episodes`) là cách giảm trùng lặp theo thời gian, nhưng **số episode độc lập không tự động bằng Effective Sample Size thống kê ($N_{\text{eff}}$)** nếu nhiều mã cùng chịu cú sốc giảm sâu toàn thị trường.
+- **Hệ thống bắt buộc báo cáo riêng 4 chỉ số:**
+  1. `n_raw_signals`: Tổng tín hiệu ban đầu.
+  2. `n_episodes`: Số episode sau khử trùng lặp theo thời gian (5 ngày).
+  3. `n_distinct_sessions`: Số phiên độc lập có dữ liệu.
+  4. `n_eff_estimated`: Effective Sample Size ước lượng theo mô hình tương quan chéo thị trường (Kish Design Effect: $N_{\text{eff}} = \frac{N_{\text{episodes}}}{1 + (\bar{m} - 1)\rho}$).
+- Không dùng chung hai khái niệm nếu hàm chỉ thực hiện gom cụm theo thời gian.
+
+### C. Đối Chiếu Schema & Đảm Bảo Tính Toàn Vẹn Dữ Liệu (`scripts/update_shadow_returns.py`)
+- **Kiểm toán Schema Wide-Format:** Bảng `decision_forward_returns` lưu 1 bản ghi trên mỗi `decision_id` với các cột riêng biệt `t1_return_pct`, `t5_return_pct`, `t10_return_pct`, `t20_return_pct`.
+- **Nguyên tắc Upsert An Toàn (Partial Upsert):**
+  - Chỉ cập nhật các kỳ hạn đã có dữ liệu thực tế (khác `None`).
+  - **Phân biệt rạch ròi:** Kết quả chưa đến hạn lưu `None` (Unmatured), không được gán hoặc hiểu nhầm thành `0.0%` (hòa vốn).
+  - Tránh việc cập nhật T+5 vô tình ghi đè `None` làm mất kết quả T+1 đã tính toán từ trước.
+- **Quy tắc Audit Khi Điều Chỉnh Giá & Corporate Actions:**
+  - Snapshot price gốc được đọc từ `facts["snapshot_price"]` bất biến, không bị sửa sai lệch theo thời gian.
+  - Sử dụng lịch giao dịch thực tế của HSX/HNX (không tính ngày nghỉ là phiên).
+
+### D. Ý Nghĩa Cốt Lõi Của Ngưỡng 60 Phiên (Regime Coverage vs. Giấy Phép Giao Dịch Thật)
+- **Phân biệt hai khái niệm:**
+  - *60 phiên thử nghiệm:* Thời gian hệ thống hoạt động và ghi nhận dữ liệu (Liveness).
+  - *30 episode:* Số cơ hội sau khi khử trùng lặp (Sample depth).
+- **Rào cản Chế độ Thị trường (Regime Coverage):** Hai điều kiện này **không chứng minh chiến lược đã trải qua đủ chế độ thị trường**. Nếu 60 phiên đều nằm trong một đợt hồi phục (Uptrend), kết quả có thể không đại diện cho giai đoạn thị trường giảm mạnh hoặc đi ngang.
+- **Nguyên tắc Stage-Gate:** Cổng tốt nghiệp hiện tại chỉ là **điều kiện để chuyển sang vòng đánh giá tiếp theo (Research Review & ADR)**, KHÔNG PHẢI giấy phép tự động mở giao dịch tiền thật. Tiếp tục giữ Shadow Mode cho đến khi có đủ bằng chứng về tính ổn định, chi phí thực thi và rủi ro giảm vốn (drawdown).
 
 ---
 
-## 4. TIÊU CHUẨN KỸ THUẬT (QUALITY GATE)
+## 4. QUY TRÌNH KHUYÊN DÙNG TỪ BÂY GIỜ (5 BƯỚC)
 
-- **SonarCloud:** Cognitive Complexity < 15 (S3776), `logging.exception()` trong except (S8572), không trùng lặp chuỗi $\ge 3$ lần (S1192), duplicate lines density $\le 3.0\%$. Zero duplicate logic giữa sync/async.
-- **Ruff:** `ruff check --fix .` đảm bảo exit code 0 và imports chuẩn `isort`.
-- **Test Coverage:** $\ge 80\%$ (mục tiêu $85 - 95\%+$) cho toàn bộ module contrarian và governance mới; 100% unit tests pass.
-- **Local Workspace Hygiene:** Không stage hay commit bất kỳ file nghiên cứu nội bộ nào (`stock_ai_roadmap.md`, `danh_gia_he_thong_quy_fund.md`, `idea.md`...).
+```mermaid
+graph LR
+    S1["1. Shadow Mode\n(60 phiên, bất biến)"] --> S2["2. Audit Data\n(Giá, Corporate actions, De-dup)"]
+    S2 --> S3["3. Đánh Giá Thống Kê\n(Expectancy, Alpha, Drawdown, Neff)"]
+    S3 --> S4["4. Research Review + ADR\n(Con người duyệt, không auto rule)"]
+    S4 --> S5["5. Quyết Định Có Điều Kiện\n(Unlock khi đủ bằng chứng & rủi ro)"]
+```
+
+1. **Shadow Mode — 60 phiên:** Giữ nguyên quy tắc; thu thập tín hiệu và snapshot bất biến.
+2. **Audit chất lượng dữ liệu:** Kiểm tra giá, corporate actions, tín hiệu trùng lặp và tính tái lập.
+3. **Đánh giá thống kê:** Expectancy, alpha, drawdown, chi phí và độ bất định của kết quả.
+4. **Research review + ADR:** Phê duyệt hoặc bác bỏ giả thuyết; không tự động thay đổi rule.
+5. **Quyết định có điều kiện:** Chỉ cân nhắc bước tiếp theo khi bằng chứng, rủi ro và cơ chế kiểm soát đều đạt yêu cầu.
+
+> [!WARNING]
+> **Phạm vi suy rộng:** Với 18 mã được lựa chọn trước, có thể đánh giá chiến lược trên tập mã đó, nhưng **chưa thể suy rộng kết quả cho toàn thị trường Việt Nam**.
+
+---
+
+## 5. VIỆC TIẾP THEO NÊN LÀM NGAY
+
+> **Đóng băng tính năng mới cho Phase 25.** Thay vào đó, hãy kiểm toán đúng 3 file:
+> 1. `contrarian_engine.py` — Cách tính Panic Score, MoS, điều kiện tạo tín hiệu và cơ chế khóa lệnh thật.
+> 2. `scripts/update_shadow_returns.py` — Cách tính forward returns, xử lý dữ liệu và chống ghi trùng (idempotent).
+> 3. `scripts/evaluate_shadow_graduation.py` — Toàn bộ tiêu chí tốt nghiệp và cách tính vượt ra ngoài Win rate đơn thuần.
+
+Nếu ba phần này vững, Shadow Mode mới có thể tạo ra bằng chứng đáng tin cậy thay vì chỉ tạo ra nhiều báo cáo.
+
 

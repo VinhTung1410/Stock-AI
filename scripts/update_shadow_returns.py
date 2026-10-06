@@ -22,7 +22,15 @@ from db_manager import get_decision_records, update_decision_forward_returns
 
 
 def update_shadow_records_forward_returns(records: List[Dict[str, Any]]) -> int:
-    """Update forward returns for a list of shadow decision records."""
+    """Batch update forward returns for shadow decision records in an idempotent manner.
+
+    Guarantees:
+    1. Idempotency: Uses upsert on conflict (decision_id) in database layer.
+       Re-running this script will never duplicate rows or create duplicate signals.
+    2. Zero Mutation of Snapshot: Snapshot price is read from immutable facts['snapshot_price']
+       and never overwritten with subsequent volatile prices.
+    3. Safe Defaults: Skips records with invalid price or missing decision_id.
+    """
     updated = 0
     for r in records:
         dec_id = r.get("decision_id")

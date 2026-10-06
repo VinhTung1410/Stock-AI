@@ -989,18 +989,25 @@ def update_decision_forward_returns(decision_id: str, returns_data: dict) -> boo
     if not client:
         return False
 
-    row = {
+    # Only update fields that are explicitly provided (not None), preserving previously matured horizon returns
+    row: dict[str, Any] = {
         "decision_id": decision_id,
         "symbol": returns_data.get("symbol", ""),
-        "snapshot_price": float(returns_data.get("snapshot_price", 0.0)),
-        "t1_return_pct": returns_data.get("t1_return_pct"),
-        "t3_return_pct": returns_data.get("t3_return_pct"),
-        "t5_return_pct": returns_data.get("t5_return_pct"),
-        "t10_return_pct": returns_data.get("t10_return_pct"),
-        "t20_return_pct": returns_data.get("t20_return_pct"),
-        "vnindex_t5_pct": returns_data.get("vnindex_t5_pct"),
-        "vnindex_t20_pct": returns_data.get("vnindex_t20_pct"),
     }
+    if "snapshot_price" in returns_data and returns_data["snapshot_price"] is not None:
+        row["snapshot_price"] = float(returns_data["snapshot_price"])
+
+    for horizon in (
+        "t1_return_pct",
+        "t3_return_pct",
+        "t5_return_pct",
+        "t10_return_pct",
+        "t20_return_pct",
+        "vnindex_t5_pct",
+        "vnindex_t20_pct",
+    ):
+        if horizon in returns_data and returns_data[horizon] is not None:
+            row[horizon] = float(returns_data[horizon])
 
     try:
         res = client.table("decision_forward_returns").upsert(row, on_conflict="decision_id").execute()

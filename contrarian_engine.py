@@ -259,11 +259,12 @@ def _check_fundamental_integrity(
         return False
 
     is_bank = sector in SECTOR_BANK_NAMES
+    is_re = sector in ("Bất động sản", "Real Estate", "Bất động sản Khu công nghiệp")
 
     # 1. 3-Tier FQ-Score Gating (Task-23.1)
     if f_score < 4:
         # TIER 1: BLOCK UNCONDITIONALLY (Value Trap)
-        if data_comp < 0.7 and not is_bank:
+        if data_comp < 0.7 and not (is_bank or is_re):
             result.can_buy = False
             result.status = STATE_BLOCKED
             result.action_state = "DATA / FUNDAMENTAL REVIEW REQUIRED"
@@ -280,7 +281,7 @@ def _check_fundamental_integrity(
 
     elif f_score < CONTRARIAN_MIN_FSCORE:
         # TIER 2: CONDITIONAL PASS (Requires Overlays, which are already checked globally above)
-        if data_comp < 0.7 and not is_bank:
+        if data_comp < 0.7 and not (is_bank or is_re):
             result.can_buy = False
             result.status = STATE_BLOCKED
             result.action_state = "DATA / FUNDAMENTAL REVIEW REQUIRED"
@@ -355,6 +356,12 @@ def _check_fundamental_integrity(
     result.metrics["fair_value"] = stress_fair_value
     result.metrics["mos_is_informative"] = mos_is_informative
 
+    if stress_mos_pct >= 90.0:
+        result.metrics["anomalous_high_mos_warning"] = (
+            f"Cảnh báo: MoS={stress_mos_pct:.1f}% cực đoan (>= 90%). "
+            "Cần kiểm toán lại nguồn Fair Value và chất lượng tài sản trước khi giải ngân."
+        )
+
     if not mos_is_informative:
         result.can_buy = False
         result.status = STATE_BLOCKED
@@ -376,50 +383,66 @@ def _check_fundamental_integrity(
     return True
 
 
-def _calculate_panic_score(current_price: float, tech_data: Dict[str, Any]) -> float:
+def _calculate_panic_score_with_breakdown(
+    current_price: float, tech_data: Dict[str, Any]
+) -> tuple[float, Dict[str, float]]:
     rsi = float(tech_data.get("rsi14") or tech_data.get("rsi") or 50.0)
     ma20 = float(tech_data.get("ma20") or 0.0)
     
-    score = 0.0
+    breakdown = {
+        "rsi_score": 0.0,
+        "ma20_drawdown_score": 0.0,
+        "volume_shock_score": 0.0,
+        "atr_expansion_score": 0.0,
+        "gap_down_score": 0.0,
+    }
     
     # 1. RSI Score (Max 30)
     if rsi <= 25.0:
-        score += 30.0
+        breakdown["rsi_score"] = 30.0
     elif rsi <= 35.0:
-        score += 30.0 - (rsi - 25.0) * 3.0
+        breakdown["rsi_score"] = round(30.0 - (rsi - 25.0) * 3.0, 1)
         
     # 2. Drawdown / Deviation from MA20 (Max 20)
     if ma20 > 0:
         pct_below = (1.0 - (current_price / ma20)) * 100.0
         if pct_below >= 15.0:
-            score += 20.0
+            breakdown["ma20_drawdown_score"] = 20.0
         elif pct_below > 5.0:
-            score += (pct_below - 5.0) * 2.0
+            breakdown["ma20_drawdown_score"] = round((pct_below - 5.0) * 2.0, 1)
             
     # 3. Volume Shock (Max 20)
     vol_ratio = float(tech_data.get("volume_ratio_20d") or 1.0)
     if vol_ratio >= 3.0:
-        score += 20.0
+        breakdown["volume_score"] = 20.0
     elif vol_ratio > 1.5:
-        score += (vol_ratio - 1.5) * 13.33
+        breakdown["volume_score"] = round((vol_ratio - 1.5) * 13.33, 1)
         
     # 4. ATR Expansion / Volatility (Max 15)
     atr_ratio = float(tech_data.get("atr_ratio_14d") or 1.0)
     if atr_ratio >= 2.0:
-        score += 15.0
+        breakdown["atr_score"] = 15.0
     elif atr_ratio > 1.2:
-        score += (atr_ratio - 1.2) * 18.75
+        breakdown["atr_score"] = round((atr_ratio - 1.2) * 18.75, 1)
         
     # 5. Gap Shock / Velocity (Max 15)
     if tech_data.get("has_gap_down", False):
-        score += 15.0
+        breakdown["gap_down_score"] = 15.0
         
-    return round(min(100.0, score), 1)
+    total_score = sum(breakdown.values())
+    final_score = round(min(100.0, total_score), 1)
+    return final_score, breakdown
+
+
+def _calculate_panic_score(current_price: float, tech_data: Dict[str, Any]) -> float:
+    score, _ = _calculate_panic_score_with_breakdown(current_price, tech_data)
+    return score
 
 
 def _evaluate_panic_state(current_price: float, tech_data: Dict[str, Any], result: ContrarianResult) -> bool:
-    panic_score = _calculate_panic_score(current_price, tech_data)
+    panic_score, breakdown = _calculate_panic_score_with_breakdown(current_price, tech_data)
     result.metrics["panic_score"] = panic_score
+    result.metrics["panic_score_breakdown"] = breakdown
     
     if panic_score < 40.0:
         result.can_buy = False
@@ -477,8 +500,11 @@ def _check_price_confirmation(current_price: float, tech_data: Dict[str, Any], r
 
     from datetime import datetime
     from zoneinfo import ZoneInfo
-    now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
-    is_late_session = now.hour > 14 or (now.hour == 14 and now.minute >= 15)
+    if "is_late_session" in tech_data:
+        is_late_session = bool(tech_data["is_late_session"])
+    else:
+        now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+        is_late_session = now.hour > 14 or (now.hour == 14 and now.minute >= 15)
     is_backtest = tech_data.get("is_backtest", False)
 
     if not is_structurally_confirmed:
