@@ -19,15 +19,14 @@
 
 ## 3. Biến Phụ Thuộc (Dependent Variable)
 - **Chính:** `Relative Return T+20` = Lợi suất T+20 của cổ phiếu - Median lợi suất T+20 của universe trong cùng ngày hôm đó.
-- **Phụ (Độ nhạy):** Thặng dư lợi suất sau khi trừ `Beta × Index_Return` và trung hòa hiệu ứng Ngành (Industry neutral).
+- **Phụ (Độ nhạy):** Thặng dư lợi suất sau khi trừ `Beta × Index_Return` và trung hòa hiệu ứng Ngành (Industry neutral - dùng phương pháp xấp xỉ).
 
 ## 4. Phương Pháp Thống Kê
+- **Statistical Power (Sức mạnh thống kê):** Do Universe giới hạn ở $N \approx 56$, sai số chuẩn của IC mỗi ngày là $1/\sqrt{56} \approx 0.13$. Với khoảng 75-90 điểm độc lập hiệu dụng, $SE_{mean} \approx 0.015$. Để đạt $t \ge 2$, **Minimum Detectable Effect (MDE)** cần có là $IC \ge 0.03$. Đây là một rào cản rất lớn. Nếu kết quả ra âm hoặc $t < 2$, đó là do *thiếu power* chứ chưa hẳn là bác bỏ tuyệt đối.
 - **Cross-sectional Spearman IC:** Tính Rank IC từng ngày giữa feature rank và forward relative return.
-- **T-Stat & Newey-West:** Tính Mean IC và t-stat của chuỗi IC theo ngày, sử dụng sai số chuẩn Newey-West (lag >= 20) để khắc phục tự tương quan do overlapping forward returns.
-- **Kiểm tra song song:** Lấy mẫu không chồng lấn (non-overlapping, mỗi 20 ngày lấy 1 mẫu) để đối chiếu kết quả.
-- **Phân vị (Deciles):** Đo spread lợi suất giữa `Decile thấp nhất` (giảm sâu nhất) trừ đi `Decile cao nhất`, kiểm tra tính đơn điệu của lợi suất qua 10 deciles.
-- **Phân rã (Decomposition):** Xem xét IC theo từng năm và theo Market Regime (VNI tăng/giảm, VNI vol cao/thấp).
-- **Kiểm soát đa so sánh:** Tập trung vào kết quả chính: `DD60, T+20, relative so với median`. Các phép thử khác chỉ mang tính chất thăm dò.
+- **T-Stat & Newey-West:** Tính Mean IC và t-stat của chuỗi IC theo ngày, sử dụng sai số chuẩn Newey-West (lag >= 20).
+- **Phân vị (Quintiles):** Do $N=56$ quá nhỏ, chuyển từ Decile sang **Quintile** (~11 mã mỗi rổ). Đo spread lợi suất giữa Q1 (thấp nhất) trừ Q5 (cao nhất).
+- **Trung hòa Ngành (Approximate):** Vì không có dữ liệu ngành Point-in-time, dùng phân loại ngành tĩnh (Static Industry Dummy: Bank, Real Estate, Others) đưa vào hồi quy. Kết quả sẽ được dán nhãn *approximate*.
 
 ## 5. Tiêu Chí Quyết Định (Pre-registered Criteria)
 *(Chốt trước khi chạy code)*
@@ -46,9 +45,48 @@
 - Trừ phí giao dịch, thuế, trượt giá (bid-ask spread), thanh khoản.
 - Không thực hiện Long/Short (vì Việt Nam không cho bán khống). Báo cáo sẽ đo lường thực thi cho chân Long (Ví dụ: Mua Decile 10).
 
-## 8. Thứ Tự Triển Khai
-1. Commit bản plan này vào Git.
-2. Xây dựng bảng Panel (Ngày × Mã), dọn dẹp dữ liệu chia tách, cổ tức, thanh khoản.
-3. Chạy IC cho tính năng chính (DD60, T+20) trên 2018-2023.
-4. Chạy các kiểm tra độ nhạy (Beta-neutral, Industry-neutral).
-5. Chỉ mở Holdout 2024-2026 nếu thỏa mãn Tiêu Chí Quyết Định.
+## 5. Tiêu Chí Quyết Định (Pre-registered Criteria & Thresholds)
+*(Chốt trước khi chạy code)*
+
+**5.1. Ngưỡng PASS cho Primary Feature (DD60, T+20, Baseline Median)**
+- **Mean IC:** Phải khác 0 ở mức ý nghĩa thống kê với $t \ge 2.0$ (dùng sai số chuẩn Newey-West với lag $\ge 19$).
+- **Độ ổn định:** Cùng dấu ở $\ge 5/6$ năm trong tập Discovery (2018-2023).
+- **Trung hòa (Neutralization Gate):** Kết quả (t-stat $\ge 2.0$) không được biến mất sau khi kiểm soát Beta, Ngành, và Size/Thanh khoản.
+  - *Quy tắc:* Nếu Raw PASS nhưng Residual FAIL $\rightarrow$ Lợi thế do Beta/Ngành/Size chứ không phải do DD60. Bác bỏ giả thuyết.
+  - *Quy tắc:* Nếu Raw FAIL nhưng Residual PASS $\rightarrow$ Chưa đủ kết luận, cần nghiên cứu sâu hơn về hiệu ứng che khuất.
+
+**5.2. Ngưỡng cho Secondary Features (RSI14, Rev5)**
+- Do tương quan mạnh với DD60, RSI14 không được coi là bằng chứng độc lập. Các feature phụ này chịu tiêu chuẩn kiểm soát đa so sánh (ví dụ hiệu chỉnh Holm hoặc yêu cầu t-stat $\ge 2.5$).
+
+**5.3. Tiêu chí D $\rightarrow$ D+1 Decomposition (Microstructure)**
+- Kết quả IC bắt buộc báo cáo thành 3 cột: `D -> D+20`, `D -> D+1`, và `D+1 -> D+20`.
+- *Quy tắc:* Nếu phần lớn IC đến từ đoạn `D -> D+1` và đoạn `D+1 -> D+20` không có ý nghĩa thống kê $\rightarrow$ Hiệu ứng bị chi phối bởi Microstructure/Bid-ask bounce. Không thể thực thi giao dịch. Bác bỏ hệ thống.
+
+**5.4. Tiêu chí Semi-Holdout (2024-2026)**
+- Gọi đây là **Semi-Holdout** vì dữ liệu thị trường và cổ phiếu giai đoạn này đã bị nhìn thấy (dùng để mô tả) trong V11. Do đó, giá trị xác nhận của tập này yếu hơn một Holdout hoàn toàn mù.
+- **Ngưỡng PASS OOS:** Mean IC phải cùng dấu với Discovery, $t \ge 1.645$ (một phía), và Effect Size (Mean IC) không sụt giảm quá $50\%$ so với Discovery.
+- Nếu OOS yếu (t-stat thấp nhưng vẫn cùng chiều): Báo cáo "Chưa đủ kết luận", không gán nhãn thất bại hay thành công.
+
+## 6. Chia Dữ Liệu & Nhật Ký
+- **Discovery (Train):** 2018 - 2023.
+- **Semi-Holdout (OOS):** 2024 - 2026.
+- **Hash Data:** Cố định phiên bản dữ liệu (hash của Panel) trước khi chạy Primary IC để chống data-snooping. Hash hiện tại: `78c042d45b71879b6bcfbcdb2d310203d398a11ef6bd9ddb2dcf4b804a108d54` (Đã chuẩn hóa time và dedup triệt để).
+- **Specification Log:** Ghi chép nhật ký mọi biến thể đã chạy, kể cả những cấu hình bị bỏ, để ngăn chặn P-hacking.
+
+## 7. Thứ Tự Triển Khai Thực Tế
+
+**GIAI ĐOẠN 1: DATA AUDIT (DỪNG SỚM NẾU KHÔNG ĐẠT)**
+1. Audit Schema: Kiểm tra Giá điều chỉnh (Adjusted Close), Sự kiện doanh nghiệp (Corporate Actions), tính Point-in-time của Phân loại Ngành.
+2. Cổng kiểm duyệt (Gate): Nếu dữ liệu không phải Adjusted Price, thiếu Volume/ADV, hoặc ngành không PIT $\rightarrow$ **KẾT LUẬN: V12 CHƯA CHẠY ĐƯỢC.** Phải sửa Data Pipeline, tuyệt đối không dùng proxy hạ chuẩn.
+3. Audit Panel Integrity: Đếm số lượng mã (N) theo từng năm để định lượng Survivorship Bias. Kiểm tra xử lý ngày đình chỉ giao dịch (tránh giá lặp tạo return 0 giả).
+
+**GIAI ĐOẠN 2: PRIMARY IC EVALUATION (DISCOVERY)**
+4. Tính toán Feature: DD60, RSI14, Rev5.
+5. Chạy Phân rã Microstructure: Báo cáo IC cho `D->D+20`, `D->D+1`, `D+1->D+20`.
+6. Chạy Thống kê: Deciles (kiểm tra tính đơn điệu), Rank IC theo ngày, t-stat Newey-West.
+7. Trung hòa: Loại bỏ Beta, Ngành, Size/Thanh khoản. Đánh giá lại IC trên phần dư (Residuals).
+8. Quyết định (Discovery Decision): Áp dụng Tiêu chí 5.1. Nếu FAIL $\rightarrow$ DỪNG. Nếu PASS $\rightarrow$ Chuyển sang Giai đoạn 3.
+
+**GIAI ĐOẠN 3: SEMI-HOLDOUT VALIDATION**
+9. Áp dụng quy tắc lên tập 2024-2026. Đánh giá theo tiêu chí 5.4.
+10. Tổng hợp ước lượng cho toàn bộ giai đoạn Pooled 2018-2026.
