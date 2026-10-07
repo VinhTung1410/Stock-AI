@@ -475,10 +475,13 @@ def _check_price_confirmation(current_price: float, tech_data: Dict[str, Any], r
     result.metrics["price_confirmation_score"] = conf_score
     is_structurally_confirmed = conf_score >= 60
 
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
-    is_late_session = now.hour > 14 or (now.hour == 14 and now.minute >= 15)
+    if "is_late_session" in tech_data:
+        is_late_session = bool(tech_data["is_late_session"])
+    else:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+        is_late_session = now.hour > 14 or (now.hour == 14 and now.minute >= 15)
     is_backtest = tech_data.get("is_backtest", False)
 
     if not is_structurally_confirmed:

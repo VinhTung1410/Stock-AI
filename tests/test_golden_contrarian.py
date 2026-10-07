@@ -92,6 +92,7 @@ def test_shadow_mode_prevents_live_recommendation(fpt_real: Dict[str, Any]):
     """Khi shadow_mode=True và không phải backtest, không được phát can_buy=True."""
     live_tech = dict(fpt_real["tech"])
     live_tech["is_backtest"] = False  # Giả lập môi trường live quét phiên thực tế
+    live_tech["is_late_session"] = True  # Giả lập phiên chiều sau 14:15 để test an toàn không phụ thuộc giờ chạy test
 
     res = evaluate_contrarian_gates(
         symbol=fpt_real["symbol"],
