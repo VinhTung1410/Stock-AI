@@ -70,3 +70,52 @@ hiệu ứng ≥ MDE sau khi kiểm soát các exposure đã định trước." 
 3. MDE simulation trên cấu trúc tương quan thật của panel.
 4. Từ MDE: chọn K, horizon, rebalance, economic floor.
 5. Freeze specification + hash → mở Discovery.
+
+---
+
+## Phụ lục: V14-G0 — Data Feasibility Audit
+
+### A. Đánh giá ứng viên Data Providers
+- **FiinGroup Datafeed/API (Ứng viên #1):** Tài liệu công khai có dấu hiệu rất mạnh về PIT (có trường `PublicDate`, `Status`, `CreateDate`, `UpdateDate` trong Financials và Corporate Reference). Tuy nhiên cần Audit kỹ xem có bị Overwrite khi Restatement hay không.
+- **SSI FastConnect API (Ứng viên #2):** Cung cấp Historical OHLCV rất tốt, nhưng chưa có bằng chứng công khai về Delisted Universe và PIT Fundamentals.
+- **Vnstock Extended (Fallback/Research Data):** Rất tốt cho Historical Raw Data, nhưng chưa đủ hạ tầng PIT (chưa chứng minh được Delisted Universe, Immutable Restatement, PIT Security Master).
+- **WiChart:** Cần xác minh trực tiếp.
+
+### B. Ma trận đánh giá Gate 0
+| Requirement | FiinGroup Datafeed | SSI API | Vnstock Extended | WiChart |
+|---|---|---|---|---|
+| Daily OHLCV | 🟢 | 🟢 | 🟢 | 🟡 |
+| Historical depth | 🟢? | 🟢? | 🟢 | 🟡 |
+| Adjusted price | 🟡 cần xác nhận | 🟡 | 🟡 | 🟡 |
+| Corporate actions | 🟢 | 🟡 | 🟡 | 🟡 |
+| Delisted history | 🔴/🟡 cần xác nhận | 🔴 | 🔴 | 🟡 |
+| Security master | 🟢 | 🟢 | 🟢 | 🟡 |
+| Historical industry | 🟡 | 🟡 | 🟡 | 🟡 |
+| PIT fundamentals | 🟢 evidence of PublicDate | 🟡 | 🔴/🟡 | 🟡 |
+| Announcement date | 🟢 | 🟡 | 🟡 | 🟡 |
+| PIT market cap/shares | 🟡 | 🟡 | 🟡 | 🟡 |
+| Suspension/status | 🟢? | 🟡 | 🟡 | 🟡 |
+| API | 🟢 | 🟢 | 🟢 | 🟡 |
+
+*(🟢: Có bằng chứng tài liệu, chưa hẳn đã Pass PIT Audit)*
+
+### C. 12 Câu hỏi Thẩm định (Commercial Inquiry)
+Trước khi Code, cấm Crawl. Tiến hành liên hệ Vendor và yêu cầu trả lời 12 câu hỏi sau:
+1. **Historical universe:** Có lấy được danh sách tất cả cổ phiếu từng tồn tại (bao gồm Delisted) không?
+2. **Delisting:** Có `listing_date` và `delisting_date` chính xác không?
+3. **Ticker changes:** Có mapping xuyên suốt khi Ticker thay đổi không?
+4. **Corporate actions:** OHLC historical đã adjusted chưa? Adjustment methodology là gì?
+5. **Restatement:** Financial statements có bị overwrite khi doanh nghiệp báo cáo lại (restate) không? *(Câu hỏi sinh tử của PIT)*
+6. **Publication date:** `PublicDate` có phải ngày thông tin thực sự được công bố ra thị trường không?
+7. **PIT query:** Có thể reconstruct information set tại ngày D trong quá khứ không?
+8. **Industry:** Industry có historical/PIT không hay chỉ là current classification?
+9. **Shares:** Shares outstanding/Free float có historical theo ngày không?
+10. **Suspension:** Có historical suspension/halt/listing status không?
+11. **API retention:** Có giới hạn historical depth hoặc API rate limit không?
+12. **Giá:** Phí setup, monthly, API, historical download và commercial use là bao nhiêu?
+
+### D. Kịch bản phân hạng (Tiers)
+- **Tier A (Full PIT):** Nếu mua được PIT universe + delisted + PIT fundamentals (Immutable) → Chạy Full V14.
+- **Tier B (Price-only PIT):** Nếu chỉ có OHLCV + Corporate actions + Delisted + PIT Liquidity → Chạy V14 rút gọn (Momentum, Reversal, Risk, Liquidity). Bỏ Value/Quality.
+- **Tier C (No PIT Universe):** Nếu chỉ có danh sách mã *hiện tại* + Historical price → **KHÔNG MỞ V14**. Quay lại bài toán V11-V13.
+
