@@ -73,5 +73,5 @@ def test_not_panicking_is_normal():
 
 
 def test_extreme_fear_without_confirmation_is_watch_only():
-    r = run(tech={**TECH, "price_confirmation": False})
+    r = run(tech={**TECH, "price_confirmation": False, "higher_low": False, "bullish_divergence": False})
     assert r.status == STATE_EXTREME_FEAR_WATCH and not r.can_buy

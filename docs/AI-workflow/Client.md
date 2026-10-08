@@ -1,47 +1,43 @@
 # 🎯 YÊU CẦU DỰ ÁN (CLIENT BRIEF) - VERSION 15.0
 
 **Tên dự án:** Stock-AI / AI Investment Decision & Research Platform  
-**Phiên bản:** v14.1 — Phase 26: Production Architecture Refactoring (BUY / HOLD / SELL Redesign)  
-**Trọng tâm:** *"Dọn dẹp Technical Debt và nâng cấp Bot lên chuẩn Production-grade. Tái thiết kế toàn bộ luồng HOLD/SELL theo thứ tự: THESIS CÒN NGUYÊN? -> ĐỊNH GIÁ HẤP DẪN? -> TREND TỐT? (Bỏ tư duy bán chỉ vì P/L). Khắc phục lỗi Regime Tautology (Dùng duy nhất MA200 VN-Index). Tách bạch rõ ràng giữa hệ thống chặn Hard Veto và hệ thống chấm điểm Conviction Scoring."*
+**Phiên bản:** v14.2 — Phase 27: Empirical Validation & System Un-strangling (Đo Lường & Gỡ Rào Cản)  
+**Trọng tâm:** *"Kiến trúc hiện tại bị mắc kẹt trong 'Governance-heavy' (quá nhiều chốt chặn rủi ro không được kiểm chứng), dẫn đến hiện tượng bóp nghẹt hệ thống (Double Penalty) và gần như không phát tín hiệu. Phase 27 chuyển hướng triệt để sang 'Đo trước khi thêm' (Measure before adding) thông qua Event Study, Ablation Testing và gỡ bỏ 4 lỗi logic chí mạng."*
 
 ---
 
-## 1. MỤC TIÊU PHIÊN BẢN v15.0 (PHASE 26)
+## 1. MỤC TIÊU PHIÊN BẢN v14.2 (PHASE 27)
 
-1. **TASK-0075: Nối dây SELL & Tái thiết kế HOLD/SELL Thesis Engine (P0) — `[HOÀN THÀNH - DONE]`:**
-   - Thay đổi cấu trúc quyết định BÁN: `THESIS INTACT?` → `VALUATION STILL ATTRACTIVE?` → `TREND STILL HEALTHY?`. Lợi nhuận (P/L) chỉ là input phụ, không phải yếu tố quyết định cốt lõi.
-   - Bắt buộc truyền `fin_dict` và `sector` vào hàm `evaluate_holding_position` và `_build_portfolio_quant_summary` để kích hoạt nhánh kiểm tra Thesis Breaker (Z-Score, F-Score) cho tất cả các mã (kể cả đang LÃI).
+1. **TASK-0079: Surgical Fixes & Gỡ Phạt Kép (P0) — `[HOÀN THÀNH]`:**
+   - **Fix 4 Lỗi Logic Core:** Đã vá lỗ hổng F-Score Tier 2 (chặn điểm 4-6), sửa lỗi Kelly sizing (chặn tuyệt đối Kelly $\le 0$), chuẩn hóa đơn vị đòn bẩy `debt_equity`, và xử lý look-ahead bias qua việc điều chỉnh ngưỡng cấu trúc nến.
+   - **Xóa Double Penalty:** Đã bỏ ép `stress_haircut` trực tiếp làm giảm Fair Value. Hệ thống test đã xanh 100%.
 
-2. **TASK-0076: Sửa lỗi Regime Tautology & Cổng Vĩ Mô (P0) — `[HOÀN THÀNH - DONE]`:**
-   - Hợp nhất và sử dụng duy nhất một hàm `get_market_regime()` lấy MA200 Hysteresis từ chuỗi VN-Index làm *Single Source of Truth* cho toàn bộ hệ thống (tránh việc cổ phiếu dùng MA200 của chính nó để đo Vĩ mô).
-   - Nhận định của chuyên gia TCBS chỉ dùng để tham khảo, không được ghi đè quy tắc định lượng.
-   - Loại bỏ việc gán cứng `conviction_score=75.0` tại các cổng quét 2-pass để giải phóng hệ thống Risk.
+2. **TASK-0080: Xây dựng Event Study Engine (P1) — `[CHƯA BẮT ĐẦU - TODO]`:**
+   - **Khung Kiểm Chứng:** Code script độc lập (`event_study.py` hoặc tools tương đương) để backtest các tín hiệu đơn lẻ (VD: RSI < 30, CFO > 0) trên toàn bộ lịch sử 3-5 năm.
+   - **Mục Tiêu:** Xác nhận Forward Return (T+5, T+10, T+20) có thực sự tạo ra Alpha so với Benchmark không trước khi đưa vào PM layer. Ngưng bổ sung các rule cảm tính.
 
-3. **TASK-0077: Thống nhất Threshold & Calibrate Kelly Sizing (P1) — `[HOÀN THÀNH - DONE]`:**
-   - Gom toàn bộ các ngưỡng rải rác (MoS 12%, 15%, Stop-loss 7%, 8%, v.v.) vào một Policy Constants duy nhất. Sửa các lỗi từ vựng chuỗi hành động (như "🟢 TÍCH LŨY" vs "MUA").
-   - Kelly Sizing: Chuyển từ Kelly dựa trên xác suất chủ quan sang Fixed Risk Sizing (VD: $\le 1-1.5\%$ NAV tại điểm Stop-loss cấu trúc). Chỉ kích hoạt phân bổ Kelly phân số khi đã Calibrate đủ bằng chứng giao dịch thật (>100 lệnh).
-
-4. **TASK-0078: Tách bạch Hard Veto và Conviction Scoring (P2) — `[HOÀN THÀNH - DONE]`:**
-   - **Hard Veto:** Chặn cứng (Fail-fast) với các lỗi sinh tử: Data invalid, Thanh khoản kém, Thesis Breaker, Định giá quá đắt, R:R thấp, Bẫy nặng, Market Circuit Breaker.
-   - **Scoring System:** Chuyển các yếu tố như RSI, MA20, Dòng tiền khối ngoại, Catalyst thành tín hiệu cộng/trừ điểm (`Conviction Score`) thay vì dùng làm rào cản từ chối lệ lệnh (Reject gate).
+3. **TASK-0081: Ablation Testing / Kiểm thử Cắt bỏ (P2) — `[CHƯA BẮT ĐẦU - TODO]`:**
+   - **Tối Ưu Luật Cứng:** Tắt thử nghiệm nghiêm ngặt từng Gate một (Thanh khoản, Định giá, Vĩ mô) để đo lường Trade-off giữa Sample Size và Win Rate.
+   - **Nguyên tắc YAGNI:** Cổng nào làm mất 80% cơ hội nhưng chỉ cứu được 2% Win Rate sẽ bị loại bỏ vĩnh viễn khỏi hệ thống.
 
 ---
 
-## 2. KẾ THỪA CÁC CHỐT CHẶN PHIÊN BẢN TRƯỚC (v6.1 - v14.0)
+## 2. KẾ THỪA CÁC CHỐT CHẶN PHIÊN BẢN TRƯỚC (v6.1 - v14.1)
 
-1. **Phase 25 (v14.0):** Contrarian P0 Remediation, Golden Fixtures, Scan Observability & Shadow Mode 60 Phiên.
-2. **Phase 24 (v13.0):** Reversal Confirmed & Entry Eligible Layer (Price Action, Higher Low, Volume Confirm).
-3. **Phase 23 (v12.0):** Advanced FQ-Score 3-Tier Architecture & Risk Overlays (CFO Proxy, Decoupled Hard Veto).
-4. **Phase 22 (v11.1):** Contrarian Quant & Architecture Upgrade (Valuation Watch, F-Score Data Confidence).
-5. **Phase 21 (v10.1):** Data Resilience & Fallback Valuation.
-6. **Phase 20 (v10.0):** Contrarian 4-State Machine (Continuous Panic Score).
-7. **Phase 19 (v9.0):** Contrarian 5-Layer Framework (Quality De-rating vs Value Trap, Event Risk VETO).
-8. **Phase 18 (v8.1):** Contrarian Panic Buy Module cơ bản (RSI <= 30).
-9. **Phase 17 (v8.0):** Risk Governance Completion.
-10. **Phase 16 (v7.6):** Signal Integrity & Audit Cleanup.
-11. **Phase 15 (v7.5):** Unified Entry Gate (7 tầng thống nhất, Macro Gate toàn tuyến).
-12. **Phase 14 (v7.4):** Data & Valuation Plumbing.
-13. **Phase 13 (v7.3):** Core Valuation Re-Architecture.
+1. **Phase 26 (v14.1):** Production Architecture Refactoring (`policy_constants.py` SSOT, Luồng SELL Thesis-driven, Tách Hard Veto vs Conviction).
+2. **Phase 25 (v14.0):** Contrarian P0 Remediation, Golden Fixtures, Scan Observability & Shadow Mode 60 Phiên.
+3. **Phase 24 (v13.0):** Reversal Confirmed & Entry Eligible Layer (Price Action, Higher Low, Volume Confirm).
+4. **Phase 23 (v12.0):** Advanced FQ-Score 3-Tier Architecture & Risk Overlays (CFO Proxy, Decoupled Hard Veto).
+5. **Phase 22 (v11.1):** Contrarian Quant & Architecture Upgrade (Valuation Watch, F-Score Data Confidence).
+6. **Phase 21 (v10.1):** Data Resilience & Fallback Valuation.
+7. **Phase 20 (v10.0):** Contrarian 4-State Machine (Continuous Panic Score).
+8. **Phase 19 (v9.0):** Contrarian 5-Layer Framework (Quality De-rating vs Value Trap, Event Risk VETO).
+9. **Phase 18 (v8.1):** Contrarian Panic Buy Module cơ bản (RSI <= 30).
+10. **Phase 17 (v8.0):** Risk Governance Completion.
+11. **Phase 16 (v7.6):** Signal Integrity & Audit Cleanup.
+12. **Phase 15 (v7.5):** Unified Entry Gate (7 tầng thống nhất, Macro Gate toàn tuyến).
+13. **Phase 14 (v7.4):** Data & Valuation Plumbing.
+14. **Phase 13 (v7.3):** Core Valuation Re-Architecture.
 
 ---
 

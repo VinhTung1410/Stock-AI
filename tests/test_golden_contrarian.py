@@ -72,13 +72,16 @@ def test_vnm_real_passes_survival_gate(vnm_real: Dict[str, Any]):
 
 def test_cfo_negative_must_block_at_survival(hpg_cfo_negative: Dict[str, Any]):
     """Mã chu kỳ dính CFO âm (hoặc P/CF âm) bắt buộc phải bị block tại SURVIVAL_QUALITY."""
-    res = evaluate_contrarian_gates(
-        symbol=hpg_cfo_negative["symbol"],
-        current_price=hpg_cfo_negative["price"],
-        tech_data=hpg_cfo_negative["tech"],
-        fin_dict=hpg_cfo_negative["fin"],
-        sector=hpg_cfo_negative["sector"],
-    )
+    from unittest.mock import patch
+    
+    with patch("contrarian_engine.calculate_vibe_quality_score", return_value={"score": 8, "data_completeness": 1.0}):
+        res = evaluate_contrarian_gates(
+            symbol=hpg_cfo_negative["symbol"],
+            current_price=hpg_cfo_negative["price"],
+            tech_data=hpg_cfo_negative["tech"],
+            fin_dict=hpg_cfo_negative["fin"],
+            sector=hpg_cfo_negative["sector"],
+        )
     assert res.can_buy is False
     assert res.status == STATE_BLOCKED
     assert res.blocked_by == GATE_SURVIVAL

@@ -128,7 +128,7 @@ def test_survival_gate_debt_equity_rejection(valid_contrarian_data):
 
 def test_survival_gate_banking_sector_exemption(valid_contrarian_data):
     tech, fin = valid_contrarian_data
-    fin["f_score"] = 6 # Tier 2
+    fin["f_score"] = 7 # Phải qua F-Score Tier 3 do luật mới siết Tier 2
     fin["debt_equity"] = 850.0
     fin["z_score"] = 1.2
 
@@ -138,7 +138,7 @@ def test_survival_gate_banking_sector_exemption(valid_contrarian_data):
 
 def test_valuation_mos_rejection(valid_contrarian_data):
     tech, fin = valid_contrarian_data
-    fin["fair_value"] = 100.0
+    fin["mos_pct"] = 13.6 # < 15% -> Blocked
 
     res = evaluate_contrarian_gates("VNM", 82.0, tech_data=tech, fin_dict=fin, sector="Tiêu dùng")
     assert res.can_buy is False

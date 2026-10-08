@@ -158,6 +158,11 @@ def _get_stress_haircut(symbol: str, sector: str, fin_dict: Dict[str, Any], tech
         
     return min(haircut, 0.60)
 
+def _normalize_ratio(val: float) -> float:
+    # Nếu giá trị > 10.0, khả năng cao nó là phần trăm (ví dụ 38.0%), cần chuyển về hệ số (0.38)
+    return val / 100.0 if val > 10.0 else val
+
+
 def _check_archetype_specific_gates(
     sector: str,
     fin_dict: Dict[str, Any],
@@ -183,7 +188,7 @@ def _check_archetype_specific_gates(
     elif is_sec:
         margin_ratio = fin_dict.get("financial_leverage") or fin_dict.get("Đòn bẩy tài chính")
         if margin_ratio is not None:
-            lev_val = float(margin_ratio) / 100.0
+            lev_val = _normalize_ratio(float(margin_ratio))
             result.metrics["financial_leverage"] = lev_val
             if lev_val > 3.0:
                 result.can_buy = False
@@ -195,7 +200,7 @@ def _check_archetype_specific_gates(
     elif is_re:
         debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_on_equity") or fin_dict.get("debt_to_equity")
         if debt_equity is not None:
-            de_val = float(debt_equity) / 100.0
+            de_val = _normalize_ratio(float(debt_equity))
             result.metrics["debt_equity"] = de_val
             if de_val > 1.5:
                 result.can_buy = False
@@ -209,7 +214,7 @@ def _check_archetype_specific_gates(
         result.metrics["z_score"] = z_score
         debt_equity = fin_dict.get("debt_equity") or fin_dict.get("debt_on_equity") or fin_dict.get("debt_to_equity")
         if debt_equity is not None:
-            result.metrics["debt_equity"] = float(debt_equity) / 100.0
+            result.metrics["debt_equity"] = _normalize_ratio(float(debt_equity))
 
         if z_score is not None and z_score <= CONTRARIAN_MIN_ZSCORE:
             result.can_buy = False
@@ -246,10 +251,15 @@ def _check_fundamental_integrity(
         result.blocked_by = GATE_SURVIVAL
         result.blocking_reasons.append("Thiếu báo cáo tài chính.")
         return False
-    from indicators import calculate_vibe_quality_score
-    f_res = calculate_vibe_quality_score(fin_dict or {}, sector)
-    f_score = f_res.get("score", 0)
-    data_comp = f_res.get("data_completeness", 1.0)
+    if "f_score" in fin_dict:
+        f_score = int(fin_dict["f_score"])
+        data_comp = 1.0
+        f_res = {"score": f_score, "data_completeness": 1.0, "breakdown": {}}
+    else:
+        from indicators import calculate_vibe_quality_score
+        f_res = calculate_vibe_quality_score(fin_dict or {}, sector)
+        f_score = f_res.get("score", 0)
+        data_comp = f_res.get("data_completeness", 1.0)
     
     result.metrics["f_score"] = f_score
     result.metrics["f_score_details"] = f_res
@@ -279,14 +289,16 @@ def _check_fundamental_integrity(
             return False
 
     elif f_score < CONTRARIAN_MIN_FSCORE:
-        # TIER 2: CONDITIONAL PASS (Requires Overlays, which are already checked globally above)
+        # TIER 2: BLOCKED ENTIRELY
+        result.can_buy = False
+        result.status = STATE_BLOCKED
+        result.action_state = ACTION_BLOCKED
+        result.blocked_by = GATE_SURVIVAL
         if data_comp < 0.7 and not is_bank:
-            result.can_buy = False
-            result.status = STATE_BLOCKED
-            result.action_state = "DATA / FUNDAMENTAL REVIEW REQUIRED"
-            result.blocked_by = GATE_SURVIVAL
             result.blocking_reasons.append(f"FQ-Score={f_score}/9 (Tier 2) nhưng thiếu dữ liệu (Completeness={data_comp*100:.0f}%). Không đủ cơ sở đánh giá.")
-            return False
+        else:
+            result.blocking_reasons.append(f"FQ-Score={f_score}/9 < {CONTRARIAN_MIN_FSCORE}. Yêu cầu chất lượng nền tảng cao hơn để bắt đáy.")
+        return False
     else:
         # TIER 3: FULL PASS (f_score >= 7)
         pass
@@ -337,22 +349,19 @@ def _check_fundamental_integrity(
     mos_is_informative = bool(val_res.get("mos_is_informative", False))
     fair_value = float(val_res.get("fair_value", 0.0))
 
-    # L4: Dynamic Stress-MoS (Haircut Valuation)
+    # L4: Dynamic Stress-MoS (Haircut Valuation) - Khôi phục định giá thuần khiết
     stress_haircut = _get_stress_haircut(symbol, sector, fin_dict, tech_data, result)
-    result.metrics["stress_haircut_applied"] = stress_haircut
+    result.metrics["stress_haircut_evaluated"] = stress_haircut
     
-    stress_fair_value = fair_value * (1.0 - stress_haircut)
-    stress_upside_pct = ((stress_fair_value - current_price) / current_price) * 100.0 if current_price > 0 else 0.0
-    stress_mos_pct = ((stress_fair_value - current_price) / stress_fair_value) * 100.0 if stress_fair_value > 0 else 0.0
+    # Không apply stress_haircut trực tiếp vào fair_value để tránh double penalty
+    upside_pct = ((fair_value - current_price) / current_price) * 100.0 if current_price > 0 else 0.0
 
-    result.mos_pct = stress_mos_pct # Gán MoS đã stress vào kết quả để UI hiện
-    result.upside_pct = stress_upside_pct
-    result.fair_value = stress_fair_value
-    result.metrics["base_mos_pct"] = base_mos_pct
-    result.metrics["mos_pct"] = stress_mos_pct
-    result.metrics["upside_pct"] = stress_upside_pct
-    result.metrics["base_fair_value"] = fair_value
-    result.metrics["fair_value"] = stress_fair_value
+    result.mos_pct = base_mos_pct
+    result.upside_pct = upside_pct
+    result.fair_value = fair_value
+    result.metrics["mos_pct"] = base_mos_pct
+    result.metrics["upside_pct"] = upside_pct
+    result.metrics["fair_value"] = fair_value
     result.metrics["mos_is_informative"] = mos_is_informative
 
     if not mos_is_informative:
@@ -363,12 +372,12 @@ def _check_fundamental_integrity(
         result.blocking_reasons.append("Thiếu dữ liệu định giá tin cậy (mos_is_informative=False).")
         return False
 
-    if stress_mos_pct < required_mos:
+    if base_mos_pct < required_mos:
         result.can_buy = False
         result.status = STATE_BLOCKED
         result.action_state = ACTION_BLOCKED
         result.blocked_by = GATE_VALUATION
-        result.blocking_reasons.append(f"L4 Stress-MoS={stress_mos_pct:+.1f}% < Yêu cầu {required_mos:.1f}%.")
+        result.blocking_reasons.append(f"Biên an toàn MoS={base_mos_pct:+.1f}% < Yêu cầu {required_mos:.1f}%.")
         return False
 
     result.passed_gates.append(GATE_SURVIVAL)
@@ -473,7 +482,7 @@ def _check_price_confirmation(current_price: float, tech_data: Dict[str, Any], r
         conf_score += 10
     
     result.metrics["price_confirmation_score"] = conf_score
-    is_structurally_confirmed = conf_score >= 60
+    is_structurally_confirmed = conf_score >= 40
 
     if "is_late_session" in tech_data:
         is_late_session = bool(tech_data["is_late_session"])
@@ -487,7 +496,7 @@ def _check_price_confirmation(current_price: float, tech_data: Dict[str, Any], r
     if not is_structurally_confirmed:
         result.can_buy = False
         result.blocked_by = GATE_PRICE_CONFIRM
-        result.blocking_reasons.append(f"L5 Structure: Score={conf_score} < 60. Chưa có cấu trúc xác nhận đáy mạnh. Dao đang rơi!")
+        result.blocking_reasons.append(f"L5 Structure: Score={conf_score} < 40. Cấu trúc quá yếu, dao đang rơi thẳng đứng!")
         return False
 
     if not is_late_session and not is_backtest:
@@ -517,14 +526,22 @@ def _check_liquidity_and_size(
         result.blocking_reasons.append(f"ADV20={adv20:.2f} tỷ < {CONTRARIAN_MIN_ADV20_BILLION:.1f} tỷ VND.")
         return False
 
-    penalized_kelly = (max(0.01, half_kelly_f) / 2.0) * 100.0
+    if half_kelly_f <= 0:
+        result.can_buy = False
+        result.blocked_by = GATE_LIQUIDITY
+        result.position_size_pct = 0.0
+        result.position_size_nav = "0.0% NAV"
+        result.blocking_reasons.append(f"Kelly Fraction ({half_kelly_f:.2f}) <= 0. Không có lợi thế dài hạn, hệ thống từ chối cược.")
+        return False
+        
+    penalized_kelly = (half_kelly_f / 2.0) * 100.0
     
     # Bắt đáy Panic Buy cần position size nhỏ hơn bình thường để thăm dò
     max_size = CONTRARIAN_MAX_PANIC_SIZE_PCT
     if result.metrics.get("cyclical_damage", False):
         max_size = min(max_size, 2.0) # Dao rơi ngành chu kỳ tối đa 2%
         
-    base_size = min(max_size, max(1.0, penalized_kelly))
+    base_size = min(max_size, penalized_kelly)
 
     if kill_switch_active:
         base_size = round(base_size * 0.5, 2)

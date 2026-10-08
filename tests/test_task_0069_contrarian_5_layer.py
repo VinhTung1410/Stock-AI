@@ -111,7 +111,7 @@ def test_mwg_value_trap_fundamental_damage(dgc_value_trap_data):
 def test_downtrend_macro_regime_hurdle(fpt_derating_data):
     """Trong DOWNTREND, yêu cầu MoS >= 20% thay vì 15%."""
     tech, fin = fpt_derating_data
-    fin["fair_value"] = 120.0  # Tạo Stress-MoS ~19.6% (Pass ở Uptrend 15% nhưng Fail ở Downtrend 20%)
+    fin["mos_pct"] = 19.6  # (Pass ở Uptrend 15% nhưng Fail ở Downtrend 20%)
     
     # 1. Uptrend -> Pass Quality Gate (Vào Near Panic)
     res_up = evaluate_contrarian_gates("FPT", 82.0, tech_data=tech, fin_dict=fin, sector="Công nghệ", macro_regime="UPTREND")
@@ -122,7 +122,7 @@ def test_downtrend_macro_regime_hurdle(fpt_derating_data):
     assert res_down.can_buy is False
     assert res_down.status == STATE_BLOCKED
     assert res_down.blocked_by == "VALUATION_MOS"
-    assert any("L4 Stress-MoS" in r for r in res_down.blocking_reasons)
+    assert any("Biên an toàn MoS" in r for r in res_down.blocking_reasons)
 
 def test_hpg_cyclical_cfo_positive(dgc_value_trap_data):
     tech, fin = dgc_value_trap_data
