@@ -1,0 +1,852 @@
+{
+  "ACB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\ACB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 76442,
+    "sha256": "9a02b7b2bceadb666438f20d9c06c507e5e026c0106656ebbc37cc6b5446bffb"
+  },
+  "ACB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\ACB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 84668,
+    "sha256": "899c835b6f505a831c3e3a72c9e2d3570b1f66b1099588aa8be1f3b26a50b19d"
+  },
+  "ACB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\ACB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 84670,
+    "sha256": "ad97e1912d315962a6c680357c9d4b6bd74f9867b382f551cce7c6b861535e44"
+  },
+  "ANV_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\ANV_2018-01-01_2024-12-31.csv",
+    "size_bytes": 75683,
+    "sha256": "15edf506b3b088f39e313568975f4d04ba99bc210b8b923adf3963d6a125a6f9"
+  },
+  "ANV_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\ANV_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83590,
+    "sha256": "4b87cc6aaf971555eb00ffdee25de1c1b32e92b14fb605e21192505d2479fcf0"
+  },
+  "ANV_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\ANV_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83594,
+    "sha256": "96655294995a7606bae4bc0e592a387bbf310de4b5fc20c28096184a2cf0fbec"
+  },
+  "BID_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\BID_2018-01-01_2024-12-31.csv",
+    "size_bytes": 79324,
+    "sha256": "b3e71cc214f3cd9dbbad12839a3b872e05d9c9bead53308d7186772a073bc06e"
+  },
+  "BID_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\BID_2018-01-01_2026-10-06.csv",
+    "size_bytes": 86578,
+    "sha256": "e69c5612de9fca6ea6cfef45440c9e9435cb6dc2f11c1a71cdbd41d4621aaffe"
+  },
+  "BID_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\BID_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86578,
+    "sha256": "60113057ae886ea3b390e42595fb1697502d540268a382b27eaca3617184396f"
+  },
+  "BSR_2020-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\BSR_2020-01-01_2026-10-06.csv",
+    "size_bytes": 75061,
+    "sha256": "29aadb76e2d0d71eda3b8c1a79930c28253e3fb6bc6a2c61368a5950b38dda20"
+  },
+  "CSV_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\CSV_2018-01-01_2024-12-31.csv",
+    "size_bytes": 73497,
+    "sha256": "291ed8d558792188d16dd148ab3bca2b092d9a6ccdcc8ce974ae409acc1b11ef"
+  },
+  "CSV_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\CSV_2018-01-01_2026-10-06.csv",
+    "size_bytes": 81395,
+    "sha256": "11addf73a5bf2cc23a934df06fef049b19bf29f2d8929bb378a05b6f02133939"
+  },
+  "CSV_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\CSV_2018-01-01_2026-10-07.csv",
+    "size_bytes": 81399,
+    "sha256": "b846cfdf271a23a21081edf749b883244da5dc1b8e3f6a789511a46502358441"
+  },
+  "CTG_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\CTG_2018-01-01_2024-12-31.csv",
+    "size_bytes": 78645,
+    "sha256": "33714df6226fc620463df7f9b58ef1c0d7d9a6d071a10f123fb6fa7c802cb05f"
+  },
+  "CTG_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\CTG_2018-01-01_2026-10-06.csv",
+    "size_bytes": 86185,
+    "sha256": "12f6675fc352509b430526cdd966a3f4dc863d4720463a26fd8648c9968d5e7d"
+  },
+  "CTG_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\CTG_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86185,
+    "sha256": "388fab965b5a1f74fe34b508745a23e5c0ea8638dd48c69aa04146bc32741785"
+  },
+  "DCM_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\DCM_2018-01-01_2024-12-31.csv",
+    "size_bytes": 75824,
+    "sha256": "f7d13bec1d4f79a5a50d5954211178fd856c8b5bb7f48e7928cbdeb6cf07f2f9"
+  },
+  "DCM_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\DCM_2018-01-01_2026-10-06.csv",
+    "size_bytes": 84178,
+    "sha256": "12bf3ffe17f76f8023c2c502fdfe5ed66417ce843d52faca40c35926c06bc8da"
+  },
+  "DCM_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\DCM_2018-01-01_2026-10-07.csv",
+    "size_bytes": 84181,
+    "sha256": "e151041fcf5d2f036f83dd8ff0f23af8a3bbfcd63a55e93360382bd43acee37d"
+  },
+  "DGC_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\DGC_2018-01-01_2024-12-31.csv",
+    "size_bytes": 75231,
+    "sha256": "73bed1e1bf66be0c15fa0c52e96e577c6969c2b942754080ea28e431a45b07d8"
+  },
+  "DGC_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\DGC_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83773,
+    "sha256": "c0699668ca94ac3ba375721c2883581b74423db736eec9a508d6fec4e48cecd7"
+  },
+  "DGC_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\DGC_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83774,
+    "sha256": "673503168ceb2d81cdf7ef0283a56e925deddf6ec04cf61d4719a8967cc01e88"
+  },
+  "DIG_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\DIG_2018-01-01_2024-12-31.csv",
+    "size_bytes": 76896,
+    "sha256": "a60989606ac8d94be9c33db49c21f964a18af78f5c854ec84fef4d041bf24295"
+  },
+  "DIG_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\DIG_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85221,
+    "sha256": "1b2be12f684ae4712107da45915ac88789dd7bcf8ff35e21cf80d6dc511b7725"
+  },
+  "DIG_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\DIG_2018-01-01_2026-10-07.csv",
+    "size_bytes": 85221,
+    "sha256": "16481d0472010dd708a46ed312ac00cb797bc629350dff9377917ce7ca3faa27"
+  },
+  "DPM_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\DPM_2018-01-01_2024-12-31.csv",
+    "size_bytes": 75349,
+    "sha256": "063c746b37e094b40e88146a1770f6c944b4c9fa10a75f5f2d16633b33acedb1"
+  },
+  "DPM_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\DPM_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83802,
+    "sha256": "2e1057e9b81e64bc4ec256f1e2ba3675c304c097ac2c22a638d65235fc747168"
+  },
+  "DPM_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\DPM_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83806,
+    "sha256": "47bd5113d1c4f292f9e53c3d5342922eaea6af16db438b6e6d71dd7bc69033fa"
+  },
+  "DXG_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\DXG_2018-01-01_2024-12-31.csv",
+    "size_bytes": 77544,
+    "sha256": "8f339cd11fcdae96990a2b454d84934bc13f41ead5c024d1514b8d80535a5274"
+  },
+  "DXG_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\DXG_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85282,
+    "sha256": "f1f95be7f335deaf42917f1b6d35ac7dacee5362746b57c323d89e90a2b74909"
+  },
+  "DXG_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\DXG_2018-01-01_2026-10-07.csv",
+    "size_bytes": 85278,
+    "sha256": "7a22a798bd589d91932d8c1e02a53c3222c1ed75a75fc277c1af06a337b1de42"
+  },
+  "FMC_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\FMC_2018-01-01_2024-12-31.csv",
+    "size_bytes": 76953,
+    "sha256": "b727b6c92530ca61c19b7d0e470e84d8a55c868390eae4ca880d6fbe25946622"
+  },
+  "FMC_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\FMC_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83497,
+    "sha256": "bdbaf06eb40449b57e1ef890f546d5d78fc3b8f09674a2ee21ad71f50b1dea47"
+  },
+  "FMC_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\FMC_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83493,
+    "sha256": "519eb9ba62a28b52621e12a16c1267655d85e1ff937b6eaf9b84f7201e4e027d"
+  },
+  "FPT_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\FPT_2018-01-01_2024-12-31.csv",
+    "size_bytes": 79693,
+    "sha256": "02050ccde492d5f09312be0d46ac0175fb18e06f9a441c8dbd45a51783a226a1"
+  },
+  "FPT_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\FPT_2018-01-01_2026-10-06.csv",
+    "size_bytes": 87291,
+    "sha256": "1dd28cad3f410fb8a5cac3ceebb790a5463b4fe4ed7fe5a8b55706ae539cec07"
+  },
+  "FPT_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\FPT_2018-01-01_2026-10-07.csv",
+    "size_bytes": 87288,
+    "sha256": "8521ba90e887aa76063f47c91a3d09c81e2dacde1d176b253dd1d04a52f04194"
+  },
+  "FPT_2020-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\FPT_2020-01-01_2026-10-06.csv",
+    "size_bytes": 77469,
+    "sha256": "ec174928e6297f841bccbbe0d7906a5c8d400537be87becacf2ec5f7830462f8"
+  },
+  "GAS_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\GAS_2018-01-01_2024-12-31.csv",
+    "size_bytes": 78352,
+    "sha256": "0f00c6fd557f73e13a619c4f0be6a8289b62a1628f35729e2b872376305fd1f9"
+  },
+  "GAS_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\GAS_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85691,
+    "sha256": "081b9a6a3761e31112303a9cde33f7979fcc4ab2193f560aca7a975f6fa2eb49"
+  },
+  "GAS_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\GAS_2018-01-01_2026-10-07.csv",
+    "size_bytes": 85687,
+    "sha256": "843a7362688ff432e921cd59f4985bc887ae911f64dc0710664c8b00b9940e7c"
+  },
+  "GIL_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\GIL_2018-01-01_2024-12-31.csv",
+    "size_bytes": 75951,
+    "sha256": "45f41eb258cadfb874bc4a16c07c8cb5e4c9a7f40487272f3e90874680ebb38e"
+  },
+  "GIL_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\GIL_2018-01-01_2026-10-06.csv",
+    "size_bytes": 82647,
+    "sha256": "30e89f1259708f09cd9071de3aaaa933df09d5e3f01744661c67ed15c0c08588"
+  },
+  "GMD_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\GMD_2018-01-01_2024-12-31.csv",
+    "size_bytes": 78737,
+    "sha256": "071a2e9b1c6d640c629574ef906af6e377ea40bce76e0990cad511ef5a61a4e0"
+  },
+  "GMD_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\GMD_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85675,
+    "sha256": "6e4681dcebad784df1ca69c40aaf9fac3972205738abeda42b7aa643f8e916fa"
+  },
+  "GVR_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\GVR_2018-01-01_2024-12-31.csv",
+    "size_bytes": 71800,
+    "sha256": "c17e9760055c62302c9454df0a10a4d7716ccd84c7d7d9ba240a3f7c0f28ee1b"
+  },
+  "GVR_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\GVR_2018-01-01_2026-10-06.csv",
+    "size_bytes": 84971,
+    "sha256": "ab33e514b3e37fcdbdb39e138aae5fb0aed58477f8e1109848532d6712f0ffc4"
+  },
+  "GVR_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\GVR_2018-01-01_2026-10-07.csv",
+    "size_bytes": 84975,
+    "sha256": "304822885a48497df3c0ddd203bda1b2ac4243c80776e4f799548f81b849170e"
+  },
+  "HAH_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\HAH_2018-01-01_2024-12-31.csv",
+    "size_bytes": 74550,
+    "sha256": "9baeb9577412683a157108abe81c44f6fbfe942117275f54283f517c7409b9d2"
+  },
+  "HAH_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\HAH_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83061,
+    "sha256": "7f3efe57b3abd7b318156645b8b4921e2cde1b9971482bf9e73c31909f6161b1"
+  },
+  "HDB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\HDB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 71823,
+    "sha256": "850971997d91b7239e37eb1ee8fc8cae58c0f99283ad66593c95d75b8456f577"
+  },
+  "HDB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\HDB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83301,
+    "sha256": "f81fe35dea3026a8bfbeecf06371c7fbf5f94854be454db5183941f8e7389955"
+  },
+  "HDB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\HDB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83302,
+    "sha256": "2c5c3cd8c6607d47fa592ab7b9e5a1ae0e58b038d8d796c0e94557fefd34efd1"
+  },
+  "HPG_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\HPG_2018-01-01_2024-12-31.csv",
+    "size_bytes": 77894,
+    "sha256": "cc1ba1ba48d62aba912822ee272f8e64de7a90820d0f01a1956e29ea3fb0c0b1"
+  },
+  "HPG_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\HPG_2018-01-01_2026-10-06.csv",
+    "size_bytes": 86262,
+    "sha256": "3776ec2e00a19629dc76c7f6aebcd0953d66da00266c1d63d5cf73a43bdef6a9"
+  },
+  "HPG_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\HPG_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86264,
+    "sha256": "9acf59c6a2c1328f2dfb5c6f529b80c7403e3c0d6f611f3ef0a1dfb2fbcd3b63"
+  },
+  "HPG_2020-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\HPG_2020-01-01_2026-10-06.csv",
+    "size_bytes": 77253,
+    "sha256": "41cd5f837c15da8d0908dc207327f3a092047a547d2616222b7e8244ae1458f2"
+  },
+  "HSG_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\HSG_2018-01-01_2024-12-31.csv",
+    "size_bytes": 77027,
+    "sha256": "7ea2e4d5fefab955a9e5a48ddf5554095b4d69a13da70ec08ea4257ecd774236"
+  },
+  "HSG_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\HSG_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85027,
+    "sha256": "e4739cd2d6bb883291fdc9a40d52f1242677e6e701fb68b254ed81d81cda4eee"
+  },
+  "HSG_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\HSG_2018-01-01_2026-10-07.csv",
+    "size_bytes": 85026,
+    "sha256": "8b9039acfdb8d7bd1e8297034d2b1f8baa1e27a2ee7bf9ba1b37cc4ee3dd3a9b"
+  },
+  "IDC_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\IDC_2018-01-01_2024-12-31.csv",
+    "size_bytes": 73643,
+    "sha256": "1ee1a98d2706027d27699f496ca37dcc174591d37217172ca4008c5f61e32658"
+  },
+  "IDC_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\IDC_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83554,
+    "sha256": "ab7a592f983b7ddba69120b2fbc11db536255cf0cf8048952220e0c780617c46"
+  },
+  "IDC_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\IDC_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83557,
+    "sha256": "b694aee27138f2cc6667d90f34fb8cc8bb475baac4d76dea781d96111579b82d"
+  },
+  "KBC_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\KBC_2018-01-01_2024-12-31.csv",
+    "size_bytes": 76826,
+    "sha256": "2a63d0c4272ab7121268979d77f7816b33c8ed459b581966f8f15c44ea73aa6f"
+  },
+  "KBC_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\KBC_2018-01-01_2026-10-06.csv",
+    "size_bytes": 84150,
+    "sha256": "3cc00fe4b5c61e61c1bb601b57b9258c20913c84dbb0e3d21a75359451bf96e1"
+  },
+  "KBC_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\KBC_2018-01-01_2026-10-07.csv",
+    "size_bytes": 84152,
+    "sha256": "190995ec6436b61f52341a1475703cd9cb208fe94dfdac28d4890e112e68732a"
+  },
+  "KDH_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\KDH_2018-01-01_2024-12-31.csv",
+    "size_bytes": 78606,
+    "sha256": "8bab335b14dfcd1f0ed17f7d3a0207ddb31d58e10b66985035a398de370af475"
+  },
+  "KDH_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\KDH_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85657,
+    "sha256": "b864b0982e840c0b506864f88d49ea9efab3cc7394c4b5282e8ae2c17e716b48"
+  },
+  "KDH_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\KDH_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86203,
+    "sha256": "b41a97545704fa999c2721005f1fe556f33bad552ccbb3b1b080de10d92c4cc0"
+  },
+  "MBB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\MBB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 75093,
+    "sha256": "b4c49e74419f168d2b358c11bac447e0ccf626d96d22eb0662c7582543cac298"
+  },
+  "MBB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\MBB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83672,
+    "sha256": "0b77872c7e3272b58e0d620908e35f9a2f8a6ec45ef084f5434241f83fa4671a"
+  },
+  "MBB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\MBB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83675,
+    "sha256": "8d6fb8e8c45b18c2c2ddc4536b56266a3eadbb91bd7dafcf1b96fd6953565a56"
+  },
+  "MSH_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\MSH_2018-01-01_2024-12-31.csv",
+    "size_bytes": 63534,
+    "sha256": "193d5f2d6535154b757b11e921e2d0c0ba159f322920a73caf563586c92e16e1"
+  },
+  "MSH_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\MSH_2018-01-01_2026-10-06.csv",
+    "size_bytes": 81756,
+    "sha256": "7a2f82c1cf92dd1de96fb6a57bee19b3634aeba54df5776ee184b07fab82df16"
+  },
+  "MSN_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\MSN_2018-01-01_2024-12-31.csv",
+    "size_bytes": 77884,
+    "sha256": "09e66e2fd811a5867738b5d1c8da0760b5602e2fef68dfa46938bbd4b51b0a7b"
+  },
+  "MSN_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\MSN_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83817,
+    "sha256": "3f2efdfbcd742847aae34e3d254e1ead86f22f2047a13ae031116f26a1b9f696"
+  },
+  "MSN_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\MSN_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83814,
+    "sha256": "c19a74b8fe1071c164b10bdaa762514e60fbab21be7474c09e2e779d13e32984"
+  },
+  "MWG_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\MWG_2018-01-01_2024-12-31.csv",
+    "size_bytes": 78998,
+    "sha256": "29ea8d3b685d426d4c3826e3a69ce8ebbc7e5f37921c81d3cdd53b80c211c156"
+  },
+  "MWG_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\MWG_2018-01-01_2026-10-06.csv",
+    "size_bytes": 86363,
+    "sha256": "460af3fa7bb1e2130533a6978447557a37776a43296086d7c4428f0547b48834"
+  },
+  "MWG_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\MWG_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86681,
+    "sha256": "8d9e242a403ae2fe274b5082d309e6827dfceec874312d9826dffc81af9ab872"
+  },
+  "NKG_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\NKG_2018-01-01_2024-12-31.csv",
+    "size_bytes": 76160,
+    "sha256": "0f0602399e8dca6a37065dc405c6611f03b96aad7927113c543b2dd659623260"
+  },
+  "NKG_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\NKG_2018-01-01_2026-10-06.csv",
+    "size_bytes": 84164,
+    "sha256": "36e8c1bf2e016b13f9c07be9e9f84d1f0edbdae8fb426eb8618419443e48b295"
+  },
+  "NKG_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\NKG_2018-01-01_2026-10-07.csv",
+    "size_bytes": 84161,
+    "sha256": "a0d7efe514a325482f9d110ac62bc152030e9f6c39f9a2256c00e7319bccf43a"
+  },
+  "NLG_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\NLG_2018-01-01_2024-12-31.csv",
+    "size_bytes": 79037,
+    "sha256": "f54f0251b89742258393f35254d54bda8b7b6451c1cfb979c01d4870d6bc67c4"
+  },
+  "NLG_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\NLG_2018-01-01_2026-10-06.csv",
+    "size_bytes": 86338,
+    "sha256": "c9fca4b1d090d5ae56d7de9b9f4e408b0bc0fd96d07b6cb785273e8795f3eff8"
+  },
+  "NLG_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\NLG_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86335,
+    "sha256": "2d328f9216ad42d56d1c8b8e0c8030a8da701ead65acbf959923d1c1ebf088cf"
+  },
+  "NVL_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\NVL_2018-01-01_2024-12-31.csv",
+    "size_bytes": 79367,
+    "sha256": "769856c34fe3dba022b36627838624af4999ef68ec4ca90448a8f6a05f32752f"
+  },
+  "NVL_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\NVL_2018-01-01_2026-10-06.csv",
+    "size_bytes": 86633,
+    "sha256": "9fd69027c6dfb0a32079074c0b79367dd8c5500c5a4fd15bb22d8b8e5f811822"
+  },
+  "NVL_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\NVL_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86631,
+    "sha256": "00e6d7792e8d00ad0b52c88b32a56d259cff44838595aa5173b3bcef5b933444"
+  },
+  "PDR_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\PDR_2018-01-01_2024-12-31.csv",
+    "size_bytes": 78035,
+    "sha256": "920e00abecc45182d9b2c69b8c20f0247c0bafb75450dabaeed93e0304143048"
+  },
+  "PDR_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\PDR_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85769,
+    "sha256": "28fed0494f3761e23d07a44514f2758a99346961578eb31b88ac6c3657fdd638"
+  },
+  "PDR_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\PDR_2018-01-01_2026-10-07.csv",
+    "size_bytes": 85772,
+    "sha256": "ec0b0f3a0c8ddf17499ef7de7061fed202fe82ed54aa90217dba6daba9944953"
+  },
+  "PLX_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\PLX_2018-01-01_2024-12-31.csv",
+    "size_bytes": 90948,
+    "sha256": "f5d9a945a37af39d593777aa722179d0579226f8041853123a595479e3f4a2cc"
+  },
+  "PLX_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\PLX_2018-01-01_2026-10-06.csv",
+    "size_bytes": 86042,
+    "sha256": "d40d130bd20fd0fc84bba344c2b17f2d56a42e9b77488ce055b24c8df9d4b12b"
+  },
+  "PLX_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\PLX_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86040,
+    "sha256": "d535f93b717713afc27fc72ce9a6ca67246ae96e8dbc0524c99d66ae931eca83"
+  },
+  "POW_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\POW_2018-01-01_2024-12-31.csv",
+    "size_bytes": 71784,
+    "sha256": "9eea1fb719061662c8a4e876e95a0da5dc23eeb502f0c89d5aaa2db1af4901fb"
+  },
+  "POW_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\POW_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83971,
+    "sha256": "bfc979ec69e8b29e09ae58aabe3769ea9e769a38fdd5437074479fcfc2658c3f"
+  },
+  "POW_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\POW_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83967,
+    "sha256": "c2aa735dc637240cab9978dc14c211e5316c527d2170daf46791d538038220e6"
+  },
+  "PVD_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\PVD_2018-01-01_2024-12-31.csv",
+    "size_bytes": 75935,
+    "sha256": "7dc8b274704fced46d8e0b0d6af7d3098e1c9c9c88d482d0b098cb94091522c1"
+  },
+  "PVD_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\PVD_2018-01-01_2026-10-06.csv",
+    "size_bytes": 84164,
+    "sha256": "6779d2b661f0f94b035b81f4c4febc9cc1625b34fdc81d695e97603c7eda8625"
+  },
+  "PVD_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\PVD_2018-01-01_2026-10-07.csv",
+    "size_bytes": 84165,
+    "sha256": "99cd1f9e8784672ef59d0b0ab19d88503dff487473dcbfa1eef6cd7144670a48"
+  },
+  "PVT_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\PVT_2018-01-01_2024-12-31.csv",
+    "size_bytes": 75736,
+    "sha256": "230f407e99a41dde5072119b651b361854a4c41d19e38bbd2eb0e7f7f906919e"
+  },
+  "PVT_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\PVT_2018-01-01_2026-10-06.csv",
+    "size_bytes": 84188,
+    "sha256": "f2f4c77ab0af3a550eacd3f287fe627ef0ac91b89be26b35ff1e46e3392641a9"
+  },
+  "SAB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\SAB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 77207,
+    "sha256": "8a8af816c086a956e49bf8351fc5fd6002e89f9112b8b6e3239950b688912ba2"
+  },
+  "SAB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\SAB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 84491,
+    "sha256": "9a37c40ef5dc4da0d99dc4a4cc05d9ae4983868691dd06bc954ba5d1b67baad9"
+  },
+  "SAB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\SAB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 84491,
+    "sha256": "4930fbfc573d60c79877f1ed1ac2e5667b5821d1b70366b773fd4c74dbc3e0fb"
+  },
+  "SHB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\SHB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 74323,
+    "sha256": "cbc20f0f45ab66cfa661d3c663e8cb857e28896cfc4742af52da76041feebfb5"
+  },
+  "SHB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\SHB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 82410,
+    "sha256": "d9ec3f6bce6ad94c59d708c354e25a7b9d9cd8e734018b969a3cfdb426900f46"
+  },
+  "SHB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\SHB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 82412,
+    "sha256": "981b91ca045dde7f7af0bd083e7595591b0cd939292f1e567f3ab3703d7c4f3d"
+  },
+  "SSB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\SSB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 41061,
+    "sha256": "da1a37226ac1faec9185c7846d8a5dae1e3294289b820e63d486641b8a5ce94f"
+  },
+  "SSB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\SSB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 59848,
+    "sha256": "7acaab9d00603382d5a226f2bd8044087d8da208b477bf29e13f8c26a94c25cb"
+  },
+  "SSB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\SSB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 59892,
+    "sha256": "46a26019141291eebd3af1c28b1057e1a2c7f89689ba57fae166aae5b9d281a5"
+  },
+  "SSI_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\SSI_2018-01-01_2024-12-31.csv",
+    "size_bytes": 76982,
+    "sha256": "95c9b614d030d3df09c485bc2d7128df85ebc7f1a36c7440d4b6d2d4a51b1b04"
+  },
+  "SSI_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\SSI_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85524,
+    "sha256": "f562225b91e997c75f5cd74acbd306450b759b53be7aff778c7574c2ece55955"
+  },
+  "SSI_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\SSI_2018-01-01_2026-10-07.csv",
+    "size_bytes": 85527,
+    "sha256": "5ec16169c29559a6e692aa5a99b508847bc172a1d31521883c5ee4427fa1e34f"
+  },
+  "SSI_2020-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\SSI_2020-01-01_2026-10-06.csv",
+    "size_bytes": 76526,
+    "sha256": "0534e878f291c528a08f453caf13a901eb66ebf8c18b97469d36fc015db19aca"
+  },
+  "STB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\STB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 77053,
+    "sha256": "94225fa170742abb431b23c0e076a5363248ed6d5f447c43fb8969ba02f50d4e"
+  },
+  "STB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\STB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83592,
+    "sha256": "6fd8ac875a2d44e5b7af7497b32b461d1b6623d6d5e553fc2ef93cc36b703a58"
+  },
+  "STB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\STB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83588,
+    "sha256": "89db14757cebc5a1541509dfa46158c3fbeb942ad9b53bd73aed8782e92983f8"
+  },
+  "STK_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\STK_2018-01-01_2024-12-31.csv",
+    "size_bytes": 72904,
+    "sha256": "f2999cfba2be940a83e7ddef229828f04d2139d2a112db4a1394333733539bcc"
+  },
+  "STK_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\STK_2018-01-01_2026-10-06.csv",
+    "size_bytes": 80566,
+    "sha256": "0cb64f5a9d12344ade63b6abc560e827ff4ab9da66e0eccef19deac0efbf9168"
+  },
+  "SZC_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\SZC_2018-01-01_2024-12-31.csv",
+    "size_bytes": 63387,
+    "sha256": "542134793a8c78ad0fe32a29ba635c5a94d3f2c92d1bb6ad41afe7def153c1c4"
+  },
+  "SZC_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\SZC_2018-01-01_2026-10-06.csv",
+    "size_bytes": 82062,
+    "sha256": "5c5848131e1a038e77c10799d4ba2336f9aa8fa020249c3b65f3e5e57a626ea1"
+  },
+  "SZC_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\SZC_2018-01-01_2026-10-07.csv",
+    "size_bytes": 82105,
+    "sha256": "4c60d071a159be9604dc732475ac77e7318350cb56c1bae212cb91742ee256ce"
+  },
+  "TCB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\TCB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 71482,
+    "sha256": "573175e442db7c8bc1f1c480ad8d5e7e3eec537f8ce4639b5fa8c82f35d0b32e"
+  },
+  "TCB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\TCB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 86733,
+    "sha256": "ee983c3577ca7074cfb048a5757593da1471e8d28b6bc5efb04df831f7011d85"
+  },
+  "TCB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\TCB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86733,
+    "sha256": "04b373fbaea597b27e9e117dbe96b43dc5aa756e7de642cf83725c4bc3203fa7"
+  },
+  "TCB_2020-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\TCB_2020-01-01_2026-10-06.csv",
+    "size_bytes": 77052,
+    "sha256": "11c0f06ac2d8cd635978784e20f10546ecfb86473d46c44a5e59a61ac6ac7125"
+  },
+  "TNG_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\TNG_2018-01-01_2024-12-31.csv",
+    "size_bytes": 75292,
+    "sha256": "f48b0e6c2e6cf2ecc53a310ccccf003275d5a884b2decc6555b3475914651b37"
+  },
+  "TNG_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\TNG_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83466,
+    "sha256": "2205e60057e03c33cd35a6624ef6d40f499cdd37958c6b1d8965bbc600618fa3"
+  },
+  "TPB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\TPB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 68815,
+    "sha256": "c394c2a3b487ae7f1452fb26ab616b59a443b26b7a66deab07fdee10244d0d5e"
+  },
+  "TPB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\TPB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83429,
+    "sha256": "f6304a68fd3a84c46676b7d7c4820b5b23ff6d90cfa6c3350bca2a7700c88ba9"
+  },
+  "TPB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\TPB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83432,
+    "sha256": "2814950eb33e00cd6298bd7080f9dfd21a50fede96a0118bb55c6ded03bc38e7"
+  },
+  "VGC_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VGC_2018-01-01_2024-12-31.csv",
+    "size_bytes": 78608,
+    "sha256": "e38c5a686c6f5cf4f472a849aad50ea0ebc06fa8007e61b06dba046f1db0d152"
+  },
+  "VGC_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VGC_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85247,
+    "sha256": "2af1537565499116de79587bb5d8a7b79dd008bbceef77d0657f5a103c39550d"
+  },
+  "VGC_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\VGC_2018-01-01_2026-10-07.csv",
+    "size_bytes": 85244,
+    "sha256": "02da2784b4e24e6f669f6be5179a29600c8694ba34ab58805abf62a7b11f1288"
+  },
+  "VHC_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VHC_2018-01-01_2024-12-31.csv",
+    "size_bytes": 78134,
+    "sha256": "d9f7b396b46f2287ad768798ae5e8ec8417de6464b31b6407cd6a2515379c449"
+  },
+  "VHC_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VHC_2018-01-01_2026-10-06.csv",
+    "size_bytes": 84567,
+    "sha256": "433e4dbddf3db563ddf90052361bc775c6ab16b8fb1123dbef20d1ec8803d4a9"
+  },
+  "VHC_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\VHC_2018-01-01_2026-10-07.csv",
+    "size_bytes": 84565,
+    "sha256": "45db8d867bfb70cd94f661ec53b22b34900735d0e23c260405e39ca23e20f039"
+  },
+  "VHM_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VHM_2018-01-01_2024-12-31.csv",
+    "size_bytes": 76508,
+    "sha256": "f904333daa1517d1638ef5913842ee08730856ab03733fa60c1e21841b129635"
+  },
+  "VHM_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VHM_2018-01-01_2026-10-06.csv",
+    "size_bytes": 86631,
+    "sha256": "d74e000f433cc8e2c5d66bea2155fa15ad5a2973eba643765542565425f367c9"
+  },
+  "VHM_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\VHM_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86629,
+    "sha256": "2f0e012ccd608d3909d4b948b6d9094d7c11542aebfbabf9ff8f732a45268b66"
+  },
+  "VHM_2020-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VHM_2020-01-01_2026-10-06.csv",
+    "size_bytes": 76915,
+    "sha256": "9874e41b19b1757ecd24021539233da516558d2ff388b5cd37914c2906c66f00"
+  },
+  "VIB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VIB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 74933,
+    "sha256": "b87941c4b274e902d80f78423bf500320e383929cde61347e4f371565906bb17"
+  },
+  "VIB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VIB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 83430,
+    "sha256": "19512c8796b7e65a9704c9ef4ff2a2f64e9860b7ef9caaacf31e1ea2006a98b2"
+  },
+  "VIB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\VIB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 83433,
+    "sha256": "b54dc58eba4dfdf441bea43c950db76ecb2295aa544489fb1e91534da7f6b054"
+  },
+  "VIC_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VIC_2018-01-01_2024-12-31.csv",
+    "size_bytes": 77928,
+    "sha256": "027071d4155cd056aa855e4541b98e1ee619d6a932ed13b68173a848e692417b"
+  },
+  "VIC_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VIC_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85081,
+    "sha256": "e34ce233ddd442c95070ddae97b2956e5207891c5aa0dcd531bda00a346ec3c0"
+  },
+  "VIC_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\VIC_2018-01-01_2026-10-07.csv",
+    "size_bytes": 85081,
+    "sha256": "8a81eab1356cb80a24d64c335ae571145b35a90c4829b4869ab00fc0565bd93f"
+  },
+  "VIC_2020-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VIC_2020-01-01_2026-10-06.csv",
+    "size_bytes": 75338,
+    "sha256": "649818a32357d55356ffac6c1179f0b0c12db567c9e21e2ccf9bd7914f5287c8"
+  },
+  "VND_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VND_2018-01-01_2024-12-31.csv",
+    "size_bytes": 76169,
+    "sha256": "2f9087622761516649d11bfc220a326918d69076872d41f4acafba709dca883d"
+  },
+  "VND_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VND_2018-01-01_2026-10-06.csv",
+    "size_bytes": 84514,
+    "sha256": "ffef3cd63a13f2e4ac85c12076aed3b8afd80158d1277757dc27571e83a3c035"
+  },
+  "VND_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\VND_2018-01-01_2026-10-07.csv",
+    "size_bytes": 84519,
+    "sha256": "73839839b2bd3b6df0bcfbb25ff76e08462f58f87235341c194b240182d86993"
+  },
+  "VNINDEX_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VNINDEX_2018-01-01_2024-12-31.csv",
+    "size_bytes": 95342,
+    "sha256": "83c4c285976a4f600b2bc0fd9dcb8d48d29c3c8db89dd722eb16038976b42cd4"
+  },
+  "VNINDEX_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VNINDEX_2018-01-01_2026-10-06.csv",
+    "size_bytes": 104973,
+    "sha256": "ad384397af48c81d74bfc83e661fcddeaa772f48f856a42f6b40b669cb5039c0"
+  },
+  "VNINDEX_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\VNINDEX_2018-01-01_2026-10-07.csv",
+    "size_bytes": 104975,
+    "sha256": "c20e70dc358f2fb8bc0f4069b2a5d8f5cf4cc54c601efd709864d49c1ed49752"
+  },
+  "VNINDEX_2020-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VNINDEX_2020-01-01_2026-10-06.csv",
+    "size_bytes": 93640,
+    "sha256": "54b2c7e970bc0796dbfe88030e98303db86e8c13522580818c0b6ceda8daf412"
+  },
+  "VNM_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VNM_2018-01-01_2024-12-31.csv",
+    "size_bytes": 79268,
+    "sha256": "c0dec76ae760ee2c4d5f99b64c55e17ea2d5207f657988f1b7eca9cbc73eb0d2"
+  },
+  "VNM_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VNM_2018-01-01_2026-10-06.csv",
+    "size_bytes": 86512,
+    "sha256": "84f6308483c5de08a143ab561eed4ac328ef951f90cd0aad4279da6a9e111b2a"
+  },
+  "VNM_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\VNM_2018-01-01_2026-10-07.csv",
+    "size_bytes": 86510,
+    "sha256": "c5bf0c04bda99e77ddb99ba42b331830816ae6acd1a11df89737cee881b843ea"
+  },
+  "VPB_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VPB_2018-01-01_2024-12-31.csv",
+    "size_bytes": 77074,
+    "sha256": "4de860ba7d99a4f8e96143266b53f2e407a877ca07bf7b8c3eeb2c85d9a7dc13"
+  },
+  "VPB_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VPB_2018-01-01_2026-10-06.csv",
+    "size_bytes": 85697,
+    "sha256": "49e684a2d77a2e9eb579f7d89d864466144c243239a525c0b15ffdac6ed1174f"
+  },
+  "VPB_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\VPB_2018-01-01_2026-10-07.csv",
+    "size_bytes": 85701,
+    "sha256": "1de9c85709935b19e05e7dfe9054004aed01570cca2c355bca246e1eaef520ab"
+  },
+  "VRE_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VRE_2018-01-01_2024-12-31.csv",
+    "size_bytes": 78054,
+    "sha256": "3ddd85aed9c128562793304c1d87205a4a61332d9f980c2e2ff374b0cc27869e"
+  },
+  "VRE_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VRE_2018-01-01_2026-10-06.csv",
+    "size_bytes": 87076,
+    "sha256": "0a678a098dfc6a1948523c12ca8f1bd2bef5932b333bf67e35540e4f2593ecae"
+  },
+  "VRE_2018-01-01_2026-10-07.csv": {
+    "path": "data/replay_cache\\VRE_2018-01-01_2026-10-07.csv",
+    "size_bytes": 87073,
+    "sha256": "7abd85349d05a75d676e39b1d0b0d99d41ea61fdeb6429878ec1b1ea47351a1a"
+  },
+  "VTP_2018-01-01_2024-12-31.csv": {
+    "path": "data/replay_cache\\VTP_2018-01-01_2024-12-31.csv",
+    "size_bytes": 64398,
+    "sha256": "7fae1f579cbcf6b6606d1aed4c703fbc1f7649f456e396b7ca2198949bba7ef6"
+  },
+  "VTP_2018-01-01_2026-10-06.csv": {
+    "path": "data/replay_cache\\VTP_2018-01-01_2026-10-06.csv",
+    "size_bytes": 82847,
+    "sha256": "3d4bdb5efc85efa559e2f74d89fac6255ec7a4f2cc666fe267ee1b84ed84d55b"
+  },
+  "replay_contrarian_events.csv": {
+    "path": "data\\replay_contrarian_events.csv",
+    "size_bytes": 14389,
+    "sha256": "37d0dca38f3481beb2329875f3c85ef4d4b54f8d0d1327a623e3bdac2f10152f"
+  },
+  "replay_contrarian_events_v2.csv": {
+    "path": "data\\replay_contrarian_events_v2.csv",
+    "size_bytes": 969552,
+    "sha256": "9b1cf008bcc539c8ec8015c629fa8288b7ae5fe104710f4ad8ac5e8322e95313"
+  }
+}
