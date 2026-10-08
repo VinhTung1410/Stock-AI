@@ -18,7 +18,7 @@ import glob
 import logging
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -49,6 +49,7 @@ FLAG_BOOTSTRAP_DISAGREEMENT: str = "CỜ_BẤT_ĐỒNG_BOOTSTRAP"
 @dataclass
 class TradeEvent:
     symbol: str
+    panic_date: pd.Timestamp
     signal_date: pd.Timestamp
     entry_date: pd.Timestamp
     exit_date: pd.Timestamp
@@ -92,6 +93,7 @@ class MatchedDatePeerEngine:
         self.price_cache = price_cache
         self.bench_symbol = bench_symbol
         self.bench_df = price_cache.get(bench_symbol)
+        self.low_peers_audit: List[Dict[str, Any]] = []
 
     def calculate_tradable_return(
         self, df: pd.DataFrame, entry_idx: int, holding_bars: int = 20
@@ -136,11 +138,25 @@ class MatchedDatePeerEngine:
                 peer_rets.append(res[0])
 
         if len(peer_rets) < MIN_PEERS_COUNT:
-            # Fallback to benchmark return if peers count < 10
+            # Fallback to benchmark return if peers count < 10 (Hazard C3: Prevent dropping major crashes)
             bench_ret = self.compute_benchmark_return(signal_date, holding_bars=holding_bars)
-            return (bench_ret if bench_ret is not None else 0.0), len(peer_rets)
+            fallback_val = bench_ret if bench_ret is not None else 0.0
+            self.low_peers_audit.append({
+                "signal_date": signal_date,
+                "active_count": len(active_symbols),
+                "peer_count": len(peer_rets),
+                "benchmark_ret": fallback_val,
+            })
+            return fallback_val, len(peer_rets)
 
         return float(np.mean(peer_rets)), len(peer_rets)
+
+    def get_peer_audit_summary(self) -> Dict[str, Any]:
+        """Return audit diagnostics on signal days with peers < MIN_PEERS_COUNT."""
+        return {
+            "total_low_peer_days": len(self.low_peers_audit),
+            "records": self.low_peers_audit,
+        }
 
     def compute_benchmark_return(
         self, signal_date: pd.Timestamp, holding_bars: int = 20
@@ -207,13 +223,156 @@ def evaluate_variant_statistics(
 ) -> VariantEvaluationResult:
     """Evaluate cluster statistics and hypothesis testing for a variant or its marginal set."""
     is_marginal = baseline_events is not None
-    target_events = events
 
-    # For ablation testing: isolate the marginal events (events rejected by baseline)
     if is_marginal:
-        base_sigs = {(e.symbol, e.signal_date) for e in baseline_events}
-        target_events = [e for e in events if (e.symbol, e.signal_date) not in base_sigs]
+        # C1: Keyed strictly by (symbol, panic_date) to prevent time-shift confounding
+        base_keys = {(e.symbol, e.panic_date) for e in baseline_events}
+        marginal_events = [e for e in events if (e.symbol, e.panic_date) not in base_keys]
+        n_events = len(marginal_events)
 
+        if n_events == 0:
+            return VariantEvaluationResult(
+                variant_name=variant_name,
+                n_events=0,
+                g_clusters=0,
+                cluster_se=float("nan"),
+                theta_hat_alpha=float("nan"),
+                ci_lower=float("nan"),
+                ci_upper=float("nan"),
+                rejection_hurdle_nominal=float("nan"),
+                rejection_hurdle_holm=float("nan"),
+                mde_nominal=float("nan"),
+                mde_holm=float("nan"),
+                p_value_nominal=1.0,
+                p_value_holm=1.0,
+                p_value_tost_holm=1.0,
+                binding_count=binding_count,
+                marginal_clusters=0,
+                verdict=STATUS_CANNOT_TEST_G_TOO_SMALL,
+                is_marginal_test=True,
+            )
+
+        # C2: Cluster on the UNION of baseline and marginal sets to preserve identical temporal structure
+        union_events = list(baseline_events) + list(marginal_events)
+        union_dates = [e.panic_date for e in union_events]
+        c_ids, split_count = cluster_events_with_chaining_limit_diagnostics(
+            union_dates, gap_bars=gap_bars, max_length_bars=max_length_bars
+        )
+        for idx, e in enumerate(union_events):
+            e.cluster_id = c_ids[idx]
+
+        unique_cids = np.unique(c_ids)
+        base_alphas = [e.excess_alpha for e in baseline_events]
+        overall_base_mean = float(np.mean(base_alphas)) if base_alphas else 0.0
+
+        marginal_cluster_diffs: List[float] = []
+        for cid in unique_cids:
+            c_marg = [
+                union_events[i].excess_alpha
+                for i in range(len(union_events))
+                if c_ids[i] == cid and (union_events[i].symbol, union_events[i].panic_date) not in base_keys
+            ]
+            if not c_marg:
+                continue
+
+            c_base = [
+                union_events[i].excess_alpha
+                for i in range(len(union_events))
+                if c_ids[i] == cid and (union_events[i].symbol, union_events[i].panic_date) in base_keys
+            ]
+            mean_marg_c = float(np.mean(c_marg))
+            if c_base:
+                mean_base_c = float(np.mean(c_base))
+                diff_c = mean_marg_c - mean_base_c
+            else:
+                diff_c = mean_marg_c - overall_base_mean
+
+            marginal_cluster_diffs.append(diff_c)
+
+        g_clusters = len(marginal_cluster_diffs)
+
+        # Sensitivity check on union dates
+        sens_res = check_clustering_sensitivity(
+            union_dates, gaps=(5, 10, 20), max_length_bars=max_length_bars
+        )
+        sensitivity_flag = sens_res.get("is_sensitive", False)
+
+        if g_clusters < MIN_MARGINAL_CLUSTERS:
+            return VariantEvaluationResult(
+                variant_name=variant_name,
+                n_events=n_events,
+                g_clusters=g_clusters,
+                cluster_se=float("nan"),
+                theta_hat_alpha=float(np.mean(marginal_cluster_diffs)) if marginal_cluster_diffs else float("nan"),
+                ci_lower=float("nan"),
+                ci_upper=float("nan"),
+                rejection_hurdle_nominal=float("nan"),
+                rejection_hurdle_holm=float("nan"),
+                mde_nominal=float("nan"),
+                mde_holm=float("nan"),
+                p_value_nominal=1.0,
+                p_value_holm=1.0,
+                p_value_tost_holm=1.0,
+                binding_count=binding_count,
+                marginal_clusters=g_clusters,
+                verdict=STATUS_CANNOT_TEST_G_TOO_SMALL,
+                is_marginal_test=True,
+                split_clusters_count=split_count,
+                sensitivity_flag=sensitivity_flag,
+            )
+
+        cluster_diff_arr = np.array(marginal_cluster_diffs, dtype=float)
+        # Spec 2.3 & 2.5: Marginal test theta_diff = alpha(marginal) - alpha(baseline)
+        summary = calculate_cluster_t_stats(cluster_diff_arr, delta=0.0, m_family=m_family)
+
+        adj_alpha_p = apply_holm_bonferroni([summary.p_value_alpha], m_family=m_family)[0]
+        adj_tost_p = apply_holm_bonferroni([summary.p_value_tost], m_family=m_family)[0]
+
+        verdict = generate_dynamic_verdict(
+            p_holm_alpha=adj_alpha_p,
+            p_holm_tost=adj_tost_p,
+            sensitivity_flag=sensitivity_flag,
+        )
+
+        p_boot, ci_b_low, _ = wild_cluster_bootstrap(
+            cluster_diff_arr, null_theta=0.0, n_boot=1000, seed=42
+        )
+        if (summary.ci_lower > 0.0) != (ci_b_low > 0.0) and verdict != VERDICT_INCONCLUSIVE:
+            verdict = f"{verdict} ({FLAG_BOOTSTRAP_DISAGREEMENT})"
+
+        df_clust = g_clusters - 1
+        from scipy import stats
+
+        t_crit_ci = float(stats.t.ppf(0.975, df=df_clust))
+        t_crit_holm = float(stats.t.ppf(1.0 - 0.05 / m_family, df=df_clust))
+        rejection_hurdle_nom = t_crit_ci * summary.cluster_se
+        rejection_hurdle_hlm = t_crit_holm * summary.cluster_se
+
+        return VariantEvaluationResult(
+            variant_name=variant_name,
+            n_events=n_events,
+            g_clusters=g_clusters,
+            cluster_se=round(summary.cluster_se, 2),
+            theta_hat_alpha=round(summary.theta_hat, 2),
+            ci_lower=round(summary.ci_lower, 2),
+            ci_upper=round(summary.ci_upper, 2),
+            rejection_hurdle_nominal=round(rejection_hurdle_nom, 2),
+            rejection_hurdle_holm=round(rejection_hurdle_hlm, 2),
+            mde_nominal=round(summary.mde, 2),
+            mde_holm=round(summary.mde_holm, 2),
+            p_value_nominal=round(summary.p_value_alpha, 4),
+            p_value_holm=round(adj_alpha_p, 4),
+            p_value_tost_holm=round(adj_tost_p, 4),
+            binding_count=binding_count,
+            marginal_clusters=g_clusters,
+            verdict=verdict,
+            is_marginal_test=True,
+            split_clusters_count=split_count,
+            sensitivity_flag=sensitivity_flag,
+        )
+
+    # Regular single-variant evaluation
+    target_events = events
     n_events = len(target_events)
     if n_events == 0:
         return VariantEvaluationResult(
@@ -234,11 +393,11 @@ def evaluate_variant_statistics(
             binding_count=binding_count,
             marginal_clusters=0,
             verdict=STATUS_CANNOT_TEST_G_TOO_SMALL,
-            is_marginal_test=is_marginal,
+            is_marginal_test=False,
         )
 
     # 1. Clustering
-    event_dates = [e.signal_date for e in target_events]
+    event_dates = [e.panic_date for e in target_events]
     c_ids, split_count = cluster_events_with_chaining_limit_diagnostics(
         event_dates, gap_bars=gap_bars, max_length_bars=max_length_bars
     )
@@ -273,7 +432,7 @@ def evaluate_variant_statistics(
             binding_count=binding_count,
             marginal_clusters=g_clusters,
             verdict=STATUS_CANNOT_TEST_G_TOO_SMALL,
-            is_marginal_test=is_marginal,
+            is_marginal_test=False,
             split_clusters_count=split_count,
             sensitivity_flag=sensitivity_flag,
         )
@@ -336,9 +495,9 @@ def evaluate_variant_statistics(
         p_value_holm=round(adj_alpha_p, 4),
         p_value_tost_holm=round(adj_tost_p, 4),
         binding_count=binding_count,
-        marginal_clusters=g_clusters if is_marginal else 0,
+        marginal_clusters=0,
         verdict=verdict,
-        is_marginal_test=is_marginal,
+        is_marginal_test=False,
         split_clusters_count=split_count,
         sensitivity_flag=sensitivity_flag,
     )

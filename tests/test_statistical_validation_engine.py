@@ -19,6 +19,7 @@ import pandas as pd
 import pytest
 
 from statistical_validation_engine import (
+    DEFAULT_M_HOLM,
     DELTA_ECONOMIC_HURDLE,
     FLAG_SENSITIVE_CLUSTERING,
     VERDICT_ALPHA,
@@ -133,6 +134,55 @@ def test_apply_holm_bonferroni():
 
     # Empty list
     assert len(apply_holm_bonferroni([])) == 0
+
+
+def test_apply_holm_bonferroni_partial_family_multipliers():
+    """Verify that when only n < m p-values are tested (Point D2),
+    Holm-Bonferroni treats unmeasured hypotheses as p=1.0 and applies
+    multipliers (m, m-1, ..., m-n+1).
+    """
+    m_family = 40
+    # 5 test p-values sorted
+    p_vals = [0.0005, 0.0010, 0.0020, 0.0050, 0.0100]
+    adj = apply_holm_bonferroni(p_vals, m_family=m_family)
+    assert len(adj) == 5
+
+    # Multipliers must be 40, 39, 38, 37, 36
+    expected_0 = min(1.0, 0.0005 * 40)  # 0.020
+    expected_1 = min(1.0, 0.0010 * 39)  # 0.039
+    expected_2 = min(1.0, 0.0020 * 38)  # 0.076
+    expected_3 = min(1.0, 0.0050 * 37)  # 0.185
+    expected_4 = min(1.0, 0.0100 * 36)  # 0.360
+
+    assert adj[0] == pytest.approx(expected_0)
+    assert adj[1] == pytest.approx(expected_1)
+    assert adj[2] == pytest.approx(expected_2)
+    assert adj[3] == pytest.approx(expected_3)
+    assert adj[4] == pytest.approx(expected_4)
+
+
+def test_alpha_detection_on_heavy_tailed_dgp_with_outlier():
+    """Verify that on realistic heavy-tailed DGP with +26% outlier (Point D3),
+    a genuine large alpha (+22%) yields the ALPHA verdict under Holm m=40.
+    """
+    rng = np.random.default_rng(42)
+    g = 13
+    # Non-Gaussian DGP with VIC +26% shock
+    c_shocks = (rng.chisquare(df=3, size=g) - 3.0) * 1.5
+    c_shocks[0] += 26.0 - 2.6
+    noise = rng.standard_t(df=4, size=g) * 2.0
+
+    # Strong true alpha = +22%
+    true_alpha = 22.0
+    cluster_means = c_shocks + noise + true_alpha
+
+    summary = calculate_cluster_t_stats(cluster_means, delta=DELTA_ECONOMIC_HURDLE, m_family=DEFAULT_M_HOLM)
+    assert summary.theta_hat > 20.0
+    assert summary.cluster_se > 0.0
+
+    adj_p_alpha = apply_holm_bonferroni([summary.p_value_alpha], m_family=DEFAULT_M_HOLM)[0]
+    verdict = generate_dynamic_verdict(p_holm_alpha=adj_p_alpha, p_holm_tost=1.0)
+    assert verdict == VERDICT_ALPHA
 
 
 def test_generate_dynamic_verdict():

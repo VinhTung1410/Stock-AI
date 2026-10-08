@@ -79,6 +79,15 @@ def test_matched_date_peer_engine(mock_price_cache):
     assert np.isfinite(beta)
     assert beta > 0
 
+    # Test peer audit logging when peers < 10 (simulate all stocks active except 2)
+    active_all = [f"STOCK_{i}" for i in range(13)]
+    base_low, n_low = engine.compute_peer_baseline(
+        signal_date, active_symbols=active_all, holding_bars=20
+    )
+    assert n_low < 10
+    audit = engine.get_peer_audit_summary()
+    assert audit["total_low_peer_days"] >= 1
+
 
 def test_adapter_synthetic_known_alpha_detection():
     # Construct 13 clusters with large true alpha (+22%)
@@ -91,6 +100,7 @@ def test_adapter_synthetic_known_alpha_detection():
             events.append(
                 TradeEvent(
                     symbol=s,
+                    panic_date=d,
                     signal_date=d,
                     entry_date=d + pd.Timedelta(days=1),
                     exit_date=d + pd.Timedelta(days=25),
@@ -122,6 +132,7 @@ def test_adapter_synthetic_zero_alpha_inconclusive():
             events.append(
                 TradeEvent(
                     symbol=s,
+                    panic_date=d,
                     signal_date=d,
                     entry_date=d + pd.Timedelta(days=1),
                     exit_date=d + pd.Timedelta(days=25),
@@ -146,6 +157,7 @@ def test_adapter_marginal_too_few_clusters():
     base_events = [
         TradeEvent(
             symbol="AAA",
+            panic_date=d,
             signal_date=d,
             entry_date=d + pd.Timedelta(days=1),
             exit_date=d + pd.Timedelta(days=25),
@@ -164,6 +176,7 @@ def test_adapter_marginal_too_few_clusters():
     marginal_events = [
         TradeEvent(
             symbol="BBB",
+            panic_date=d,
             signal_date=d,
             entry_date=d + pd.Timedelta(days=1),
             exit_date=d + pd.Timedelta(days=25),
@@ -187,3 +200,54 @@ def test_adapter_marginal_too_few_clusters():
     # Since G_marginal = 2 < 5, engine must guard and return STATUS_CANNOT_TEST_G_TOO_SMALL
     assert res.marginal_clusters == 2
     assert res.verdict == STATUS_CANNOT_TEST_G_TOO_SMALL
+
+
+def test_adapter_paired_marginal_difference_calculation():
+    """Verify paired union clustering and difference estimation (Point C2)."""
+    dates = pd.date_range("2023-01-01", periods=6, freq="25D")
+    # In each cluster, baseline has alpha = +5%
+    base_events = [
+        TradeEvent(
+            symbol="AAA",
+            panic_date=d,
+            signal_date=d,
+            entry_date=d + pd.Timedelta(days=1),
+            exit_date=d + pd.Timedelta(days=25),
+            entry_price=10.0,
+            exit_price=10.5,
+            ret_tradable=6.0,
+            peer_baseline_ret=1.0,
+            excess_alpha=5.0,
+            beta_adj_alpha=4.5,
+        )
+        for d in dates
+    ]
+    # Marginal events in each cluster have alpha = -10% (gate successfully blocked toxic trades)
+    marg_events = [
+        TradeEvent(
+            symbol="BBB",
+            panic_date=d,
+            signal_date=d,
+            entry_date=d + pd.Timedelta(days=1),
+            exit_date=d + pd.Timedelta(days=25),
+            entry_price=10.0,
+            exit_price=9.0,
+            ret_tradable=-9.0,
+            peer_baseline_ret=1.0,
+            excess_alpha=-10.0,
+            beta_adj_alpha=-9.5,
+        )
+        for d in dates
+    ]
+    all_events = base_events + marg_events
+
+    res = evaluate_variant_statistics(
+        "Toxic_Rejection_Gate",
+        all_events,
+        baseline_events=base_events,
+        gap_bars=20,
+    )
+    assert res.is_marginal_test is True
+    assert res.g_clusters == 6
+    # Marginal difference should be -10% - (+5%) = -15%
+    assert res.theta_hat_alpha == pytest.approx(-15.0)
