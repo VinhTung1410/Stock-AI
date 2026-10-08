@@ -251,7 +251,7 @@ def _check_fundamental_integrity(
         result.blocked_by = GATE_SURVIVAL
         result.blocking_reasons.append("Thiếu báo cáo tài chính.")
         return False
-    if "f_score" in fin_dict:
+    if fin_dict.get("f_score") is not None:
         f_score = int(fin_dict["f_score"])
         data_comp = 1.0
         f_res = {"score": f_score, "data_completeness": 1.0, "breakdown": {}}
