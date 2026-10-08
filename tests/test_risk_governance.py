@@ -22,7 +22,7 @@ from entry_gates import (
     GATE_ADV20_LIQUIDITY,
     evaluate_entry_gates,
 )
-from regime_classifier import RegimeState, get_canonical_regime
+from regime_classifier import RegimeState, get_market_regime
 from trading_bot import _evaluate_watchlist_buy_trigger
 
 
@@ -39,22 +39,22 @@ class TestCanonicalRegimeState:
         assert RegimeState.DOWNTREND.value == "DOWNTREND"
         assert RegimeState.UNKNOWN.value == "UNKNOWN"
 
-    def test_get_canonical_regime_from_tech_data(self):
-        """AC-58.1: get_canonical_regime resolves MA200 hysteresis into RegimeState enum."""
+    def test_get_market_regime_from_tech_data(self):
+        """AC-58.1: get_market_regime resolves MA200 hysteresis into RegimeState enum."""
         # Price > MA200 by 2% -> UPTREND
         vnindex_up = {"current_price": 1280.0, "ma200": 1250.0}
-        assert get_canonical_regime(vn_index_data=vnindex_up) == RegimeState.UPTREND
+        assert get_market_regime(vn_index_data=vnindex_up) == RegimeState.UPTREND
 
         # Price < MA200 by 2% -> DOWNTREND
         vnindex_down = {"current_price": 1200.0, "ma200": 1250.0}
-        assert get_canonical_regime(vn_index_data=vnindex_down) == RegimeState.DOWNTREND
+        assert get_market_regime(vn_index_data=vnindex_down) == RegimeState.DOWNTREND
 
         # Price within +/- 1.5% of MA200 -> SIDEWAYS
         vnindex_side = {"current_price": 1252.0, "ma200": 1250.0}
-        assert get_canonical_regime(vn_index_data=vnindex_side) == RegimeState.SIDEWAYS
+        assert get_market_regime(vn_index_data=vnindex_side) == RegimeState.SIDEWAYS
 
         # Empty/missing data -> UNKNOWN
-        assert get_canonical_regime(vn_index_data=None) == RegimeState.UNKNOWN
+        assert get_market_regime(vn_index_data=None) == RegimeState.UNKNOWN
 
     def test_check_regime_conflict_with_regime_state(self):
         """AC-58.1: check_regime_conflict accepts RegimeState enum or standard strings."""

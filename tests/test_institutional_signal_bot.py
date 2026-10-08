@@ -191,6 +191,7 @@ def test_trading_bot_macro_circuit_breaker_blocks_buys(monkeypatch):
 
     monkeypatch.setattr("trading_bot._scan_watchlist_opportunities", mock_scan_watchlist)
     monkeypatch.setattr("trading_bot._scan_active_market_opportunities", mock_scan_active)
+    monkeypatch.setattr("trading_bot._scan_contrarian_opportunities", lambda today_str: None)
     monkeypatch.setattr("trading_bot._audit_portfolio_risk", lambda today_str: None)
 
     # Execute check_realtime_risk

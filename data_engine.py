@@ -1433,7 +1433,7 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
 
         # Đánh giá vị thế nắm giữ V2
         row_dict = {"symbol": symbol, "avg_price": cost_price, "volume": volume, "market_price": curr_price}
-        pos_eval = evaluate_holding_position(row_dict, tech)
+        pos_eval = evaluate_holding_position(row_dict, tech, fin_dict_p, note)
 
         action_v2 = pos_eval.get("action", "🟢 NẮM GIỮ")
         defense_target = pos_eval.get("trailing_stop") if pos_eval.get("is_profit") else pos_eval.get("stop_loss")

@@ -212,15 +212,40 @@ def is_macro_circuit_breaker_active(
     return False, "MARKET_HEALTHY_OR_SIDEWAYS"
 
 
-def get_canonical_regime(
-    symbol_data: dict | pd.DataFrame | None = None,
-    vn_index_data: dict | pd.DataFrame | None = None,
+import time
+
+_cached_vnindex_data = None
+_cached_vnindex_time = 0
+
+_SENTINEL = object()
+
+def get_market_regime(
+    vn_index_data: dict | pd.DataFrame | None = _SENTINEL,
 ) -> RegimeState:
-    """MA200 hysteresis -> Single source of truth cho toàn bộ hệ thống (TASK-0058).
+    """MA200 hysteresis -> Single source of truth cho toàn bộ hệ thống (TASK-0058/TASK-0076).
 
     Supports dictionary (e.g. {'current_price': ..., 'ma200': ...}) or DataFrame.
     """
-    data = vn_index_data if vn_index_data is not None else symbol_data
+    global _cached_vnindex_data, _cached_vnindex_time
+    
+    if vn_index_data is _SENTINEL:
+        now_ts = time.time()
+        if _cached_vnindex_data is not None and (now_ts - _cached_vnindex_time) < 300:
+            data = _cached_vnindex_data
+        else:
+            try:
+                from data_engine import fetch_stock_historical
+                data = fetch_stock_historical("VNINDEX", time_frame="1D", limit=250)
+                if data is not None and not data.empty:
+                    _cached_vnindex_data = data
+                    _cached_vnindex_time = now_ts
+                else:
+                    data = None
+            except Exception:
+                data = None
+    else:
+        data = vn_index_data
+
     if data is None:
         return RegimeState.UNKNOWN
 

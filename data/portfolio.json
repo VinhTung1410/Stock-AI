@@ -1,20 +1,14 @@
 [
   {
     "symbol": "FPT",
-    "volume": 220,
+    "volume": 20,
     "cost_price": 66.66,
-    "note": "",
-    "_nav": 14665.199999999999,
-    "sector": "Công nghệ / AI",
-    "weight": 0.9906475767800508
+    "note": ""
   },
   {
     "symbol": "MSB",
     "volume": 13,
     "cost_price": 10.65,
-    "note": "",
-    "_nav": 138.45000000000002,
-    "sector": "Ngân hàng",
-    "weight": 0.009352423219949136
+    "note": ""
   }
 ]

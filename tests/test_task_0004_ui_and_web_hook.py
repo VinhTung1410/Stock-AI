@@ -85,7 +85,12 @@ def test_web_to_discord_hook_triggers_on_buy(monkeypatch):
                                                 "position_size_nav": "10% NAV",
                                             },
                                         ):
-                                            with mock.patch("db_manager.save_quant_signal", return_value=37):
+                                            with mock.patch("db_manager.save_quant_signal", return_value=37), mock.patch(
+                                                "ai_analyst.get_market_regime"
+                                            ) as mock_reg:
+                                                from regime_classifier import RegimeState
+
+                                                mock_reg.return_value = RegimeState.UPTREND
                                                 from ai_analyst import generate_quantamental_2pass_report
 
                                                 res = generate_quantamental_2pass_report("TCB")

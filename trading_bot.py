@@ -317,7 +317,6 @@ def _validate_quant_gate(sym: str, tech: dict, curr_p: float, portfolio: list = 
         tech_data=tech,
         sector=sector,
         caller="WATCHLIST",
-        conviction_score=75.0,
         portfolio=portfolio,
         kill_switch_active=kill_switch_active,
         half_kelly_f=hard_gates.get("kelly_f", 0.12),
@@ -358,10 +357,11 @@ def _record_and_save_buy_signal(
     val_dict: dict | None = None,
 ):
     from db_manager import save_quant_signal
+    from policy_constants import ACTION_ACCUMULATE, ACTION_BUY
 
-    record_signal_cooldown(sym, action="MUA", conviction_score=75.0)
+    record_signal_cooldown(sym, action=ACTION_BUY)
     try:
-        act_tag = "🟢 VALUE BUY" if "Breakout" in buy_reason else "🟢 ACCUMULATE"
+        act_tag = "🟢 VALUE BUY" if "Breakout" in buy_reason else ACTION_ACCUMULATE
         mos_val = float((val_dict or {}).get("mos_pct", 15.0))
         is_info = bool((val_dict or {}).get("mos_is_informative", True))
         save_quant_signal(
@@ -439,7 +439,7 @@ def _process_single_watchlist_item(item: dict, today_str: str):
         target_price_t2=round(curr_p * 1.20, 2),
         risk_reward=rr,
         position_size_nav="10% - 15% NAV",
-        conviction_score=75.0,
+        
         quant_metrics={
             "f_score": f_score_dict.get("score"),
             "tech_status": tech.get("status_ma20"),
@@ -491,7 +491,7 @@ def check_macro_circuit_breaker(today_str: str, cache_ttl_sec: int = 300) -> boo
         return _last_macro_cash_mode
 
     from data_engine import fetch_stock_historical
-    from regime_classifier import REGIME_DOWNTREND, RegimeState, get_canonical_regime
+    from regime_classifier import REGIME_DOWNTREND, RegimeState, get_market_regime
 
     alert_key = (today_str, "CIRCUIT_BREAKER_CASH_MODE")
     try:
@@ -500,7 +500,7 @@ def check_macro_circuit_breaker(today_str: str, cache_ttl_sec: int = 300) -> boo
         if df_vnindex is None or df_vnindex.empty:
             return False
 
-        latest_regime = get_canonical_regime(vn_index_data=df_vnindex).value
+        latest_regime = get_market_regime(vn_index_data=df_vnindex).value
 
         if latest_regime == RegimeState.DOWNTREND.value:
             _last_macro_cash_mode = True

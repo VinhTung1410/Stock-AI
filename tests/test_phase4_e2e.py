@@ -72,7 +72,12 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
 """
         mock_client.models.generate_content.return_value = mock_resp
 
-        with patch("ai_analyst.get_ai_client", return_value=mock_client):
+        with patch("ai_analyst.get_ai_client", return_value=mock_client), patch(
+            "ai_analyst.get_market_regime"
+        ) as mock_regime:
+            from regime_classifier import RegimeState
+
+            mock_regime.return_value = RegimeState.UPTREND
             res = analyze_stock_with_smart_committee(symbol="HPG", tech_data=tech, fin_data=fin, news_items=news)
 
         assert res["status"] == "SUCCESS"
@@ -133,9 +138,15 @@ PM DECISION: STRONG_OPPORTUNITY — Mua gom vùng hỗ trợ MA20 cho cổ phi�
         mock_resp.text = "PM DECISION: ATTRACTIVE — Định giá tốt cho **FPT**"
         mock_client.aio.models.generate_content = AsyncMock(return_value=mock_resp)
 
-        res = asyncio.run(
-            async_analyze_stock_with_smart_committee(symbol="FPT", tech_data=tech, fin_data=fin, client=mock_client)
-        )
+        with patch("ai_analyst.get_market_regime") as mock_regime:
+            from regime_classifier import RegimeState
+
+            mock_regime.return_value = RegimeState.UPTREND
+            res = asyncio.run(
+                async_analyze_stock_with_smart_committee(
+                    symbol="FPT", tech_data=tech, fin_data=fin, client=mock_client
+                )
+            )
 
         assert res["status"] == "SUCCESS"
         assert res["symbol"] == "FPT"

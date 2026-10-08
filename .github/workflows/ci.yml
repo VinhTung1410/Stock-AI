@@ -93,6 +93,7 @@ jobs:
             --cov=dispatcher \
             --cov=indicators \
             --cov=portfolio_guard \
+            --cov=policy_constants \
             --cov=db_manager \
             --cov=entry_gates \
             --cov=contrarian_engine \

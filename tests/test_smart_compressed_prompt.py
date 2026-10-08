@@ -59,7 +59,10 @@ class TestSmartCompressedPrompt:
             "mos_is_informative": True,
         }
 
-        with patch("ai_analyst.call_gemini", side_effect=mock_call_gemini):
+        with (
+            patch("ai_analyst.call_gemini", side_effect=mock_call_gemini),
+            patch("ai_analyst.get_market_regime", return_value=MagicMock(value="UPTREND")),
+        ):
             res = analyze_stock_with_smart_committee(
                 symbol="HPG",
                 tech_data=mock_tech,

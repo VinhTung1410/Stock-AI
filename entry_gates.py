@@ -17,6 +17,15 @@ from typing import Any, Dict, List, Optional
 
 from data_gate import reconcile_data
 from indicators import calculate_altman_z_score, calculate_vibe_quality_score
+from policy_constants import (
+    ACTION_ACCUMULATE,
+    ACTION_BUY,
+    ACTION_WATCH,
+    MAX_POSITION_SIZE_NAV_PCT,
+    MAX_SECTOR_EXPOSURE_PCT,
+    MIN_ADV20_BILLION,
+    STRUCTURAL_STOP_LOSS_PCT,
+)
 from quant_engine import LOCKED_QUANT_THRESHOLDS
 from quant_valuation import calculate_fair_value_and_mos, classify_stock_archetype
 
@@ -30,12 +39,6 @@ GATE_QUANT_CONVICTION = "QUANT_CONVICTION"
 GATE_PM_VETO = "PM_VETO"
 GATE_ADV20_LIQUIDITY = "ADV20_LIQUIDITY"
 
-# Action State Constants
-ACTION_BUY = "🟢 MUA"
-ACTION_ACCUMULATE = "🟢 ACCUMULATE"
-ACTION_WATCH = "🟡 THEO DÕI"
-ACTION_REDUCE = "🔴 GIẢM / THOÁT"
-
 # Bullish Technical Signals Set
 BULLISH_SET = {
     "BULLISH_CONFIRMED",
@@ -43,16 +46,6 @@ BULLISH_SET = {
     "BULLISH",
     "STRONG_BULLISH",
     "ACCUMULATION",
-}
-
-# Archetype MoS Minimum Thresholds (%)
-ARCHETYPE_MOS_THRESHOLDS: Dict[str, float] = {
-    "BANK": 10.0,
-    "GROWTH_COMPOUNDER": 15.0,
-    "GROWTH": 15.0,
-    "CYCLICAL": 15.0,
-    "REAL_ESTATE": 15.0,
-    "DEFAULT": 15.0,
 }
 
 
@@ -247,7 +240,12 @@ def _check_valuation_mos_layer(
 def _check_technical_momentum_layer(
     tech_data: Optional[Dict[str, Any]], current_price: float, result: EntryGateResult
 ) -> bool:
-    """Tầng 4: Xu hướng Kỹ thuật và Động lượng (chặn bắt dao rơi)."""
+    """Tầng 4: Xu hướng Kỹ thuật và Động lượng (chặn bắt dao rơi - Hard Veto).
+
+    TASK-0078: Tách bạch Hard Veto và Conviction Scoring:
+    - Hard Veto: Chặn cứng FALLING_KNIFE (rơi tự do không nền).
+    - Các trạng thái kỹ thuật khác chuyển sang chấm điểm Conviction (Scoring), không Reject oan uổng.
+    """
     tech = tech_data or {}
     tech_sig = tech.get("tech_signal")
 
@@ -266,14 +264,18 @@ def _check_technical_momentum_layer(
 
     result.metrics["tech_signal"] = tech_sig
 
-    if tech_sig not in BULLISH_SET:
+    if tech_sig == "FALLING_KNIFE":
         result.can_buy = False
         result.blocked_by = GATE_TECHNICAL_MOMENTUM
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append(
-            f"Tín hiệu kỹ thuật {tech_sig} không thuộc BULLISH_SET. Chặn mở vị thế khi cổ phiếu yếu/dưới MA20/MA50."
+            f"Tín hiệu kỹ thuật {tech_sig} vi phạm Hard Veto: Rơi tự do không nền đỡ (FALLING_KNIFE). Chặn mở vị thế."
         )
         return False
+
+    if tech_sig not in BULLISH_SET:
+        # Không hard veto; điều chỉnh nhẹ position size multiplier cho an toàn
+        result.position_size_multiplier = min(result.position_size_multiplier, 0.8)
 
     result.passed_gates.append(GATE_TECHNICAL_MOMENTUM)
     return True
@@ -325,9 +327,9 @@ def _calculate_position_size_layer(
 ) -> bool:
     """Tầng 7: Quản trị Rủi ro & Quy mô Vị thế (Risk Governance & Position Sizing).
 
-    1. Kiểm tra ADV20: Chặn hoàn toàn nếu ADV20 < 2.0 tỷ VND.
+    1. Kiểm tra ADV20: Chặn hoàn toàn nếu ADV20 < MIN_ADV20_BILLION (2.0 tỷ VND).
     2. Kiểm tra Sector Cap (Max 25% NAV/Ngành).
-    3. Sizing theo Half-Kelly, Drawdown Breaker và Kill Switch.
+    3. Sizing theo Fixed Risk Sizing (hoặc calibrated Half-Kelly), Drawdown Breaker và Kill Switch.
     """
     adv20_bil = adv20_billion
     if adv20_bil is None and tech_data:
@@ -335,18 +337,28 @@ def _calculate_position_size_layer(
         if adv20_bil is None and "adv20_vnd" in tech_data:
             adv20_bil = tech_data["adv20_vnd"] / 1_000_000_000.0
 
-    if adv20_bil is not None and adv20_bil < 2.0:
+    if adv20_bil is not None and adv20_bil < MIN_ADV20_BILLION:
         result.can_buy = False
         result.blocked_by = GATE_ADV20_LIQUIDITY
         result.position_size_pct = 0.0
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append(
-            f"Thanh khoản ADV20 ({adv20_bil:.2f} tỷ VND) < 2.0 tỷ VND. Chặn mở vị thế đối với cổ phiếu kém thanh khoản."
+            f"Thanh khoản ADV20 ({adv20_bil:.2f} tỷ VND) < {MIN_ADV20_BILLION} tỷ VND. Chặn mở vị thế đối với cổ phiếu kém thanh khoản."
         )
         return False
 
-    base_f = half_kelly_f if (half_kelly_f is not None and half_kelly_f > 0) else 0.12
-    calc_size = min(base_f, 0.15)
+    from portfolio_guard import calculate_fixed_risk_position_size
+    curr_p = float((tech_data or {}).get("current_price", 0.0))
+    stop_p = curr_p * (1.0 - (STRUCTURAL_STOP_LOSS_PCT / 100.0)) if curr_p > 0 else 0.0
+
+    if half_kelly_f is not None and half_kelly_f > 0:
+        base_f = half_kelly_f
+    elif curr_p > 0:
+        base_f = calculate_fixed_risk_position_size(entry_price=curr_p, stop_loss_price=stop_p)
+    else:
+        base_f = 0.12
+
+    calc_size = min(base_f, MAX_POSITION_SIZE_NAV_PCT)
 
     if result.position_size_multiplier < 1.0:
         calc_size *= result.position_size_multiplier
@@ -357,14 +369,16 @@ def _calculate_position_size_layer(
 
     if portfolio and sector:
         sector_w = sum(p.get("weight", 0.0) for p in portfolio if p.get("sector") == sector)
-        max_sector = LOCKED_QUANT_THRESHOLDS["sector_exposure_max_pct"]
+        max_sector = MAX_SECTOR_EXPOSURE_PCT
         if sector_w + calc_size > max_sector:
             calc_size = max(0.0, max_sector - sector_w)
             if calc_size < 0.05:
                 result.can_buy = False
                 result.blocked_by = "SECTOR_CAP"
                 result.position_size_pct = 0.0
-                result.blocking_reasons.append(f"Sector Cap: Tỷ trọng {sector} ({sector_w*100:.1f}%) đã đầy/gần đầy, không thể thêm {calc_size*100:.1f}%.")
+                result.blocking_reasons.append(
+                    f"Sector Cap: Tỷ trọng {sector} ({sector_w*100:.1f}%) đã đầy/gần đầy, không thể thêm {calc_size*100:.1f}%."
+                )
                 return False
 
     result.position_size_pct = round(calc_size, 4)

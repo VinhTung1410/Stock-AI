@@ -21,7 +21,7 @@ except ImportError:
 from data_engine import evaluate_portfolio, fetch_macro_news, load_portfolio
 from quant_engine import evaluate_holding_position, evaluate_market_regime
 from quant_sanity_check import validate_holding_position, validate_trade_setup
-from regime_classifier import get_canonical_regime
+from regime_classifier import get_market_regime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -273,7 +273,15 @@ def _build_portfolio_quant_summary(portfolio_df) -> str:
             "market_price": curr_p,
             "volume": int(row.get("volume") or row.get("Khối lượng") or 0),
         }
-        eval_res = evaluate_holding_position(normalized_row, mock_tech)
+        from data_engine import SECTOR_MAP, get_financial_ratios
+        fin_d = row.get("fin_dict")
+        if not fin_d:
+            try:
+                fin_d = get_financial_ratios(sym)
+            except Exception:
+                fin_d = {}
+        sector_name = str(row.get("sector") or row.get("Ngành") or SECTOR_MAP.get(sym, ""))
+        eval_res = evaluate_holding_position(normalized_row, mock_tech, fin_d, sector_name)
         _, _, eval_res = validate_holding_position(eval_res)
 
         if eval_res["is_profit"]:
@@ -1252,9 +1260,8 @@ BẮT BUỘC TRẢ VỀ DUY NHẤT 1 ĐOẠN JSON HỢP LỆ (KHÔNG GIẢI THÍ
         fin_dict=fin_data,
         tech_data=tech_data,
         sector=sector_name,
-        macro_regime=get_canonical_regime(symbol_data=tech_data).value if tech_data else None,
+        macro_regime=get_market_regime().value,
         caller="TWO_PASS",
-        conviction_score=75.0,
     )
 
     hard_gates = evaluate_decision_hard_gates(
@@ -2107,11 +2114,7 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         fin_dict=fin_d,
         tech_data=tech_d,
         sector=context_meta.get("sector", ""),
-        macro_regime=(
-            getattr(market_ctx, "market_regime_analyst", getattr(market_ctx, "market_regime_code", None))
-            if market_ctx and market_ctx.is_valid
-            else get_canonical_regime(symbol_data=tech_d).value if tech_d else None
-        ),
+        macro_regime=get_market_regime().value,
         caller="COMMITTEE",
         pm_output=report_text,
     )

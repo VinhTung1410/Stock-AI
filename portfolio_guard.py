@@ -5,11 +5,29 @@ from typing import Any, Dict, List
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 from indicators import calculate_altman_z_score, calculate_vibe_quality_score
+from policy_constants import (
+    ACTION_EXIT_OVERVALUED,
+    ACTION_EXIT_THESIS,
+    ACTION_PARTIAL_PROFIT,
+    ACTION_STOP_LOSS,
+    ATR_STOP_MULTIPLIER,
+    DRAWDOWN_BREAKER_PCT,
+    DRAWDOWN_HALF_SIZE_PCT,
+    FIXED_RISK_NAV_PCT,
+    HARD_STOP_LOSS_PCT,
+    MAX_FIXED_RISK_NAV_PCT,
+    MAX_POSITION_SIZE_NAV_PCT,
+    MAX_POSITIONS_PER_SECTOR,
+    MIN_TRADES_FOR_KELLY_CALIBRATION,
+    OVERVALUED_MOS_THRESHOLD,
+    PARTIAL_TAKE_PROFIT_PCT,
+    PROFIT_TRAIL_THRESHOLD_PCT,
+    STRUCTURAL_STOP_LOSS_PCT,
+    WARNING_LOSS_PCT,
+)
 
-MAX_POSITIONS_PER_SECTOR: int = 3
 
-
-def _evaluate_profitable_holding(
+def evaluate_sell_thesis(
     symbol: str,
     entry_price: float,
     curr_price: float,
@@ -18,118 +36,187 @@ def _evaluate_profitable_holding(
     pl_val: float,
     atr: float,
     ma20: float,
-) -> dict:
-    max_allowed_stop = round(curr_price * 0.96, 2)
-    if pl_pct >= 15.0:
-        candidate_stop = max(
-            entry_price * 1.06, (curr_price - (1.2 * atr)) if atr > 0 else (curr_price * 0.95), ma20 * 0.98
-        )
-    elif pl_pct >= 5.0:
-        candidate_stop = max(entry_price * 1.02, (curr_price - (1.5 * atr)) if atr > 0 else (curr_price * 0.94))
-    else:
-        candidate_stop = entry_price
-
-    trailing_stop = min(candidate_stop, max_allowed_stop)
-    trailing_stop = round(float(trailing_stop), 2)
-
-    if pl_pct >= 20.0:
-        action = "🟢 BẢO VỆ THÀNH QUẢ / HIỆN THỰC HÓA LỢI NHUẬN"
-        detail = (
-            f"Cổ phiếu đang có tỷ suất sinh lời xuất sắc (+{pl_pct:.1f}%). "
-            f"Khuyến nghị: Hiện thực hóa 30-50% lợi nhuận, nâng mốc Trailing Stop lên {trailing_stop:.2f}k "
-            f"để gồng lãi phần còn lại mà không sợ mất thành quả."
-        )
-    elif pl_pct >= 8.0:
-        action = "🟢 TIẾP TỤC NẮM GIỮ / NÂNG TRAILING STOP"
-        detail = (
-            f"Vị thế lãi tốt (+{pl_pct:.1f}%). Khuyến nghị: Tiếp tục gồng lãi xu hướng, "
-            f"đặt mốc Trailing Stop chặn lãi cứng tại {trailing_stop:.2f}k. Nếu giá vi phạm thủng mốc này mới chốt."
-        )
-    else:
-        action = "🟢 NẮM GIỮ / THEO DÕI ĐÀ TĂNG"
-        detail = (
-            f"Vị thế có lãi nhẹ (+{pl_pct:.1f}%). Tiếp tục nắm giữ, đặt mốc chặn lãi hòa vốn tại {trailing_stop:.2f}k."
-        )
-
-    return {
-        "symbol": symbol,
-        "status": "PROFITABLE",
-        "entry_price": entry_price,
-        "curr_price": curr_price,
-        "pl_pct": round(pl_pct, 2),
-        "pl_val": round(pl_val, 0),
-        "action": action,
-        "detail": detail,
-        "trailing_stop": trailing_stop,
-        "is_profit": True,
-        "thesis_breaker": "N/A (Vị thế đang thắng thế, không có rủi ro vỡ luận điểm)",
-    }
-
-
-def _evaluate_losing_holding(
-    symbol: str,
-    entry_price: float,
-    curr_price: float,
-    volume: int,
-    pl_pct: float,
-    pl_val: float,
-    atr: float,
     fin_dict: dict | None,
     sector: str,
 ) -> dict:
-    loss_pct = abs(pl_pct)
-    if atr and atr > 0:
-        tech_stop = curr_price - (2.0 * atr)
-        stop_loss = max(tech_stop, entry_price * 0.93)
-    else:
-        stop_loss = entry_price * 0.93
-
-    stop_loss = min(round(float(stop_loss), 2), round(curr_price * 0.97, 2))
-
+    """Đánh giá vị thế (SELL/HOLD) theo thứ tự: Thesis -> Valuation -> Trend.
+    Lợi nhuận (P/L) chỉ là tham số phụ.
+    """
+    is_profit = pl_pct > 0
     thesis_intact = True
-    thesis_msg = "Luận điểm tăng trưởng doanh nghiệp cốt lõi vẫn được bảo toàn."
-
+    thesis_msg = "Luận điểm đầu tư vẫn nguyên vẹn."
+    
+    # 1. THESIS CHECK (Z-Score & F-Score)
     if fin_dict:
         f_score = calculate_vibe_quality_score(fin_dict, sector).get("score", 6)
         z_data = calculate_altman_z_score(fin_dict, sector)
         if f_score < 4 or "ĐỎ" in z_data.get("zone", ""):
             thesis_intact = False
-            thesis_msg = "CẢNH BÁO: BCTC suy giảm nghiêm trọng hoặc đòn bẩy quá cao (Thesis Breaker bị kích hoạt!)."
-
+            thesis_msg = "THESIS BREAKER KÍCH HOẠT: BCTC suy thoái nặng hoặc Đòn bẩy rủi ro cao (Z-Score Đỏ / F-Score < 4)."
+    
     if not thesis_intact:
-        action = "🔴 THOÁT VỊ THẾ (THESIS BREAKER KÍCH HOẠT)"
-        detail = f"Lỗ -{loss_pct:.1f}%. {thesis_msg} Cần dứt khoát cơ cấu thoát vốn sang mã có cơ bản vượt trội."
-    elif loss_pct <= 5.0:
-        action = "🟡 THEO DÕI BIẾN ĐỘNG / GIỮ VỊ THẾ DÀI HẠN"
-        detail = (
-            f"Khoản lỗ nhẹ (-{loss_pct:.1f}%) nằm trong biên độ dao động thông thường của thị trường. "
-            f"Luận điểm giá trị vẫn nguyên vẹn. Không hoảng loạn cắt lỗ máy móc."
-        )
-    elif loss_pct <= 8.0:
-        action = "🟡 QUẢN TRỊ RỦI RO / QUAN SÁT NGƯỠNG HỖ TRỢ"
-        detail = (
-            f"Lỗ -{loss_pct:.1f}%. Nếu là vị thế lướt sóng T+, kích hoạt kỷ luật Stop-Loss tại {stop_loss:.2f}k. "
-            f"Nếu là danh mục đầu tư giá trị, kiểm tra mốc cân bằng mới trước khi ra quyết định gom thêm."
-        )
-    else:
-        action = "🔴 CẮT LỖ KỸ THUẬT HOẶC HẠ TỶ TRỌNG"
-        detail = (
-            f"Mức sụt giảm sâu (-{loss_pct:.1f}%). Khuyến nghị dứt khoát hạ tỷ trọng bảo vệ vốn, "
-            f"ngưỡng Stop-loss đã bị vi phạm tại {stop_loss:.2f}k."
-        )
+        return {
+            "symbol": symbol,
+            "status": "PROFITABLE" if is_profit else "LOSS",
+            "sell_status": "THESIS_BROKEN",
+            "entry_price": entry_price,
+            "curr_price": curr_price,
+            "pl_pct": round(pl_pct, 2),
+            "pl_val": round(pl_val, 0),
+            "action": ACTION_EXIT_THESIS,
+            "detail": f"Bất chấp đang lãi hay lỗ ({pl_pct:.1f}%), luận điểm tài chính đã vỡ. {thesis_msg} Yêu cầu Exit.",
+            "trailing_stop": curr_price,
+            "stop_loss": curr_price,
+            "is_profit": is_profit,
+            "thesis_breaker": thesis_msg,
+        }
 
+    # 2. VALUATION CHECK (MoS)
+    mos = 0.0
+    if fin_dict and "fair_value" in fin_dict:
+        fv = fin_dict["fair_value"]
+        if fv > 0:
+            mos = ((fv - curr_price) / fv) * 100.0
+            if mos < OVERVALUED_MOS_THRESHOLD:
+                return {
+                    "symbol": symbol,
+                    "status": "PROFITABLE" if is_profit else "LOSS",
+                    "sell_status": "OVERVALUED",
+                    "entry_price": entry_price,
+                    "curr_price": curr_price,
+                    "pl_pct": round(pl_pct, 2),
+                    "pl_val": round(pl_val, 0),
+                    "action": ACTION_EXIT_OVERVALUED,
+                    "detail": f"Thị giá ({curr_price}) đã vượt Giá trị thực ({fv}). Định giá bong bóng. Bán thu tiền về.",
+                    "trailing_stop": curr_price,
+                    "stop_loss": curr_price,
+                    "is_profit": is_profit,
+                    "thesis_breaker": "Định giá quá đắt (MoS âm).",
+                }
+
+    # 3. TREND & RISK MANAGEMENT CHECK (Technical)
+    # Lỗ kỹ thuật
+    tech_stop = entry_price * (1.0 - (STRUCTURAL_STOP_LOSS_PCT / 100.0))  # Mặc định Stop-loss 7% cấu trúc
+    if atr and atr > 0:
+        tech_stop = max(tech_stop, curr_price - (ATR_STOP_MULTIPLIER * atr))
+        
+    tech_stop = round(float(tech_stop), 2)
+    
+    # Calculate progressive trailing stop for profitable positions
+    profit_trailing_stop = entry_price
+    if is_profit:
+        max_allowed_stop = round(curr_price * 0.96, 2)
+        if pl_pct >= 15.0:
+            candidate_stop = max(entry_price * 1.06, (curr_price - (1.2 * atr)) if atr > 0 else (curr_price * 0.95), ma20 * 0.98)
+        elif pl_pct >= WARNING_LOSS_PCT:
+            candidate_stop = max(entry_price * 1.02, (curr_price - (1.5 * atr)) if atr > 0 else (curr_price * 0.94))
+        else:
+            candidate_stop = entry_price
+        
+        profit_trailing_stop = min(candidate_stop, max_allowed_stop)
+        profit_trailing_stop = round(float(profit_trailing_stop), 2)
+
+    
+    if not is_profit:
+        if pl_pct <= -HARD_STOP_LOSS_PCT or curr_price <= tech_stop:
+            return {
+                "symbol": symbol,
+                "status": "LOSS",
+                "sell_status": "STOP_LOSS",
+                "entry_price": entry_price,
+                "curr_price": curr_price,
+                "pl_pct": round(pl_pct, 2),
+                "pl_val": round(pl_val, 0),
+                "action": ACTION_STOP_LOSS,
+                "detail": f"Lỗ sâu ({pl_pct:.1f}%). Thủng ngưỡng phòng thủ ({tech_stop}). Phải hạ tỷ trọng/Cắt lỗ.",
+                "trailing_stop": tech_stop,
+                "stop_loss": tech_stop,
+                "is_profit": False,
+                "thesis_breaker": "N/A",
+            }
+        elif pl_pct <= -WARNING_LOSS_PCT:
+            return {
+                "symbol": symbol,
+                "status": "LOSS",
+                "sell_status": "RISK_MANAGEMENT",
+                "entry_price": entry_price,
+                "curr_price": curr_price,
+                "pl_pct": round(pl_pct, 2),
+                "pl_val": round(pl_val, 0),
+                "action": "🟠 QUẢN TRỊ RỦI RO (CẢNH BÁO LỖ VỪA)",
+                "detail": f"Lỗ vừa ({pl_pct:.1f}%). Cần theo dõi sát ngưỡng hỗ trợ.",
+                "trailing_stop": tech_stop,
+                "stop_loss": tech_stop,
+                "is_profit": False,
+                "thesis_breaker": "N/A",
+            }
+        else:
+            return {
+                "symbol": symbol,
+                "status": "LOSS",
+                "sell_status": "HOLD",
+                "entry_price": entry_price,
+                "curr_price": curr_price,
+                "pl_pct": round(pl_pct, 2),
+                "pl_val": round(pl_val, 0),
+                "action": "🟡 THEO DÕI BIẾN ĐỘNG (THESIS INTACT)",
+                "detail": f"Biến động nhẹ ({pl_pct:.1f}%). Luận điểm tài chính nguyên vẹn, tiếp tục theo dõi.",
+                "trailing_stop": tech_stop,
+                "stop_loss": tech_stop,
+                "is_profit": False,
+                "thesis_breaker": "N/A",
+            }
+        
+    # Lãi kỹ thuật (Bảo vệ thành quả)
+    if is_profit and pl_pct >= PARTIAL_TAKE_PROFIT_PCT:
+        return {
+            "symbol": symbol,
+            "status": "PROFITABLE",
+            "sell_status": "TAKE_PROFIT_PARTIAL",
+            "entry_price": entry_price,
+            "curr_price": curr_price,
+            "pl_pct": round(pl_pct, 2),
+            "pl_val": round(pl_val, 0),
+            "action": ACTION_PARTIAL_PROFIT,
+            "detail": f"Đang lãi lớn (+{pl_pct:.1f}%). Trend khỏe, Định giá (MoS {mos:.1f}%) & Luận điểm nguyên vẹn. Khuyến nghị chốt 30-50% bảo vệ thành quả.",
+            "trailing_stop": profit_trailing_stop,
+            "stop_loss": profit_trailing_stop,
+            "is_profit": True,
+            "thesis_breaker": "N/A",
+        }
+
+    if is_profit and pl_pct < PROFIT_TRAIL_THRESHOLD_PCT:
+        return {
+            "symbol": symbol,
+            "status": "PROFITABLE",
+            "sell_status": "HOLD",
+            "entry_price": entry_price,
+            "curr_price": curr_price,
+            "pl_pct": round(pl_pct, 2),
+            "pl_val": round(pl_val, 0),
+            "action": "🟡 THEO DÕI ĐÀ TĂNG (THESIS INTACT)",
+            "detail": f"Lãi nhẹ (+{pl_pct:.1f}%). Xu hướng đang hình thành, tiếp tục nắm giữ.",
+            "trailing_stop": profit_trailing_stop,
+            "stop_loss": profit_trailing_stop,
+            "is_profit": True,
+            "thesis_breaker": "N/A",
+        }
+
+    # HOLD
     return {
         "symbol": symbol,
-        "status": "LOSS",
+        "status": "PROFITABLE" if is_profit else "LOSS",
+        "sell_status": "HOLD",
         "entry_price": entry_price,
         "curr_price": curr_price,
         "pl_pct": round(pl_pct, 2),
         "pl_val": round(pl_val, 0),
-        "action": action,
-        "detail": detail,
-        "stop_loss": stop_loss,
-        "is_profit": False,
-        "thesis_breaker": thesis_msg,
+        "action": "🟡 TIẾP TỤC NẮM GIỮ (THESIS INTACT)",
+        "detail": f"P/L ({pl_pct:.1f}%). Luận điểm tài chính và Xu hướng vẫn nguyên vẹn. Tiếp tục nắm giữ.",
+        "trailing_stop": tech_stop if not is_profit else profit_trailing_stop,
+        "stop_loss": tech_stop if not is_profit else profit_trailing_stop,
+        "is_profit": is_profit,
+        "thesis_breaker": "N/A",
     }
 
 
@@ -157,9 +244,18 @@ def evaluate_holding_position(row: dict, tech_data: dict, fin_dict: dict | None 
     atr = float(tech_data.get("atr") or tech_data.get("atr14") or 0.0)
     ma20 = float(tech_data.get("ma20") or curr_price)
 
-    if pl_pct > 0:
-        return _evaluate_profitable_holding(symbol, entry_price, curr_price, volume, pl_pct, pl_val, atr, ma20)
-    return _evaluate_losing_holding(symbol, entry_price, curr_price, volume, pl_pct, pl_val, atr, fin_dict, sector)
+    return evaluate_sell_thesis(
+        symbol=symbol,
+        entry_price=entry_price,
+        curr_price=curr_price,
+        volume=volume,
+        pl_pct=pl_pct,
+        pl_val=pl_val,
+        atr=atr,
+        ma20=ma20,
+        fin_dict=fin_dict,
+        sector=sector,
+    )
 
 
 def check_portfolio_concentration(candidates: List[Dict[str, Any]], max_per_sector: int = 1) -> Dict[str, Any]:
@@ -212,43 +308,88 @@ def check_portfolio_concentration(candidates: List[Dict[str, Any]], max_per_sect
     return {"approved_candidates": approved, "downgraded_candidates": downgraded, "warnings": warnings}
 
 
+def calculate_fixed_risk_position_size(
+    entry_price: float,
+    stop_loss_price: float,
+    nav_risk_pct: float = FIXED_RISK_NAV_PCT,
+    max_cap_pct: float = MAX_POSITION_SIZE_NAV_PCT,
+) -> float:
+    """Fixed Risk Sizing (TASK-0077):
+    Calculate position size as a fraction of NAV bounded by [0, max_cap_pct].
+    Formula: min(nav_risk_pct / risk_on_trade, max_cap_pct)
+    where risk_on_trade = (entry_price - stop_loss_price) / entry_price.
+    """
+    if entry_price <= 0.0:
+        return 0.0
+
+    if stop_loss_price <= 0.0 or stop_loss_price >= entry_price:
+        risk_pct = STRUCTURAL_STOP_LOSS_PCT / 100.0
+    else:
+        risk_pct = (entry_price - stop_loss_price) / entry_price
+
+    if risk_pct <= 0.0:
+        return 0.0
+
+    bounded_nav_risk = min(max(nav_risk_pct, 0.005), MAX_FIXED_RISK_NAV_PCT)
+    raw_size = bounded_nav_risk / risk_pct
+    return round(min(raw_size, max_cap_pct), 4)
+
+
 def calculate_drawdown_controlled_sizing(
     half_kelly_f: float,
     consecutive_losses: int = 0,
     current_drawdown_pct: float = 0.0,
-    max_cap_pct: float = 0.15,
+    max_cap_pct: float = MAX_POSITION_SIZE_NAV_PCT,
     regime_hysteresis_penalty: bool = False,
+    total_calibrated_trades: int = 0,
+    is_calibrated: bool = False,
+    entry_price: float = 0.0,
+    stop_loss_price: float = 0.0,
 ) -> tuple[float, str]:
-    """Calculate adaptive position size based on Half-Kelly, losing streaks, and drawdown.
+    """Calculate adaptive position size based on Fixed Risk Sizing or calibrated Half-Kelly.
 
     Rules:
-    - If current_drawdown_pct >= 10.0%:
+    - If current_drawdown_pct >= DRAWDOWN_BREAKER_PCT (10.0%):
       Hard Drawdown Breaker! Return 0 (Cash Mode) to protect portfolio.
+    - If total_calibrated_trades > 0 and (total_calibrated_trades <= MIN_TRADES_FOR_KELLY_CALIBRATION or not is_calibrated):
+      Chuyển sang Fixed Risk Sizing (1.0% - 1.5% NAV tại Stop-loss cấu trúc).
     - If regime_hysteresis_penalty is True (Regime Conflict >= 2 days):
       Reduce position size by 50% (Hysteresis Defense).
-    - If consecutive_losses >= 2 or current_drawdown_pct >= 5.0%:
+    - If consecutive_losses >= 2 or current_drawdown_pct >= DRAWDOWN_HALF_SIZE_PCT (5.0%):
       Reduce position size by 50% (Half-Size Defense) to prevent revenge trading.
     - Caps position sizing at max_cap_pct (default: 15%).
     """
-    if half_kelly_f <= 0:
-        return 0.0, "KELLY_NON_POSITIVE"
-
-    if current_drawdown_pct >= 10.0:
+    if current_drawdown_pct >= DRAWDOWN_BREAKER_PCT:
         return 0.0, "DRAWDOWN_BREAKER_TRIGGERED"
 
-    base_size = min(half_kelly_f, max_cap_pct)
+    use_fixed_risk = total_calibrated_trades > 0 and (
+        total_calibrated_trades <= MIN_TRADES_FOR_KELLY_CALIBRATION or not is_calibrated
+    )
+
+    if use_fixed_risk:
+        base_size = calculate_fixed_risk_position_size(
+            entry_price=entry_price,
+            stop_loss_price=stop_loss_price,
+            max_cap_pct=max_cap_pct,
+        )
+        base_label = "FIXED_RISK_SIZING_UNCALIBRATED"
+    else:
+        if half_kelly_f <= 0:
+            return 0.0, "KELLY_NON_POSITIVE"
+        base_size = min(half_kelly_f, max_cap_pct)
+        base_label = "STANDARD_HALF_KELLY"
 
     if regime_hysteresis_penalty:
         base_size = round(base_size * 0.5, 4)
 
-    if consecutive_losses >= 2 or current_drawdown_pct >= 5.0:
+    if consecutive_losses >= 2 or current_drawdown_pct >= DRAWDOWN_HALF_SIZE_PCT:
         defensive_size = round(base_size * 0.5, 4)
         return defensive_size, "DRAWDOWN_DEFENSE_HALF_SIZE"
 
     if regime_hysteresis_penalty:
         return base_size, "REGIME_CONFLICT_HALF_SIZE"
 
-    return round(base_size, 4), "STANDARD_HALF_KELLY"
+    return round(base_size, 4), base_label
 
 
 def check_adv20_liquidity_absorption(

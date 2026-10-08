@@ -794,3 +794,21 @@ Tài liệu này lưu trữ các Quyết định Kiến trúc & Nghiệp vụ Tr
   4. Thêm get_scan_block_distribution() và cờ alarm_100pct_same_gate bắn Discord alert khi toàn bộ mã bị block bởi cùng một gate.
   5. Kích hoạt SHADOW_MODE_ACTIVE = True: chỉ phát SHADOW_BUY trong 60 phiên đầu; yêu cầu tối thiểu 30 mẫu T+10 với Hit rate > 55% mới được xét tốt nghiệp.
 - **Hệ quả:** Hoàn thành toàn diện Phase 25 (v14.0). Hệ thống đạt 100% unit tests pass (45/45 tests), Ruff exit code 0, bảo đảm tính an toàn và minh bạch tuyệt đối trước khi giao dịch thật.
+
+
+---
+
+### [ADR-039] Phase 26 - Policy Constants Consolidation, Calibrated Fixed Risk Sizing & Decoupled Hard Veto (TASK-0077 / TASK-0078)
+- **Ngày quyết định:** 2026-10-08
+- **Người tham gia:** Client, Finance Lead, PO, Senior Dev, QA Lead, Reviewer
+- **Bối cảnh & Vấn đề:**
+  1. Hằng số ngưỡng phân tán rải rác trong nhiều module (MoS 10% vs 15%, Stop-loss 7% vs 8%, NAV risk, Take profit, v.v.), chuỗi action bất đồng nhất (VD: '🟢 TÍCH LŨY' vs 'MUA').
+  2. Kelly Sizing phụ thuộc vào xác suất chủ quan (p_win = 0.6) chưa qua kiểm chứng định lượng trên thị trường thực tế (>100 lệnh).
+  3. Cơ chế Hard Veto (Reject Gate) bị lạm dụng ở các tiêu chí kỹ thuật thông thường (MA20, RSI trung tính), khiến hệ thống bỏ lỡ các cơ hội cổ phiếu cơ bản tốt đang tích lũy nền chuẩn bị bứt phá.
+- **Quyết định lựa chọn:**
+  1. **Single Source of Truth (policy_constants.py):** Tập trung toàn bộ Actions, MoS thresholds, Stop-loss/Take-profit, Risk & Kelly limits, Conviction thresholds. Thống nhất ACTION_ACCUMULATE = '🟢 TÍCH LŨY', ACTION_BUY = '🟢 MUA'.
+  2. **Calibrated Fixed Risk Sizing:** Chuyển sang Fixed Risk Sizing (<= 1.0 - 1.5% NAV dựa trên Stop-loss khoảng cách thực tế) khi số lệnh giao dịch thực tế <= 100. Chỉ kích hoạt Fractional Kelly khi có đủ bằng chứng thống kê thực tế.
+  3. **Decoupled Hard Veto vs Conviction Scoring:**
+     - Hard Veto (Fail-fast): Chỉ áp dụng cho rủi ro sinh tử: Macro Downtrend, Data invalid, Thesis Breaker (F-Score < 4 / Z-Score Red), Overvalued (MoS <= 0), ADV20 < 2 tỷ, và Falling Knife.
+     - Kỹ thuật phi rơi tự do (tích lũy nền, giá dưới MA20 nhẹ) không chặn lệnh cứng mà tham gia tính điểm vào Conviction Score (>=70 BUY, 55-69 WATCHLIST).
+- **Hệ quả:** Hoàn thành trọn vẹn TASK-0077 và TASK-0078. Toàn bộ 501/501 tests pass 100%, Ruff exit code 0, đáp ứng nghiêm ngặt SonarCloud Quality Gate. Hệ thống sẵn sàng chạy workflow sản xuất ổn định và chuẩn xác.
