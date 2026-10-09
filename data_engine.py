@@ -15,6 +15,7 @@ import sys
 import urllib.request
 from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 # Guard against Windows AppLocker / WDAC blocking pyarrow DLL
 try:
@@ -2006,6 +2007,96 @@ def get_active_cooldown_symbols(cooldown_days: int = COOLDOWN_DAYS) -> list:
     return list(active)
 
 
+def _get_scanner_session() -> str:
+    """Xác định phiên quét chuẩn theo múi giờ thị trường Việt Nam (Asia/Ho_Chi_Minh)."""
+    now_vn = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh"))
+    if now_vn.weekday() >= 5:
+        return "WEEKEND"
+    total_m = now_vn.hour * 60 + now_vn.minute
+    if total_m < 9 * 60:
+        return "PRE_MARKET"
+    elif total_m <= 9 * 60 + 15:
+        return "ATO"
+    elif total_m < 11 * 60 + 30:
+        return "MORNING"
+    elif total_m < 13 * 60:
+        return "NOON"
+    elif total_m < 14 * 60 + 30:
+        return "AFTERNOON"
+    elif total_m <= 14 * 60 + 45:
+        return "ATC"
+    return "CLOSE"
+
+
+def _determine_scanner_decision_and_gate(res: dict, approved_buys: list[dict]) -> tuple[str, str]:
+    """Phân định decision và primary_rejection_gate sau khi qua tất cả các bộ lọc."""
+    st = res.get("status", "REJECT")
+    setup = res.get("setup_type", "")
+    rationale = res.get("rationale", "")
+
+    if res in approved_buys:
+        return "BUY", "PASSED"
+    if "Cooldown" in setup or "Cooldown" in rationale:
+        return "WATCH", "COOLDOWN_GATE"
+    if "vị thế đang theo dõi" in rationale or "CHỜ THU HỒI VỐN" in setup:
+        return "WATCH", "PORTFOLIO_CAP_GATE"
+    if "VƯỢT HẠN MỨC" in setup or "hạn mức tối đa" in rationale:
+        return "WATCH", "SIGNAL_BUDGET_OVERFLOW"
+    if st == "SHADOW_BUY":
+        return "SHADOW_BUY", "SHADOW_MODE"
+    if st == "WATCH_CONFIRMATION":
+        return "WATCH", "TECH_CONFIRMATION"
+    if st == "INSUFFICIENT_DATA":
+        return "REJECT", "DATA_GATE"
+    if st == "CAUTION_TRAP":
+        return "REJECT", "RISK_TRAP"
+    return "REJECT", res.get("primary_rejection_gate", "UNKNOWN")
+
+
+def _log_scanner_decisions(all_results: list[dict], approved_buys: list[dict]) -> None:
+    """Ghi nhận audit trail quyết định quét thị trường sau khi đã áp dụng mọi bộ lọc ngân sách."""
+    from db_manager import save_decision_record
+
+    session_label = _get_scanner_session()
+    for res in all_results:
+        sym = res.get("symbol")
+        if not sym:
+            continue
+        decision, gate = _determine_scanner_decision_and_gate(res, approved_buys)
+        curr_p = res.get("current_price") or 0.0
+
+        record_payload = {
+            "symbol": sym,
+            "session": session_label,
+            "decision": decision,
+            "primary_rejection_gate": gate,
+            "rejection_reasons": [res.get("rationale") or res.get("setup_type") or res.get("story") or ""],
+            "facts": {
+                "market_price": curr_p,
+                "snapshot_price": curr_p,
+                "price": curr_p,
+                "mos_pct": res.get("mos_pct"),
+                "conviction": res.get("conviction_score"),
+            },
+            "opinions": {
+                "engine": "QUANT_SCANNER",
+                "setup_type": res.get("setup_type"),
+                "story_tag": res.get("story_tag"),
+            },
+            "counterfactual": {
+                "target_price": res.get("target_price"),
+                "stop_loss": res.get("stop_loss"),
+                "thesis_breaker": f"Thủng stop loss {res.get('stop_loss')}k hoặc vi phạm BCTC",
+            },
+        }
+        if res.get("is_contrarian"):
+            record_payload["facts"]["contrarian_state"] = res.get("contrarian_state")
+            record_payload["facts"]["panic_score"] = res.get("panic_score")
+            record_payload["facts"]["shadow_mode"] = res.get("shadow_mode", False)
+
+        save_decision_record(record_payload)
+
+
 def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = None, portfolio: list = None, kill_switch_active: bool = False) -> list:
     """Scan market opportunities using 2-tier Catalyst + Technical Confluence approach.
 
@@ -2530,59 +2621,18 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
             }
 
     all_results = []
-    from db_manager import save_decision_record
-    
+
     for sym in pool:
         try:
             res = analyze_symbol(sym)
             if res:
                 all_results.append(res)
-                
-                st = res.get("status", "REJECT")
-                if st == "RECOMMEND_BUY":
-                    decision = "BUY"
-                    gate = "PASSED"
-                elif st == "SHADOW_BUY":
-                    decision = "SHADOW_BUY"
-                    gate = "SHADOW_MODE"
-                elif st == "WATCH_CONFIRMATION":
-                    decision = "WATCH"
-                    gate = "TECH_CONFIRMATION"
-                elif st == "INSUFFICIENT_DATA":
-                    decision = "REJECT"
-                    gate = "DATA_GATE"
-                elif st == "CAUTION_TRAP":
-                    decision = "REJECT"
-                    gate = "RISK_TRAP"
-                else:
-                    decision = "REJECT"
-                    gate = res.get("primary_rejection_gate", "UNKNOWN")
-
-                record_payload = {
-                    "symbol": res["symbol"],
-                    "session": "NOON" if datetime.now().hour < 13 else "CLOSE",
-                    "decision": decision,
-                    "primary_rejection_gate": gate,
-                    "rejection_reasons": [res.get("rationale") or res.get("setup_type") or res.get("story") or ""],
-                    "facts": {
-                        "price": res.get("current_price"),
-                        "snapshot_price": res.get("current_price"),
-                        "mos_pct": res.get("mos_pct"),
-                        "conviction": res.get("conviction_score"),
-                    },
-                }
-                if res.get("is_contrarian"):
-                    record_payload["facts"]["contrarian_state"] = res.get("contrarian_state")
-                    record_payload["facts"]["panic_score"] = res.get("panic_score")
-                    record_payload["facts"]["shadow_mode"] = res.get("shadow_mode", False)
-
-                save_decision_record(record_payload)
 
             import time
 
             time.sleep(0.2)
-        except Exception as e:
-            logging.exception(f"Lỗi khi xử lý {sym}: {e}")
+        except Exception:
+            logging.exception("Lỗi khi xử lý %s", sym)
 
     # Tách nhóm kết quả ban đầu
     buy_candidates = [r for r in all_results if r.get("status") == "RECOMMEND_BUY"]
@@ -2669,6 +2719,9 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
         if sym and sym not in seen_symbols and len(final_caution) < 2:
             seen_symbols.add(sym)
             final_caution.append(c)
+
+    # Ghi nhận audit trail quyết định sau khi đã áp dụng mọi bộ lọc ngân sách
+    _log_scanner_decisions(all_results, approved_buys)
 
     # Return up to 2 Buys + 2 Watch + 2 Caution (Strictly deduplicated)
     return final_buys + final_watch + final_caution

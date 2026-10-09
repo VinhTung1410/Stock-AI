@@ -891,6 +891,30 @@ def save_decision_record(record: dict) -> str | None:
     now_str = datetime.now(VN_TZ).strftime("%Y%m%d_%H%M%S")
     decision_id = record.get("decision_id") or f"DEC_{symbol}_{now_str}"
 
+    # Chốt chặn cách ly môi trường test/dry-run không cho ghi bẩn vào Supabase
+    if os.environ.get("ENV") in ("testing", "test") or os.environ.get("DRY_RUN", "").lower() in ("true", "1"):
+        logging.info("Testing/Dry-run mode: skipped writing decision_record for %s", symbol)
+        return decision_id
+
+    # Chuẩn hóa trường giá trong facts
+    facts = dict(record.get("facts") or {})
+    m_price = facts.get("market_price") or facts.get("price") or facts.get("snapshot_price") or 0.0
+    if m_price:
+        facts.setdefault("market_price", m_price)
+        facts.setdefault("snapshot_price", m_price)
+        facts.setdefault("price", m_price)
+
+    # Chuẩn hóa trường audit hash trong opinions
+    opinions = dict(record.get("opinions") or {})
+    for hash_key in ("prompt_hash", "input_hash", "code_version"):
+        if record.get(hash_key) and hash_key not in opinions:
+            opinions[hash_key] = record.get(hash_key)
+
+    # Chuẩn hóa trường counterfactual
+    counterfactual = dict(record.get("counterfactual") or {})
+    if record.get("thesis_breaker") and "thesis_breaker" not in counterfactual:
+        counterfactual["thesis_breaker"] = record.get("thesis_breaker")
+
     row = {
         "decision_id": decision_id,
         "symbol": symbol,
@@ -898,10 +922,10 @@ def save_decision_record(record: dict) -> str | None:
         "decision": decision,
         "primary_rejection_gate": record.get("primary_rejection_gate"),
         "rejection_reasons": record.get("rejection_reasons", []),
-        "facts": record.get("facts", {}),
+        "facts": facts,
         "inferences": record.get("inferences", {}),
-        "opinions": record.get("opinions", {}),
-        "counterfactual": record.get("counterfactual", {}),
+        "opinions": opinions,
+        "counterfactual": counterfactual,
         # Phiên bản 6.3 - Analyst Context Tracking (Migration 0004)
         "analyst_context_used": record.get("analyst_context_used", False),
         "regime_conflict": record.get("regime_conflict", False),

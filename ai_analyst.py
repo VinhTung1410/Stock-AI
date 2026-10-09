@@ -2017,19 +2017,33 @@ def _save_smart_committee_record(
 
         sym = context_meta["symbol"]
         gate_res = context_meta["gate_res"]
+        val_res = context_meta.get("val_res") or {}
+        fin_data = context_meta.get("fin_data") or {}
         market_ctx = context_meta.get("market_context")
         ctx_valid = market_ctx.is_valid if market_ctx else False
         tech_data = context_meta.get("tech_data") or {}
+        curr_p = tech_data.get("current_price", 0.0)
+        p_hash = context_meta.get("prompt_hash")
+        i_hash = context_meta.get("input_hash")
 
         save_decision_record(
             {
                 "symbol": sym,
                 "decision": dec_type,
                 "primary_rejection_gate": prim_gate,
+                "prompt_version": "v6.4",
+                "model_version": MODEL_NAME,
+                "prompt_hash": p_hash,
+                "input_hash": i_hash,
+                "code_version": "v6.4",
                 "facts": {
-                    "market_price": tech_data.get("current_price", 0.0),
+                    "market_price": curr_p,
+                    "snapshot_price": curr_p,
+                    "price": curr_p,
                     "quality_score": gate_res.get("quality_score", 100.0),
                     "data_quality": gate_res.get("data_quality", "HIGH"),
+                    "mos_pct": val_res.get("mos_pct"),
+                    "fin_period": fin_data.get("period"),
                 },
                 "inferences": {
                     "pm_decision": final_decision,
@@ -2038,12 +2052,26 @@ def _save_smart_committee_record(
                     "ta_view": views.get("ta_view", "NEUTRAL"),
                     "is_overridden": is_overridden,
                     "override_reason": override_reason,
+                    "f_score": context_meta.get("f_score", {}).get("f_score"),
+                    "z_score": context_meta.get("z_score", {}).get("z_score"),
+                },
+                "opinions": {
+                    "engine": "SMART_COMMITTEE",
+                    "fa_view": views.get("fa_view", "NEUTRAL"),
+                    "ta_view": views.get("ta_view", "NEUTRAL"),
+                    "raw_pm_decision": raw_decision,
+                    "prompt_hash": p_hash,
+                    "input_hash": i_hash,
+                },
+                "counterfactual": {
+                    "thesis_breaker": f"Thủng stop-loss hoặc vi phạm BCTC kỳ {fin_data.get('period', '')}",
+                    "is_overridden": is_overridden,
+                    "override_reason": override_reason,
                 },
                 "analyst_context_used": ctx_valid,
                 "regime_conflict": context_meta.get("regime_conflict", False),
                 "context_source_file": market_ctx.source_file if ctx_valid else None,
                 "context_date": market_ctx.date if ctx_valid else None,
-                "model_version": MODEL_NAME,
                 "raw_response": report_text,
             }
         )

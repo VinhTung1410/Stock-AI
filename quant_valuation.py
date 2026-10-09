@@ -489,7 +489,9 @@ def evaluate_real_estate_valuation(
 
     # 1. Book value per share estimation
     if bvps is not None and float(bvps) > 0:
-        bvps_val = float(bvps)
+        raw_bvps = float(bvps)
+        # BCTC trả về BVPS theo đơn vị VND (vd: 57,197 VND), trong khi current_price là nghìn VND (k VND)
+        bvps_val = raw_bvps / 1000.0 if raw_bvps > 1000.0 else raw_bvps
     elif pb is not None and float(pb) > 0:
         bvps_val = current_price / float(pb)
     else:
