@@ -31,6 +31,8 @@ Thumbs.db
 scratch/
 *.log
 data/.signal_cooldown.json
+data/decision_records.json
+data/decision_records.csv
 
 # Local workspace / Private research notes (Client Local Use Only - Do not push)
 danh_gia_he_thong_quy_fund.md

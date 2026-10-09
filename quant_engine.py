@@ -414,13 +414,18 @@ def evaluate_decision_hard_gates(
                 )
             except TypeError:
                 val_model = calculate_fair_value_and_mos(symbol, current_price, sector)
-        fair_value = val_model.get("fair_value", price_base)
-        fallback_mos = round(((price_base - current_price) / price_base) * 100, 2) if price_base > 0 else 0.0
-        mos_pct = val_model.get("mos_pct", fallback_mos)
-        val_method = val_model.get("valuation_method", "N/A")
-        val_confidence = val_model.get("confidence", "MEDIUM")
-        price_target = val_model.get("price_target") or round(fair_value * 1.08, 2)
         mos_is_informative = val_model.get("mos_is_informative", True)
+        fair_value = val_model.get("fair_value", price_base)
+        if not mos_is_informative or fair_value <= 0:
+            mos_pct = 0.0
+            fallback_mos = 0.0
+            val_confidence = "LOW"
+        else:
+            fallback_mos = round(((price_base - current_price) / price_base) * 100, 2) if price_base > 0 else 0.0
+            mos_pct = val_model.get("mos_pct", fallback_mos)
+            val_confidence = val_model.get("confidence", "MEDIUM")
+        val_method = val_model.get("valuation_method", "N/A")
+        price_target = val_model.get("price_target") or round(fair_value * 1.08, 2)
     else:
         val_model = {}
         fair_value = price_base
@@ -540,10 +545,16 @@ def evaluate_decision_hard_gates(
             decision_tag = "🟢 ACCUMULATE (Định giá rẻ, gom nhặt trong vùng nền chờ xác nhận)"
             position_size_nav = "10% - 12% NAV"
 
-    elif mos_pct >= 8.0:
+    elif mos_is_informative and mos_pct >= 8.0:
         can_buy = False
         action_state = "🟡 THEO DÕI"
         decision_tag = "🟡 THEO DÕI (Biên an toàn còn mỏng 8-15%, chờ giá chiết khấu thêm)"
+        position_size_nav = "0% NAV"
+
+    elif not mos_is_informative:
+        can_buy = False
+        action_state = "🟡 THEO DÕI"
+        decision_tag = "🟡 THEO DÕI (Thiếu dữ liệu BCTC tin cậy để xác định Biên an toàn MoS)"
         position_size_nav = "0% NAV"
 
     else:

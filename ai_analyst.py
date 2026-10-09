@@ -1157,7 +1157,24 @@ def generate_quantamental_2pass_report(symbol: str) -> dict:
     pb = fin_data.get("pb")
     f_score_res = calculate_vibe_quality_score(fin_data, sector=sector_name)
     z_score_res = calculate_altman_z_score(fin_data, sector=sector_name)
-    val_triangle = calculate_valuation_triangle(curr_price, pe=pe, pb=pb, sector=sector_name)
+    from quant_valuation import calculate_fair_value_and_mos
+
+    try:
+        val_res = calculate_fair_value_and_mos(symbol, curr_price, fin_dict=fin_data, sector=sector_name)
+    except Exception:
+        val_res = {}
+    fv_base = val_res.get("fair_value") or val_res.get("fv_base")
+    fv_bull = val_res.get("fair_value_bull") or val_res.get("fv_bull")
+    fv_bear = val_res.get("fair_value_bear") or val_res.get("fv_bear")
+    val_triangle = calculate_valuation_triangle(
+        curr_price,
+        pe=pe,
+        pb=pb,
+        sector=sector_name,
+        fair_value=fv_base,
+        fv_bull=fv_bull,
+        fv_bear=fv_bear,
+    )
 
     ff = tech_data.get("foreign_flow", {})
     ff_str = (
@@ -1542,6 +1559,10 @@ STATE_RISK_ELEVATED = "RISK_ELEVATED"
 STATE_AVOID = "AVOID"
 STATE_INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
 
+AI_ACTION_PASS = "PASS"
+AI_ACTION_REDUCE_SIZING = "REDUCE_SIZING"
+AI_ACTION_VETO = "VETO"
+
 VALID_PM_STATES = (
     STATE_STRONG_OPPORTUNITY,
     STATE_ATTRACTIVE,
@@ -1869,6 +1890,27 @@ def arbitrate_pm_decision(
     return decision, False, ""
 
 
+def resolve_ai_veto_action(final_decision: str, is_overridden: bool, can_buy: bool) -> tuple[str, float]:
+    """Phân định hành động AI Veto-Only và hệ số điều chỉnh quy mô vị thế (Phase 28 / TASK-0084).
+
+    Returns:
+        (ai_action, sizing_factor)
+        - PASS: 1.0x (Đồng thuận luận điểm, giữ nguyên quy mô)
+        - REDUCE_SIZING: 0.5x (Rủi ro trung bình, hạ một nửa quy mô)
+        - VETO: 0.0x (Bác bỏ lệnh mua, không phân bổ vốn)
+    """
+    if not can_buy or final_decision in (STATE_AVOID, STATE_INSUFFICIENT_DATA):
+        return AI_ACTION_VETO, 0.0
+
+    if final_decision in (STATE_STRONG_OPPORTUNITY, STATE_ATTRACTIVE):
+        return AI_ACTION_PASS, 1.0
+
+    if final_decision in (STATE_WAIT_BETTER_ENTRY, STATE_RISK_ELEVATED):
+        return AI_ACTION_REDUCE_SIZING, 0.5
+
+    return AI_ACTION_VETO, 0.0
+
+
 def _prepare_smart_committee_context(
     symbol: str, tech_data: dict = None, fin_data: dict = None, news_items: list = None
 ) -> tuple[dict | None, str | None, dict | None]:
@@ -2139,6 +2181,12 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         is_overridden = True
         override_reason = f"Quant Entry Gate Veto: {'; '.join(entry_gate_res.blocking_reasons)}"
 
+    ai_action, sizing_factor = resolve_ai_veto_action(
+        final_decision=final_decision,
+        is_overridden=is_overridden,
+        can_buy=can_buy,
+    )
+
     _save_smart_committee_record(
         context_meta,
         final_decision,
@@ -2154,6 +2202,8 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         "symbol": sym,
         "pm_decision": final_decision,
         "raw_pm_decision": raw_decision,
+        "ai_action": ai_action,
+        "sizing_factor": sizing_factor,
         "is_overridden": is_overridden,
         "override_reason": override_reason,
         "fa_view": views.get("fa_view", "NEUTRAL"),

@@ -13,7 +13,7 @@ import logging
 import re
 import sys
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 # Guard against Windows AppLocker / WDAC blocking pyarrow DLL
@@ -564,6 +564,32 @@ def _calculate_item_mos(sym: str, curr_price: float, note: str, fin_dict: dict |
         return 0.0
 
 
+def check_watchlist_ttl_status(item: dict, as_of_date: str = None) -> tuple[bool, int, str]:
+    """Kiểm tra tuổi thọ Watchlist theo số ngày hoặc phiên giao dịch (Phase 28 / TASK-0083).
+
+    Returns:
+        (is_expired, age_days, reason_str)
+    """
+    entry_date_str = item.get("watch_entry_date") or item.get("entry_date")
+    if not entry_date_str:
+        return False, 0, ""
+
+    try:
+        entry_dt = datetime.strptime(str(entry_date_str)[:10], "%Y-%m-%d").date()
+        if as_of_date:
+            cur_dt = datetime.strptime(str(as_of_date)[:10], "%Y-%m-%d").date()
+        else:
+            cur_dt = date.today()
+
+        age_days = (cur_dt - entry_dt).days
+        ttl_days = int(item.get("watch_ttl_days", 10))
+        if age_days >= ttl_days:
+            return True, age_days, f"Hết hạn theo dõi TTL ({age_days} ngày >= {ttl_days} ngày)"
+        return False, age_days, ""
+    except Exception:
+        return False, 0, ""
+
+
 def _collect_watchlist_reasons(tech: dict, mos_pct: float) -> list[str]:
     """Identify reasons why a watchlist ticker is unsuitable (RSI fomo, overvalued, or trap)."""
     reasons = []
@@ -579,7 +605,11 @@ def _collect_watchlist_reasons(tech: dict, mos_pct: float) -> list[str]:
 
 
 def _evaluate_watchlist_item_suitability(
-    item: dict, tech_map: dict | None, prune_manual: bool, force_override: bool = False
+    item: dict,
+    tech_map: dict | None,
+    prune_manual: bool,
+    force_override: bool = False,
+    as_of_date: str = None,
 ) -> tuple[dict | None, dict | None]:
     """Evaluate whether a single watchlist item should be pruned or retained."""
     sym = item.get("symbol", "").upper().strip()
@@ -595,6 +625,11 @@ def _evaluate_watchlist_item_suitability(
     curr_price = float(tech.get("current_price") or target_buy or 0.0)
     mos_pct = _calculate_item_mos(sym, curr_price, note)
     reasons = _collect_watchlist_reasons(tech, mos_pct)
+
+    # Phase 28 / TASK-0083: Kiểm tra hết hạn TTL
+    is_expired, age_days, ttl_reason = check_watchlist_ttl_status(item, as_of_date=as_of_date)
+    if is_expired:
+        reasons.append(ttl_reason)
 
     if not reasons:
         return item, None
@@ -633,6 +668,7 @@ def prune_unsuitable_watchlist(
     tech_map: dict = None,
     notify_discord: bool = True,
     force_override: bool = False,
+    as_of_date: str = None,
 ) -> tuple[list, list]:
     """Thanh lọc các cổ phiếu trong Watchlist đang QUÁ HOT hoặc KHÔNG PHÙ HỢP:
 
@@ -652,7 +688,7 @@ def prune_unsuitable_watchlist(
 
         for item in watchlist:
             retained, pruned = _evaluate_watchlist_item_suitability(
-                item, tech_map, prune_manual, force_override=force_override
+                item, tech_map, prune_manual, force_override=force_override, as_of_date=as_of_date
             )
             if pruned:
                 pruned_items.append(pruned)
@@ -727,14 +763,19 @@ def _build_auto_watchlist_candidate(opp: dict, manual_symbols: set) -> dict | No
 
         arch_details = get_stock_archetype_details(sym, sector=opp.get("sector", ""))
         mos_str = f"MoS: {mos_pct:.1f}%" if mos_is_informative else "MoS: N/A"
+        today_iso = str(date.today())
+        entry_d = opp.get("watch_entry_date") or opp.get("entry_date") or today_iso
         return {
             "symbol": sym,
             "target_buy": target_buy_val,
+            "entry_target_price": target_buy_val,
             "note": f"[AUTO_DISCOVERY] [{arch_details['sector_group']}] Điểm {conv_score:.0f}/100 | {mos_str}",
             "sector": arch_details["sector_group"],
             "archetype": arch_details["archetype"],
             "strategy": arch_details["default_strategy"],
             "is_auto": True,
+            "watch_entry_date": entry_d,
+            "watch_ttl_days": int(opp.get("watch_ttl_days", 10)),
         }
     return None
 

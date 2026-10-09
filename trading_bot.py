@@ -456,12 +456,21 @@ def _process_single_watchlist_item(item: dict, today_str: str):
 
 
 def _scan_watchlist_opportunities(today_str: str):
+    """Loop B (Watchlist Monitor - Intraday): Theo dõi điểm mua và thanh lọc TTL hết hạn (Phase 28)."""
+    try:
+        from data_engine import prune_unsuitable_watchlist
+
+        prune_unsuitable_watchlist(prune_manual=False, notify_discord=False)
+    except Exception:
+        logging.exception("Lỗi khi kiểm tra TTL Watchlist trước khi quét")
+
     watchlist = load_watchlist()
     if not watchlist:
         return
 
     try:
         from data_engine import load_portfolio
+
         portfolio = load_portfolio()
     except Exception:
         portfolio = None

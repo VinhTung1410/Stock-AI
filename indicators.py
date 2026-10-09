@@ -206,15 +206,34 @@ def calculate_altman_z_score(fin_dict: dict, sector: str = "") -> dict:
         return {"z_score": 2.2, "zone": "VÙNG XÁM", "icon": "🟡"}
 
 
-def calculate_valuation_triangle(current_price: float, pe: float = None, pb: float = None, sector: str = "") -> dict:
-    """Tam giác định giá 3 kịch bản dựa trên P/E & P/B bình quân và chu kỳ ngành."""
+def calculate_valuation_triangle(
+    current_price: float,
+    pe: float = None,
+    pb: float = None,
+    sector: str = "",
+    fair_value: float = None,
+    fv_bull: float = None,
+    fv_bear: float = None,
+) -> dict:
+    """Tam giác định giá 3 kịch bản dựa trên P/E & P/B bình quân, Fair Value cơ bản và chu kỳ ngành."""
     if not current_price or current_price <= 0:
-        return {"price_bull": 0.0, "price_base": 0.0, "price_bear": 0.0}
+        return {"price_bull": 0.0, "price_base": 0.0, "price_bear": 0.0, "is_cyclical": False}
 
     is_cyclical = any(s in sector.lower() for s in ["thép", "dầu khí", "hóa chất", "phân bón", "vận tải biển"])
     is_cyclical_peak = is_cyclical and ((pe is not None and pe < 6.0) or (pb is not None and pb < 0.8))
 
-    if is_cyclical_peak:
+    # Nếu có Fair Value định lượng thực tế (từ quant_valuation / DCF / Justified P/B)
+    if fair_value is not None and fair_value > 0:
+        price_base = round(fair_value, 2)
+        price_bull = round(
+            fv_bull if (fv_bull is not None and fv_bull > 0) else max(fair_value * 1.15, current_price * 1.05),
+            2,
+        )
+        price_bear = round(
+            fv_bear if (fv_bear is not None and fv_bear > 0) else min(fair_value * 0.85, current_price * 0.90),
+            2,
+        )
+    elif is_cyclical_peak:
         price_bull = round(current_price * 1.15, 2)
         price_base = round(current_price * 1.02, 2)
         price_bear = round(current_price * 0.78, 2)
@@ -223,7 +242,18 @@ def calculate_valuation_triangle(current_price: float, pe: float = None, pb: flo
         price_base = round(current_price * 1.10, 2)
         price_bear = round(current_price * 0.85, 2)
 
-    return {"price_bull": price_bull, "price_base": price_base, "price_bear": price_bear, "is_cyclical": is_cyclical}
+    downside = max(current_price - price_bear, 0.01)
+    upside = max(price_bull - current_price, 0.0)
+    rr_ratio = round(upside / downside, 2) if downside > 0 else 1.0
+
+    return {
+        "price_bull": price_bull,
+        "price_base": price_base,
+        "price_bear": price_bear,
+        "is_cyclical": is_cyclical,
+        "rr_ratio": rr_ratio,
+        "has_quant_anchor": bool(fair_value and fair_value > 0),
+    }
 
 
 def _score_fundamental_pillar(fin_dict: dict) -> float:

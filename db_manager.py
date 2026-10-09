@@ -944,7 +944,86 @@ def get_decision_records(filters: Optional[dict] = None, limit: int = 50) -> lis
         res = query.execute()
         return res.data or []
     except Exception:
-        logging.exception("Error querying decision records")
+        logging.exception("Failed to query decision records")
+        return []
+
+
+EVENT_WATCHLIST_ADDED = "WATCHLIST_ADDED"
+EVENT_TRIGGER_ACTIVATED = "TRIGGER_ACTIVATED"
+EVENT_AI_VETO_EVALUATED = "AI_VETO_EVALUATED"
+EVENT_EXECUTION_ORDERED = "EXECUTION_ORDERED"
+EVENT_EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
+EVENT_WATCHLIST_EXPIRED = "WATCHLIST_EXPIRED"
+
+_IN_MEMORY_LIFECYCLE_EVENTS: list[dict] = []
+
+
+def save_lifecycle_event(event: dict) -> str | None:
+    """Save an immutable decision lifecycle event (Phase 28 / TASK-0085)."""
+    client = get_supabase_client()
+    symbol = event.get("symbol", "").upper().strip()
+    correlation_id = event.get("correlation_id", "")
+    event_type = event.get("event_type", "").upper().strip()
+    now_str = datetime.now(VN_TZ).strftime("%Y%m%d_%H%M%S_%f")
+    event_id = event.get("event_id") or f"EVT_{symbol}_{now_str}"
+
+    row = {
+        "event_id": event_id,
+        "correlation_id": correlation_id,
+        "symbol": symbol,
+        "event_type": event_type,
+        "event_data": event.get("event_data", {}),
+        "market_regime": event.get("market_regime", "UNKNOWN"),
+        "created_at": event.get("created_at") or datetime.now(VN_TZ).isoformat(),
+    }
+
+    if not client:
+        _IN_MEMORY_LIFECYCLE_EVENTS.append(row)
+        logging.info("Saved local lifecycle event %s for %s (%s)", event_id, symbol, event_type)
+        return event_id
+
+    try:
+        res = client.table("decision_lifecycle_events").insert(row).execute()
+        if res.data:
+            logging.info("Saved lifecycle event %s for %s (%s)", event_id, symbol, event_type)
+            return event_id
+        return None
+    except Exception:
+        _IN_MEMORY_LIFECYCLE_EVENTS.append(row)
+        logging.exception("Failed to insert lifecycle event to Supabase, stored locally for %s", symbol)
+        return event_id
+
+
+def get_lifecycle_events(
+    correlation_id: Optional[str] = None,
+    symbol: Optional[str] = None,
+    event_type: Optional[str] = None,
+    limit: int = 100,
+) -> list[dict]:
+    """Query lifecycle events with optional filters."""
+    client = get_supabase_client()
+    if not client:
+        results = _IN_MEMORY_LIFECYCLE_EVENTS
+        if correlation_id:
+            results = [e for e in results if e.get("correlation_id") == correlation_id]
+        if symbol:
+            results = [e for e in results if e.get("symbol") == symbol.upper().strip()]
+        if event_type:
+            results = [e for e in results if e.get("event_type") == event_type.upper().strip()]
+        return results[-limit:]
+
+    try:
+        query = client.table("decision_lifecycle_events").select("*").order("created_at", desc=True).limit(limit)
+        if correlation_id:
+            query = query.eq("correlation_id", correlation_id)
+        if symbol:
+            query = query.eq("symbol", symbol.upper().strip())
+        if event_type:
+            query = query.eq("event_type", event_type.upper().strip())
+        res = query.execute()
+        return res.data or []
+    except Exception:
+        logging.exception("Error querying lifecycle events")
         return []
 
 
