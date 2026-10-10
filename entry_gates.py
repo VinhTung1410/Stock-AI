@@ -31,7 +31,8 @@ from quant_valuation import calculate_fair_value_and_mos, classify_stock_archety
 
 # Gate Names Constants (SonarCloud S1192)
 GATE_MACRO_REGIME = "MACRO_REGIME"
-GATE_DATA_GATE = "DATA_GATE"
+GATE_DATA_RECONCILE = "DATA_RECONCILE"
+GATE_DATA_GATE = "DATA_RECONCILE"  # Backward compatibility alias
 GATE_FINANCIAL_HEALTH = "FINANCIAL_HEALTH"
 GATE_VALUATION_MOS = "VALUATION_MOS"
 GATE_TECHNICAL_MOMENTUM = "TECHNICAL_MOMENTUM"
@@ -57,6 +58,8 @@ class EntryGateResult:
     blocked_by: Optional[str] = None
     blocking_reasons: List[str] = field(default_factory=list)
     passed_gates: List[str] = field(default_factory=list)
+    failed_gates: List[str] = field(default_factory=list)
+    causal_chains: List[str] = field(default_factory=list)
     metrics: Dict[str, Any] = field(default_factory=dict)
     position_size_multiplier: float = 1.0
     action_state: str = ACTION_WATCH
@@ -79,7 +82,9 @@ def _check_macro_regime_layer(macro_regime: Optional[str], result: EntryGateResu
     reg_up = macro_regime.upper().strip()
     if "DOWNTREND" in reg_up:
         result.can_buy = False
-        result.blocked_by = GATE_MACRO_REGIME
+        if not result.blocked_by:
+            result.blocked_by = GATE_MACRO_REGIME
+        result.failed_gates.append(GATE_MACRO_REGIME)
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append(
             f"Thị trường chung VN-Index đang trong xu hướng DOWNTREND ({macro_regime}). Cấm mở vị thế Mua mới."
@@ -93,7 +98,7 @@ def _check_macro_regime_layer(macro_regime: Optional[str], result: EntryGateResu
 def _check_data_gate_layer(
     symbol: str, tech_data: Optional[Dict[str, Any]], fin_dict: Optional[Dict[str, Any]], result: EntryGateResult
 ) -> bool:
-    """Tầng 1: Kiểm định tính toàn vẹn và độ tươi dữ liệu (Data Gate)."""
+    """Tầng 1: Kiểm định tính toàn vẹn và độ tươi dữ liệu (Data Reconcile)."""
     try:
         recon = reconcile_data(symbol=symbol, tech_data=tech_data, fin_data=fin_dict)
     except Exception:
@@ -110,27 +115,35 @@ def _check_data_gate_layer(
 
     if not gate_passed or not rec_allowed or q_score < 65.0 or is_stale:
         result.can_buy = False
-        result.blocked_by = GATE_DATA_GATE
+        if not result.blocked_by:
+            result.blocked_by = GATE_DATA_RECONCILE
+        result.failed_gates.append(GATE_DATA_RECONCILE)
         result.position_size_multiplier = 0.0
         issues = recon.get("conflicting_data", []) + recon.get("stale_data", [])
         issue_msg = "; ".join(issues) if issues else f"Chất lượng dữ liệu không đạt (Score={q_score:.1f}/100)"
-        result.blocking_reasons.append(f"Data Gate từ chối: {issue_msg}")
+        result.blocking_reasons.append(f"Data Reconcile từ chối: {issue_msg}")
         return False
 
-    result.passed_gates.append(GATE_DATA_GATE)
+    result.passed_gates.append(GATE_DATA_RECONCILE)
     return True
 
 
 def _check_financial_health_layer(
-    fin_dict: Optional[Dict[str, Any]], sector: str, result: EntryGateResult
+    fin_dict: Optional[Dict[str, Any]], sector: str, result: EntryGateResult, archetype: str = ""
 ) -> bool:
     """Tầng 2: Sức khỏe tài chính Piotroski F-Score và Altman Z-Score."""
     fin = fin_dict or {}
+    is_exempt = (archetype in ("BANK", "REAL_ESTATE")) or (sector in ("Ngân hàng", "Bất động sản"))
+    effective_sec = (
+        "Ngân hàng"
+        if archetype == "BANK"
+        else ("Bất động sản" if archetype == "REAL_ESTATE" else sector)
+    )
 
     # Ưu tiên lấy f_score có sẵn trong fin_dict nếu hợp lệ
     f_score = fin.get("f_score")
     if f_score is None:
-        f_res = calculate_vibe_quality_score(fin, sector=sector)
+        f_res = calculate_vibe_quality_score(fin, sector=effective_sec)
         f_score = f_res.get("score", 6)
     else:
         f_score = int(f_score)
@@ -140,22 +153,24 @@ def _check_financial_health_layer(
     if f_score < f_score_min:
         result.can_buy = False
         result.blocked_by = GATE_FINANCIAL_HEALTH
+        result.failed_gates.append(GATE_FINANCIAL_HEALTH)
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append(f"Sức khỏe tài chính yếu: Piotroski F-Score={f_score}/9 < {f_score_min}.")
         return False
 
     z_score = fin.get("z_score")
     if z_score is None:
-        z_res = calculate_altman_z_score(fin, sector=sector)
+        z_res = calculate_altman_z_score(fin, sector=effective_sec)
         z_score = z_res.get("z_score")
     else:
         z_score = float(z_score)
     result.metrics["z_score"] = z_score
 
     z_score_min = LOCKED_QUANT_THRESHOLDS["z_score_min"]
-    if sector not in ("Ngân hàng", "Bất động sản") and z_score is not None and z_score < z_score_min:
+    if not is_exempt and z_score is not None and z_score < z_score_min:
         result.can_buy = False
         result.blocked_by = GATE_FINANCIAL_HEALTH
+        result.failed_gates.append(GATE_FINANCIAL_HEALTH)
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append(f"Rủi ro kiệt quệ tài chính cao: Altman Z-Score={z_score:.2f} < {z_score_min} (Vùng đỏ).")
         return False
@@ -188,7 +203,9 @@ def _check_valuation_mos_layer(
 
     if arch == "UNKNOWN":
         result.can_buy = False
-        result.blocked_by = GATE_VALUATION_MOS
+        if not result.blocked_by:
+            result.blocked_by = GATE_VALUATION_MOS
+        result.failed_gates.append(GATE_VALUATION_MOS)
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append("Không xác định được ngành nghề / Archetype định giá hợp lệ. Chặn mở vị thế.")
         return False
@@ -204,7 +221,8 @@ def _check_valuation_mos_layer(
         val_res = calculate_fair_value_and_mos(
             symbol=symbol, current_price=current_price, fin_dict=fin_dict, sector=sector
         )
-    mos_pct = float(val_res.get("mos_pct", 0.0))
+    raw_mos = val_res.get("mos_pct")
+    mos_pct = float(raw_mos) if raw_mos is not None else None
     mos_is_informative = bool(val_res.get("mos_is_informative", False))
     fair_value = float(val_res.get("fair_value", 0.0))
 
@@ -215,9 +233,11 @@ def _check_valuation_mos_layer(
 
     min_mos = LOCKED_QUANT_THRESHOLDS["mos_min_pct"]
 
-    if not mos_is_informative:
+    if not mos_is_informative or mos_pct is None:
         result.can_buy = False
-        result.blocked_by = GATE_VALUATION_MOS
+        if not result.blocked_by:
+            result.blocked_by = GATE_VALUATION_MOS
+        result.failed_gates.append(GATE_VALUATION_MOS)
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append(
             f"Định giá không thực chất (mos_is_informative=False) hoặc thiếu BCTC cho archetype {arch}."
@@ -226,7 +246,9 @@ def _check_valuation_mos_layer(
 
     if mos_pct < min_mos:
         result.can_buy = False
-        result.blocked_by = GATE_VALUATION_MOS
+        if not result.blocked_by:
+            result.blocked_by = GATE_VALUATION_MOS
+        result.failed_gates.append(GATE_VALUATION_MOS)
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append(
             f"Biên an toàn MoS={mos_pct:+.1f}% không đạt ngưỡng tối thiểu {min_mos:.1f}% của archetype {arch}."
@@ -266,7 +288,9 @@ def _check_technical_momentum_layer(
 
     if tech_sig == "FALLING_KNIFE":
         result.can_buy = False
-        result.blocked_by = GATE_TECHNICAL_MOMENTUM
+        if not result.blocked_by:
+            result.blocked_by = GATE_TECHNICAL_MOMENTUM
+        result.failed_gates.append(GATE_TECHNICAL_MOMENTUM)
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append(
             f"Tín hiệu kỹ thuật {tech_sig} vi phạm Hard Veto: Rơi tự do không nền đỡ (FALLING_KNIFE). Chặn mở vị thế."
@@ -288,11 +312,29 @@ def _check_quant_conviction_layer(conviction_score: Optional[float], result: Ent
         result.metrics["conviction_score"] = conviction_score
         if conviction_score < conv_min:
             result.can_buy = False
-            result.blocked_by = GATE_QUANT_CONVICTION
+            if not result.blocked_by:
+                result.blocked_by = GATE_QUANT_CONVICTION
+            result.failed_gates.append(GATE_QUANT_CONVICTION)
             result.position_size_multiplier = 0.0
-            result.blocking_reasons.append(
-                f"Điểm Conviction {conviction_score:.1f}/100 < {conv_min} (Dưới ngưỡng an toàn định lượng)."
-            )
+
+            # Ghi nhận chuỗi nguyên nhân (Causal Chain): QUANT_CONVICTION thường là hệ quả từ MoS/Data Gate
+            chain_causes = []
+            if GATE_DATA_RECONCILE in result.failed_gates:
+                chain_causes.append(GATE_DATA_RECONCILE)
+            if GATE_VALUATION_MOS in result.failed_gates:
+                chain_causes.append(GATE_VALUATION_MOS)
+            if chain_causes:
+                chain_str = " -> ".join(chain_causes + [GATE_QUANT_CONVICTION])
+                result.causal_chains.append(chain_str)
+                result.metrics["causal_chains"] = result.causal_chains
+                result.blocking_reasons.append(
+                    f"Điểm Conviction {conviction_score:.1f}/100 < {conv_min} "
+                    f"[Hệ quả từ chuỗi nguyên nhân: {chain_str}]."
+                )
+            else:
+                result.blocking_reasons.append(
+                    f"Điểm Conviction {conviction_score:.1f}/100 < {conv_min} (Dưới ngưỡng an toàn định lượng)."
+                )
             return False
 
     result.passed_gates.append(GATE_QUANT_CONVICTION)
@@ -307,7 +349,9 @@ def _check_pm_veto_layer(pm_veto: bool, pm_output: Optional[str], result: EntryG
 
     if has_veto:
         result.can_buy = False
-        result.blocked_by = GATE_PM_VETO
+        if not result.blocked_by:
+            result.blocked_by = GATE_PM_VETO
+        result.failed_gates.append(GATE_PM_VETO)
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append("PM Veto kích hoạt: Phát hiện rủi ro phi định lượng hoặc xung đột danh mục.")
         return False
@@ -339,7 +383,9 @@ def _calculate_position_size_layer(
 
     if adv20_bil is not None and adv20_bil < MIN_ADV20_BILLION:
         result.can_buy = False
-        result.blocked_by = GATE_ADV20_LIQUIDITY
+        if not result.blocked_by:
+            result.blocked_by = GATE_ADV20_LIQUIDITY
+        result.failed_gates.append(GATE_ADV20_LIQUIDITY)
         result.position_size_pct = 0.0
         result.position_size_multiplier = 0.0
         result.blocking_reasons.append(
@@ -374,7 +420,9 @@ def _calculate_position_size_layer(
             calc_size = max(0.0, max_sector - sector_w)
             if calc_size < 0.05:
                 result.can_buy = False
-                result.blocked_by = "SECTOR_CAP"
+                if not result.blocked_by:
+                    result.blocked_by = "SECTOR_CAP"
+                result.failed_gates.append("SECTOR_CAP")
                 result.position_size_pct = 0.0
                 result.blocking_reasons.append(
                     f"Sector Cap: Tỷ trọng {sector} ({sector_w*100:.1f}%) đã đầy/gần đầy, không thể thêm {calc_size*100:.1f}%."
@@ -407,7 +455,7 @@ def evaluate_entry_gates(
 ) -> EntryGateResult:
     """Thực thi kiểm định Cổng vào lệnh 7 tầng (Unified Entry Gate).
 
-    Tuần tự:
+    Tuần tự kiểm định toàn bộ các tầng để ghi nhận đầy đủ failed_gates:
     - Tầng 0: Macro Regime (MA200 Hysteresis)
     - Tầng 1: Data Gate (Freshness + BCTC + Survival Gate)
     - Tầng 2: Sức khỏe tài chính (F-Score + Z-Score)
@@ -418,6 +466,11 @@ def evaluate_entry_gates(
     - Tầng 7: Risk Governance & Position Sizing (Float)
     """
     sym = (symbol or "").strip().upper()
+    if not archetype:
+        from quant_valuation import classify_stock_archetype
+
+        archetype = classify_stock_archetype(sym, sector)
+
     result = EntryGateResult(
         can_buy=True,
         metrics={
@@ -425,56 +478,51 @@ def evaluate_entry_gates(
             "current_price": current_price,
             "caller": caller,
             "sector": sector,
+            "archetype": archetype,
         },
     )
 
     if current_price <= 0.0:
         result.can_buy = False
-        result.blocked_by = GATE_DATA_GATE
+        result.blocked_by = GATE_DATA_RECONCILE
+        result.failed_gates.append(GATE_DATA_RECONCILE)
         result.position_size_multiplier = 0.0
         result.position_size_pct = 0.0
         result.blocking_reasons.append(f"Thị giá không hợp lệ ({current_price}k <= 0).")
         return result
 
     # 0. Tầng Macro
-    if not _check_macro_regime_layer(macro_regime, result):
-        return result
+    _check_macro_regime_layer(macro_regime, result)
 
     # 1. Tầng Data Gate
-    if not _check_data_gate_layer(sym, tech_data, fin_dict, result):
-        return result
+    _check_data_gate_layer(sym, tech_data, fin_dict, result)
 
     # 2. Tầng Sức khỏe tài chính
-    if not _check_financial_health_layer(fin_dict, sector, result):
-        return result
+    _check_financial_health_layer(fin_dict, sector, result, archetype=archetype)
 
     # 3. Tầng MoS & Định giá
-    if not _check_valuation_mos_layer(sym, current_price, fin_dict, sector, archetype, caller, result):
-        return result
+    _check_valuation_mos_layer(sym, current_price, fin_dict, sector, archetype, caller, result)
 
     # 4. Tầng Kỹ thuật
-    if not _check_technical_momentum_layer(tech_data, current_price, result):
-        return result
+    _check_technical_momentum_layer(tech_data, current_price, result)
 
     # 5. Tầng Conviction
-    if not _check_quant_conviction_layer(conviction_score, result):
-        return result
+    _check_quant_conviction_layer(conviction_score, result)
 
     # 6. Tầng PM Veto
-    if not _check_pm_veto_layer(pm_veto, pm_output, result):
-        return result
+    _check_pm_veto_layer(pm_veto, pm_output, result)
 
     # 7. Tầng Quản trị Rủi ro & Position Sizing
-    if not _calculate_position_size_layer(
-        tech_data=tech_data,
-        adv20_billion=adv20_billion,
-        half_kelly_f=half_kelly_f,
-        kill_switch_active=kill_switch_active,
-        result=result,
-        sector=sector,
-        portfolio=portfolio,
-    ):
-        return result
+    if result.can_buy:
+        _calculate_position_size_layer(
+            tech_data=tech_data,
+            adv20_billion=adv20_billion,
+            half_kelly_f=half_kelly_f,
+            kill_switch_active=kill_switch_active,
+            result=result,
+            sector=sector,
+            portfolio=portfolio,
+        )
 
     # Đạt chuẩn toàn bộ các tầng
     tech_sig = result.metrics.get("tech_signal", "")

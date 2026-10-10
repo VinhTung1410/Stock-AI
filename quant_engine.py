@@ -414,14 +414,14 @@ def evaluate_decision_hard_gates(
                 )
             except TypeError:
                 val_model = calculate_fair_value_and_mos(symbol, current_price, sector)
-        mos_is_informative = val_model.get("mos_is_informative", True)
+        mos_is_informative = val_model.get("mos_is_informative", False)
         fair_value = val_model.get("fair_value", price_base)
         if not mos_is_informative or fair_value <= 0:
-            mos_pct = 0.0
-            fallback_mos = 0.0
+            mos_pct = None
+            fallback_mos = None
             val_confidence = "LOW"
         else:
-            fallback_mos = round(((price_base - current_price) / price_base) * 100, 2) if price_base > 0 else 0.0
+            fallback_mos = round(((price_base - current_price) / price_base) * 100, 2) if price_base > 0 else None
             mos_pct = val_model.get("mos_pct", fallback_mos)
             val_confidence = val_model.get("confidence", "MEDIUM")
         val_method = val_model.get("valuation_method", "N/A")
@@ -479,7 +479,7 @@ def evaluate_decision_hard_gates(
 
     # --- HÀNG RÀO CỨNG (HARD GATES) ---
     # Khóa cứng MoS uninformative hoặc không có định giá thực chất (TASK-0038)
-    gate_mos_passed = (mos_pct >= 12.0) and mos_is_informative and (fair_value > 0)
+    gate_mos_passed = bool(mos_pct is not None and mos_pct >= 12.0 and mos_is_informative and fair_value > 0)
     gate_rr_passed = rr >= 1.5
     gate_kelly_passed = kelly_f > 0
     gate_trap_passed = not (trap_info and trap_info.get("is_trap"))
@@ -498,6 +498,12 @@ def evaluate_decision_hard_gates(
         can_buy = False
         action_state = "🟡 THEO DÕI"
         decision_tag = "🟡 THEO DÕI (Thanh khoản quá thấp < 2 tỷ/phiên - Rủi ro kẹp vốn)"
+        position_size_nav = "0% NAV"
+
+    elif not mos_is_informative or mos_pct is None:
+        can_buy = False
+        action_state = "🟡 THEO DÕI"
+        decision_tag = "🟡 THEO DÕI (Thiếu dữ liệu BCTC tin cậy để xác định Biên an toàn MoS)"
         position_size_nav = "0% NAV"
 
     elif mos_pct < 0:
@@ -1521,4 +1527,121 @@ def apply_benjamini_hochberg_fdr(
         "significant_count": sig_count,
         "warning": warning_msg,
         "results": results,
+    }
+
+
+def run_pipeline(
+    symbol: str,
+    current_price: float | None = None,
+    fin_dict: dict | None = None,
+    tech_data: dict | None = None,
+    sector: str = "",
+) -> dict[str, Any]:
+    """Execute end-to-end quantitative evaluation pipeline for a single stock.
+
+    Combines:
+    1. Financial ratios & Technical data ingestion
+    2. Data Gate verification
+    3. Institutional Fair Value & MoS
+    4. Conviction Scoring (4 Pillars)
+    5. Deterministic Hard Gates & Action State
+    """
+    from data_engine import calculate_conviction_score, fetch_stock_technical, get_financial_ratios
+    from entry_gates import GATE_DATA_RECONCILE, evaluate_entry_gates
+
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return {"status": "ERROR", "message": "Symbol is required"}
+
+    # Tự động tra cứu sector từ SECTOR_MAP nếu không được truyền trực tiếp
+    if not sector:
+        from data_engine import SECTOR_MAP
+
+        sector = SECTOR_MAP.get(sym, "")
+
+    # 1. Fetch data if missing
+    fin = fin_dict if fin_dict is not None else get_financial_ratios(sym)
+    tech = tech_data if tech_data is not None else fetch_stock_technical(sym)
+
+    price = float(current_price) if (current_price and current_price > 0) else float(tech.get("current_price", 0.0))
+
+    # 2. Hard Data Gate
+    dg_res = check_data_gate(sym, tech, fin)
+
+    # 3. Fair Value & MoS
+    val_res = calculate_fair_value_and_mos(symbol=sym, current_price=price, fin_dict=fin, sector=sector)
+    mos_pct = val_res.get("mos_pct")
+    val_conf = val_res.get("confidence", "MEDIUM")
+
+    # 4. Conviction Scoring
+    ma20 = float(tech.get("ma20", price))
+    rsi = float(tech.get("rsi", 50.0))
+    vol_ratio = float(tech.get("vol_ratio", 1.0))
+    conv_res = calculate_conviction_score(
+        mos_pct=mos_pct,
+        val_confidence=val_conf,
+        curr_price=price,
+        ma20=ma20,
+        rsi=rsi,
+        vol_ratio=vol_ratio,
+    )
+
+    # 5. Entry Gates & Hard Decision Gates
+    hard_gates = evaluate_decision_hard_gates(
+        current_price=price,
+        p_bull=0.25,
+        p_base=0.50,
+        p_bear=0.25,
+        price_bull=round(price * 1.15, 2),
+        price_base=val_res.get("fair_value", price),
+        price_bear=round(price * 0.90, 2),
+        atr=float(tech.get("atr", 0.0)),
+        adv20_billion=float(tech.get("adv20_billion", 0.0)),
+        symbol=sym,
+        fin_dict=fin,
+        sector=sector,
+        tech_data=tech,
+    )
+
+    entry_gate_res = evaluate_entry_gates(
+        symbol=sym,
+        current_price=price,
+        fin_dict=fin,
+        tech_data=tech,
+        sector=sector,
+        archetype=val_res.get("archetype", ""),
+        conviction_score=conv_res.get("score", 0.0),
+    )
+
+    return {
+        "symbol": sym,
+        "price": price,
+        "price_source": tech.get("price_source", "REALTIME"),
+        "price_asof": tech.get("price_asof", tech.get("date")),
+        "archetype": val_res.get("archetype"),
+        "input_source": val_res.get("input_source"),
+        "is_floor_clamped": val_res.get("is_floor_clamped", False),
+        "fair_value": val_res.get("fair_value"),
+        "mos_pct": mos_pct,
+        "mos_is_informative": val_res.get("mos_is_informative", False),
+        "data_gate_passed": bool(
+            dg_res.get("passed", False) and (GATE_DATA_RECONCILE not in entry_gate_res.failed_gates)
+        ),
+        "conviction_score": conv_res.get("score"),
+        "conviction_tier": conv_res.get("tier"),
+        "conviction_breakdown": conv_res.get("breakdown"),
+        "can_buy": entry_gate_res.can_buy,
+        "action_state": hard_gates.get("action_state", entry_gate_res.action_state),
+        "decision_tag": hard_gates.get("decision_tag"),
+        "blocked_by": entry_gate_res.blocked_by,
+        "failed_gates": entry_gate_res.failed_gates,
+        "causal_chains": entry_gate_res.causal_chains,
+        "blocking_reasons": entry_gate_res.blocking_reasons,
+        "fv_shadow": val_res.get("fv_shadow"),
+        "mos_shadow": val_res.get("mos_shadow"),
+        "model_dispersion_pct": val_res.get("model_dispersion_pct"),
+        "target_pb_raw": val_res.get("target_pb_raw"),
+        "is_pb_clamped": val_res.get("is_pb_clamped", False),
+        "pb_arbitrated": val_res.get("pb_arbitrated", False),
+        "effective_pb": val_res.get("effective_pb"),
     }

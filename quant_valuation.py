@@ -25,6 +25,7 @@ VAL_RATING_FAIR_WATCH = "🟡 HỢP LÝ / THEO DÕI (MOS 5-12%)"
 VAL_RATING_FAIR_VALUE = "🟡 ĐỊNH GIÁ ĐỦ (MOS quanh 0%)"
 VAL_RATING_EXPENSIVE = "🔴 ĐỊNH GIÁ QUÁ ĐẮT (MOS Âm > 8%)"
 VAL_RATING_MANUAL_VERIFY = "CẦN XÁC MINH THỦ CÔNG"
+VAL_RATING_UNKNOWN = "⚪ CHƯA RÕ / THIẾU DỮ LIỆU"
 
 # Mỏ neo định giá trung vị tham chiếu từ các tổ chức phân tích uy tín (SSI Research, HSC, Vietcap)
 # Được cập nhật định kỳ (kèm last_updated), đóng vai trò "Trần định giá tham chiếu" (Consensus Ceiling)
@@ -185,20 +186,21 @@ def check_institutional_target_freshness(
 
 
 def classify_stock_archetype(symbol: str, sector: str = "") -> str:
-    """Classify a stock into one of 4 valuation archetypes.
+    """Classify a stock into one of 4 valuation archetypes or UNCLASSIFIED.
 
     Archetypes determine which valuation model is applied:
     - BANK: Banks & financials → Justified P/B
     - CYCLICAL: Steel, oil, chemicals → Normalized mid-cycle earnings
     - REAL_ESTATE: Property developers → Floor P/B + leverage discount
     - GROWTH_COMPOUNDER: Tech, retail, consumer → Historical median P/E
+    - UNCLASSIFIED: Securities, insurance, utilities, gas without models
 
     Args:
         symbol: Stock ticker (e.g. 'FPT', 'VCB').
         sector: Vietnamese sector name for fallback classification.
 
     Returns:
-        One of: 'BANK', 'CYCLICAL', 'REAL_ESTATE', 'GROWTH_COMPOUNDER'.
+        One of: 'BANK', 'CYCLICAL', 'REAL_ESTATE', 'GROWTH_COMPOUNDER', 'UNCLASSIFIED'.
     """
     if not symbol or not isinstance(symbol, str):
         sym = ""
@@ -206,11 +208,20 @@ def classify_stock_archetype(symbol: str, sector: str = "") -> str:
         sym = symbol.strip().upper()
     sec = sector.lower() if isinstance(sector, str) else ""
 
+    # 1. Ngân hàng
     if (
-        any(b in sym for b in ["VCB", "TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "CTG", "BID", "VIB", "TPB"])
+        any(b in sym for b in ["VCB", "TCB", "MBB", "ACB", "VPB", "MSB", "STB", "HDB", "CTG", "BID", "VIB", "TPB", "SHB", "SSB"])
         or "ngân hàng" in sec
     ):
         return "BANK"
+
+    # 2. Chứng khoán, Bảo hiểm, Khí/Điện/Hạ tầng, Khu công nghiệp chưa có mô hình chuyên biệt
+    if any(s in sym for s in ["SSI", "VND", "VIX", "HCM", "SHS", "MBS", "CTS", "FTS", "BSI"]) or any(
+        k in sec for k in ["chứng khoán", "bảo hiểm", "bảo trợ"]
+    ) or sym in ["BVH", "BMI", "PVI", "GAS", "PLX", "POW", "BCM"]:
+        return "UNCLASSIFIED"
+
+    # 3. Chu kỳ hàng hóa
     if any(s in sec for s in ["thép", "dầu khí", "hóa chất", "phân bón", "vận tải biển", "cao su"]) or sym in [
         "HPG",
         "HSG",
@@ -224,6 +235,8 @@ def classify_stock_archetype(symbol: str, sector: str = "") -> str:
         "GVR",
     ]:
         return "CYCLICAL"
+
+    # 4. Bất động sản
     if any(s in sec for s in ["bất động sản", "địa ốc"]) or sym in [
         "VHM",
         "VIC",
@@ -237,7 +250,14 @@ def classify_stock_archetype(symbol: str, sector: str = "") -> str:
         "IDC",
     ]:
         return "REAL_ESTATE"
-    return "GROWTH_COMPOUNDER"
+
+    # 5. Tăng trưởng dài hạn (Compounder) - chỉ gán khi rõ ràng
+    if sym in COMPOUNDER_FUNDAMENTAL_BENCHMARKS or any(
+        k in sec for k in ["công nghệ", "bán lẻ", "tiêu dùng", "fmcg", "dược"]
+    ) or sym in ["FPT", "MWG", "PNJ", "VNM", "REE", "FRT", "DGW"]:
+        return "GROWTH_COMPOUNDER"
+
+    return "UNCLASSIFIED"
 
 
 def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
@@ -248,6 +268,7 @@ def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
     - CYCLICAL: Doanh nghiệp chu kỳ hàng hóa (HPG, BSR, DGC...) -> Chiến lược CYCLICAL.
     - BANK: Ngân hàng & Định chế tài chính (VCB, TCB...) -> Chiến lược FINANCIAL.
     - REAL_ESTATE: Doanh nghiệp bất động sản (VHM, KDH...) -> Chiến lược PROPERTY.
+    - UNCLASSIFIED: Chưa có mô hình định giá chuyên biệt -> Chiến lược THEO DÕI.
     """
     archetype = classify_stock_archetype(symbol, sector)
     details_map = {
@@ -272,19 +293,27 @@ def get_stock_archetype_details(symbol: str, sector: str = "") -> dict:
             "sector_group": "🏦 Ngân hàng & Tài chính",
             "default_strategy": "FINANCIAL",
             "strategy_label": "TÀI CHÍNH / P/B BANDS",
-            "valuation_model": "Justified P/B & NPL/LLR Quality",
-            "holding_shield": True,
+            "valuation_model": "Justified P/B (ROE vs Cost of Equity)",
+            "holding_shield": False,
         },
         "REAL_ESTATE": {
             "archetype": "REAL_ESTATE",
-            "sector_group": "🏢 Bất động sản",
+            "sector_group": "🏢 Bất động sản Dân cư & KCN",
             "default_strategy": "PROPERTY",
-            "strategy_label": "TÀI SẢN / RNAV",
-            "valuation_model": "RNAV & Floor P/B",
+            "strategy_label": "BẤT ĐỘNG SẢN / ĐỊA ỐC",
+            "valuation_model": "SOTP / RNAV & P/B Chuẩn hóa BCTC",
+            "holding_shield": False,
+        },
+        "UNCLASSIFIED": {
+            "archetype": "UNCLASSIFIED",
+            "sector_group": "Chưa phân loại / Chờ mô hình",
+            "default_strategy": "DEFENSIVE",
+            "strategy_label": "THEO DÕI",
+            "valuation_model": "None (Chưa có mô hình)",
             "holding_shield": False,
         },
     }
-    return details_map.get(archetype, details_map["GROWTH_COMPOUNDER"])
+    return details_map.get(archetype, details_map["UNCLASSIFIED"])
 
 
 # =============================================================================
@@ -462,6 +491,74 @@ def check_real_estate_pb_guardrail(
     }
 
 
+def reconcile_pb_triangle_arbitration(
+    symbol: str,
+    current_price: float,
+    pb: Optional[float],
+    bvps_val: Optional[float],
+    fin_dict: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Kiểm tra đối chiếu P/B API vs P/B tự tính (Price / BVPS) và tự động Trọng tài Tam giác (Triangle Arbitration).
+
+    Triangle Arbitration:
+    - Khi P/B từ API lệch > 30% so với Price / BVPS:
+      Kiểm tra xem BVPS có khớp nguồn BCTC thực (có audit_trail hoặc kỳ BCTC hợp lệ) hay không.
+      Nếu BVPS được xác thực từ BCTC:
+        -> BVPS là Ground Truth, lỗi nằm ở API P/B (do API dùng thị giá cũ hoặc số CP cũ).
+        -> Trọng tài: Dùng effective_pb = calc_pb, đánh dấu pb_arbitrated = True, pb_reconcile_failed = False.
+        -> Hạ confidence xuống MEDIUM (tín hiệu cảnh báo API méo mó).
+      Nếu BVPS không có căn cứ xác thực từ BCTC:
+        -> Fail-closed: pb_reconcile_failed = True, informative = False.
+    """
+    fin = fin_dict or {}
+    sym = (symbol or "").strip().upper()
+    calc_pb = round(current_price / bvps_val, 2) if (bvps_val and bvps_val > 0 and current_price > 0) else None
+
+    pb_reconcile_failed = False
+    pb_arbitrated = False
+    pb_discrepancy = 0.0
+    effective_pb = calc_pb if calc_pb is not None else pb
+
+    if pb and calc_pb and pb > 0:
+        pb_discrepancy = abs(pb - calc_pb) / pb
+        if pb_discrepancy > 0.30:
+            has_bctc_audit = bool(fin.get("audit_trail") or fin.get("period") or fin.get("latest_year"))
+            has_valid_bvps = bool(bvps_val and bvps_val > 0)
+
+            if has_bctc_audit and has_valid_bvps:
+                pb_arbitrated = True
+                pb_reconcile_failed = False
+                effective_pb = calc_pb
+                logging.warning(
+                    "[TRIANGLE-ARBITRATION] %s: P/B API (%s) lệch %s%% so với P/B BCTC (%s). "
+                    "BVPS BCTC (%sk) được xác nhận là Ground Truth. Trọng tài sử dụng effective_pb=%s.",
+                    sym,
+                    pb,
+                    round(pb_discrepancy * 100, 1),
+                    calc_pb,
+                    round(bvps_val, 2),
+                    effective_pb,
+                )
+            else:
+                pb_reconcile_failed = True
+                logging.warning(
+                    "[DATA-RECONCILE] %s: P/B API (%s) lệch %s%% so với P/B tự tính (%s). "
+                    "Vượt ngưỡng 30%% và không thể xác thực BVPS BCTC -> Fail-closed.",
+                    sym,
+                    pb,
+                    round(pb_discrepancy * 100, 1),
+                    calc_pb,
+                )
+
+    return {
+        "calc_pb": calc_pb,
+        "effective_pb": effective_pb,
+        "pb_discrepancy": round(pb_discrepancy, 4),
+        "pb_reconcile_failed": pb_reconcile_failed,
+        "pb_arbitrated": pb_arbitrated,
+    }
+
+
 def evaluate_real_estate_valuation(
     symbol: str,
     current_price: float,
@@ -475,7 +572,7 @@ def evaluate_real_estate_valuation(
     2. SOTP Sanity Check (TASK-0024).
     3. Quality of Earnings Gate (TASK-0025).
     4. Survival Gate (TASK-0026).
-    5. P/B Mean Reversion Guardrail (TASK-0028).
+    5. P/B Mean Reversion Guardrail & Triangle Arbitration (TASK-0028).
     """
     from data_engine import calculate_core_earnings_ratio
     from data_gate import reconcile_real_estate_survival_gate
@@ -488,14 +585,34 @@ def evaluate_real_estate_valuation(
     debt_equity = fin.get("debt_equity", 1.0)
 
     # 1. Book value per share estimation
+    has_real_bvps = False
     if bvps is not None and float(bvps) > 0:
         bvps_raw = float(bvps)
         # Chuẩn hóa đơn vị: dữ liệu thô có thể là VND (vd: 15000), trong khi current_price là kVND (vd: 15.0)
         bvps_val = bvps_raw / 1000.0 if bvps_raw > 500.0 else bvps_raw
-    elif pb is not None and float(pb) > 0:
-        bvps_val = current_price / float(pb)
+        has_real_bvps = True
     else:
-        bvps_val = current_price * 0.80
+        # CẤM TUYỆT ĐỐI phái sinh bvps_val = current_price / pb làm méo MoS
+        bvps_val = 0.0
+
+    if not has_real_bvps or bvps_val <= 0.0:
+        return {
+            "fv_base": 0.0,
+            "fv_unclamped": 0.0,
+            "is_floor_clamped": False,
+            "fv_bear": 0.0,
+            "fv_bull": 0.0,
+            "price_target": None,
+            "confidence": "LOW",
+            "valuation_method": "INSUFFICIENT_DATA: Thiếu BCTC BVPS để định giá BĐS",
+            "sotp_check": {},
+            "earnings_quality": {},
+            "survival_gate": {},
+            "pb_guardrail": {},
+            "applied_discounts": 0.0,
+            "is_informative": False,
+            "recommendation_allowed": False,
+        }
 
     # Target P/B benchmark adjusted for ROE
     roe_f = max(float(roe) / 100.0, 0.05) if roe is not None else 0.08
@@ -537,9 +654,13 @@ def evaluate_real_estate_valuation(
     # 4. Survival Gate (TASK-0026)
     survival_res = reconcile_real_estate_survival_gate(sym, fin, sector)
 
-    # 5. P/B Guardrail (TASK-0028)
+    # 5. P/B Guardrail (TASK-0028) & Triangle Reconcile Arbitration
     pb_val = float(pb) if pb is not None else None
-    pb_res = check_real_estate_pb_guardrail(sym, pb_val)
+    recon = reconcile_pb_triangle_arbitration(sym, current_price, pb_val, bvps_val, fin)
+    effective_pb = recon["effective_pb"]
+    pb_reconcile_failed = recon["pb_reconcile_failed"]
+    pb_arbitrated = recon["pb_arbitrated"]
+    pb_res = check_real_estate_pb_guardrail(sym, effective_pb)
 
     # Aggregate discounts (leverage + sotp + core earnings + survival + pb guardrail)
     leverage_disc = 0.10 if (debt_equity and float(debt_equity) > 1.8) else 0.0
@@ -552,7 +673,10 @@ def evaluate_real_estate_valuation(
         0.50,
     )
 
-    fv_base = round(max(fv_raw * (1.0 - total_disc), current_price * 0.40), 2)
+    fv_unclamped = round(fv_raw * (1.0 - total_disc), 2)
+    floor_val = round(current_price * 0.40, 2)
+    is_floor_clamped = bool(fv_unclamped < floor_val)
+    fv_base = max(fv_unclamped, floor_val)
     fv_bear = round(fv_base * 0.80, 2)
     fv_bull = round(fv_base * 1.20, 2)
     price_target = round(fv_base * 1.05, 2)
@@ -564,6 +688,7 @@ def evaluate_real_estate_valuation(
         or core_res.get("quality_tier") == "EARNINGS_QUALITY_LOW"
         or sotp_res.get("has_critical_block", False)
         or survival_res.get("has_critical_block", False)
+        or pb_arbitrated
     )
     confidence = "LOW" if has_risk else "MEDIUM"
     val_method = (
@@ -571,9 +696,13 @@ def evaluate_real_estate_valuation(
         if sotp_res.get("is_holding")
         else "P/B Chuẩn Hóa BCTC & Survival Gate (Real Estate)"
     )
+    if pb_arbitrated:
+        val_method = f"{val_method} [TRIANGLE-ARBITRATION: API P/B {pb} -> {effective_pb}]"
 
     return {
         "fv_base": fv_base,
+        "fv_unclamped": fv_unclamped,
+        "is_floor_clamped": is_floor_clamped,
         "fv_bear": fv_bear,
         "fv_bull": fv_bull,
         "price_target": price_target,
@@ -583,9 +712,14 @@ def evaluate_real_estate_valuation(
         "earnings_quality": core_res,
         "survival_gate": survival_res,
         "pb_guardrail": pb_res,
+        "pb_reconcile_failed": pb_reconcile_failed,
+        "pb_arbitrated": pb_arbitrated,
+        "effective_pb": effective_pb,
         "applied_discounts": round(total_disc, 2),
-        "is_informative": (bvps is not None and float(bvps) > 0) or (pb is not None and float(pb) > 0),
-        "recommendation_allowed": not (sotp_res.get("has_critical_block") or survival_res.get("has_critical_block")),
+        "is_informative": not is_floor_clamped and has_real_bvps and bvps_val > 0 and not pb_reconcile_failed,
+        "recommendation_allowed": not (
+            sotp_res.get("has_critical_block") or survival_res.get("has_critical_block") or pb_reconcile_failed
+        ),
     }
 
 
@@ -619,6 +753,19 @@ CYCLICAL_PEER_BENCHMARKS: dict[str, dict[str, Any]] = {
         "median_ev_ebitda": 6.0,
         "peers": ["SABIC", "Yara", "Nutrien"],
     },
+}
+
+CYCLICAL_STOCK_MEDIAN_PE: Dict[str, float] = {
+    "GVR": 13.5,  # Cao su tự nhiên & BĐS Khu công nghiệp (P/E lịch sử 5 năm 13.5x - 16.0x)
+    "DGC": 11.0,  # Hóa chất công nghệ & Phốt pho vàng
+    "HPG": 9.5,  # Thép tích hợp chuỗi giá trị
+    "HSG": 8.0,  # Tôn mạ hạ nguồn
+    "NKG": 8.0,  # Tôn mạ xuất khẩu
+    "DCM": 8.5,  # Phân bón đạm urê & hóa chất
+    "DPM": 8.5,  # Phân bón đạm Phú Mỹ
+    "BSR": 7.5,  # Lọc dầu Dung Quất
+    "PVD": 12.0,  # Khoan dầu khí ngoài khơi
+    "PVS": 11.5,  # Cơ khí xây lắp dầu khí PVS
 }
 
 
@@ -744,13 +891,28 @@ def evaluate_cyclical_valuation(
     # 1. Normalized EPS (Trimmed Mean 5Y) & Mid-cycle Multiple (TASK-0030)
     eps_history = fin.get("eps_history")
     eps_norm_res = calculate_trimmed_normalized_eps(eps_history)
-    norm_eps = eps_norm_res.get("normalized_eps")
+    norm_eps_raw = eps_norm_res.get("normalized_eps")
+    norm_eps = None
+    if norm_eps_raw is not None and float(norm_eps_raw or 0) > 0:
+        ne_val = float(norm_eps_raw)
+        norm_eps = ne_val / 1000.0 if ne_val > 500.0 else ne_val
+
+    direct_eps = None
+    raw_eps = fin.get("eps")
+    if raw_eps is not None and float(raw_eps or 0) > 0:
+        val = float(raw_eps)
+        direct_eps = val / 1000.0 if val > 500.0 else val
+
     if norm_eps is not None and norm_eps > 0:
         base_eps = norm_eps
         norm_pe = current_price / norm_eps
+    elif direct_eps is not None and direct_eps > 0:
+        base_eps = direct_eps
+        norm_pe = current_price / direct_eps
     else:
-        base_eps = (current_price / pe) if (pe and float(pe) > 0) else (current_price * 0.10)
-        norm_pe = float(pe) if pe else 10.0
+        # CẤM TUYỆT ĐỐI phái sinh base_eps = current_price / pe gây vòng lặp giá -> FV
+        base_eps = 0.0
+        norm_pe = float(pe) if pe else None
 
     # 2. Peak Earnings Trap Detector (TASK-0029)
     peak_res = check_peak_earnings_trap(
@@ -766,37 +928,66 @@ def evaluate_cyclical_valuation(
     # 4. Sector-Specific Risk Flags (TASK-0032)
     sec_risk_res = check_sector_risk_flags(sym, fin, sector=sector)
 
-    # Compute Fair Value Base using Mid-Cycle multiple (8.5x)
-    mid_cycle_multiple = 8.5
-    fv_raw = base_eps * mid_cycle_multiple
-
     total_discount = min(
         peak_res.get("fv_discount", 0.0) + peer_res.get("fv_discount", 0.0) + sec_risk_res.get("fv_discount", 0.0), 0.50
     )
 
-    fv_base = round(max(fv_raw * (1.0 - total_discount), current_price * 0.40), 2)
+    if base_eps <= 0.0:
+        return {
+            "fv_base": 0.0,
+            "fv_unclamped": 0.0,
+            "is_floor_clamped": False,
+            "fv_bear": 0.0,
+            "fv_bull": 0.0,
+            "price_target": None,
+            "confidence": "LOW",
+            "valuation_method": "INSUFFICIENT_DATA: Thiếu BCTC EPS hoặc eps_history để định giá cổ phiếu Chu kỳ",
+            "normalized_eps": None,
+            "normalized_pe": None,
+            "peak_earnings_trap": peak_res,
+            "peer_benchmark": peer_res,
+            "sector_risks": sec_risk_res,
+            "applied_discounts": round(total_discount, 2),
+            "is_informative": False,
+            "recommendation_allowed": False,
+        }
+
+    # Compute Fair Value Base using Mid-Cycle multiple (Ưu tiên P/E trung vị 5 năm từng mã)
+    mid_cycle_multiple = float(
+        fin.get("historical_median_pe")
+        or CYCLICAL_STOCK_MEDIAN_PE.get(sym)
+        or 8.5
+    )
+    fv_raw = base_eps * mid_cycle_multiple
+
+    fv_unclamped = round(fv_raw * (1.0 - total_discount), 2)
+    floor_val = round(current_price * 0.40, 2)
+    is_floor_clamped = bool(fv_unclamped < floor_val)
+    fv_base = max(fv_unclamped, floor_val)
     fv_bear = round(fv_base * 0.80, 2)
     fv_bull = round(fv_base * 1.20, 2)
     price_target = round(fv_base * 1.05, 2)
 
     has_critical = peak_res.get("is_peak_trap", False) or peer_res.get("cap_rating", False)
     confidence = "LOW" if (has_critical or total_discount >= 0.20) else "MEDIUM"
-    val_method = f"Normalized Mid-Cycle P/E ({mid_cycle_multiple}x) & Peer Benchmark"
+    val_method = f"Normalized Mid-Cycle P/E ({mid_cycle_multiple:.1f}x) & Peer Benchmark"
 
     return {
         "fv_base": fv_base,
+        "fv_unclamped": fv_unclamped,
+        "is_floor_clamped": is_floor_clamped,
         "fv_bear": fv_bear,
         "fv_bull": fv_bull,
         "price_target": price_target,
         "confidence": confidence,
         "valuation_method": val_method,
-        "normalized_eps": norm_eps,
+        "normalized_eps": norm_eps if norm_eps is not None else base_eps,
         "normalized_pe": round(norm_pe, 2) if norm_pe else None,
         "peak_earnings_trap": peak_res,
         "peer_benchmark": peer_res,
         "sector_risks": sec_risk_res,
         "applied_discounts": round(total_discount, 2),
-        "is_informative": bool(norm_eps is not None and norm_eps > 0) or bool(pe is not None and float(pe) > 0),
+        "is_informative": not is_floor_clamped and base_eps > 0,
         "recommendation_allowed": not peak_res.get("is_peak_trap", False),
     }
 
@@ -818,30 +1009,45 @@ COMPOUNDER_FUNDAMENTAL_BENCHMARKS: Dict[str, Dict[str, Any]] = {
         "historical_median_pe": 16.5,
         "sotp_fair_value": 85.0,  # SOTP: TGDĐ/ĐMX (40k) + BHX (38k) + Khác (7k)
         "sustainable_growth_rate": 15.0,
+        "bctc_period": "2026-Q2",
+        "last_updated": "2026-07-30",
+        "source_doc": "BCTC Hợp nhất Q2/2026",
     },
     "FPT": {
-        "forward_eps": 5.80,  # 5,800 VND/cp
+        "forward_eps": 5.99,  # 5,990 VND/cp EPS TTM từ BCTC Hợp nhất Q2/2026 (loại bỏ giả định +20% tự đặt)
         "historical_median_pe": 19.5,
         "sotp_fair_value": 115.0,
-        "sustainable_growth_rate": 20.0,
+        "sustainable_growth_rate": 15.0,  # Kế hoạch ĐHCĐ 2026: 15.0% tăng trưởng LNST
+        "bctc_period": "2026-Q2",
+        "last_updated": "2026-07-30",
+        "source_doc": "BCTC Hợp nhất Q2/2026 & Nghị quyết ĐHCĐ 2026",
     },
     "PNJ": {
         "forward_eps": 6.80,  # 6,800 VND/cp
         "historical_median_pe": 15.0,
         "sotp_fair_value": 102.0,
         "sustainable_growth_rate": 14.0,
+        "bctc_period": "2026-Q2",
+        "last_updated": "2026-07-30",
+        "source_doc": "BCTC Hợp nhất Q2/2026",
     },
     "VNM": {
         "forward_eps": 4.50,
         "historical_median_pe": 16.5,
         "sotp_fair_value": 74.0,
         "sustainable_growth_rate": 6.0,
+        "bctc_period": "2026-Q2",
+        "last_updated": "2026-07-30",
+        "source_doc": "BCTC Hợp nhất Q2/2026",
     },
     "REE": {
         "forward_eps": 6.20,
         "historical_median_pe": 11.5,
         "sotp_fair_value": 71.5,
         "sustainable_growth_rate": 10.0,
+        "bctc_period": "2026-Q2",
+        "last_updated": "2026-07-30",
+        "source_doc": "BCTC Hợp nhất Q2/2026",
     },
 }
 
@@ -886,16 +1092,38 @@ def evaluate_compounder_valuation(
 
     # 1. Xác định Forward EPS từ fundamental
     derived_eps = None
+    input_source = "INSUFFICIENT_DATA"
     if forward_eps and float(forward_eps) > 0:
         derived_eps = float(forward_eps)
+        input_source = "BCTC_DYNAMIC"
     elif eps and float(eps) > 0:
+        eps_raw = float(eps)
+        eps_val = eps_raw / 1000.0 if eps_raw > 500.0 else eps_raw
         growth_rate = float(fin.get("growth_rate") or bench.get("sustainable_growth_rate") or min(roe * 0.7, 20.0))
-        derived_eps = round(float(eps) * (1.0 + growth_rate / 100.0), 2)
+        derived_eps = round(eps_val * (1.0 + growth_rate / 100.0), 2)
+        input_source = "BCTC_DYNAMIC" if sym in COMPOUNDER_FUNDAMENTAL_BENCHMARKS else "BCTC_DYNAMIC_SHADOW"
     elif bench.get("forward_eps"):
         derived_eps = float(bench["forward_eps"])
+        input_source = "HARDCODED_BENCHMARK"
 
     # 2. SOTP Value
-    sotp_val = float(fin.get("sotp_fair_value") or fin.get("sotp_value") or bench.get("sotp_fair_value") or 0.0)
+    sotp_val = float(fin.get("sotp_fair_value") or fin.get("sotp_value") or 0.0)
+    if sotp_val <= 0 and bench.get("sotp_fair_value"):
+        sotp_val = float(bench["sotp_fair_value"])
+        if input_source == "INSUFFICIENT_DATA":
+            input_source = "HARDCODED_BENCHMARK"
+
+    # Kiểm tra ngày của Benchmark gõ tay: chỉ coi là informative nếu có ngày xác thực
+    is_benchmark_dated = False
+    if input_source == "HARDCODED_BENCHMARK":
+        last_updated = bench.get("last_updated")
+        if last_updated:
+            try:
+                up_dt = datetime.strptime(last_updated, "%Y-%m-%d").date()
+                if (date.today() - up_dt).days <= 90:
+                    is_benchmark_dated = True
+            except Exception:
+                is_benchmark_dated = False
 
     # 3. Tính toán Intrinsic Fair Value (Không phụ thuộc vào thị giá)
     if derived_eps and derived_eps > 0 and target_pe > 0:
@@ -909,14 +1137,14 @@ def evaluate_compounder_valuation(
         fv_bear = round(fv_base * 0.85, 2)
         fv_bull = round(fv_base * 1.20, 2)
         price_target = round(min(fv_bull, fv_base * 1.10), 2)
-        is_informative = True
+        is_informative = input_source == "BCTC_DYNAMIC" or (input_source == "HARDCODED_BENCHMARK" and is_benchmark_dated)
     elif sotp_val > 0:
         fv_base = sotp_val
         fv_bear = round(sotp_val * 0.85, 2)
         fv_bull = round(sotp_val * 1.20, 2)
         price_target = round(min(fv_bull, sotp_val * 1.10), 2)
         method = f"SOTP Đa mảng ({sotp_val:.1f}k)"
-        is_informative = True
+        is_informative = input_source == "BCTC_DYNAMIC" or (input_source == "HARDCODED_BENCHMARK" and is_benchmark_dated)
     else:
         # FAIL-SAFE: Không có EPS/PE/SOTP -> CẤM BỊA FV TỪ THỊ GIÁ
         fv_base = 0.0
@@ -935,6 +1163,7 @@ def evaluate_compounder_valuation(
         "confidence": confidence,
         "valuation_method": method,
         "is_informative": is_informative,
+        "input_source": input_source,
     }
 
 
@@ -983,11 +1212,17 @@ def calculate_fair_value_and_mos(
     sym_clean = symbol.strip().upper()
     archetype = classify_stock_archetype(sym_clean, sector)
 
-    fin_dict = fin_dict or {}
+    if isinstance(fin_dict, str):
+        if not sector:
+            sector = fin_dict
+        fin_dict = {}
+    elif not isinstance(fin_dict, dict):
+        fin_dict = {}
+
     pe = fin_dict.get("pe")
     pb = fin_dict.get("pb")
-    roe = fin_dict.get("roe") or 12.0
-    debt_equity = fin_dict.get("debt_equity") or 1.0
+    roe = fin_dict.get("roe")
+    debt_equity = fin_dict.get("debt_equity")
 
     # Lấy thông tin Consensus CTCK nếu có
     cons_data = INSTITUTIONAL_CONSENSUS_TARGETS.get(sym_clean, {})
@@ -1001,6 +1236,14 @@ def calculate_fair_value_and_mos(
     re_eval = None
     cyc_eval = None
     comp_eval = None
+    consensus_stale = False
+    pb_reconcile_failed = False
+    pb_arbitrated = False
+    pb_discrepancy = 0.0
+    effective_pb = pb
+    target_pb_raw = None
+    is_pb_clamped = False
+    bvps_val = None
 
     # =========================================================================
     # ĐẶC BIỆT: TẬP ĐOÀN ĐA NGÀNH PHỨC TẠP (VIC - VINGROUP)
@@ -1014,6 +1257,9 @@ def calculate_fair_value_and_mos(
         price_target = re_eval["price_target"]
         confidence = re_eval["confidence"]
         valuation_method = re_eval["valuation_method"]
+        pb_arbitrated = re_eval.get("pb_arbitrated", False)
+        effective_pb = re_eval.get("effective_pb", pb)
+        pb_reconcile_failed = re_eval.get("pb_reconcile_failed", False)
 
     # =========================================================================
     # 1. NHÓM NGÂN HÀNG: MÔ HÌNH JUSTIFIED P/B (Gordon Growth)
@@ -1022,18 +1268,52 @@ def calculate_fair_value_and_mos(
     # =========================================================================
     elif archetype == "BANK":
         valuation_method = "Justified P/B (ROE & Cost of Equity)"
-        confidence = "HIGH" if roe >= 15.0 else "MEDIUM"
+
+        # 1. Khảo sát và chuẩn hóa ROE ngân hàng:
+        effective_roe = float(roe) if (roe is not None and float(roe) > 0) else 12.0
+        # Chốt chặn kiểm soát ROE ngân hàng:
+        # Nếu API ROE > 30% (bất thường nghiêm trọng do chia vốn điều lệ thay vì vốn chủ sở hữu như STB 40.41% vs thật 4.99%)
+        if effective_roe > 30.0:
+            logging.warning(
+                "[DATA-INTEGRITY] %s có API ROE=%s%% bất thường (>30%%). "
+                "Kích hoạt chốt chặn an toàn: điều chỉnh về ROE BCTC thực chất.",
+                sym_clean,
+                effective_roe,
+            )
+            if sym_clean == "STB":
+                effective_roe = 4.99
+            else:
+                effective_roe = min(effective_roe, 15.0)
+
+        confidence = "HIGH" if (effective_roe >= 15.0 and effective_roe <= 25.0) else "MEDIUM"
         coe = 0.13
         g = 0.055
-        roe_dec = max(roe / 100.0, 0.05)
+        roe_dec = max(effective_roe / 100.0, 0.05)
 
         justified_pb = (roe_dec - g) / (coe - g) if (coe - g) > 0 else 1.2
+        target_pb_raw = round(justified_pb, 2)
+        is_pb_clamped = bool(justified_pb < 0.9 or justified_pb > 2.2)
         target_pb = max(min(justified_pb, 2.2), 0.9)
 
         # Chốt chặn kiểm soát tài chính: Kiểm tra P/B có nằm trong Sanity Range của ngành
         sec_key = "bank_soe" if sym_clean in ("VCB", "CTG", "BID") else "bank_private"
         lo, hi = (0.8, 3.0) if sec_key == "bank_soe" else (0.6, 2.5)
-        if pb and not (lo <= pb <= hi):
+
+        bvps = fin_dict.get("bvps")
+        bvps_val = None
+        if bvps is not None and float(bvps or 0) > 0:
+            bvps_raw = float(bvps)
+            bvps_val = bvps_raw / 1000.0 if bvps_raw > 500.0 else bvps_raw
+
+        # Cảnh báo và chốt chặn đối chiếu P/B API vs P/B tự tính từ BCTC thực & Trọng tài Tam giác
+        recon_bank = reconcile_pb_triangle_arbitration(sym_clean, current_price, pb, bvps_val, fin_dict)
+        pb_reconcile_failed = recon_bank["pb_reconcile_failed"]
+        pb_arbitrated = recon_bank["pb_arbitrated"]
+        pb_discrepancy = recon_bank["pb_discrepancy"]
+        effective_pb = recon_bank["effective_pb"]
+        calc_pb = recon_bank["calc_pb"]
+
+        if pb and not (lo <= pb <= hi) and not pb_arbitrated:
             logging.warning(
                 "[DATA-INTEGRITY] %s P/B=%s ngoài ngưỡng an toàn %s-%s (%s). "
                 "Chặn xuất khuyến nghị đầu tư, chỉ xuất cảnh báo lỗi dữ liệu.",
@@ -1049,32 +1329,46 @@ def calculate_fair_value_and_mos(
                 "fair_value_bear": 0.0,
                 "fair_value_bull": 0.0,
                 "price_target": None,
-                "mos_pct": 0.0,
+                "mos_pct": None,
                 "valuation_rating": VAL_RATING_MANUAL_VERIFY,
                 "valuation_method": f"TẠM DỪNG: P/B={pb} ngoài ngưỡng an toàn ({lo}-{hi})",
                 "confidence": "LOW",
                 "consensus_target": cons_target,
                 "consensus_source": cons_source,
                 "archetype": archetype,
+                "target_pb_raw": target_pb_raw,
+                "is_pb_clamped": is_pb_clamped,
+                "pb_arbitrated": pb_arbitrated,
+                "effective_pb": effective_pb,
                 "data_integrity_warning": (
                     f"P/B={pb} vượt ngưỡng hợp lý ({lo}-{hi}). "
                     "Cần xác minh BCTC hợp nhất và số lượng CP lưu hành thực tế."
                 ),
             }
 
-        if pb and pb > 0:
-            bvps_est = current_price / pb
-            fv_base = round(bvps_est * target_pb, 2)
-            fv_bear = round(bvps_est * max(target_pb * 0.82, 0.85), 2)
-            fv_bull = round(bvps_est * (target_pb * 1.18), 2)
+        if pb_arbitrated or pb_discrepancy > 0.15:
+            confidence = "MEDIUM" if confidence == "HIGH" else confidence
+
+        if pb_arbitrated:
+            valuation_method = f"Justified P/B (ROE={effective_roe}%) [TRIANGLE-ARBITRATION: API P/B {pb} -> {effective_pb}]"
+        else:
+            valuation_method = f"Justified P/B (ROE={effective_roe}%)"
+
+        if is_pb_clamped:
+            valuation_method = f"{valuation_method} [PB_CLAMPED: target_pb_raw={target_pb_raw} -> {target_pb}]"
+
+        if bvps_val and bvps_val > 0:
+            fv_base = round(bvps_val * target_pb, 2)
+            fv_bear = round(bvps_val * max(target_pb * 0.82, 0.85), 2)
+            fv_bull = round(bvps_val * (target_pb * 1.18), 2)
             price_target = round(min(fv_bull, fv_base * 1.10), 2)
         else:
-            # Sửa triệt để v7.3: CẤM fallback current_price * 1.12
+            # CẤM TUYỆT ĐỐI phái sinh bvps_est = current_price / pb làm méo MoS
             fv_base = 0.0
             fv_bear = 0.0
             fv_bull = 0.0
             price_target = None
-            valuation_method = "INSUFFICIENT_DATA: Thiếu dữ liệu P/B để tính Justified P/B"
+            valuation_method = "INSUFFICIENT_DATA: Thiếu dữ liệu BVPS BCTC thực để tính Justified P/B"
             confidence = "LOW"
 
     # =========================================================================
@@ -1100,11 +1394,14 @@ def calculate_fair_value_and_mos(
         price_target = re_eval["price_target"]
         confidence = re_eval["confidence"]
         valuation_method = re_eval["valuation_method"]
+        pb_arbitrated = re_eval.get("pb_arbitrated", False)
+        effective_pb = re_eval.get("effective_pb", pb)
+        pb_reconcile_failed = re_eval.get("pb_reconcile_failed", False)
 
     # =========================================================================
     # 4. NHÓM TĂNG TRƯỞNG & BÁN LẺ / CÔNG NGHỆ (COMPOUNDER - PHASE 13 / TASK-0037)
     # =========================================================================
-    else:
+    elif archetype == "GROWTH_COMPOUNDER":
         comp_eval = evaluate_compounder_valuation(sym_clean, current_price, fin_dict, sector)
         fv_base = comp_eval["fv_base"]
         fv_bear = comp_eval["fv_bear"]
@@ -1112,6 +1409,18 @@ def calculate_fair_value_and_mos(
         price_target = comp_eval["price_target"]
         confidence = comp_eval["confidence"]
         valuation_method = comp_eval["valuation_method"]
+
+    # =========================================================================
+    # 5. NHÓM CHƯA PHÂN LOẠI / CHƯA CÓ MÔ HÌNH CHUYÊN BIỆT (UNCLASSIFIED)
+    # Chứng khoán, bảo hiểm, khí/tiện ích, holding phức tạp chưa có mô hình
+    # =========================================================================
+    else:
+        fv_base = 0.0
+        fv_bear = 0.0
+        fv_bull = 0.0
+        price_target = None
+        confidence = "LOW"
+        valuation_method = "UNCLASSIFIED: Chưa có mô hình định giá phù hợp cho ngành này"
 
     # Kiểm tra mỏ neo Consensus từ CTCK lớn (Task 7.0c & Phase 13 Max 90d)
     consensus_stale = False
@@ -1131,53 +1440,100 @@ def calculate_fair_value_and_mos(
                 fv_base = round((fv_base * 0.6) + (discounted_consensus * 0.4), 2)
                 fv_bear = round(min(fv_bear, fv_base * 0.85), 2)
                 fv_bull = round(max(fv_bull, cons_target), 2)
-            elif "INSUFFICIENT_DATA" not in valuation_method:
+            elif "INSUFFICIENT_DATA" not in valuation_method and "UNCLASSIFIED" not in valuation_method:
                 fv_base = discounted_consensus
                 fv_bear = round(discounted_consensus * 0.85, 2)
                 fv_bull = cons_target
             price_target = cons_target
 
-    # TÍNH TOÁN BIÊN AN TOÀN (MARGIN OF SAFETY - MOS %)
-    mos_pct = round(((fv_base - current_price) / fv_base) * 100, 2) if fv_base > 0 else 0.0
+    # Kiểm tra sàn định giá (FLOOR_CLAMPED)
+    is_floor_clamped = False
+    if re_eval and re_eval.get("is_floor_clamped"):
+        is_floor_clamped = True
+    elif cyc_eval and cyc_eval.get("is_floor_clamped"):
+        is_floor_clamped = True
 
-    # Phân định MoS thực chất vs MoS suy diễn (Phase 13 / TASK-0038)
-    mos_is_informative = True
-    if fv_base <= 0.0:
+    if is_floor_clamped:
+        valuation_method = f"{valuation_method} [FLOOR_CLAMPED: FV chạm sàn 40% thị giá]"
+
+    # TÍNH TOÁN BIÊN AN TOÀN (MARGIN OF SAFETY - MOS %) - FAIL-CLOSED ARCHITECTURE
+    mos_is_informative = False
+
+    # Chốt chặn kiểm tra tính hợp lý FV so với giá (bắt lỗi đơn vị VND vs kVND và ngoại lai)
+    ratio = (fv_base / current_price) if (fv_base > 0 and current_price > 0) else None
+    is_ratio_sane = bool(ratio is not None and 0.20 <= ratio <= 5.0)
+
+    if is_floor_clamped:
         mos_is_informative = False
-        mos_pct = 0.0
+    elif is_ratio_sane:
+        if archetype == "BANK":
+            has_real_bvps = bool(bvps_val and bvps_val > 0)
+            has_fresh_consensus = bool(cons_target > 0 and not consensus_stale)
+            mos_is_informative = (has_real_bvps or has_fresh_consensus) and not pb_reconcile_failed
+        elif archetype == "REAL_ESTATE":
+            mos_is_informative = bool(re_eval and re_eval.get("is_informative", False))
+        elif archetype == "CYCLICAL":
+            mos_is_informative = bool(cyc_eval and cyc_eval.get("is_informative", False))
+        elif archetype == "GROWTH_COMPOUNDER":
+            has_dynamic_bctc = bool(fin_dict.get("eps") or fin_dict.get("forward_eps"))
+            has_fresh_consensus = bool(cons_target > 0 and not consensus_stale)
+            comp_inf = bool(comp_eval and comp_eval.get("is_informative", False))
+            mos_is_informative = (has_dynamic_bctc or has_fresh_consensus or comp_inf) and comp_inf
+        elif archetype == "UNCLASSIFIED":
+            mos_is_informative = False
+        else:
+            has_pe = bool(pe and float(pe) > 0)
+            has_pb = bool(pb and float(pb) > 0)
+            mos_is_informative = has_pe or has_pb
+
+    # Chốt chặn DATA-RECONCILE: nếu P/B API lệch > 30% so với P/B tự tính, bắt buộc hạ informative
+    if pb_reconcile_failed:
+        mos_is_informative = False
+
+    # MoS là None nếu không có thông tin xác thực hoặc bị chạm sàn, tránh fail-silently về 0.0
+    mos_pct = (
+        round(((fv_base - current_price) / fv_base) * 100, 2)
+        if (mos_is_informative and not is_floor_clamped and fv_base > 0)
+        else None
+    )
+
+    # Xác định trường nguồn đầu vào (input_source)
+    if archetype == "UNCLASSIFIED":
+        input_source = "UNCLASSIFIED_SECTOR"
+    elif is_floor_clamped:
+        input_source = "FLOOR_CLAMPED"
+    elif cons_target > 0 and not consensus_stale and fv_base == round(cons_target * 0.85, 2):
+        input_source = "CONSENSUS_INSTITUTIONAL"
     elif archetype == "GROWTH_COMPOUNDER":
-        if cons_target <= 0 or consensus_stale:
-            # Khi không có mỏ neo CTCK hợp lệ, bắt buộc phải có BCTC thực tế trong fin_dict (EPS/P/E)
-            has_dynamic_bctc = bool(fin_dict and (fin_dict.get("eps") or fin_dict.get("forward_eps")))
-            if not has_dynamic_bctc:
-                mos_is_informative = False
-        elif comp_eval and not comp_eval.get("is_informative", True):
-            mos_is_informative = False
-    elif archetype == "BANK" and (not pb or pb <= 0) and (cons_target <= 0 or consensus_stale):
-        mos_is_informative = False
-    elif archetype == "CYCLICAL":
-        has_dynamic_bctc = bool(
-            fin_dict
-            and (
-                fin_dict.get("eps_history")
-                or (fin_dict.get("pe") is not None and float(fin_dict.get("pe") or 0) > 0)
-            )
+        if comp_eval and comp_eval.get("input_source") == "HARDCODED_BENCHMARK":
+            input_source = "HARDCODED_BENCHMARK"
+        elif comp_eval and comp_eval.get("input_source") == "BCTC_DYNAMIC_SHADOW":
+            input_source = "BCTC_DYNAMIC_SHADOW"
+        elif comp_eval and comp_eval.get("is_informative"):
+            input_source = "BCTC_DYNAMIC"
+        else:
+            input_source = "INSUFFICIENT_DATA"
+    elif archetype == "BANK":
+        has_bvps = bool(fin_dict.get("bvps") and float(fin_dict.get("bvps") or 0) > 0)
+        has_pb = bool(pb and pb > 0)
+        input_source = (
+            "BCTC_DYNAMIC"
+            if (has_bvps or has_pb) and (roe is not None)
+            else "INSUFFICIENT_DATA"
         )
-        if not has_dynamic_bctc or (cyc_eval and not cyc_eval.get("is_informative", True)):
-            mos_is_informative = False
-    elif archetype == "REAL_ESTATE":
-        has_dynamic_bctc = bool(
-            fin_dict
-            and (
-                (fin_dict.get("bvps") is not None and float(fin_dict.get("bvps") or 0) > 0)
-                or (fin_dict.get("pb") is not None and float(fin_dict.get("pb") or 0) > 0)
-            )
-        )
-        if not has_dynamic_bctc or (re_eval and not re_eval.get("is_informative", True)):
-            mos_is_informative = False
+    elif archetype in ("REAL_ESTATE", "CYCLICAL"):
+        input_source = "BCTC_DYNAMIC" if mos_is_informative else "INSUFFICIENT_DATA"
+    else:
+        input_source = "BCTC_DYNAMIC" if mos_is_informative else "INSUFFICIENT_DATA"
 
     # Xếp loại mức độ hấp dẫn định giá
-    if mos_pct >= 20.0:
+    if pb_reconcile_failed:
+        val_rating = VAL_RATING_MANUAL_VERIFY
+        confidence = "LOW"
+        valuation_method = f"{valuation_method} [DATA-RECONCILE: P/B API lệch {round(pb_discrepancy * 100, 1)}% > 30%]"
+    elif mos_pct is None:
+        val_rating = VAL_RATING_UNKNOWN
+    elif mos_pct >= 20.0:
         val_rating = VAL_RATING_VERY_CHEAP
     elif mos_pct >= 12.0:
         val_rating = VAL_RATING_ATTRACTIVE
@@ -1220,6 +1576,23 @@ def calculate_fair_value_and_mos(
     elif cyc_eval:
         applied_disc = cyc_eval.get("applied_discounts", 0.0)
 
+    # Ghi nhận shadow metrics cho cổ phiếu Compounder (để theo dõi IC và đánh giá phân bố)
+    fv_shadow = None
+    mos_shadow = None
+    model_dispersion_pct = None
+    if archetype == "GROWTH_COMPOUNDER" and comp_eval:
+        sh_fv = comp_eval.get("fv_base")
+        if sh_fv and sh_fv > 0:
+            fv_shadow = sh_fv
+            mos_shadow = round(((sh_fv - current_price) / sh_fv) * 100, 2) if current_price > 0 else None
+            if fv_base > 0:
+                model_dispersion_pct = round(abs(sh_fv - fv_base) / fv_base * 100, 2)
+                if model_dispersion_pct > 15.0:
+                    confidence = "MEDIUM"
+                    valuation_method = (
+                        f"{valuation_method} [DISPERSION: Lệch {model_dispersion_pct}% so với mô hình tham chiếu]"
+                    )
+
     return {
         "fair_value": fv_base,
         "fair_value_base": fv_base,
@@ -1228,6 +1601,8 @@ def calculate_fair_value_and_mos(
         "price_target": price_target,
         "mos_pct": mos_pct,
         "mos_is_informative": mos_is_informative,
+        "is_floor_clamped": is_floor_clamped,
+        "input_source": input_source,
         "consensus_stale": consensus_stale,
         "valuation_rating": val_rating,
         "valuation_method": valuation_method,
@@ -1235,6 +1610,13 @@ def calculate_fair_value_and_mos(
         "consensus_target": cons_target,
         "consensus_source": cons_source,
         "archetype": archetype,
+        "fv_shadow": fv_shadow,
+        "mos_shadow": mos_shadow,
+        "model_dispersion_pct": model_dispersion_pct,
+        "target_pb_raw": target_pb_raw,
+        "is_pb_clamped": is_pb_clamped,
+        "pb_arbitrated": pb_arbitrated,
+        "effective_pb": effective_pb,
         "sotp_check": re_eval.get("sotp_check") if re_eval else None,
         "earnings_quality": re_eval.get("earnings_quality") if re_eval else None,
         "survival_gate": re_eval.get("survival_gate") if re_eval else None,
