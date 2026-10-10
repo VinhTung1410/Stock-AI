@@ -19,6 +19,7 @@ from quant_engine import evaluate_decision_hard_gates
 from quant_valuation import calculate_fair_value_and_mos
 
 MOCK_FIN_BANK = {
+    "bvps": 28.125,
     "pb": 1.6,
     "roe": 18.0,
     "period": "2026-Q2",

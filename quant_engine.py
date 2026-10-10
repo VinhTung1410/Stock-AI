@@ -445,10 +445,16 @@ def evaluate_decision_hard_gates(
     )
 
     downside_val = max(current_price - stop_loss, 0.01)
-    upside_val = max(price_target - current_price, 0.01)
+    upside_val = max(price_target - current_price, 0.0)
 
     # 3. Tỷ lệ Risk / Reward R (theo Current nếu chưa có weighted entry)
-    rr = round(upside_val / downside_val, 2) if downside_val > 0 else 1.0
+    # Ngăn R:R nổ 99.9x khi thị giá thủng stop loss hoặc không còn upside trong thị trường downtrend
+    if stop_loss > 0 and current_price <= stop_loss:
+        rr = 0.0
+    elif price_target <= current_price:
+        rr = 0.0
+    else:
+        rr = min(round(upside_val / downside_val, 2), 10.0) if downside_val > 0 else 0.0
 
     # 4. Kelly Criterion f* & Half-Kelly
     p_win = p_bull + (0.5 * p_base)

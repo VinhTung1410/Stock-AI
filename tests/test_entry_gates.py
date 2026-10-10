@@ -12,6 +12,7 @@ Covers:
 
 
 from entry_gates import (
+    GATE_DATA_RECONCILE,
     EntryGateResult,
     evaluate_entry_gates,
 )
@@ -123,7 +124,7 @@ def test_layer_1_data_gate_stale_or_missing_blocks_buy():
         conviction_score=80.0,
     )
     assert res.can_buy is False
-    assert res.blocked_by == "DATA_GATE"
+    assert res.blocked_by == GATE_DATA_RECONCILE
     assert res.position_size_multiplier == 0.0
 
 

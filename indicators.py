@@ -242,9 +242,15 @@ def calculate_valuation_triangle(
         price_base = round(current_price * 1.10, 2)
         price_bear = round(current_price * 0.85, 2)
 
-    downside = max(current_price - price_bear, 0.01)
-    upside = max(price_bull - current_price, 0.0)
-    rr_ratio = round(upside / downside, 2) if downside > 0 else 1.0
+    if current_price <= price_bear:
+        downside = 0.0
+        rr_ratio = None
+        rr_status = "PRICE_BELOW_BEAR"
+    else:
+        downside = current_price - price_bear
+        upside = max(price_bull - current_price, 0.0)
+        rr_ratio = round(upside / downside, 2)
+        rr_status = "NORMAL"
 
     return {
         "price_bull": price_bull,
@@ -252,6 +258,7 @@ def calculate_valuation_triangle(
         "price_bear": price_bear,
         "is_cyclical": is_cyclical,
         "rr_ratio": rr_ratio,
+        "rr_status": rr_status,
         "has_quant_anchor": bool(fair_value and fair_value > 0),
     }
 

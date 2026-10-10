@@ -211,10 +211,13 @@ def _check_valuation_mos_layer(
         return False
 
     if fin_dict and "mos_pct" in fin_dict and "mos_is_informative" in fin_dict:
+        raw_m = fin_dict.get("mos_pct")
+        m_float = float(raw_m) if raw_m is not None else None
+        fv_fallback = current_price * (1.0 + m_float / 100.0) if m_float is not None else 0.0
         val_res = {
-            "mos_pct": float(fin_dict["mos_pct"]),
+            "mos_pct": m_float,
             "mos_is_informative": bool(fin_dict["mos_is_informative"]),
-            "fair_value": float(fin_dict.get("fair_value", current_price * (1.0 + float(fin_dict["mos_pct"]) / 100.0))),
+            "fair_value": float(fin_dict.get("fair_value", fv_fallback)),
             "valuation_method": str(fin_dict.get("valuation_method", "PROVIDED")),
         }
     else:

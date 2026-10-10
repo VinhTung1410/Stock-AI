@@ -32,9 +32,9 @@ VAL_RATING_UNKNOWN = "⚪ CHƯA RÕ / THIẾU DỮ LIỆU"
 INSTITUTIONAL_CONSENSUS_TARGETS = {
     "FPT": {
         "consensus_target": 88.0,
-        "source": "SSI/Vietcap/HSC Consensus",
+        "source": "SSI/Vietcap/HSC Consensus (Q2 Review)",
         "quality_tier": "TIER_1_COMPOUNDER",
-        "last_updated": "2026-10-01",
+        "last_updated": "2026-08-20",
     },
     "HPG": {
         "consensus_target": 26.5,
@@ -491,6 +491,35 @@ def check_real_estate_pb_guardrail(
     }
 
 
+# Bảng đối chiếu BVPS Vốn chủ sở hữu thuộc cổ đông công ty mẹ sau điều chỉnh tăng vốn/pha loãng (Q2/2026)
+AUDITED_BCTC_PARENT_BVPS: Dict[str, Dict[str, Any]] = {
+    "CTG": {
+        "parent_equity_bil": 198956.55,  # 198,956.55 tỷ VND Vốn chủ ngân hàng mẹ Q2/2026
+        "outstanding_shares": 7766944637,  # 7.767 tỷ CP sau đợt tăng vốn 14/01/2026
+        "bvps": 25.62,  # 25,615.8 VND/CP
+        "source": "BCTC Hợp nhất Q2/2026 sau pha loãng tăng vốn 77.67k tỷ",
+    },
+    "DIG": {
+        "parent_equity_bil": 10067.22,  # 10,067.22 tỷ VND Vốn chủ mẹ Q2/2026
+        "outstanding_shares": 844192763,  # 844.19 triệu CP
+        "bvps": 11.93,  # 11,925.3 VND/CP
+        "source": "BCTC Hợp nhất Q2/2026 cổ đông công ty mẹ",
+    },
+    "ACB": {
+        "parent_equity_bil": 99314.52,
+        "outstanding_shares": 5580584487,
+        "bvps": 17.80,
+        "source": "BCTC Hợp nhất Q2/2026",
+    },
+    "STB": {
+        "parent_equity_bil": 62800.0,
+        "outstanding_shares": 1885215716,
+        "bvps": 33.30,
+        "source": "BCTC Hợp nhất Q2/2026",
+    },
+}
+
+
 def reconcile_pb_triangle_arbitration(
     symbol: str,
     current_price: float,
@@ -512,7 +541,32 @@ def reconcile_pb_triangle_arbitration(
     """
     fin = fin_dict or {}
     sym = (symbol or "").strip().upper()
-    calc_pb = round(current_price / bvps_val, 2) if (bvps_val and bvps_val > 0 and current_price > 0) else None
+
+    reconciled_bvps = bvps_val
+    bvps_arbitrated = False
+
+    # 1. Trọng tài BVPS độc lập từ BCTC cổ đông mẹ khi có chênh lệch pha loãng/tăng vốn > 5% hoặc thiếu BVPS
+    if sym in AUDITED_BCTC_PARENT_BVPS:
+        bctc_bvps = AUDITED_BCTC_PARENT_BVPS[sym]["bvps"]
+        if not bvps_val or bvps_val <= 0:
+            reconciled_bvps = bctc_bvps
+            bvps_arbitrated = True
+        else:
+            bvps_dev = abs(bvps_val - bctc_bvps) / bctc_bvps
+            if bvps_dev > 0.05:
+                logging.warning(
+                    "[TRIANGLE-ARBITRATION] %s: BVPS nguồn ngoài (%sk) lệch %s%% > 5%% so với BVPS BCTC mẹ (%sk). "
+                    "Kích hoạt trọng tài độc lập: nạp BVPS BCTC mẹ làm Ground Truth.",
+                    sym,
+                    round(bvps_val, 2),
+                    round(bvps_dev * 100, 1),
+                    bctc_bvps,
+                )
+                reconciled_bvps = bctc_bvps
+                bvps_arbitrated = True
+
+    effective_bvps = reconciled_bvps if (reconciled_bvps and reconciled_bvps > 0) else bvps_val
+    calc_pb = round(current_price / effective_bvps, 2) if (effective_bvps and effective_bvps > 0 and current_price > 0) else None
 
     pb_reconcile_failed = False
     pb_arbitrated = False
@@ -521,9 +575,9 @@ def reconcile_pb_triangle_arbitration(
 
     if pb and calc_pb and pb > 0:
         pb_discrepancy = abs(pb - calc_pb) / pb
-        if pb_discrepancy > 0.30:
+        if pb_discrepancy > 0.20:
             has_bctc_audit = bool(fin.get("audit_trail") or fin.get("period") or fin.get("latest_year"))
-            has_valid_bvps = bool(bvps_val and bvps_val > 0)
+            has_valid_bvps = bool(effective_bvps and effective_bvps > 0)
 
             if has_bctc_audit and has_valid_bvps:
                 pb_arbitrated = True
@@ -536,14 +590,14 @@ def reconcile_pb_triangle_arbitration(
                     pb,
                     round(pb_discrepancy * 100, 1),
                     calc_pb,
-                    round(bvps_val, 2),
+                    round(effective_bvps, 2),
                     effective_pb,
                 )
             else:
                 pb_reconcile_failed = True
                 logging.warning(
                     "[DATA-RECONCILE] %s: P/B API (%s) lệch %s%% so với P/B tự tính (%s). "
-                    "Vượt ngưỡng 30%% và không thể xác thực BVPS BCTC -> Fail-closed.",
+                    "Vượt ngưỡng 20%% và không thể xác thực BVPS BCTC -> Fail-closed.",
                     sym,
                     pb,
                     round(pb_discrepancy * 100, 1),
@@ -553,6 +607,8 @@ def reconcile_pb_triangle_arbitration(
     return {
         "calc_pb": calc_pb,
         "effective_pb": effective_pb,
+        "reconciled_bvps": reconciled_bvps,
+        "bvps_arbitrated": bvps_arbitrated,
         "pb_discrepancy": round(pb_discrepancy, 4),
         "pb_reconcile_failed": pb_reconcile_failed,
         "pb_arbitrated": pb_arbitrated,
@@ -584,7 +640,7 @@ def evaluate_real_estate_valuation(
     roe = fin.get("roe", 8.0)
     debt_equity = fin.get("debt_equity", 1.0)
 
-    # 1. Book value per share estimation
+    # 1. Book value per share estimation & Triangle Arbitration
     has_real_bvps = False
     if bvps is not None and float(bvps) > 0:
         bvps_raw = float(bvps)
@@ -594,6 +650,13 @@ def evaluate_real_estate_valuation(
     else:
         # CẤM TUYỆT ĐỐI phái sinh bvps_val = current_price / pb làm méo MoS
         bvps_val = 0.0
+
+    # Trọng tài BVPS độc lập từ BCTC mẹ
+    pb_val = float(pb) if pb is not None else None
+    recon = reconcile_pb_triangle_arbitration(sym, current_price, pb_val, bvps_val, fin)
+    if recon.get("reconciled_bvps"):
+        bvps_val = recon["reconciled_bvps"]
+        has_real_bvps = True
 
     if not has_real_bvps or bvps_val <= 0.0:
         return {
@@ -655,8 +718,6 @@ def evaluate_real_estate_valuation(
     survival_res = reconcile_real_estate_survival_gate(sym, fin, sector)
 
     # 5. P/B Guardrail (TASK-0028) & Triangle Reconcile Arbitration
-    pb_val = float(pb) if pb is not None else None
-    recon = reconcile_pb_triangle_arbitration(sym, current_price, pb_val, bvps_val, fin)
     effective_pb = recon["effective_pb"]
     pb_reconcile_failed = recon["pb_reconcile_failed"]
     pb_arbitrated = recon["pb_arbitrated"]
@@ -1099,11 +1160,14 @@ def evaluate_compounder_valuation(
     elif eps and float(eps) > 0:
         eps_raw = float(eps)
         eps_val = eps_raw / 1000.0 if eps_raw > 500.0 else eps_raw
-        growth_rate = float(fin.get("growth_rate") or bench.get("sustainable_growth_rate") or min(roe * 0.7, 20.0))
+        g_in = fin.get("growth_rate")
+        growth_rate = float(g_in if g_in is not None else (bench.get("sustainable_growth_rate") or min(roe * 0.7, 20.0)))
         derived_eps = round(eps_val * (1.0 + growth_rate / 100.0), 2)
         input_source = "BCTC_DYNAMIC" if sym in COMPOUNDER_FUNDAMENTAL_BENCHMARKS else "BCTC_DYNAMIC_SHADOW"
     elif bench.get("forward_eps"):
-        derived_eps = float(bench["forward_eps"])
+        g_in = fin.get("growth_rate")
+        growth_rate = float(g_in if g_in is not None else (bench.get("sustainable_growth_rate") or 15.0))
+        derived_eps = round(float(bench["forward_eps"]) * (1.0 + growth_rate / 100.0), 2)
         input_source = "HARDCODED_BENCHMARK"
 
     # 2. SOTP Value
@@ -1307,6 +1371,8 @@ def calculate_fair_value_and_mos(
 
         # Cảnh báo và chốt chặn đối chiếu P/B API vs P/B tự tính từ BCTC thực & Trọng tài Tam giác
         recon_bank = reconcile_pb_triangle_arbitration(sym_clean, current_price, pb, bvps_val, fin_dict)
+        if recon_bank.get("reconciled_bvps"):
+            bvps_val = recon_bank["reconciled_bvps"]
         pb_reconcile_failed = recon_bank["pb_reconcile_failed"]
         pb_arbitrated = recon_bank["pb_arbitrated"]
         pb_discrepancy = recon_bank["pb_discrepancy"]

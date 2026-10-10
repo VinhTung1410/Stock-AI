@@ -49,7 +49,7 @@ def test_bank_valuation_rejects_when_bvps_missing():
         "pb": 1.2,
         "roe": 18.0,
     }
-    val = calculate_fair_value_and_mos("ACB", current_price=25.0, fin_dict=fin_no_bvps, sector="Ngân hàng")
+    val = calculate_fair_value_and_mos("VPB", current_price=25.0, fin_dict=fin_no_bvps, sector="Ngân hàng")
     assert val["mos_is_informative"] is False
     assert val["fair_value"] == 0.0
 

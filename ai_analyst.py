@@ -1647,7 +1647,8 @@ def _format_committee_prompt_context(
     vol_str = f"{vol_val}x" if vol_val is not None else "N/A"
 
     fv = val_res.get("fair_value", curr_price * 1.10)
-    mos = val_res.get("mos_pct", 0.0)
+    mos = val_res.get("mos_pct")
+    mos_fmt = f"{mos:+.1f}%" if mos is not None else "N/A"
     val_method = val_res.get("valuation_method", "P/B")
     val_conf = val_res.get("confidence", "MEDIUM")
 
@@ -1717,7 +1718,7 @@ Hãy thực hiện phân tích TUẦN TỰ cho cổ phiếu **{sym}**:
 - Mã cổ phiếu: **{sym}**
 - {data_badge_str}
 - Thị giá: {curr_price}k VND | MA20: {ma20_str} | MA50: {ma50_str} | RSI(14): {rsi_str} | Vol/SMA20: {vol_str}
-- Định giá Fair Value: {fv:.2f}k VND (Mô hình: {val_method}, Độ tin cậy: {val_conf}) | Biên an toàn (MoS): {mos:+.1f}%
+- Định giá Fair Value: {fv:.2f}k VND (Mô hình: {val_method}, Độ tin cậy: {val_conf}) | Biên an toàn (MoS): {mos_fmt}
 - Mục tiêu giá (Target): {p_target:.2f}k VND | Ngưỡng dừng lỗ: {stop_loss:.2f}k VND | Tỷ lệ R:R: {rr:.1f}x
 - Điểm tài chính Piotroski F-Score: {f_val_str}
 - Sức khỏe tài chính Altman Z-Score: {z_val_str}
@@ -1726,7 +1727,7 @@ Hãy thực hiện phân tích TUẦN TỰ cho cổ phiếu **{sym}**:
 BẮT BUỘC PHÂN TÍCH TUẦN TỰ THEO 5 BƯỚC:
 
 === BƯỚC 1: ĐÁNH GIÁ CƠ BẢN (FA VIEW) ===
-Dựa trên F-Score={f_eval}, Z-Score={z_eval}, MoS={mos:+.1f}%:
+Dựa trên F-Score={f_eval}, Z-Score={z_eval}, MoS={mos_fmt}:
 - Chất lượng lợi nhuận và mô hình kinh doanh có bền vững không? (Nếu N/A, không tự suy diễn số liệu tích cực).
 - Đánh giá FA VIEW: BULLISH / NEUTRAL / BEARISH
 - Định giá: UNDERVALUED / FAIR / OVERVALUED

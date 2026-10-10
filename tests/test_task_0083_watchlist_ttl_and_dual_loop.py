@@ -44,17 +44,24 @@ def test_check_watchlist_ttl_status_active_vs_expired():
     assert age == 4
     assert reason == ""
 
-    # Expired item (age 11 days >= 10 days)
+    # Expired item (age 10 trading days >= 10 days)
     expired_item = {
         "symbol": "VNM",
         "watch_entry_date": "2026-09-28",
         "watch_ttl_days": 10,
     }
-    is_exp, age, reason = check_watchlist_ttl_status(expired_item, as_of_date="2026-10-09")
+    is_exp, age, reason = check_watchlist_ttl_status(expired_item, as_of_date="2026-10-12")
     assert is_exp is True
-    assert age == 11
+    assert age == 10
     assert "TTL" in reason
-    assert "11 ngày >= 10 ngày" in reason
+    assert "10 phiên >= 10 phiên" in reason
+
+    # Fail-closed when missing entry date
+    missing_date_item = {"symbol": "GAS"}
+    m_exp, m_age, m_reason = check_watchlist_ttl_status(missing_date_item)
+    assert m_exp is True
+    assert m_age == 999
+    assert "Fail-closed" in m_reason
 
 
 def test_prune_unsuitable_watchlist_auto_prunes_expired_item(tmp_path):

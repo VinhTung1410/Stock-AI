@@ -36,7 +36,7 @@ def test_triangle_arbitration_validates_bctc_bvps_when_api_pb_distorted():
     )
     assert res["pb_arbitrated"] is True
     assert res["pb_reconcile_failed"] is False
-    assert res["effective_pb"] == 0.93
+    assert res["effective_pb"] == 1.15
 
 
 def test_triangle_arbitration_fails_closed_when_bctc_audit_missing():
@@ -67,7 +67,7 @@ def test_real_estate_triangle_arbitration_for_dig():
     }
     re_res = evaluate_real_estate_valuation("DIG", current_price=9.4, fin_dict=fin_dig, sector="Bất động sản")
     assert re_res["pb_arbitrated"] is True
-    assert re_res["effective_pb"] == 0.74
+    assert re_res["effective_pb"] == 0.79
     assert re_res["is_informative"] is True
     assert re_res["confidence"] == "LOW" or re_res["confidence"] == "MEDIUM"
 

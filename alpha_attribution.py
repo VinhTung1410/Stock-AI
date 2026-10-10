@@ -13,6 +13,9 @@ import pandas as pd
 COHORT_BUY = "BUY"
 COHORT_WATCH = "WATCH"
 COHORT_REJECT = "REJECT"
+COHORT_DATA_ERROR = "DATA_ERROR"
+
+DATA_ERROR_KEYWORDS = ("EXCEPTION", "TECH_FETCH", "TECH_INCOMPLETE", "DATA_GATE", "INCOMPLETE_DATA")
 
 
 def compute_forward_returns(
@@ -81,11 +84,15 @@ def evaluate_alpha_attribution(
     evaluated_records: List[Dict[str, Any]],
     min_clean_sessions: int = 60,
     horizons: tuple = (5, 20, 60),
+    deduplicate_symbol_date: bool = True,
+    oos_start_date: str | None = None,
 ) -> Dict[str, Any]:
     """Đo lường Alpha chênh lệch giữa các nhóm thuần tập (Cohorts): REJECT vs WATCH vs BUY.
 
-    Enforces Minimum Clean Sample Size rule:
-    Nếu số phiên sạch < min_clean_sessions (60 phiên), đánh dấu INSUFFICIENT_SAMPLE.
+    - Loại trừ các bản ghi lỗi dữ liệu (DATA_ERROR) khỏi nhóm đối chứng REJECT.
+    - Giữ 1 bản ghi chuẩn (canonical record) cho mỗi cặp (symbol, date) để tránh lệch trọng số.
+    - Báo cáo số quan sát trưởng thành (n) cho từng mốc T+5, T+20, T+60.
+    - Hỗ trợ cờ Out-Of-Sample (oos_start_date) để bóc tách dữ liệu out-of-sample sạch.
     """
     if not evaluated_records:
         return {
@@ -96,15 +103,42 @@ def evaluate_alpha_attribution(
             "alpha_spreads": {},
         }
 
+    # Deduplicate: giữ bản ghi chuẩn cho mỗi (symbol, decision_date)
+    records_to_process = evaluated_records
+    if deduplicate_symbol_date:
+        dedup_dict = {}
+        for r in evaluated_records:
+            sym = str(r.get("symbol", "")).upper().strip()
+            dt = str(r.get("decision_date", ""))[:10]
+            if sym and dt:
+                dedup_dict[(sym, dt)] = r
+            else:
+                dedup_dict[id(r)] = r
+        records_to_process = list(dedup_dict.values())
+
+    # Lọc thuần tập Out-Of-Sample (OOS) nếu được yêu cầu
+    if oos_start_date:
+        records_to_process = [
+            r for r in records_to_process
+            if str(r.get("decision_date", ""))[:10] >= str(oos_start_date)[:10]
+        ]
+
     # Đếm số phiên duy nhất
-    dates = {r.get("decision_date") for r in evaluated_records if r.get("decision_date")}
+    dates = {r.get("decision_date") for r in records_to_process if r.get("decision_date")}
     unique_sessions = len(dates)
     is_sample_sufficient = unique_sessions >= min_clean_sessions
 
-    cohorts = {COHORT_BUY: [], COHORT_WATCH: [], COHORT_REJECT: []}
-    for r in evaluated_records:
+    cohorts = {COHORT_BUY: [], COHORT_WATCH: [], COHORT_REJECT: [], COHORT_DATA_ERROR: []}
+    for r in records_to_process:
         dec = str(r.get("decision", "")).upper()
-        if "BUY" in dec or "OPPORTUNITY" in dec:
+        rej_gate = str(r.get("primary_rejection_gate", "")).upper()
+        reason = str(r.get("reason", "")).upper()
+
+        # Tách lỗi dữ liệu khỏi nhóm đối chứng REJECT định lượng
+        is_data_err = any(kw in dec or kw in rej_gate or kw in reason for kw in DATA_ERROR_KEYWORDS)
+        if is_data_err:
+            cohorts[COHORT_DATA_ERROR].append(r)
+        elif "BUY" in dec or "OPPORTUNITY" in dec:
             cohorts[COHORT_BUY].append(r)
         elif "WATCH" in dec:
             cohorts[COHORT_WATCH].append(r)
@@ -117,6 +151,7 @@ def evaluate_alpha_attribution(
         for h in horizons:
             key = f"fwd_ret_t{h}"
             vals = [r[key] for r in c_records if r.get(key) is not None]
+            metrics[f"t{h}_n"] = len(vals)
             if vals:
                 metrics[f"t{h}_mean"] = round(float(np.mean(vals)), 2)
                 metrics[f"t{h}_median"] = round(float(np.median(vals)), 2)
@@ -127,7 +162,7 @@ def evaluate_alpha_attribution(
                 metrics[f"t{h}_win_rate"] = None
         cohort_metrics[c_name] = metrics
 
-    # Tính Alpha Spreads (Chênh lệch so với nhóm REJECT)
+    # Tính Alpha Spreads (Chênh lệch so với nhóm REJECT chuẩn định lượng)
     alpha_spreads = {}
     reject_m = cohort_metrics.get(COHORT_REJECT, {})
     buy_m = cohort_metrics.get(COHORT_BUY, {})
@@ -145,7 +180,7 @@ def evaluate_alpha_attribution(
         alpha_spreads[f"alpha_watch_vs_reject_t{h}"] = alpha_watch
 
     status = (
-        "OOS_VERIFIED"
+        "SAMPLE_SIZE_OK"
         if is_sample_sufficient
         else f"INSUFFICIENT_SAMPLE (Current {unique_sessions}/{min_clean_sessions} clean sessions)"
     )

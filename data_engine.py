@@ -565,29 +565,41 @@ def _calculate_item_mos(sym: str, curr_price: float, note: str, fin_dict: dict |
 
 
 def check_watchlist_ttl_status(item: dict, as_of_date: str = None) -> tuple[bool, int, str]:
-    """Kiểm tra tuổi thọ Watchlist theo số ngày hoặc phiên giao dịch (Phase 28 / TASK-0083).
+    """Kiểm tra tuổi thọ Watchlist theo số phiên giao dịch (Thứ 2 - Thứ 6) giờ VN (TASK-0083).
 
     Returns:
-        (is_expired, age_days, reason_str)
+        (is_expired, age_trading_days, reason_str)
     """
     entry_date_str = item.get("watch_entry_date") or item.get("entry_date")
+    sym = item.get("symbol", "UNKNOWN")
     if not entry_date_str:
-        return False, 0, ""
+        logging.warning("Watchlist item %s thiếu ngày vào, fail-closed TTL expired", sym)
+        return True, 999, "Thiếu ngày vào Watchlist (Fail-closed TTL)"
 
     try:
+        from zoneinfo import ZoneInfo
+        vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+
         entry_dt = datetime.strptime(str(entry_date_str)[:10], "%Y-%m-%d").date()
         if as_of_date:
             cur_dt = datetime.strptime(str(as_of_date)[:10], "%Y-%m-%d").date()
         else:
-            cur_dt = date.today()
+            cur_dt = datetime.now(vn_tz).date()
 
-        age_days = (cur_dt - entry_dt).days
+        if cur_dt < entry_dt:
+            return False, 0, ""
+
+        # Đếm số phiên làm việc (Thứ 2 - Thứ 6) loại trừ ngày cuối tuần
+        import numpy as np
+        age_trading_days = int(np.busday_count(entry_dt, cur_dt))
         ttl_days = int(item.get("watch_ttl_days", 10))
-        if age_days >= ttl_days:
-            return True, age_days, f"Hết hạn theo dõi TTL ({age_days} ngày >= {ttl_days} ngày)"
-        return False, age_days, ""
+
+        if age_trading_days >= ttl_days:
+            return True, age_trading_days, f"Hết hạn theo dõi TTL ({age_trading_days} phiên >= {ttl_days} phiên)"
+        return False, age_trading_days, ""
     except Exception:
-        return False, 0, ""
+        logging.exception("Lỗi tính toán TTL cho %s, fail-closed expired", sym)
+        return True, 999, "Lỗi tính toán TTL (Fail-closed)"
 
 
 def _collect_watchlist_reasons(tech: dict, mos_pct: float) -> list[str]:
@@ -1108,7 +1120,10 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
     if cache_key in _TECH_CACHE:
         c_time, c_data = _TECH_CACHE[cache_key]
         if now - c_time < 120 and c_data:
-            return c_data
+            c_data_copy = dict(c_data)
+            c_data_copy["price_source"] = "TECH_CACHE"
+            c_data_copy["price_asof"] = c_data.get("date")
+            return c_data_copy
 
     try:
         # Lấy ngày hiện tại và 320 ngày trước để đủ tính MA50, MA100, MA200, RSI14 & ATR
@@ -1207,6 +1222,8 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
         res = {
             "symbol": symbol,
             "date": str(latest["time"]),
+            "price_source": "REALTIME",
+            "price_asof": str(latest["time"]),
             "current_price": current_price,
             "ref_price": ref_price,
             "diff_points": diff_points,
@@ -1847,7 +1864,9 @@ def calculate_conviction_score(
     - < 55 pts: LOW (REJECT / CAUTION)
     """
     # 1. Pillar 1: Valuation & Margin of Safety (Max 40 pts)
-    if mos_pct >= 25.0:
+    if mos_pct is None:
+        mos_pts = 0.0
+    elif mos_pct >= 25.0:
         mos_pts = 40.0
     elif mos_pct >= 15.0:
         mos_pts = 30.0
@@ -2897,6 +2916,8 @@ KBS_RATIO_MAPPING = {
     "Giá trị sổ sách của cổ phiếu (BVPS)": "bvps",
     "Chỉ số giá thị trường trên giá trị sổ sách (P/B)": "pb",
     "Chỉ số giá thị trường trên thu nhập (P/E)": "pe",
+    "Thu nhập trên mỗi cổ phần của 4 quý gần nhất (EPS)": "eps",
+    "Thu nhập trên mỗi cổ phần (EPS)": "eps",
     "ROE bình quân 4 quý gần nhất": "roe",
     "ROA bình quân 4 quý gần nhất": "roa",
     "Tỷ suất cổ tức": "dividend_yield",
@@ -2988,6 +3009,7 @@ def get_financial_ratios(symbol: str) -> dict:
             "pe": kbs_data.get("pe"),
             "pb": kbs_data.get("pb"),
             "bvps": kbs_data.get("bvps"),
+            "eps": kbs_data.get("eps"),
             "roe": kbs_data.get("roe"),
             "roa": kbs_data.get("roa"),
             "dividend_yield": kbs_data.get("dividend_yield"),

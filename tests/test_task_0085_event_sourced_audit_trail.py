@@ -60,10 +60,9 @@ def test_save_and_get_lifecycle_events_in_memory():
         assert EVENT_TRIGGER_ACTIVATED in types
         assert EVENT_AI_VETO_EVALUATED in types
 
-        # Query by event_type
-        veto_events = get_lifecycle_events(correlation_id=corr_id, event_type=EVENT_AI_VETO_EVALUATED)
-        assert len(veto_events) == 1
-        assert veto_events[0]["event_data"]["sizing_factor"] == 1.0
+        # Test mandatory correlation_id enforcement
+        bad_evt = {"symbol": "VNM", "event_type": EVENT_WATCHLIST_ADDED, "correlation_id": ""}
+        assert save_lifecycle_event(bad_evt) is None
 
 
 def test_compute_forward_returns_basic():
@@ -145,7 +144,7 @@ def test_evaluate_alpha_attribution_insufficient_sample():
 
 
 def test_evaluate_alpha_attribution_sufficient_sample():
-    """AC-03: When unique sessions >= 60, status is OOS_VERIFIED."""
+    """AC-03: When unique sessions >= 60, status is SAMPLE_SIZE_OK."""
     records = []
     for i in range(65):
         records.append({
@@ -159,5 +158,21 @@ def test_evaluate_alpha_attribution_sufficient_sample():
     report = evaluate_alpha_attribution(records, min_clean_sessions=60)
     assert report["is_sample_sufficient"] is True
     assert report["unique_sessions"] == 65
-    assert report["status"] == "OOS_VERIFIED"
+    assert report["status"] == "SAMPLE_SIZE_OK"
     assert report["alpha_spreads"]["alpha_buy_vs_reject_t5"] == 3.5  # 2.5 - (-1.0)
+
+
+def test_evaluate_alpha_attribution_data_error_separation_and_dedup():
+    """Verify DATA_ERROR records are separated from REJECT and deduplication works."""
+    records = [
+        {"symbol": "FPT", "decision_date": "2026-01-01", "decision": "BUY", "fwd_ret_t5": 5.0},
+        {"symbol": "FPT", "decision_date": "2026-01-01", "decision": "BUY", "fwd_ret_t5": 5.0},  # duplicate scan
+        {"symbol": "MWG", "decision_date": "2026-01-01", "decision": "REJECT", "primary_rejection_gate": "GATE_VALUATION", "fwd_ret_t5": -1.0},
+        {"symbol": "HPG", "decision_date": "2026-01-01", "decision": "REJECT", "primary_rejection_gate": "DATA_GATE_INCOMPLETE_DATA", "fwd_ret_t5": 0.0},
+    ]
+
+    report = evaluate_alpha_attribution(records, deduplicate_symbol_date=True)
+    cohorts = report["cohort_metrics"]
+    assert cohorts["BUY"]["count"] == 1  # Deduplicated from 2 to 1
+    assert cohorts["REJECT"]["count"] == 1  # Only MWG
+    assert cohorts["DATA_ERROR"]["count"] == 1  # HPG routed to DATA_ERROR

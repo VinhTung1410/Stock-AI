@@ -117,3 +117,124 @@ def test_calculate_valuation_triangle_backward_compatible():
     assert res_cyc["price_bull"] == 115.0
     assert res_cyc["price_base"] == 102.0
     assert res_cyc["price_bear"] == 78.0
+
+
+def test_calculate_fair_value_and_mos_across_all_four_archetypes():
+    """AC-05: Verify calculate_fair_value_and_mos fail-closed logic across BANK, REAL_ESTATE, CYCLICAL, COMPOUNDER."""
+    from quant_valuation import calculate_fair_value_and_mos
+
+    # 1. BANK: Valid P/B
+    bank_val = calculate_fair_value_and_mos("ACB", current_price=25.0, fin_dict={"pb": 1.2, "roe": 18.0}, sector="Ngân hàng")
+    assert bank_val["mos_is_informative"] is True
+    assert bank_val["mos_pct"] is not None
+
+    # BANK: Missing P/B -> fail-closed, no synthetic 1.05x price fallback
+    bank_no_pb = calculate_fair_value_and_mos("UNKNOWN_BANK", current_price=25.0, fin_dict={}, sector="Ngân hàng")
+    assert bank_no_pb["mos_is_informative"] is False
+    assert bank_no_pb["mos_pct"] is None
+    assert bank_no_pb["fair_value"] == 0.0
+
+    # 2. REAL_ESTATE: BVPS in raw VND (18,000 VND) normalized to 18.0 kVND
+    re_val = calculate_fair_value_and_mos("DXG", current_price=15.0, fin_dict={"bvps": 18000.0, "pb": 1.0, "roe": 10.0}, sector="Bất động sản")
+    assert re_val["mos_is_informative"] is True
+    assert re_val["mos_pct"] is not None
+    assert re_val["mos_pct"] < 60.0  # NOT 99.9%!
+
+    # REAL_ESTATE: Missing BCTC -> fail-closed
+    re_empty = calculate_fair_value_and_mos("DXG", current_price=15.0, fin_dict={}, sector="Bất động sản")
+    assert re_empty["mos_is_informative"] is False
+    assert re_empty["mos_pct"] is None
+
+    # 3. CYCLICAL: Missing EPS and P/E -> fail-closed
+    cyc_empty = calculate_fair_value_and_mos("HPG", current_price=28.0, fin_dict={}, sector="Thép")
+    assert cyc_empty["mos_is_informative"] is False
+    assert cyc_empty["mos_pct"] is None
+
+    # 4. COMPOUNDER: Missing EPS and no consensus -> fail-closed
+    comp_empty = calculate_fair_value_and_mos("UNKNOWN_TECH", current_price=50.0, fin_dict={}, sector="Công nghệ")
+    assert comp_empty["mos_is_informative"] is False
+    assert comp_empty["mos_pct"] is None
+
+    # 5. Ratio bounds check: FV / Price ratio < 0.25 or > 4.0 must be deemed uninformative
+    insane_re = calculate_fair_value_and_mos("DXG", current_price=10.0, fin_dict={"bvps": 5000000.0, "pb": 1.0}, sector="Bất động sản")
+    assert insane_re["mos_is_informative"] is False
+    assert insane_re["mos_pct"] is None
+
+
+def test_floor_clamped_uninformative_and_none_mos():
+    """Verify that stocks clamped by the 40% floor (HSG, VIC) are flagged as FLOOR_CLAMPED
+
+    with informative = False and mos_pct = None.
+    """
+    from quant_valuation import calculate_fair_value_and_mos
+
+    # VIC: SOTP/RNAV heavily discounted with high leverage -> hits 0.40 * current_price floor
+    vic_res = calculate_fair_value_and_mos(
+        "VIC",
+        current_price=227.9,
+        fin_dict={"bvps": 91160.0, "pb": 2.5, "roe": 2.0, "debt_equity": 3.0},
+        sector="Bất động sản",
+    )
+    assert vic_res["is_floor_clamped"] is True
+    assert vic_res["mos_is_informative"] is False
+    assert vic_res["mos_pct"] is None
+    assert vic_res["input_source"] == "FLOOR_CLAMPED"
+
+    # HSG: Cyclical deep discount -> hits 40% floor
+    hsg_res = calculate_fair_value_and_mos(
+        "HSG",
+        current_price=10.0,
+        fin_dict={"eps": 0.0667, "pe": 150.0},
+        sector="Thép",
+    )
+    assert hsg_res["is_floor_clamped"] is True
+    assert hsg_res["mos_is_informative"] is False
+    assert hsg_res["mos_pct"] is None
+
+
+def test_unclassified_archetype_for_financials_and_utilities():
+    """Verify securities, insurance, and utilities are tagged as UNCLASSIFIED without fabricated valuations."""
+    from quant_valuation import calculate_fair_value_and_mos, classify_stock_archetype
+
+    for sym in ["SSI", "VND", "BVH", "GAS", "BCM"]:
+        arch = classify_stock_archetype(sym)
+        assert arch == "UNCLASSIFIED"
+
+        res = calculate_fair_value_and_mos(sym, current_price=20.0, fin_dict={})
+        assert res["archetype"] == "UNCLASSIFIED"
+        assert res["fair_value"] == 0.0
+        assert res["mos_pct"] is None
+        assert res["mos_is_informative"] is False
+        assert res["input_source"] == "UNCLASSIFIED_SECTOR"
+
+
+def test_hardcoded_benchmark_requires_dated_freshness():
+    """Verify that hardcoded compounder benchmarks without verified timestamps are uninformative."""
+    from unittest.mock import patch
+
+    from quant_valuation import COMPOUNDER_FUNDAMENTAL_BENCHMARKS, calculate_fair_value_and_mos
+
+    # FPT with undated benchmark must not claim informative = True
+    bench_undated = dict(COMPOUNDER_FUNDAMENTAL_BENCHMARKS.get("FPT", {}))
+    bench_undated["last_updated"] = None
+    with patch.dict(COMPOUNDER_FUNDAMENTAL_BENCHMARKS, {"FPT": bench_undated}):
+        fpt_res = calculate_fair_value_and_mos("FPT", current_price=60.0, fin_dict={})
+        assert fpt_res["input_source"] == "HARDCODED_BENCHMARK"
+        assert fpt_res["mos_is_informative"] is False
+        assert fpt_res["mos_pct"] is None
+
+
+def test_run_pipeline_propagation_none_mos():
+    """Verify that when MoS is None, Valuation pillar receives 0 points,
+
+    decision is WATCH, and cannot buy.
+    """
+    from quant_engine import run_pipeline
+
+    res = run_pipeline("SSI", current_price=20.0, fin_dict={}, tech_data={"current_price": 20.0, "ma20": 19.5, "rsi": 54.0, "vol_ratio": 1.2, "adv20_billion": 50.0})
+    assert res["mos_pct"] is None
+    assert res["mos_is_informative"] is False
+    assert res["can_buy"] is False
+    assert "THEO DÕI" in res["action_state"]
+    assert res["conviction_breakdown"]["valuation"] == 0.0
+    assert res["conviction_score"] < 70.0

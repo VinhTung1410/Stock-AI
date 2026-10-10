@@ -121,13 +121,15 @@ def test_send_watchlist_pruned_alert_formats_correctly(monkeypatch):
 def test_prune_unsuitable_watchlist_deletes_manual_item_when_enabled(tmp_path, monkeypatch):
     """Test bot tự động xóa cả mã người dùng nhập tay nếu quá hot và gọi gửi DM báo cáo lý do."""
     import json
+    from datetime import date
 
     from data_engine import prune_unsuitable_watchlist
 
+    today_str = date.today().isoformat()
     wl_file = tmp_path / "watchlist.json"
     initial = [
-        {"symbol": "OVERHEATED", "target_buy": 100.0, "is_auto": False, "note": "Mã tôi tự thêm"},
-        {"symbol": "HEALTHY", "target_buy": 50.0, "is_auto": False, "note": "Mã bình thường"},
+        {"symbol": "OVERHEATED", "target_buy": 100.0, "is_auto": False, "note": "Mã tôi tự thêm", "added_date": today_str},
+        {"symbol": "HEALTHY", "target_buy": 50.0, "is_auto": False, "note": "Mã bình thường", "added_date": today_str},
     ]
     with open(wl_file, "w", encoding="utf-8") as f:
         json.dump(initial, f)

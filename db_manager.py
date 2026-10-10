@@ -879,12 +879,25 @@ def update_signal_lifecycle_exit(signal_id: str, exit_data: dict) -> dict | None
         return None
 
 
+_IN_MEMORY_DECISION_RECORDS: list[dict] = []
+
+
+def get_current_git_sha() -> str:
+    """Retrieve current Git commit SHA for audit trail and provenance."""
+    env_sha = os.environ.get("GIT_SHA") or os.environ.get("COMMIT_SHA")
+    if env_sha:
+        return env_sha.strip()
+    try:
+        import subprocess
+
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    except Exception:
+        return "UNKNOWN"
+
+
 def save_decision_record(record: dict) -> str | None:
     """Save an immutable decision record (BUY, WATCH, REJECT) to Supabase decision_records."""
     client = get_supabase_client()
-    if not client:
-        return None
-
     symbol = record.get("symbol", "").upper().strip()
     session = record.get("session", "NOON")
     decision = record.get("decision", "REJECT").upper()
@@ -911,17 +924,27 @@ def save_decision_record(record: dict) -> str | None:
         "prompt_version": record.get("prompt_version"),
         "model_version": record.get("model_version"),
         "raw_response": record.get("raw_response"),
+        # Provenance Tracking - Git SHA
+        "git_sha": record.get("git_sha") or get_current_git_sha(),
     }
+
+    if not client:
+        _IN_MEMORY_DECISION_RECORDS.append(row)
+        logging.info("Saved local decision record %s for %s (%s)", decision_id, symbol, decision)
+        return decision_id
 
     try:
         res = client.table("decision_records").insert(row).execute()
         if res.data:
             logging.info("Saved decision record %s for %s (%s)", decision_id, symbol, decision)
             return decision_id
-        return None
+        _IN_MEMORY_DECISION_RECORDS.append(row)
+        return decision_id
     except Exception:
         logging.exception("Failed to insert decision record for %s", symbol)
-        return None
+        _IN_MEMORY_DECISION_RECORDS.append(row)
+        logging.warning("Fell back to in-memory decision store for %s due to Supabase error", symbol)
+        return decision_id
 
 
 def get_decision_records(filters: Optional[dict] = None, limit: int = 50) -> list[dict]:
@@ -962,8 +985,14 @@ def save_lifecycle_event(event: dict) -> str | None:
     """Save an immutable decision lifecycle event (Phase 28 / TASK-0085)."""
     client = get_supabase_client()
     symbol = event.get("symbol", "").upper().strip()
-    correlation_id = event.get("correlation_id", "")
+    correlation_id = str(event.get("correlation_id", "")).strip()
     event_type = event.get("event_type", "").upper().strip()
+
+    # Chốt chặn bắt buộc correlation_id để tránh sự kiện mồ côi
+    if not correlation_id:
+        logging.error("Rejected lifecycle event for %s: correlation_id is mandatory", symbol)
+        return None
+
     now_str = datetime.now(VN_TZ).strftime("%Y%m%d_%H%M%S_%f")
     event_id = event.get("event_id") or f"EVT_{symbol}_{now_str}"
 
@@ -974,6 +1003,8 @@ def save_lifecycle_event(event: dict) -> str | None:
         "event_type": event_type,
         "event_data": event.get("event_data", {}),
         "market_regime": event.get("market_regime", "UNKNOWN"),
+        "model_version": event.get("model_version", "v15.0_phase28"),
+        "git_sha": event.get("git_sha") or get_current_git_sha(),
         "created_at": event.get("created_at") or datetime.now(VN_TZ).isoformat(),
     }
 
@@ -987,10 +1018,12 @@ def save_lifecycle_event(event: dict) -> str | None:
         if res.data:
             logging.info("Saved lifecycle event %s for %s (%s)", event_id, symbol, event_type)
             return event_id
-        return None
-    except Exception:
         _IN_MEMORY_LIFECYCLE_EVENTS.append(row)
-        logging.exception("Failed to insert lifecycle event to Supabase, stored locally for %s", symbol)
+        return event_id
+    except Exception:
+        logging.exception("Failed to insert lifecycle event to Supabase for %s", symbol)
+        _IN_MEMORY_LIFECYCLE_EVENTS.append(row)
+        logging.warning("Fell back to in-memory lifecycle store for %s due to Supabase error", symbol)
         return event_id
 
 
@@ -1000,7 +1033,7 @@ def get_lifecycle_events(
     event_type: Optional[str] = None,
     limit: int = 100,
 ) -> list[dict]:
-    """Query lifecycle events with optional filters."""
+    """Query lifecycle events with optional filters (newest first)."""
     client = get_supabase_client()
     if not client:
         results = _IN_MEMORY_LIFECYCLE_EVENTS
@@ -1010,7 +1043,8 @@ def get_lifecycle_events(
             results = [e for e in results if e.get("symbol") == symbol.upper().strip()]
         if event_type:
             results = [e for e in results if e.get("event_type") == event_type.upper().strip()]
-        return results[-limit:]
+        # Trả về mới nhất lên đầu (desc) đồng nhất với Supabase
+        return list(reversed(results[-limit:]))
 
     try:
         query = client.table("decision_lifecycle_events").select("*").order("created_at", desc=True).limit(limit)
