@@ -926,6 +926,7 @@ def save_decision_record(record: dict) -> str | None:
         "raw_response": record.get("raw_response"),
         # Provenance Tracking - Git SHA
         "git_sha": record.get("git_sha") or get_current_git_sha(),
+        **({"created_at": record["created_at"]} if "created_at" in record else {}),
     }
 
     if not client:
@@ -1105,7 +1106,7 @@ def update_decision_forward_returns(decision_id: str, returns_data: dict) -> boo
     row = {
         "decision_id": decision_id,
         "symbol": returns_data.get("symbol", ""),
-        "snapshot_price": float(returns_data.get("snapshot_price", 0.0)),
+        "snapshot_price": float(returns_data.get("snapshot_price") or 0.0),
         "t1_return_pct": returns_data.get("t1_return_pct"),
         "t3_return_pct": returns_data.get("t3_return_pct"),
         "t5_return_pct": returns_data.get("t5_return_pct"),

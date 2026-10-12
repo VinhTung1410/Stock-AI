@@ -2103,7 +2103,15 @@ def get_active_cooldown_symbols(cooldown_days: int = COOLDOWN_DAYS) -> list:
     return list(active)
 
 
-def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = None, portfolio: list = None, kill_switch_active: bool = False) -> list:
+def scan_market_opportunities(
+    extra_symbols: list = None,
+    macro_regime: str = None,
+    portfolio: list = None,
+    kill_switch_active: bool = False,
+    session_override: str = None,
+    model_version_override: str = None,
+    is_shadow_override: bool = False,
+) -> list:
     """Scan market opportunities using 2-tier Catalyst + Technical Confluence approach.
 
     1. Ingest RSS financial news to identify catalyst stocks (earnings, dividends, macro).
@@ -2174,8 +2182,8 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
         if sym not in candidate_symbols:
             candidate_symbols.append(sym)
 
-    # Khống chế danh sách quét tối đa 8 mã để đảm bảo an toàn hạn mức 20 req/phút của vnstock
-    pool = candidate_symbols[:8]
+    # Khống chế danh sách quét tối đa 8 mã khi không truyền extra_symbols cụ thể
+    pool = [s.upper() for s in extra_symbols if s] if extra_symbols else candidate_symbols[:8]
 
     def analyze_symbol(sym):
         try:
@@ -2655,9 +2663,17 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                     decision = "REJECT"
                     gate = res.get("primary_rejection_gate", "UNKNOWN")
 
+                current_session = session_override or ("NOON" if datetime.now().hour < 13 else "CLOSE")
+                current_model = model_version_override or "contrarian_v14.0"
+                dec_id_custom = (
+                    f"DEC_{res['symbol']}_20261012_{current_session}"
+                    if session_override == "EOD_REPLAY"
+                    else None
+                )
+
                 record_payload = {
                     "symbol": res["symbol"],
-                    "session": "NOON" if datetime.now().hour < 13 else "CLOSE",
+                    "session": current_session,
                     "decision": decision,
                     "primary_rejection_gate": gate,
                     "rejection_reasons": [res.get("rationale") or res.get("setup_type") or res.get("story") or ""],
@@ -2666,8 +2682,13 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                         "snapshot_price": res.get("current_price"),
                         "mos_pct": res.get("mos_pct"),
                         "conviction": res.get("conviction_score"),
+                        "is_shadow": bool(is_shadow_override or res.get("shadow_mode")),
                     },
+                    "model_version": current_model,
                 }
+                if dec_id_custom:
+                    record_payload["decision_id"] = dec_id_custom
+
                 if res.get("is_contrarian"):
                     record_payload["facts"]["contrarian_state"] = res.get("contrarian_state")
                     record_payload["facts"]["panic_score"] = res.get("panic_score")
@@ -2676,7 +2697,14 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                 dec_id = save_decision_record(record_payload)
                 if dec_id:
                     try:
-                        from db_manager import EVENT_AI_VETO_EVALUATED, save_lifecycle_event
+                        from db_manager import (
+                            EVENT_AI_VETO_EVALUATED,
+                            save_lifecycle_event,
+                            update_decision_forward_returns,
+                        )
+
+                        ai_act = "PASS" if decision == "BUY" else ("NOT_EVALUATED" if decision == "WATCH" else "VETO")
+                        sz_factor = 1.0 if decision == "BUY" else (None if decision == "WATCH" else 0.0)
 
                         save_lifecycle_event(
                             {
@@ -2684,18 +2712,32 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                                 "correlation_id": dec_id,
                                 "event_type": EVENT_AI_VETO_EVALUATED,
                                 "event_data": {
+                                    "source": "RULE",
                                     "decision": decision,
+                                    "ai_action": ai_act,
+                                    "sizing_factor": sz_factor,
                                     "gate": gate,
                                     "price": res.get("current_price"),
                                     "conviction": res.get("conviction_score"),
                                     "reasons": record_payload.get("rejection_reasons", []),
                                 },
-                                "market_regime": "UNKNOWN",
-                                "model_version": "contrarian_v14.0",
+                                "market_regime": macro_regime or "UNKNOWN",
+                                "model_version": current_model,
                             }
                         )
+
+                        update_decision_forward_returns(
+                            decision_id=dec_id,
+                            returns_data={
+                                "symbol": res["symbol"],
+                                "snapshot_price": res.get("current_price"),
+                                "t1_return_pct": None,
+                                "t3_return_pct": None,
+                                "t5_return_pct": None,
+                            },
+                        )
                     except Exception:
-                        logging.exception("Không thể lưu lifecycle event cho contrarian analysis %s", res.get("symbol"))
+                        logging.exception("Không thể lưu lifecycle event hoặc forward returns cho %s", res.get("symbol"))
 
             import time
 
