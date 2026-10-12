@@ -1116,8 +1116,25 @@ def update_decision_forward_returns(decision_id: str, returns_data: dict) -> boo
     }
 
     try:
-        res = client.table("decision_forward_returns").upsert(row, on_conflict="decision_id").execute()
-        return bool(res.data)
+        try:
+            res = client.table("decision_forward_returns").upsert(row, on_conflict="decision_id").execute()
+            if res and res.data:
+                return True
+        except Exception:
+            # Fallback when table lacks unique constraint on decision_id in PostgreSQL
+            existing = (
+                client.table("decision_forward_returns")
+                .select("id")
+                .eq("decision_id", decision_id)
+                .limit(1)
+                .execute()
+            )
+            if existing and existing.data:
+                res = client.table("decision_forward_returns").update(row).eq("decision_id", decision_id).execute()
+            else:
+                res = client.table("decision_forward_returns").insert(row).execute()
+            return bool(res and res.data)
+        return bool(res and res.data)
     except Exception:
         logging.exception("Error saving forward returns for %s", decision_id)
         return False

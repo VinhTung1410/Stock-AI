@@ -385,6 +385,25 @@ def _record_and_save_buy_signal(
             model_version="trading-bot-v2.1",
             input_snapshot={"tech": tech, "f_score": f_score_dict.get("score", 6)},
         )
+        try:
+            from db_manager import EVENT_TRIGGER_ACTIVATED, save_lifecycle_event
+
+            corr_id = f"TRIG_{sym}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            save_lifecycle_event(
+                {
+                    "symbol": sym,
+                    "correlation_id": corr_id,
+                    "event_type": EVENT_TRIGGER_ACTIVATED,
+                    "event_data": {
+                        "price": curr_p,
+                        "target_price": target_p,
+                        "stop_loss": dynamic_sl,
+                        "trigger_reason": buy_reason,
+                    },
+                }
+            )
+        except Exception:
+            logging.exception("Lỗi khi lưu lifecycle event TRIGGER_ACTIVATED cho %s", sym)
     except Exception:
         logging.exception("Lỗi ghi Supabase Signal")
 

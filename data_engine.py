@@ -706,6 +706,23 @@ def prune_unsuitable_watchlist(
                 pruned_items.append(pruned)
                 _SESSION_PRUNED_SYMBOLS.add(pruned["symbol"].upper().strip())
                 logging.info(f"🗑️ Đã thanh lọc {pruned['symbol']} khỏi Watchlist: {pruned['reason']}")
+                try:
+                    from db_manager import EVENT_WATCHLIST_EXPIRED, save_lifecycle_event
+
+                    corr_id = f"WL_EXP_{pruned['symbol']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    save_lifecycle_event(
+                        {
+                            "symbol": pruned["symbol"],
+                            "correlation_id": corr_id,
+                            "event_type": EVENT_WATCHLIST_EXPIRED,
+                            "event_data": {
+                                "reason": pruned.get("reason"),
+                                "current_price": pruned.get("current_price"),
+                            },
+                        }
+                    )
+                except Exception:
+                    logging.exception("Lỗi khi lưu lifecycle event WATCHLIST_EXPIRED cho %s", pruned.get("symbol"))
             elif retained:
                 retained_items.append(retained)
 
@@ -831,6 +848,26 @@ def sync_auto_watchlist(
             if auto_item["symbol"] not in existing_merged_symbols:
                 merged_watchlist.append(auto_item)
                 existing_merged_symbols.add(auto_item["symbol"])
+                try:
+                    from db_manager import EVENT_WATCHLIST_ADDED, save_lifecycle_event
+
+                    corr_id = f"WL_{auto_item['symbol']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    save_lifecycle_event(
+                        {
+                            "symbol": auto_item["symbol"],
+                            "correlation_id": corr_id,
+                            "event_type": EVENT_WATCHLIST_ADDED,
+                            "event_data": {
+                                "target_buy": auto_item.get("target_buy"),
+                                "archetype": auto_item.get("archetype"),
+                                "sector": auto_item.get("sector"),
+                                "strategy": auto_item.get("strategy"),
+                                "note": auto_item.get("note"),
+                            },
+                        }
+                    )
+                except Exception:
+                    logging.exception("Lỗi khi lưu lifecycle event WATCHLIST_ADDED cho %s", auto_item.get("symbol"))
 
         save_watchlist(merged_watchlist, filepath=filepath)
         logging.info(
@@ -2636,7 +2673,29 @@ def scan_market_opportunities(extra_symbols: list = None, macro_regime: str = No
                     record_payload["facts"]["panic_score"] = res.get("panic_score")
                     record_payload["facts"]["shadow_mode"] = res.get("shadow_mode", False)
 
-                save_decision_record(record_payload)
+                dec_id = save_decision_record(record_payload)
+                if dec_id:
+                    try:
+                        from db_manager import EVENT_AI_VETO_EVALUATED, save_lifecycle_event
+
+                        save_lifecycle_event(
+                            {
+                                "symbol": res["symbol"],
+                                "correlation_id": dec_id,
+                                "event_type": EVENT_AI_VETO_EVALUATED,
+                                "event_data": {
+                                    "decision": decision,
+                                    "gate": gate,
+                                    "price": res.get("current_price"),
+                                    "conviction": res.get("conviction_score"),
+                                    "reasons": record_payload.get("rejection_reasons", []),
+                                },
+                                "market_regime": "UNKNOWN",
+                                "model_version": "contrarian_v14.0",
+                            }
+                        )
+                    except Exception:
+                        logging.exception("Không thể lưu lifecycle event cho contrarian analysis %s", res.get("symbol"))
 
             import time
 

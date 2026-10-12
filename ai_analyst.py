@@ -1439,7 +1439,11 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
 
     decision_id = None
     try:
-        from db_manager import save_decision_record
+        from db_manager import (
+            EVENT_AI_VETO_EVALUATED,
+            save_decision_record,
+            save_lifecycle_event,
+        )
 
         decision_id = save_decision_record(
             {
@@ -1462,8 +1466,28 @@ Hãy trình bày báo cáo chính xác theo cấu trúc sau:
                 "raw_response": final_report,
             }
         )
+        if decision_id:
+            try:
+                regime_val = get_market_regime().value
+            except Exception:
+                regime_val = "UNKNOWN"
+            save_lifecycle_event(
+                {
+                    "symbol": symbol,
+                    "correlation_id": decision_id,
+                    "event_type": EVENT_AI_VETO_EVALUATED,
+                    "event_data": {
+                        "decision": decision_type,
+                        "action_state": hard_gates.get("action_state"),
+                        "decision_tag": hard_gates.get("decision_tag"),
+                        "price": curr_price,
+                    },
+                    "market_regime": regime_val,
+                    "model_version": MODEL_NAME,
+                }
+            )
     except Exception:
-        logging.exception("Không thể lưu decision_records")
+        logging.exception("Không thể lưu decision_records hoặc lifecycle_event")
 
     # TỰ ĐỘNG LƯU SNAPSHOT BẤT BIẾN VÀO SUPABASE (SIGNAL LIFECYCLE)
     try:
@@ -1945,9 +1969,13 @@ def _prepare_smart_committee_context(
             "⚠️ **Khuyến cáo:** Hệ thống Data Reconciliation Gate (Phase 0) từ chối phân tích cổ phiếu có dữ liệu bị sai lệch, giá âm hoặc vi phạm biên độ quy chế để bảo vệ vốn nhà đầu tư!"
         )
         try:
-            from db_manager import save_decision_record
+            from db_manager import (
+                EVENT_AI_VETO_EVALUATED,
+                save_decision_record,
+                save_lifecycle_event,
+            )
 
-            save_decision_record(
+            dec_id = save_decision_record(
                 {
                     "symbol": sym,
                     "decision": "REJECT",
@@ -1964,6 +1992,26 @@ def _prepare_smart_committee_context(
                     "raw_response": refusal_report,
                 }
             )
+            if dec_id:
+                try:
+                    save_lifecycle_event(
+                        {
+                            "symbol": sym,
+                            "correlation_id": dec_id,
+                            "event_type": EVENT_AI_VETO_EVALUATED,
+                            "event_data": {
+                                "ai_action": "VETO",
+                                "sizing_factor": 0.0,
+                                "pm_decision": "REJECT",
+                                "rejection_gate": "DATA_GATE",
+                                "rejection_reasons": gate_res.get("conflicting_data", []),
+                            },
+                            "market_regime": "UNKNOWN",
+                            "model_version": MODEL_NAME,
+                        }
+                    )
+                except Exception:
+                    logging.exception("Không thể lưu lifecycle_event khi bị loại ở Data Gate %s", sym)
         except Exception:
             logging.exception("Không thể lưu decision_records khi bị loại ở Smart Committee Data Gate")
 
@@ -2043,9 +2091,15 @@ def _save_smart_committee_record(
     is_overridden: bool,
     override_reason: str,
     report_text: str,
+    ai_action: str = None,
+    sizing_factor: float = None,
 ) -> None:
     try:
-        from db_manager import save_decision_record
+        from db_manager import (
+            EVENT_AI_VETO_EVALUATED,
+            save_decision_record,
+            save_lifecycle_event,
+        )
 
         dec_str = str(final_decision or "").upper()
         if "MUA" in dec_str or "BUY" in dec_str:
@@ -2064,7 +2118,7 @@ def _save_smart_committee_record(
         ctx_valid = market_ctx.is_valid if market_ctx else False
         tech_data = context_meta.get("tech_data") or {}
 
-        save_decision_record(
+        dec_id = save_decision_record(
             {
                 "symbol": sym,
                 "decision": dec_type,
@@ -2090,8 +2144,33 @@ def _save_smart_committee_record(
                 "raw_response": report_text,
             }
         )
+
+        if dec_id:
+            try:
+                regime_val = get_market_regime().value
+            except Exception:
+                regime_val = "UNKNOWN"
+            save_lifecycle_event(
+                {
+                    "symbol": sym,
+                    "correlation_id": dec_id,
+                    "event_type": EVENT_AI_VETO_EVALUATED,
+                    "event_data": {
+                        "ai_action": ai_action or "PASS",
+                        "sizing_factor": sizing_factor if sizing_factor is not None else 1.0,
+                        "pm_decision": final_decision,
+                        "raw_pm_decision": raw_decision,
+                        "is_overridden": is_overridden,
+                        "override_reason": override_reason,
+                        "quality_score": gate_res.get("quality_score", 100.0),
+                        "market_price": tech_data.get("current_price", 0.0),
+                    },
+                    "market_regime": regime_val,
+                    "model_version": MODEL_NAME,
+                }
+            )
     except Exception:
-        logging.exception("Không thể lưu decision_records cho Smart Committee response %s", context_meta.get("symbol"))
+        logging.exception("Không thể lưu decision_records hoặc lifecycle event cho Smart Committee response %s", context_meta.get("symbol"))
 
 
 def _build_committee_response(context_meta: dict, report_text: str = None, error: Exception = None) -> dict:
@@ -2196,6 +2275,8 @@ def _build_committee_response(context_meta: dict, report_text: str = None, error
         is_overridden,
         override_reason,
         report_text,
+        ai_action=ai_action,
+        sizing_factor=sizing_factor,
     )
 
     return {
