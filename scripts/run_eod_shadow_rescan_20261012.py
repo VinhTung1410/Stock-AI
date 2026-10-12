@@ -41,13 +41,13 @@ def run_eod_shadow_rescan(batch_size: int = 5, delay_between_batches: float = 1.
             res = (
                 client.table("decision_records")
                 .select("symbol")
-                .ilike("decision_id", "%20261012_EOD_REPLAY%")
+                .ilike("decision_id", "%20261012_EOD_REPLAY_V2%")
                 .execute()
             )
             for r in res.data or []:
                 if r.get("symbol"):
                     existing_eod_symbols.add(r["symbol"].upper().strip())
-            logging.info("Existing EOD_REPLAY records in DB: %d", len(existing_eod_symbols))
+            logging.info("Existing EOD_REPLAY_V2 records in DB: %d", len(existing_eod_symbols))
         except Exception as e:
             logging.warning("Could not query existing EOD records: %e", e)
 
@@ -55,10 +55,6 @@ def run_eod_shadow_rescan(batch_size: int = 5, delay_between_batches: float = 1.
     logging.info("Pending symbols to evaluate: %d / %d", len(pending_symbols), len(SYMBOLS_55))
 
     all_results = []
-    # If some were already saved (e.g. STB, CTG, ACB), keep track
-    for s in existing_eod_symbols:
-        all_results.append({"symbol": s, "status": "ALREADY_SAVED"})
-
     total_batches = (len(pending_symbols) + batch_size - 1) // batch_size
     for b_idx in range(0, len(pending_symbols), batch_size):
         chunk = pending_symbols[b_idx : b_idx + batch_size]
@@ -68,7 +64,7 @@ def run_eod_shadow_rescan(batch_size: int = 5, delay_between_batches: float = 1.
         try:
             batch_results = scan_market_opportunities(
                 extra_symbols=chunk,
-                session_override="EOD_REPLAY",
+                session_override="EOD_REPLAY_V2",
                 model_version_override="v15.0_post_fix",
                 is_shadow_override=True,
             )

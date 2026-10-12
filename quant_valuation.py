@@ -817,7 +817,7 @@ CYCLICAL_PEER_BENCHMARKS: dict[str, dict[str, Any]] = {
 }
 
 CYCLICAL_STOCK_MEDIAN_PE: Dict[str, float] = {
-    "GVR": 13.5,  # Cao su tự nhiên & BĐS Khu công nghiệp (P/E lịch sử 5 năm 13.5x - 16.0x)
+    "GVR": 8.5,  # Cao su tự nhiên & BĐS KCN - Bội số đáy chu kỳ chuẩn hóa theo VALUATION_PARAMETER_REGISTRY.md
     "DGC": 11.0,  # Hóa chất công nghệ & Phốt pho vàng
     "HPG": 9.5,  # Thép tích hợp chuỗi giá trị
     "HSG": 8.0,  # Tôn mạ hạ nguồn

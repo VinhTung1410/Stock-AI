@@ -332,22 +332,26 @@ def _check_fundamental_integrity(
             return False
 
     # 3. Valuation & L4 Stress-MoS
-    if "mos_pct" in fin_dict and "mos_is_informative" in fin_dict:
+    if (
+        fin_dict.get("mos_pct") is not None
+        and fin_dict.get("mos_is_informative") is not None
+    ):
         mos_val = float(fin_dict["mos_pct"])
         calc_fv = current_price / (1.0 - mos_val / 100.0) if mos_val < 100.0 else current_price * 10.0
         val_res = {
             "mos_pct": mos_val,
             "mos_is_informative": bool(fin_dict["mos_is_informative"]),
-            "fair_value": float(fin_dict.get("fair_value", calc_fv)),
+            "fair_value": float(fin_dict.get("fair_value") or calc_fv),
         }
     else:
         val_res = calculate_fair_value_and_mos(
             symbol=symbol, current_price=current_price, fin_dict=fin_dict, sector=sector
         )
 
-    base_mos_pct = float(val_res.get("mos_pct", 0.0))
+    raw_mos = val_res.get("mos_pct")
+    base_mos_pct = float(raw_mos) if raw_mos is not None else 0.0
     mos_is_informative = bool(val_res.get("mos_is_informative", False))
-    fair_value = float(val_res.get("fair_value", 0.0))
+    fair_value = float(val_res.get("fair_value") or 0.0)
 
     # L4: Dynamic Stress-MoS (Haircut Valuation) - Khôi phục định giá thuần khiết
     stress_haircut = _get_stress_haircut(symbol, sector, fin_dict, tech_data, result)
@@ -386,7 +390,8 @@ def _check_fundamental_integrity(
 
 
 def _calculate_panic_score(current_price: float, tech_data: Dict[str, Any]) -> float:
-    rsi = float(tech_data.get("rsi14") or tech_data.get("rsi") or 50.0)
+    rsi_raw = tech_data.get("rsi14") if tech_data.get("rsi14") is not None else tech_data.get("rsi")
+    rsi = float(rsi_raw) if rsi_raw is not None else 50.0
     ma20 = float(tech_data.get("ma20") or 0.0)
     
     score = 0.0

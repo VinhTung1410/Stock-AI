@@ -559,7 +559,8 @@ def _calculate_item_mos(sym: str, curr_price: float, note: str, fin_dict: dict |
             val_res = calculate_fair_value_and_mos(symbol=sym, current_price=curr_price, fin_dict=fin_data, sector=note)
         except TypeError:
             val_res = calculate_fair_value_and_mos(sym, curr_price, note)
-        return float(val_res.get("mos_pct", 0.0))
+        raw_mos = val_res.get("mos_pct")
+        return float(raw_mos) if raw_mos is not None else 0.0
     except Exception:
         return 0.0
 
@@ -608,7 +609,7 @@ def _collect_watchlist_reasons(tech: dict, mos_pct: float) -> list[str]:
     rsi = tech.get("rsi14")
     if rsi is not None and isinstance(rsi, (int, float)) and rsi > 75.0:
         reasons.append(f"RSI={rsi:.1f} quá mua/FOMO")
-    if mos_pct < -25.0:
+    if mos_pct is not None and mos_pct < -25.0:
         reasons.append(f"MoS={mos_pct:.1f}% đắt hơn định giá > 25%")
     trap_info = tech.get("trap_info", {})
     if trap_info.get("is_trap"):
@@ -760,14 +761,15 @@ def _build_auto_watchlist_candidate(opp: dict, manual_symbols: set) -> dict | No
         return None
 
     conv_score = float(opp.get("conviction_score", 0.0))
-    mos_pct = float(opp.get("mos_pct", 0.0))
+    raw_mos = opp.get("mos_pct")
+    mos_pct = float(raw_mos) if raw_mos is not None else None
     mos_is_informative = opp.get("mos_is_informative", True)
 
-    if mos_pct < -25.0:
+    if mos_pct is not None and mos_pct < -25.0:
         return None
 
     # CHỐT CHẶN ANTI-SYNTHETIC MOS: Cấm dùng MoS tự sinh giả định để tự động thêm vào Watchlist
-    effective_mos = mos_is_informative and mos_pct >= 15.0
+    effective_mos = mos_is_informative and (mos_pct is not None and mos_pct >= 15.0)
 
     is_eligible = False
     if status == "RECOMMEND_BUY":
@@ -791,7 +793,7 @@ def _build_auto_watchlist_candidate(opp: dict, manual_symbols: set) -> dict | No
         from quant_valuation import get_stock_archetype_details
 
         arch_details = get_stock_archetype_details(sym, sector=opp.get("sector", ""))
-        mos_str = f"MoS: {mos_pct:.1f}%" if mos_is_informative else "MoS: N/A"
+        mos_str = f"MoS: {mos_pct:.1f}%" if (mos_is_informative and mos_pct is not None) else "MoS: N/A"
         today_iso = str(date.today())
         entry_d = opp.get("watch_entry_date") or opp.get("entry_date") or today_iso
         return {
@@ -882,10 +884,12 @@ def sync_auto_watchlist(
 def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
     """Tính chỉ báo RSI (Relative Strength Index)."""
     delta = series.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    gain = (delta.where(delta > 0, 0.0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0.0)).rolling(window=period).mean()
     rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    rsi = rsi.where(loss != 0, 100.0)
+    rsi = rsi.where(~((gain == 0) & (loss == 0)), 50.0)
     return rsi
 
 
@@ -1011,7 +1015,7 @@ def detect_news_trap(symbol: str, tech_data: dict, news_items: list = None) -> d
                 break
 
     # Bẫy 1: Quá mua nổ tin (RSI >= 68 và có tin tức giật gân)
-    if has_news and rsi14 and rsi14 >= 68.0:
+    if has_news and rsi14 is not None and rsi14 >= 68.0:
         return {
             "is_trap": True,
             "trap_type": "OVERBOUGHT_NEWS_TRAP",
@@ -1274,13 +1278,13 @@ def fetch_stock_technical(symbol: str, count_back: int = 60, fetch_foreign: bool
             "open": open_price,
             "high": high,
             "low": low,
-            "ma20": round(ma20, 2) if ma20 else None,
-            "ma50": round(ma50, 2) if ma50 else None,
-            "ma100": round(ma100, 2) if ma100 else None,
-            "ma200": round(ma200, 2) if ma200 else None,
+            "ma20": round(ma20, 2) if ma20 is not None else None,
+            "ma50": round(ma50, 2) if ma50 is not None else None,
+            "ma100": round(ma100, 2) if ma100 is not None else None,
+            "ma200": round(ma200, 2) if ma200 is not None else None,
             "status_ma20": status_ma20,
-            "rsi14": round(rsi14, 1) if rsi14 else None,
-            "rsi": round(rsi14, 1) if rsi14 else 50.0,
+            "rsi14": round(rsi14, 1) if rsi14 is not None else None,
+            "rsi": round(rsi14, 1) if rsi14 is not None else 50.0,
             "volume": int(vol),
             "vol_ratio": round(vol_ratio, 2),
             "adv20_billion": adv20_billion,
@@ -2203,12 +2207,15 @@ def scan_market_opportunities(
             vol_ratio = tech.get("vol_ratio", 1.0)
             change_pct = tech.get("change_pct", 0.0)
 
-            if not curr_price or not ma20 or not rsi:
+            if curr_price is None or curr_price <= 0 or ma20 is None or rsi is None:
                 return {
                     "symbol": sym,
                     "status": "REJECT",
                     "setup_type": "Thiếu dữ liệu giá, MA20, hoặc RSI",
                     "primary_rejection_gate": "TECH_INCOMPLETE",
+                    "price_source": tech.get("price_source", "LIVE"),
+                    "price_asof": tech.get("price_asof"),
+                    "input_source": "KBS/TCBS",
                 }
 
             sector = SECTOR_MAP.get(sym, "Doanh nghiệp niêm yết")
@@ -2439,7 +2446,14 @@ def scan_market_opportunities(
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
-                    "rationale": f"Conviction {conv_score:.0f}/100 ({conv_tier}). Định giá MoS: {mos_pct:+.1f}% ({val_method}). Kỹ thuật: Trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}.",
+                    "price_source": tech.get("price_source", "LIVE"),
+                    "price_asof": tech.get("price_asof"),
+                    "input_source": "KBS/TCBS",
+                    "rationale": (
+                        f"Conviction {conv_score:.0f}/100 ({conv_tier}). "
+                        f"Định giá MoS: {f'{mos_pct:+.1f}%' if mos_pct is not None else 'N/A'} ({val_method}). "
+                        f"Kỹ thuật: Trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}."
+                    ),
                 }
 
             # A2. CONTRARIAN PANIC BUY ENGINE (ADR-031 / Phase 18 - v8.1)
@@ -2540,14 +2554,15 @@ def scan_market_opportunities(
                     "f_score": contrarian_res.metrics.get("f_score", 7),
                     "z_score": contrarian_res.metrics.get("z_score", 2.5),
                     "rationale": (
-                        f"{contrarian_res.setup_type}. Định giá MoS: {contrarian_res.mos_pct:+.1f}%. "
+                        f"{contrarian_res.setup_type}. "
+                        f"Định giá MoS: {f'{contrarian_res.mos_pct:+.1f}%' if contrarian_res.mos_pct is not None else 'N/A'}. "
                         f"F-Score: {contrarian_res.metrics.get('f_score')}/9. Vị thế: {contrarian_res.position_size_nav}."
                     ),
                 }
 
             # B. MEDIUM CONVICTION (55-69) HOẶC CƠ BẢN TỐT (MOS >= 8%) NHƯNG KỸ THUẬT CHƯA XÁC NHẬN
             # -> ĐƯA VÀO RADAR THEO DÕI (WATCH_CONFIRMATION) CHO LƯỚT SÓNG HOẶC CHỜ NỀN
-            elif conv_score >= MEDIUM_CONVICTION_THRESHOLD or mos_pct >= 8.0:
+            elif conv_score >= MEDIUM_CONVICTION_THRESHOLD or (mos_pct is not None and mos_pct >= 8.0):
                 watch_reason = []
                 if curr_price < ma20:
                     watch_reason.append(f"giá dưới MA20 ({ma20:.1f})")
@@ -2561,6 +2576,7 @@ def scan_market_opportunities(
                     watch_reason.append(f"Conviction {conv_score:.0f}/100 cần thêm lực cầu")
                 reason_str = ", ".join(watch_reason) if watch_reason else "chờ tín hiệu xác nhận dòng tiền"
 
+                mos_desc = f" (MoS {mos_pct:+.1f}%)" if mos_pct is not None else ""
                 return {
                     "symbol": sym,
                     "sector": sector,
@@ -2580,7 +2596,10 @@ def scan_market_opportunities(
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
-                    "rationale": f"Cơ bản tốt (MoS {mos_pct:+.1f}%), Conviction {conv_score:.0f}/100 nhưng {reason_str}. Ưu tiên theo dõi chờ nến xác nhận ngừng rơi, không mua đuổi.",
+                    "price_source": tech.get("price_source", "LIVE"),
+                    "price_asof": tech.get("price_asof"),
+                    "input_source": "KBS/TCBS",
+                    "rationale": f"Cơ bản tốt{mos_desc}, Conviction {conv_score:.0f}/100 nhưng {reason_str}. Ưu tiên theo dõi chờ nến xác nhận ngừng rơi, không mua đuổi.",
                 }
 
             # C. CÓ TIN HOẶC DÍNH BẪY PHÂN PHỐI / ĐỊNH GIÁ ĐẮT -> CẢNH BÁO BẪY
@@ -2626,12 +2645,12 @@ def scan_market_opportunities(
                 "primary_rejection_gate": "TECH_OR_CONVICTION",
             }
         except Exception as e:
-            logging.exception(f"Lỗi phân tích {sym}: {e}")
+            logging.exception("Lỗi phân tích %s: %s", sym, e)
             return {
                 "symbol": sym,
-                "status": "REJECT",
+                "status": "DATA_ERROR",
                 "setup_type": f"Lỗi exception: {e}",
-                "primary_rejection_gate": "EXCEPTION",
+                "primary_rejection_gate": "DATA_ERROR",
             }
 
     all_results = []
@@ -2659,6 +2678,9 @@ def scan_market_opportunities(
                 elif st == "CAUTION_TRAP":
                     decision = "REJECT"
                     gate = "RISK_TRAP"
+                elif st == "DATA_ERROR" or res.get("primary_rejection_gate") == "DATA_ERROR":
+                    decision = "DATA_ERROR"
+                    gate = "DATA_ERROR"
                 else:
                     decision = "REJECT"
                     gate = res.get("primary_rejection_gate", "UNKNOWN")
@@ -2667,10 +2689,11 @@ def scan_market_opportunities(
                 current_model = model_version_override or "contrarian_v14.0"
                 dec_id_custom = (
                     f"DEC_{res['symbol']}_20261012_{current_session}"
-                    if session_override == "EOD_REPLAY"
+                    if session_override and "EOD_REPLAY" in session_override
                     else None
                 )
 
+                p_asof = res.get("price_asof") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 record_payload = {
                     "symbol": res["symbol"],
                     "session": current_session,
@@ -2683,6 +2706,11 @@ def scan_market_opportunities(
                         "mos_pct": res.get("mos_pct"),
                         "conviction": res.get("conviction_score"),
                         "is_shadow": bool(is_shadow_override or res.get("shadow_mode")),
+                        "input_source": res.get("input_source", "KBS/TCBS"),
+                        "gates_failed": res.get("gates_failed", [gate] if gate not in ("PASSED", "SHADOW_MODE") else []),
+                        "informative": bool(res.get("mos_is_informative", False)),
+                        "price_source": res.get("price_source", "LIVE"),
+                        "price_asof": p_asof,
                     },
                     "model_version": current_model,
                 }
@@ -2703,8 +2731,8 @@ def scan_market_opportunities(
                             update_decision_forward_returns,
                         )
 
-                        ai_act = "PASS" if decision == "BUY" else ("NOT_EVALUATED" if decision == "WATCH" else "VETO")
-                        sz_factor = 1.0 if decision == "BUY" else (None if decision == "WATCH" else 0.0)
+                        ai_act = "PASS" if decision == "BUY" else ("NOT_EVALUATED" if decision in ("WATCH", "DATA_ERROR") else "VETO")
+                        sz_factor = 1.0 if decision == "BUY" else (None if decision in ("WATCH", "DATA_ERROR") else 0.0)
 
                         save_lifecycle_event(
                             {
@@ -2830,6 +2858,9 @@ def scan_market_opportunities(
         if sym and sym not in seen_symbols and len(final_caution) < 2:
             seen_symbols.add(sym)
             final_caution.append(c)
+
+    if session_override:
+        return all_results
 
     # Return up to 2 Buys + 2 Watch + 2 Caution (Strictly deduplicated)
     return final_buys + final_watch + final_caution
