@@ -63,7 +63,7 @@ class TestCompounderIntrinsicValuation:
         full_res = calculate_fair_value_and_mos("UNKNOWN_COMP", current_price=50.0, sector="Bán lẻ")
         assert full_res["fair_value"] == 0.0
         assert full_res["mos_is_informative"] is False
-        assert full_res["mos_pct"] == 0.0
+        assert full_res["mos_pct"] in (0.0, None)
 
     def test_compounder_with_dynamic_fin_dict_eps_and_pe(self):
         """When fin_dict provides EPS and P/E, valuation computes intrinsic FV cleanly."""

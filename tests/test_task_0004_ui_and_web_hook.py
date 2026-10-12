@@ -50,7 +50,7 @@ def test_web_to_discord_hook_triggers_on_buy(monkeypatch):
             ):
                 with mock.patch(
                     "data_engine.get_financial_ratios",
-                    return_value={"pe": 7.5, "pb": 1.1, "roe": 22.0, "debt_equity": 0.5},
+                    return_value={"pe": 7.5, "pb": 1.1, "roe": 22.0, "debt_equity": 0.5, "bvps": 30.0},
                 ):
                     with mock.patch("data_engine.fetch_macro_news", return_value=[]):
                         with mock.patch(

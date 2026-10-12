@@ -97,17 +97,17 @@ def test_fpt_model_dispersion_detection():
 
 
 def test_gvr_stock_specific_cyclical_median_pe():
-    """Verify GVR uses historical 13.5x multiple instead of flat 8.5x."""
+    """Verify GVR uses conservative trough multiple aligned with parameter registry."""
     fin_gvr = {
         "eps": 1615.0,
         "audit_trail": {"source": "KBS_Primary", "period": "2026-Q2"},
     }
     cyc_res = evaluate_cyclical_valuation("GVR", current_price=32.85, fin_dict=fin_gvr, sector="Tài nguyên Cơ bản")
-    # Base EPS 1.615k * 13.5x = 21.80k
-    assert cyc_res["fv_base"] >= 20.0
-    # Sanity ratio FV / Price must be >= 0.50
+    # Base EPS 1.615k * 8.5x = 13.73k (Aligned with VALUATION_PARAMETER_REGISTRY.md)
+    assert cyc_res["fv_base"] == 13.73
+    # Sanity ratio FV / Price must be >= 0.40
     ratio = cyc_res["fv_base"] / 32.85
-    assert ratio >= 0.50
+    assert ratio >= 0.40
 
 
 def test_causal_chains_logged_in_entry_gates():

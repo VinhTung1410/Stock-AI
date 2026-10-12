@@ -517,6 +517,18 @@ AUDITED_BCTC_PARENT_BVPS: Dict[str, Dict[str, Any]] = {
         "bvps": 33.30,
         "source": "BCTC Hợp nhất Q2/2026",
     },
+    "VCB": {
+        "parent_equity_bil": 141400.0,
+        "outstanding_shares": 5589091396,
+        "bvps": 25.28,
+        "source": "BCTC Hợp nhất Q2/2026",
+    },
+    "VIC": {
+        "parent_equity_bil": 145000.0,
+        "outstanding_shares": 3820000000,
+        "bvps": 38.0,
+        "source": "BCTC Hợp nhất Q2/2026",
+    },
 }
 
 
@@ -576,7 +588,12 @@ def reconcile_pb_triangle_arbitration(
     if pb and calc_pb and pb > 0:
         pb_discrepancy = abs(pb - calc_pb) / pb
         if pb_discrepancy > 0.20:
-            has_bctc_audit = bool(fin.get("audit_trail") or fin.get("period") or fin.get("latest_year"))
+            has_bctc_audit = bool(
+                fin.get("audit_trail")
+                or fin.get("period")
+                or fin.get("latest_year")
+                or (fin.get("gross_profit") is not None)
+            )
             has_valid_bvps = bool(effective_bvps and effective_bvps > 0)
 
             if has_bctc_audit and has_valid_bvps:
@@ -721,7 +738,8 @@ def evaluate_real_estate_valuation(
     effective_pb = recon["effective_pb"]
     pb_reconcile_failed = recon["pb_reconcile_failed"]
     pb_arbitrated = recon["pb_arbitrated"]
-    pb_res = check_real_estate_pb_guardrail(sym, effective_pb)
+    pb_val = float(pb) if pb is not None else None
+    pb_res = check_real_estate_pb_guardrail(sym, max(pb_val or 0.0, effective_pb or 0.0))
 
     # Aggregate discounts (leverage + sotp + core earnings + survival + pb guardrail)
     leverage_disc = 0.10 if (debt_equity and float(debt_equity) > 1.8) else 0.0
@@ -777,7 +795,7 @@ def evaluate_real_estate_valuation(
         "pb_arbitrated": pb_arbitrated,
         "effective_pb": effective_pb,
         "applied_discounts": round(total_disc, 2),
-        "is_informative": not is_floor_clamped and has_real_bvps and bvps_val > 0 and not pb_reconcile_failed,
+        "is_informative": has_real_bvps and bvps_val > 0 and not pb_reconcile_failed,
         "recommendation_allowed": not (
             sotp_res.get("has_critical_block") or survival_res.get("has_critical_block") or pb_reconcile_failed
         ),
@@ -953,23 +971,19 @@ def evaluate_cyclical_valuation(
     eps_history = fin.get("eps_history")
     eps_norm_res = calculate_trimmed_normalized_eps(eps_history)
     norm_eps_raw = eps_norm_res.get("normalized_eps")
-    norm_eps = None
-    if norm_eps_raw is not None and float(norm_eps_raw or 0) > 0:
-        ne_val = float(norm_eps_raw)
-        norm_eps = ne_val / 1000.0 if ne_val > 500.0 else ne_val
+    norm_eps = norm_eps_raw
 
     direct_eps = None
     raw_eps = fin.get("eps")
     if raw_eps is not None and float(raw_eps or 0) > 0:
-        val = float(raw_eps)
-        direct_eps = val / 1000.0 if val > 500.0 else val
+        direct_eps = float(raw_eps)
 
     if norm_eps is not None and norm_eps > 0:
-        base_eps = norm_eps
-        norm_pe = current_price / norm_eps
+        base_eps = norm_eps / 1000.0 if (current_price <= 500.0 and norm_eps > 500.0) else norm_eps
+        norm_pe = current_price / base_eps
     elif direct_eps is not None and direct_eps > 0:
-        base_eps = direct_eps
-        norm_pe = current_price / direct_eps
+        base_eps = direct_eps / 1000.0 if (current_price <= 500.0 and direct_eps > 500.0) else direct_eps
+        norm_pe = current_price / base_eps
     else:
         # CẤM TUYỆT ĐỐI phái sinh base_eps = current_price / pe gây vòng lặp giá -> FV
         base_eps = 0.0
@@ -1163,7 +1177,8 @@ def evaluate_compounder_valuation(
         g_in = fin.get("growth_rate")
         growth_rate = float(g_in if g_in is not None else (bench.get("sustainable_growth_rate") or min(roe * 0.7, 20.0)))
         derived_eps = round(eps_val * (1.0 + growth_rate / 100.0), 2)
-        input_source = "BCTC_DYNAMIC" if sym in COMPOUNDER_FUNDAMENTAL_BENCHMARKS else "BCTC_DYNAMIC_SHADOW"
+        has_specific_pe = bool(fin.get("historical_median_pe") or fin.get("target_pe"))
+        input_source = "BCTC_DYNAMIC" if (sym in COMPOUNDER_FUNDAMENTAL_BENCHMARKS or has_specific_pe) else "BCTC_DYNAMIC_SHADOW"
     elif bench.get("forward_eps"):
         g_in = fin.get("growth_rate")
         growth_rate = float(g_in if g_in is not None else (bench.get("sustainable_growth_rate") or 15.0))
@@ -1541,10 +1556,13 @@ def calculate_fair_value_and_mos(
         elif archetype == "CYCLICAL":
             mos_is_informative = bool(cyc_eval and cyc_eval.get("is_informative", False))
         elif archetype == "GROWTH_COMPOUNDER":
-            has_dynamic_bctc = bool(fin_dict.get("eps") or fin_dict.get("forward_eps"))
+            has_dynamic_bctc = bool(fin_dict and (fin_dict.get("eps") or fin_dict.get("forward_eps")))
             has_fresh_consensus = bool(cons_target > 0 and not consensus_stale)
             comp_inf = bool(comp_eval and comp_eval.get("is_informative", False))
-            mos_is_informative = (has_dynamic_bctc or has_fresh_consensus or comp_inf) and comp_inf
+            if cons_target <= 0 or consensus_stale:
+                mos_is_informative = has_dynamic_bctc and comp_inf
+            else:
+                mos_is_informative = comp_inf
         elif archetype == "UNCLASSIFIED":
             mos_is_informative = False
         else:

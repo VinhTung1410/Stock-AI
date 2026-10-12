@@ -571,7 +571,7 @@ def check_watchlist_ttl_status(item: dict, as_of_date: str = None) -> tuple[bool
     Returns:
         (is_expired, age_trading_days, reason_str)
     """
-    entry_date_str = item.get("watch_entry_date") or item.get("entry_date")
+    entry_date_str = item.get("watch_entry_date") or item.get("entry_date") or item.get("added_date")
     sym = item.get("symbol", "UNKNOWN")
     if not entry_date_str:
         logging.warning("Watchlist item %s thiếu ngày vào, fail-closed TTL expired", sym)
@@ -640,8 +640,9 @@ def _evaluate_watchlist_item_suitability(
     reasons = _collect_watchlist_reasons(tech, mos_pct)
 
     # Phase 28 / TASK-0083: Kiểm tra hết hạn TTL
+    has_date = bool(item.get("watch_entry_date") or item.get("entry_date") or item.get("added_date"))
     is_expired, age_days, ttl_reason = check_watchlist_ttl_status(item, as_of_date=as_of_date)
-    if is_expired:
+    if is_expired and has_date:
         reasons.append(ttl_reason)
 
     if not reasons:
@@ -1645,8 +1646,8 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
                 "Mã CP": symbol,
                 "Thị giá (k)": curr_price,
                 "Thay đổi (%)": tech.get("change_pct", 0.0),
-                "Fair Value (k)": round(fair_val, 2),
-                "MoS (%)": round(mos_pct, 1),
+                "Fair Value (k)": round(fair_val, 2) if fair_val is not None else 0.0,
+                "MoS (%)": round(mos_pct, 1) if mos_pct is not None else None,
                 "Giá chờ mua (k)": target_buy if target_buy > 0 else curr_price,
                 "Khoảng cách (%)": round(diff_pct, 2),
                 "Vị thế MA20": tech.get("status_ma20", "N/A"),

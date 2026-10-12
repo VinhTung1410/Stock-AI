@@ -528,6 +528,9 @@ def evaluate_entry_gates(
         )
 
     # Đạt chuẩn toàn bộ các tầng
-    tech_sig = result.metrics.get("tech_signal", "")
-    result.action_state = ACTION_ACCUMULATE if tech_sig == "CONSOLIDATION_BASE" else ACTION_BUY
+    if not result.can_buy:
+        result.action_state = ACTION_WATCH
+    else:
+        tech_sig = result.metrics.get("tech_signal", "")
+        result.action_state = ACTION_ACCUMULATE if tech_sig == "CONSOLIDATION_BASE" else ACTION_BUY
     return result
