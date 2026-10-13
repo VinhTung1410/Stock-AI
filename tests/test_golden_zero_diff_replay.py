@@ -370,3 +370,53 @@ def test_calculate_executable_forward_return_ceiling_lock():
     )
     assert res_normal["fillable_at_open"] is True
     assert res_normal["forward_return_open_entry"] == 10.0
+
+
+def test_quant_sanity_check_edge_cases_and_drift_branches():
+    """Verify full branch coverage for invariant detection and implicit fair value."""
+    # 1. Edge cases in calculate_implicit_fair_value
+    assert calculate_implicit_fair_value(None, 20.0) is None
+    assert calculate_implicit_fair_value(25.0, None) is None
+    assert calculate_implicit_fair_value(-5.0, 20.0) is None
+    assert calculate_implicit_fair_value(25.0, 100.0) is None
+
+    # 2. BCTC period legitimately changed
+    r_period1 = {"symbol": "TCB", "facts": {"price": 30.0, "mos_pct": 20.0, "bctc_period": "2026-Q1"}}
+    r_period2 = {"symbol": "TCB", "facts": {"price": 30.0, "mos_pct": 25.0, "bctc_period": "2026-Q2"}}
+    is_d, msg = detect_unintended_valuation_drift(r_period1, r_period2)
+    assert not is_d
+    assert "BCTC 2026-Q1->2026-Q2" in msg
+
+    # 3. Consensus date legitimately updated
+    r_cons1 = {"symbol": "MBB", "facts": {"price": 25.0, "mos_pct": 20.0, "consensus_asof": "2026-09-01"}}
+    r_cons2 = {"symbol": "MBB", "facts": {"price": 25.0, "mos_pct": 25.0, "consensus_asof": "2026-10-01"}}
+    is_d, msg = detect_unintended_valuation_drift(r_cons1, r_cons2)
+    assert not is_d
+    assert "Consensus 2026-09-01->2026-10-01" in msg
+
+    # 4. MoS or Price absent -> skipped
+    r_absent = {"symbol": "HPG", "facts": {"price": 0.0, "mos_pct": None}}
+    r_ok = {"symbol": "HPG", "facts": {"price": 25.0, "mos_pct": 20.0}}
+    is_d, msg = detect_unintended_valuation_drift(r_absent, r_ok)
+    assert not is_d
+    assert "invariant check skipped" in msg
+
+    # 5. Indeterminate fair value
+    r_bad_fv = {"symbol": "HPG", "facts": {"price": 25.0, "mos_pct": 100.0}}
+    is_d, msg = detect_unintended_valuation_drift(r_bad_fv, r_ok)
+    assert not is_d
+    assert "Indeterminate implicit fair value" in msg
+
+    # 6. Unintended drift detected
+    r_drift1 = {"symbol": "FPT", "facts": {"price": 100.0, "mos_pct": 20.0, "bctc_period": "2026-Q2", "consensus_asof": "2026-10-01"}}
+    r_drift2 = {"symbol": "FPT", "facts": {"price": 100.0, "mos_pct": 35.0, "bctc_period": "2026-Q2", "consensus_asof": "2026-10-01"}}
+    is_d, msg = detect_unintended_valuation_drift(r_drift1, r_drift2)
+    assert is_d
+    assert "UNINTENDED VALUATION DRIFT DETECTED" in msg
+
+    # 7. Invariant preserved (drift within tolerance)
+    r_same1 = {"symbol": "FPT", "facts": {"price": 100.0, "mos_pct": 20.0, "bctc_period": "2026-Q2", "consensus_asof": "2026-10-01"}}
+    r_same2 = {"symbol": "FPT", "facts": {"price": 100.0, "mos_pct": 20.1, "bctc_period": "2026-Q2", "consensus_asof": "2026-10-01"}}
+    is_d, msg = detect_unintended_valuation_drift(r_same1, r_same2)
+    assert not is_d
+    assert "Invariant preserved" in msg

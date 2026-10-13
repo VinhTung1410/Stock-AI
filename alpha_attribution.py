@@ -234,6 +234,84 @@ def evaluate_alpha_attribution(
 
 
 
+def _evaluate_session_sufficiency(
+    dates: List[str],
+    by_date: Dict[str, Dict[str, List[float]]],
+    cohort_a: str,
+    cohort_b: str,
+    min_clusters: int,
+    extra_cluster_payload: Dict[str, Any] | None = None,
+) -> tuple[bool, Dict[str, Any] | None, float | None]:
+    """Validate minimum trading session clusters for bootstrap inference."""
+    if not dates:
+        return False, {
+            "status": "INSUFFICIENT_SESSIONS",
+            "alpha_mean": None,
+            "ci_lower": None,
+            "ci_upper": None,
+            "p_value": None,
+            "n_sessions": 0,
+        }, None
+
+    all_a = [v for d in dates for v in by_date[d][cohort_a]]
+    all_b = [v for d in dates for v in by_date[d][cohort_b]]
+    mean_spread = round(float(np.mean(all_a) - np.mean(all_b)), 2) if (all_a and all_b) else None
+
+    if len(dates) < min_clusters:
+        res = {
+            "status": "NOT_ENOUGH_CLUSTERS",
+            "alpha_mean": mean_spread,
+            "ci_lower": None,
+            "ci_upper": None,
+            "p_value": None,
+            "n_sessions": len(dates),
+            "min_clusters_required": min_clusters,
+        }
+        if extra_cluster_payload:
+            res.update(extra_cluster_payload)
+        return False, res, mean_spread
+
+    return True, None, mean_spread
+
+
+def _build_bootstrap_ci_payload(
+    sampled_spreads: List[float],
+    mean_spread: float | None,
+    dates: List[str],
+    n_resamples: int,
+    extra_ok_payload: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    """Assemble final bootstrap CI output or fallback if no paired observations."""
+    if not sampled_spreads:
+        return {
+            "status": "NO_PAIRED_DATA",
+            "alpha_mean": mean_spread,
+            "ci_lower": None,
+            "ci_upper": None,
+            "p_value": None,
+            "n_sessions": len(dates),
+        }
+
+    spreads_arr = np.array(sampled_spreads)
+    ci_lower = float(np.percentile(spreads_arr, 2.5))
+    ci_upper = float(np.percentile(spreads_arr, 97.5))
+    alpha_mean = float(np.mean(spreads_arr))
+    p_val = float(np.mean(spreads_arr <= 0.0))
+
+    res = {
+        "status": "BOOTSTRAP_OK",
+        "alpha_mean": round(alpha_mean, 2),
+        "ci_lower": round(ci_lower, 2),
+        "ci_upper": round(ci_upper, 2),
+        "p_value": round(p_val, 4),
+        "n_sessions": len(dates),
+        "n_resamples": n_resamples,
+    }
+    if extra_ok_payload:
+        res.update(extra_ok_payload)
+    return res
+
+
 def compute_clustered_bootstrap_alpha(
     records: List[Dict[str, Any]],
     cohort_a: str = COHORT_WATCH,
@@ -268,30 +346,11 @@ def compute_clustered_bootstrap_alpha(
         by_date[dt][c].append(float(val))
 
     dates = list(by_date.keys())
-    if not dates:
-        return {
-            "status": "INSUFFICIENT_SESSIONS",
-            "alpha_mean": None,
-            "ci_lower": None,
-            "ci_upper": None,
-            "p_value": None,
-            "n_sessions": 0,
-        }
-
-    all_a = [v for d in dates for v in by_date[d][cohort_a]]
-    all_b = [v for d in dates for v in by_date[d][cohort_b]]
-    mean_spread = round(float(np.mean(all_a) - np.mean(all_b)), 2) if (all_a and all_b) else None
-
-    if len(dates) < min_clusters:
-        return {
-            "status": "NOT_ENOUGH_CLUSTERS",
-            "alpha_mean": mean_spread,
-            "ci_lower": None,
-            "ci_upper": None,
-            "p_value": None,
-            "n_sessions": len(dates),
-            "min_clusters_required": min_clusters,
-        }
+    is_sufficient, err_payload, mean_spread = _evaluate_session_sufficiency(
+        dates, by_date, cohort_a, cohort_b, min_clusters
+    )
+    if not is_sufficient:
+        return err_payload
 
     rng = np.random.default_rng(random_seed)
     sampled_spreads = []
@@ -305,31 +364,7 @@ def compute_clustered_bootstrap_alpha(
             spread = float(np.mean(vals_a) - np.mean(vals_b))
             sampled_spreads.append(spread)
 
-    if not sampled_spreads:
-        return {
-            "status": "NO_PAIRED_DATA",
-            "alpha_mean": mean_spread,
-            "ci_lower": None,
-            "ci_upper": None,
-            "p_value": None,
-            "n_sessions": len(dates),
-        }
-
-    spreads_arr = np.array(sampled_spreads)
-    ci_lower = float(np.percentile(spreads_arr, 2.5))
-    ci_upper = float(np.percentile(spreads_arr, 97.5))
-    alpha_mean = float(np.mean(spreads_arr))
-    p_val = float(np.mean(spreads_arr <= 0.0))
-
-    return {
-        "status": "BOOTSTRAP_OK",
-        "alpha_mean": round(alpha_mean, 2),
-        "ci_lower": round(ci_lower, 2),
-        "ci_upper": round(ci_upper, 2),
-        "p_value": round(p_val, 4),
-        "n_sessions": len(dates),
-        "n_resamples": n_resamples,
-    }
+    return _build_bootstrap_ci_payload(sampled_spreads, mean_spread, dates, n_resamples)
 
 
 def is_record_informative(record: Dict[str, Any]) -> bool:
@@ -409,31 +444,11 @@ def compute_block_bootstrap_alpha(
         by_date[d][dec].append(float(ret_val))
 
     dates = sorted(by_date.keys())
-    if not dates:
-        return {
-            "status": "INSUFFICIENT_SESSIONS",
-            "alpha_mean": None,
-            "ci_lower": None,
-            "ci_upper": None,
-            "p_value": None,
-            "n_sessions": 0,
-        }
-
-    all_a = [v for d in dates for v in by_date[d][cohort_a]]
-    all_b = [v for d in dates for v in by_date[d][cohort_b]]
-    mean_spread = round(float(np.mean(all_a) - np.mean(all_b)), 2) if (all_a and all_b) else None
-
-    if len(dates) < min_clusters:
-        return {
-            "status": "NOT_ENOUGH_CLUSTERS",
-            "alpha_mean": mean_spread,
-            "ci_lower": None,
-            "ci_upper": None,
-            "p_value": None,
-            "n_sessions": len(dates),
-            "min_clusters_required": min_clusters,
-            "block_length": block_length,
-        }
+    is_sufficient, err_payload, mean_spread = _evaluate_session_sufficiency(
+        dates, by_date, cohort_a, cohort_b, min_clusters, extra_cluster_payload={"block_length": block_length}
+    )
+    if not is_sufficient:
+        return err_payload
 
     rng = np.random.default_rng(random_seed)
     sampled_spreads = []
@@ -455,32 +470,9 @@ def compute_block_bootstrap_alpha(
             spread = float(np.mean(vals_a) - np.mean(vals_b))
             sampled_spreads.append(spread)
 
-    if not sampled_spreads:
-        return {
-            "status": "NO_PAIRED_DATA",
-            "alpha_mean": mean_spread,
-            "ci_lower": None,
-            "ci_upper": None,
-            "p_value": None,
-            "n_sessions": len(dates),
-        }
-
-    spreads_arr = np.array(sampled_spreads)
-    ci_lower = float(np.percentile(spreads_arr, 2.5))
-    ci_upper = float(np.percentile(spreads_arr, 97.5))
-    alpha_mean = float(np.mean(spreads_arr))
-    p_val = float(np.mean(spreads_arr <= 0.0))
-
-    return {
-        "status": "BOOTSTRAP_OK",
-        "alpha_mean": round(alpha_mean, 2),
-        "ci_lower": round(ci_lower, 2),
-        "ci_upper": round(ci_upper, 2),
-        "p_value": round(p_val, 4),
-        "n_sessions": len(dates),
-        "n_resamples": n_resamples,
-        "block_length": effective_block,
-    }
+    return _build_bootstrap_ci_payload(
+        sampled_spreads, mean_spread, dates, n_resamples, extra_ok_payload={"block_length": effective_block}
+    )
 
 
 def calculate_executable_forward_return(
