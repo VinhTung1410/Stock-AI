@@ -1243,7 +1243,10 @@ def evaluate_compounder_valuation(
         "valuation_method": method,
         "is_informative": is_informative,
         "input_source": input_source,
+        "bctc_period": fin.get("bctc_period") or bench.get("bctc_period"),
+        "last_updated": bench.get("last_updated"),
     }
+
 
 
 def calculate_fair_value_and_mos(
@@ -1712,4 +1715,7 @@ def calculate_fair_value_and_mos(
         "sector_risks": cyc_eval.get("sector_risks") if cyc_eval else None,
         "normalized_eps": cyc_eval.get("normalized_eps") if cyc_eval else None,
         "normalized_pe": cyc_eval.get("normalized_pe") if cyc_eval else None,
+        "bctc_period": fin_dict.get("period") or (comp_eval.get("bctc_period") if comp_eval else None),
+        "consensus_asof": cons_data.get("last_updated") or (comp_eval.get("last_updated") if comp_eval else None),
     }
+

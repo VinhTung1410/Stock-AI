@@ -1028,6 +1028,49 @@ def save_lifecycle_event(event: dict) -> str | None:
         return event_id
 
 
+def is_watchlist_stint_event_emitted(symbol: str, entry_date: str) -> bool:
+    """Check if a WATCHLIST_ADDED event has already been emitted for this watch stint (symbol + entry_date).
+
+    Survives application restarts by checking both in-memory store and Supabase table.
+    Ensures a ticker remaining on the watchlist for multiple days emits strictly ONCE per stint.
+    """
+    sym = str(symbol).upper().strip()
+    entry_d = str(entry_date)[:10]
+    expected_corr_id = f"WL_{sym}_{entry_d}"
+
+    # Check local in-memory store first
+    for e in _IN_MEMORY_LIFECYCLE_EVENTS:
+        if (
+            e.get("symbol") == sym
+            and e.get("event_type") == EVENT_WATCHLIST_ADDED
+            and (
+                e.get("correlation_id") == expected_corr_id
+                or str(e.get("event_data", {}).get("watch_entry_date", ""))[:10] == entry_d
+            )
+        ):
+            return True
+
+    # Check database if connected
+    client = get_supabase_client()
+    if client:
+        try:
+            res = (
+                client.table("decision_lifecycle_events")
+                .select("event_id")
+                .eq("symbol", sym)
+                .eq("event_type", EVENT_WATCHLIST_ADDED)
+                .eq("correlation_id", expected_corr_id)
+                .limit(1)
+                .execute()
+            )
+            if res.data:
+                return True
+        except Exception:
+            logging.exception("Failed to query watchlist stint event in Supabase for %s", sym)
+
+    return False
+
+
 def get_lifecycle_events(
     correlation_id: Optional[str] = None,
     symbol: Optional[str] = None,

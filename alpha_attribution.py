@@ -209,7 +209,8 @@ def evaluate_alpha_attribution(
         for h in horizons:
             w_vals = [r[f"fwd_ret_t{h}"] for r in sec_watch if r.get(f"fwd_ret_t{h}") is not None]
             r_vals = [r[f"fwd_ret_t{h}"] for r in sec_rej if r.get(f"fwd_ret_t{h}") is not None]
-            if w_vals and r_vals:
+            # Guardrail: nếu một nhóm dưới 5 mã, không báo chênh lệch, chỉ hiển thị n
+            if len(w_vals) >= 5 and len(r_vals) >= 5:
                 sec_m[f"alpha_watch_vs_reject_t{h}"] = round(float(np.mean(w_vals) - np.mean(r_vals)), 2)
             else:
                 sec_m[f"alpha_watch_vs_reject_t{h}"] = None
@@ -232,6 +233,7 @@ def evaluate_alpha_attribution(
     }
 
 
+
 def compute_clustered_bootstrap_alpha(
     records: List[Dict[str, Any]],
     cohort_a: str = COHORT_WATCH,
@@ -239,10 +241,12 @@ def compute_clustered_bootstrap_alpha(
     horizon: int = 5,
     n_resamples: int = 1000,
     random_seed: int = 42,
+    min_clusters: int = 30,
 ) -> Dict[str, Any]:
     """Tính Khoảng tin cậy Bootstrap theo Cụm Ngày (Clustered Bootstrap by Trading Date).
 
     Bảo toàn tính tương quan chéo giữa các cổ phiếu được định giá trong cùng một phiên giao dịch.
+    Chặn đầu ra: Dưới 30 phiên trả về NOT_ENOUGH_CLUSTERS, chỉ hiển thị alpha_mean và n_sessions.
     """
     key = f"fwd_ret_t{horizon}"
     by_date: Dict[str, Dict[str, List[float]]] = {}
@@ -264,14 +268,29 @@ def compute_clustered_bootstrap_alpha(
         by_date[dt][c].append(float(val))
 
     dates = list(by_date.keys())
-    if len(dates) < 2:
+    if not dates:
         return {
             "status": "INSUFFICIENT_SESSIONS",
             "alpha_mean": None,
             "ci_lower": None,
             "ci_upper": None,
             "p_value": None,
+            "n_sessions": 0,
+        }
+
+    all_a = [v for d in dates for v in by_date[d][cohort_a]]
+    all_b = [v for d in dates for v in by_date[d][cohort_b]]
+    mean_spread = round(float(np.mean(all_a) - np.mean(all_b)), 2) if (all_a and all_b) else None
+
+    if len(dates) < min_clusters:
+        return {
+            "status": "NOT_ENOUGH_CLUSTERS",
+            "alpha_mean": mean_spread,
+            "ci_lower": None,
+            "ci_upper": None,
+            "p_value": None,
             "n_sessions": len(dates),
+            "min_clusters_required": min_clusters,
         }
 
     rng = np.random.default_rng(random_seed)
@@ -289,7 +308,7 @@ def compute_clustered_bootstrap_alpha(
     if not sampled_spreads:
         return {
             "status": "NO_PAIRED_DATA",
-            "alpha_mean": None,
+            "alpha_mean": mean_spread,
             "ci_lower": None,
             "ci_upper": None,
             "p_value": None,
@@ -311,4 +330,201 @@ def compute_clustered_bootstrap_alpha(
         "n_sessions": len(dates),
         "n_resamples": n_resamples,
     }
+
+
+def is_record_informative(record: Dict[str, Any]) -> bool:
+    """Check informative flag adhering to schema version.
+
+    For 13/10 and earlier (schema v1 or unversioned):
+    'informative' was conflated with decision logic. Thus, use 'mos_pct is not None'
+    instead of the literal 'informative' boolean.
+    From 14/10 onwards (schema v2.0):
+    Use the hardened model-level 'informative' flag.
+    """
+    facts = record.get("facts") if isinstance(record.get("facts"), dict) else record
+    schema_v = record.get("schema_version") or facts.get("schema_version")
+    dt = str(record.get("decision_date") or facts.get("price_asof") or "")[:10]
+
+    if not schema_v or str(schema_v).startswith("v1") or (dt and dt <= "2026-10-13"):
+        mos = facts.get("mos_pct") if facts.get("mos_pct") is not None else record.get("mos_pct")
+        return mos is not None
+    return bool(facts.get("informative", False))
+
+
+def check_open_execution_liquidity(
+    open_price: float,
+    ref_price: float,
+    exchange: str = "HOSE",
+) -> str:
+    """Identify whether a stock opened locked at ceiling or floor (unexecutable at Open).
+
+    HOSE limit: +/- 7%, HNX: +/- 10%, UPCOM: +/- 15%.
+    """
+    if not open_price or not ref_price or ref_price <= 0:
+        return "NORMAL"
+    exch = exchange.upper().strip()
+    limit_pct = 0.07 if exch == "HOSE" else (0.10 if exch == "HNX" else 0.15)
+    ceiling_price = round(ref_price * (1.0 + limit_pct), 2)
+    floor_price = round(ref_price * (1.0 - limit_pct), 2)
+
+    if open_price >= ceiling_price - 0.05:
+        return "CEILING_LOCKED"
+    if open_price <= floor_price + 0.05:
+        return "FLOOR_LOCKED"
+    return "NORMAL"
+
+
+def compute_block_bootstrap_alpha(
+    evaluated_records: List[Dict[str, Any]],
+    cohort_a: str = "WATCH",
+    cohort_b: str = "REJECT",
+    horizon: int = 20,
+    block_length: int = 20,
+    n_resamples: int = 1000,
+    min_clusters: int = 30,
+    random_seed: int = 42,
+) -> Dict[str, Any]:
+    """Moving Block Bootstrap for overlapping horizons (e.g. T+20, T+60).
+
+    Addresses MA(h-1) serial autocorrelation across consecutive overlapping windows.
+    Samples contiguous temporal blocks of dates of length block_length rather than isolated dates.
+    Suppresses CI and p-value if unique trading sessions < min_clusters.
+    """
+    by_date: dict[str, dict[str, list[float]]] = {}
+    h_field = f"fwd_ret_t{horizon}"
+
+    for r in evaluated_records:
+        dec = r.get("decision")
+        if dec not in (cohort_a, cohort_b):
+            continue
+        d = str(r.get("decision_date") or r.get("facts", {}).get("price_asof", ""))[:10]
+        if not d:
+            continue
+        ret_val = r.get(h_field)
+        if ret_val is None or not isinstance(ret_val, (int, float)):
+            continue
+
+        if d not in by_date:
+            by_date[d] = {cohort_a: [], cohort_b: []}
+        by_date[d][dec].append(float(ret_val))
+
+    dates = sorted(by_date.keys())
+    if not dates:
+        return {
+            "status": "INSUFFICIENT_SESSIONS",
+            "alpha_mean": None,
+            "ci_lower": None,
+            "ci_upper": None,
+            "p_value": None,
+            "n_sessions": 0,
+        }
+
+    all_a = [v for d in dates for v in by_date[d][cohort_a]]
+    all_b = [v for d in dates for v in by_date[d][cohort_b]]
+    mean_spread = round(float(np.mean(all_a) - np.mean(all_b)), 2) if (all_a and all_b) else None
+
+    if len(dates) < min_clusters:
+        return {
+            "status": "NOT_ENOUGH_CLUSTERS",
+            "alpha_mean": mean_spread,
+            "ci_lower": None,
+            "ci_upper": None,
+            "p_value": None,
+            "n_sessions": len(dates),
+            "min_clusters_required": min_clusters,
+            "block_length": block_length,
+        }
+
+    rng = np.random.default_rng(random_seed)
+    sampled_spreads = []
+    n_dates = len(dates)
+    effective_block = max(1, min(block_length, n_dates))
+    n_possible_blocks = n_dates - effective_block + 1
+
+    for _ in range(n_resamples):
+        sampled_dates = []
+        while len(sampled_dates) < n_dates:
+            start_idx = rng.integers(0, n_possible_blocks)
+            sampled_dates.extend(dates[start_idx : start_idx + effective_block])
+        sampled_dates = sampled_dates[:n_dates]
+
+        vals_a = [v for d in sampled_dates for v in by_date[d][cohort_a]]
+        vals_b = [v for d in sampled_dates for v in by_date[d][cohort_b]]
+
+        if vals_a and vals_b:
+            spread = float(np.mean(vals_a) - np.mean(vals_b))
+            sampled_spreads.append(spread)
+
+    if not sampled_spreads:
+        return {
+            "status": "NO_PAIRED_DATA",
+            "alpha_mean": mean_spread,
+            "ci_lower": None,
+            "ci_upper": None,
+            "p_value": None,
+            "n_sessions": len(dates),
+        }
+
+    spreads_arr = np.array(sampled_spreads)
+    ci_lower = float(np.percentile(spreads_arr, 2.5))
+    ci_upper = float(np.percentile(spreads_arr, 97.5))
+    alpha_mean = float(np.mean(spreads_arr))
+    p_val = float(np.mean(spreads_arr <= 0.0))
+
+    return {
+        "status": "BOOTSTRAP_OK",
+        "alpha_mean": round(alpha_mean, 2),
+        "ci_lower": round(ci_lower, 2),
+        "ci_upper": round(ci_upper, 2),
+        "p_value": round(p_val, 4),
+        "n_sessions": len(dates),
+        "n_resamples": n_resamples,
+        "block_length": effective_block,
+    }
+
+
+def calculate_executable_forward_return(
+    decision: str,
+    open_price: float,
+    close_price_t_plus_h: float,
+    ref_price: float,
+    close_price_t1: float | None = None,
+    exchange: str = "HOSE",
+) -> Dict[str, Any]:
+    """Calculate executable forward return taking statutory ceiling/floor locks into account.
+
+    - BUY: If Open is CEILING_LOCKED, buying at Open is unfillable.
+      Primary metric excludes this record (fillable_at_open = False).
+      Alternative variant enters at T+1 Close (forward_return_close_entry).
+    - REJECT / SELL: If Open is FLOOR_LOCKED, exiting at Open is unfillable.
+    """
+    liquidity_status = check_open_execution_liquidity(open_price, ref_price, exchange)
+
+    if decision == "BUY" and liquidity_status == "CEILING_LOCKED":
+        alt_ret = (
+            round(((close_price_t_plus_h - close_price_t1) / close_price_t1) * 100.0, 2)
+            if (close_price_t1 and close_price_t1 > 0)
+            else None
+        )
+        return {
+            "fillable_at_open": False,
+            "liquidity_status": "CEILING_LOCKED",
+            "forward_return_open_entry": None,
+            "forward_return_close_entry": alt_ret,
+            "execution_note": "Khóa trần giá mở cửa (không khớp được lệnh Mua ở giá Open).",
+        }
+
+    ret_open = (
+        round(((close_price_t_plus_h - open_price) / open_price) * 100.0, 2)
+        if open_price > 0
+        else None
+    )
+    return {
+        "fillable_at_open": True,
+        "liquidity_status": liquidity_status,
+        "forward_return_open_entry": ret_open,
+        "forward_return_close_entry": None,
+        "execution_note": "Khớp lệnh bình thường ở giá mở cửa.",
+    }
+
 

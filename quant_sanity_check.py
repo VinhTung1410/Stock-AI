@@ -12,6 +12,7 @@ Enforces 6 invariant rules:
 """
 
 import logging
+from typing import Any
 
 import pandas as pd
 
@@ -253,3 +254,94 @@ def run_full_portfolio_sanity_check(df_portfolio: pd.DataFrame) -> tuple[bool, l
                 df_clean.at[idx, "Hành động V2"] = san_pos["action"]
 
     return all_passed, log_issues, df_clean
+
+
+def compute_fundamental_input_hash(
+    eps: Any = None,
+    bvps: Any = None,
+    roe: Any = None,
+    pe: Any = None,
+    consensus_price: Any = None,
+    bctc_period: Any = None,
+) -> str:
+    """Hash core fundamental metrics (EPS, BVPS, ROE, P/E, consensus target) to detect provider revisions
+    even when period or as_of labels remain unchanged (e.g. KBS BVPS revision incident)."""
+    import hashlib
+    raw = f"eps={eps}|bvps={bvps}|roe={roe}|pe={pe}|cons={consensus_price}|period={bctc_period}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def calculate_implicit_fair_value(price: float | None, mos_pct: float | None) -> float | None:
+    """Calculate implicit fair value using the invariant: FV = Price / (1 - MoS/100)."""
+    if price is None or price <= 0 or mos_pct is None:
+        return None
+    # Support both percentage (e.g. 20.0 for 20%) and ratio (0.20)
+    mos_ratio = (mos_pct / 100.0) if abs(mos_pct) > 1.0 else mos_pct
+    denom = 1.0 - mos_ratio
+    if abs(denom) < 1e-6:
+        return None
+    return round(price / denom, 2)
+
+
+def detect_unintended_valuation_drift(
+    prev_record: dict,
+    curr_record: dict,
+    tolerance_pct: float = 0.5,
+) -> tuple[bool, str]:
+    """Audit invariant: Implicit Fair Value = Price / (1 - MoS) must NOT drift
+    between sessions if fundamental inputs (EPS, BVPS, consensus, period) are unchanged.
+
+    Returns:
+        (is_drift_detected: bool, message: str)
+    """
+    sym = curr_record.get("symbol") or prev_record.get("symbol", "UNKNOWN")
+    f_prev = prev_record.get("facts") if isinstance(prev_record.get("facts"), dict) else prev_record
+    f_curr = curr_record.get("facts") if isinstance(curr_record.get("facts"), dict) else curr_record
+
+    # 1. Compare fundamental data hash (fin_hash) if present
+    fin_hash_prev = f_prev.get("fin_hash")
+    fin_hash_curr = f_curr.get("fin_hash")
+    if fin_hash_prev and fin_hash_curr and fin_hash_prev != fin_hash_curr:
+        return False, f"[{sym}] Fundamental numbers legitimately changed (fin_hash: {fin_hash_prev}->{fin_hash_curr})"
+
+    # 2. Check declared period and consensus dates
+    period_prev = f_prev.get("bctc_period")
+    period_curr = f_curr.get("bctc_period")
+    cons_asof_prev = f_prev.get("consensus_asof")
+    cons_asof_curr = f_curr.get("consensus_asof")
+
+    # If period or consensus date changed, input legitimately changed
+    if (period_prev and period_curr and period_prev != period_curr) or (
+        cons_asof_prev and cons_asof_curr and cons_asof_prev != cons_asof_curr
+    ):
+        return False, (
+            f"[{sym}] Inputs updated legitimately: BCTC {period_prev}->{period_curr}, "
+            f"Consensus {cons_asof_prev}->{cons_asof_curr}"
+        )
+
+    p_prev = float(f_prev.get("price") or 0.0)
+    p_curr = float(f_curr.get("price") or 0.0)
+    mos_prev = f_prev.get("mos_pct")
+    mos_curr = f_curr.get("mos_pct")
+
+    if mos_prev is None or mos_curr is None or p_prev <= 0 or p_curr <= 0:
+        return False, f"[{sym}] MoS or Price absent in one or both records; invariant check skipped."
+
+    fv_prev = calculate_implicit_fair_value(p_prev, float(mos_prev))
+    fv_curr = calculate_implicit_fair_value(p_curr, float(mos_curr))
+
+    if fv_prev is None or fv_curr is None or fv_prev <= 0:
+        return False, f"[{sym}] Indeterminate implicit fair value."
+
+    drift_pct = abs(fv_curr - fv_prev) / fv_prev * 100.0
+    if drift_pct > tolerance_pct:
+        msg = (
+            f"[{sym}] UNINTENDED VALUATION DRIFT DETECTED: Implicit FV mutated from {fv_prev:.2f}k to {fv_curr:.2f}k "
+            f"({drift_pct:.2f}% > {tolerance_pct}%) while fundamental inputs were unchanged "
+            f"(BCTC: {period_curr}, Consensus: {cons_asof_curr})."
+        )
+        logging.warning(msg)
+        return True, msg
+
+    return False, f"[{sym}] Invariant preserved: FV drift {drift_pct:.2f}% <= {tolerance_pct}%"
+

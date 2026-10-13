@@ -14,7 +14,7 @@ import re
 import sys
 import urllib.request
 from datetime import date, datetime, timedelta
-from typing import Any, Final
+from typing import Any
 
 # Guard against Windows AppLocker / WDAC blocking pyarrow DLL
 try:
@@ -35,9 +35,19 @@ except ImportError:
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Frozen Out-Of-Sample Strategy Constants (TASK-0085 / 2026-10-13 Protocol)
-LOGIC_VERSION: Final[str] = "v15.0_frozen_20261013"
-MODEL_VERSION: Final[str] = "v15.0_post_fix"
+from logic_manifest import (
+    LOGIC_VERSION,
+)
+from logic_manifest import (
+    MODEL_VERSION_CANONICAL as MODEL_VERSION,
+)
+from logic_manifest import (
+    SCHEMA_VERSION_CANONICAL as SCHEMA_VERSION,
+)
+
+# Idempotent emission cache for WATCHLIST_ADDED events (symbol, date)
+_emitted_watchlist_added: set[tuple[str, str]] = set()
+
 
 
 # Danh sách mã cổ phiếu trụ cột / thanh khoản cao phục vụ quét cơ hội đầu ngày (08:45 sáng)
@@ -595,13 +605,19 @@ def check_watchlist_ttl_status(item: dict, as_of_date: str = None) -> tuple[bool
         if cur_dt < entry_dt:
             return False, 0, ""
 
-        # Đếm số phiên làm việc (Thứ 2 - Thứ 6) loại trừ ngày cuối tuần
+        # Đếm số phiên làm việc thực tế (Thứ 2 - Thứ 6) loại trừ ngày nghỉ lễ
         import numpy as np
-        age_trading_days = int(np.busday_count(entry_dt, cur_dt))
-        ttl_days = int(item.get("watch_ttl_days", 10))
+        try:
+            from trading_bot import VN_HOLIDAYS_ALL
+            holidays_list = [np.datetime64(h) for h in VN_HOLIDAYS_ALL]
+            age_trading_days = int(np.busday_count(entry_dt, cur_dt, holidays=holidays_list))
+        except Exception:
+            age_trading_days = int(np.busday_count(entry_dt, cur_dt))
 
-        if age_trading_days >= ttl_days:
-            return True, age_trading_days, f"Hết hạn theo dõi TTL ({age_trading_days} phiên >= {ttl_days} phiên)"
+        ttl_sessions = int(item.get("watch_ttl_sessions") or item.get("ttl_sessions") or 10)
+
+        if age_trading_days >= ttl_sessions:
+            return True, age_trading_days, f"Hết hạn theo dõi TTL ({age_trading_days} phiên >= {ttl_sessions} phiên)"
         return False, age_trading_days, ""
     except Exception:
         logging.exception("Lỗi tính toán TTL cho %s, fail-closed expired", sym)
@@ -812,7 +828,7 @@ def _build_auto_watchlist_candidate(opp: dict, manual_symbols: set) -> dict | No
             "strategy": arch_details["default_strategy"],
             "is_auto": True,
             "watch_entry_date": entry_d,
-            "watch_ttl_days": int(opp.get("watch_ttl_days", 10)),
+            "watch_ttl_sessions": int(opp.get("watch_ttl_sessions") or opp.get("ttl_sessions") or 10),
         }
     return None
 
@@ -857,23 +873,32 @@ def sync_auto_watchlist(
                 merged_watchlist.append(auto_item)
                 existing_merged_symbols.add(auto_item["symbol"])
                 try:
-                    from db_manager import EVENT_WATCHLIST_ADDED, save_lifecycle_event
+                    from db_manager import EVENT_WATCHLIST_ADDED, is_watchlist_stint_event_emitted, save_lifecycle_event
 
-                    corr_id = f"WL_{auto_item['symbol']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                    save_lifecycle_event(
-                        {
-                            "symbol": auto_item["symbol"],
-                            "correlation_id": corr_id,
-                            "event_type": EVENT_WATCHLIST_ADDED,
-                            "event_data": {
-                                "target_buy": auto_item.get("target_buy"),
-                                "archetype": auto_item.get("archetype"),
-                                "sector": auto_item.get("sector"),
-                                "strategy": auto_item.get("strategy"),
-                                "note": auto_item.get("note"),
-                            },
-                        }
-                    )
+                    entry_d = str(auto_item.get("watch_entry_date") or auto_item.get("entry_date") or date.today())[:10]
+                    stint_key = (auto_item["symbol"], entry_d)
+                    if (
+                        stint_key not in _emitted_watchlist_added
+                        and not is_watchlist_stint_event_emitted(auto_item["symbol"], entry_d)
+                    ):
+                        _emitted_watchlist_added.add(stint_key)
+                        corr_id = f"WL_{auto_item['symbol']}_{entry_d}"
+                        save_lifecycle_event(
+                            {
+                                "event_id": f"EVT_WL_ADDED_{auto_item['symbol']}_{entry_d}",
+                                "symbol": auto_item["symbol"],
+                                "correlation_id": corr_id,
+                                "event_type": EVENT_WATCHLIST_ADDED,
+                                "event_data": {
+                                    "target_buy": auto_item.get("target_buy"),
+                                    "archetype": auto_item.get("archetype"),
+                                    "sector": auto_item.get("sector"),
+                                    "strategy": auto_item.get("strategy"),
+                                    "note": auto_item.get("note"),
+                                    "ttl_sessions": 10,
+                                },
+                            }
+                        )
                 except Exception:
                     logging.exception("Lỗi khi lưu lifecycle event WATCHLIST_ADDED cho %s", auto_item.get("symbol"))
 
@@ -2150,6 +2175,29 @@ def scan_market_opportunities(
             except Exception:
                 macro_regime = "UNKNOWN"
 
+    # Pre-calculate market regime input features at decision time
+    regime_features = {"regime": macro_regime or "UNKNOWN"}
+    try:
+        vn_tech = fetch_stock_technical("VNINDEX")
+        if vn_tech:
+            v_close = float(vn_tech.get("current_price", 0.0))
+            v_ma200 = float(vn_tech.get("ma200", 0.0))
+            v_diff_pct = round(((v_close - v_ma200) / v_ma200) * 100, 2) if v_ma200 > 0 else None
+            regime_features.update({
+                "vnindex_price": v_close,
+                "vnindex_ma200": v_ma200,
+                "vnindex_vs_ma200_pct": v_diff_pct,
+                "as_of_time": vn_tech.get("price_asof"),
+            })
+    except Exception:
+        pass
+
+    from logic_manifest import compute_effective_config_hash, compute_universe_hash
+
+    effective_cfg_hash = compute_effective_config_hash()
+    univ_hash = compute_universe_hash()
+
+
 
     # 1. Ingest CafeF RSS and build catalyst map
     catalyst_map = {}
@@ -2289,6 +2337,10 @@ def scan_market_opportunities(
             val_method = val_res.get("valuation_method", "N/A")
             val_conf = val_res.get("confidence", "MEDIUM")
             p_target = val_res.get("price_target") or round(fv * 1.05, 2)
+            bctc_p = val_res.get("bctc_period") or (
+                fin_ratios.get("period") if isinstance(fin_ratios, dict) else None
+            )
+            cons_asof = val_res.get("consensus_asof") or val_res.get("consensus_last_updated")
 
             hard_gates = evaluate_decision_hard_gates(
                 current_price=curr_price,
@@ -2308,6 +2360,29 @@ def scan_market_opportunities(
                 tech_data=tech,
             )
             gate_can_buy = hard_gates.get("gate_mos_passed", True) and mos_is_informative
+
+            from quant_sanity_check import compute_fundamental_input_hash
+
+            fin_h = compute_fundamental_input_hash(
+                eps=fin_ratios.get("eps") if isinstance(fin_ratios, dict) else None,
+                bvps=fin_ratios.get("bvps") if isinstance(fin_ratios, dict) else None,
+                roe=fin_ratios.get("roe") if isinstance(fin_ratios, dict) else None,
+                pe=fin_ratios.get("pe") if isinstance(fin_ratios, dict) else None,
+                consensus_price=val_res.get("price_target") or val_res.get("consensus_target"),
+                bctc_period=bctc_p,
+            )
+
+            sym_gates_failed = []
+            if not hard_gates.get("gate_mos_passed", True):
+                sym_gates_failed.append("GATE_MOS")
+            if not hard_gates.get("gate_rr_passed", True):
+                sym_gates_failed.append("GATE_RR")
+            if not hard_gates.get("gate_kelly_passed", True):
+                sym_gates_failed.append("GATE_KELLY")
+            if not hard_gates.get("gate_trap_passed", True):
+                sym_gates_failed.append("GATE_TRAP")
+
+            actual_input_source = tech.get("source") or tech.get("input_source") or "TCBS_SNAPSHOT"
 
             from data_gate import reconcile_data
 
@@ -2463,7 +2538,11 @@ def scan_market_opportunities(
                     "foreign_flow": foreign_flow,
                     "price_source": tech.get("price_source", "LIVE"),
                     "price_asof": tech.get("price_asof"),
-                    "input_source": "KBS/TCBS",
+                    "input_source": actual_input_source,
+                    "bctc_period": bctc_p,
+                    "consensus_asof": cons_asof,
+                    "fin_hash": fin_h,
+                    "gates_failed": sym_gates_failed,
                     "rationale": (
                         f"Conviction {conv_score:.0f}/100 ({conv_tier}). "
                         f"Định giá MoS: {f'{mos_pct:+.1f}%' if mos_pct is not None else 'N/A'} ({val_method}). "
@@ -2566,6 +2645,11 @@ def scan_market_opportunities(
                     "panic_score": contrarian_res.metrics.get("panic_score", 0),
                     "shadow_mode": contrarian_res.metrics.get("shadow_mode", False),
                     "can_buy": contrarian_res.can_buy,
+                    "bctc_period": bctc_p,
+                    "consensus_asof": cons_asof,
+                    "fin_hash": fin_h,
+                    "gates_failed": sym_gates_failed,
+                    "input_source": actual_input_source,
                     "f_score": contrarian_res.metrics.get("f_score", 7),
                     "z_score": contrarian_res.metrics.get("z_score", 2.5),
                     "rationale": (
@@ -2613,7 +2697,11 @@ def scan_market_opportunities(
                     "foreign_flow": foreign_flow,
                     "price_source": tech.get("price_source", "LIVE"),
                     "price_asof": tech.get("price_asof"),
-                    "input_source": "KBS/TCBS",
+                    "input_source": actual_input_source,
+                    "bctc_period": bctc_p,
+                    "consensus_asof": cons_asof,
+                    "fin_hash": fin_h,
+                    "gates_failed": sym_gates_failed,
                     "rationale": f"Cơ bản tốt{mos_desc}, Conviction {conv_score:.0f}/100 nhưng {reason_str}. Ưu tiên theo dõi chờ nến xác nhận ngừng rơi, không mua đuổi.",
                 }
 
@@ -2653,7 +2741,11 @@ def scan_market_opportunities(
                     "mos_is_informative": mos_is_informative,
                     "price_source": tech.get("price_source", "LIVE"),
                     "price_asof": tech.get("price_asof"),
-                    "input_source": tech.get("input_source", "TCBS_SNAPSHOT"),
+                    "input_source": actual_input_source,
+                    "bctc_period": bctc_p,
+                    "consensus_asof": cons_asof,
+                    "fin_hash": fin_h,
+                    "gates_failed": sym_gates_failed,
                     "rationale": " | ".join(caution_reason) if caution_reason else "Kỹ thuật chưa đạt chuẩn an toàn.",
                 }
 
@@ -2746,6 +2838,10 @@ def scan_market_opportunities(
                         if g_item not in failed_gates:
                             failed_gates.append(g_item)
 
+                today_date_str = now_utc.strftime("%Y-%m-%d")
+                bctc_period_val = res.get("bctc_period")
+                cons_asof_val = res.get("consensus_asof") or res.get("consensus_last_updated")
+
                 record_payload = {
                     "symbol": res["symbol"],
                     "session": current_session,
@@ -2766,9 +2862,17 @@ def scan_market_opportunities(
                         "fv_price_ratio": fv_p_ratio,
                         "mos_review_flag": mos_flag,
                         "is_canonical": is_canonical_rec,
+                        "bctc_period": bctc_period_val,
+                        "consensus_asof": cons_asof_val,
+                        "fin_hash": res.get("fin_hash"),
+                        "effective_config_hash": effective_cfg_hash,
+                        "universe_hash": univ_hash,
+                        "regime_features": regime_features,
+                        "schema_version": SCHEMA_VERSION,
                     },
                     "logic_version": LOGIC_VERSION,
                     "model_version": current_model,
+                    "schema_version": SCHEMA_VERSION,
                 }
                 if dec_id_custom:
                     record_payload["decision_id"] = dec_id_custom
@@ -2805,35 +2909,63 @@ def scan_market_opportunities(
                                     "price": res.get("current_price"),
                                     "conviction": res.get("conviction_score"),
                                     "reasons": record_payload.get("rejection_reasons", []),
+                                    "regime_features": regime_features,
+                                    "schema_version": SCHEMA_VERSION,
                                 },
                                 "market_regime": macro_regime or "UNKNOWN",
                                 "logic_version": LOGIC_VERSION,
                                 "model_version": current_model,
+                                "schema_version": SCHEMA_VERSION,
                             }
                         )
 
-                        # Emit audit lifecycle event for WATCH decisions (Audit-only, no operational trigger)
+                        # Emit audit lifecycle event for WATCH decisions (Audit-only, idempotent per watch stint (symbol + entry_date))
                         if decision == "WATCH":
-                            save_lifecycle_event(
-                                {
-                                    "symbol": res["symbol"],
-                                    "correlation_id": dec_id,
-                                    "event_type": EVENT_WATCHLIST_ADDED,
-                                    "event_data": {
-                                        "source": "RULE",
-                                        "gate": gate,
-                                        "price": res.get("current_price"),
-                                        "conviction": res.get("conviction_score"),
-                                        "reasons": record_payload.get("rejection_reasons", []),
-                                        "ttl_days": 5,
-                                    },
-                                    "market_regime": macro_regime or "UNKNOWN",
-                                    "logic_version": LOGIC_VERSION,
-                                    "model_version": current_model,
-                                }
+                            from db_manager import is_watchlist_stint_event_emitted
+
+                            active_wl_item = next(
+                                (w for w in (watchlist_items or []) if w.get("symbol", "").upper() == res["symbol"]),
+                                None,
                             )
+                            stint_entry_date = (
+                                active_wl_item.get("watch_entry_date") or active_wl_item.get("entry_date") or today_date_str
+                                if active_wl_item
+                                else today_date_str
+                            )
+                            stint_key = (res["symbol"], str(stint_entry_date)[:10])
+                            if (
+                                stint_key not in _emitted_watchlist_added
+                                and not is_watchlist_stint_event_emitted(res["symbol"], stint_entry_date)
+                            ):
+                                _emitted_watchlist_added.add(stint_key)
+                                stint_corr_id = f"WL_{res['symbol']}_{stint_entry_date}"
+                                stint_evt_id = f"EVT_WL_ADDED_{res['symbol']}_{stint_entry_date}"
+                                save_lifecycle_event(
+                                    {
+                                        "event_id": stint_evt_id,
+                                        "symbol": res["symbol"],
+                                        "correlation_id": stint_corr_id,
+                                        "event_type": EVENT_WATCHLIST_ADDED,
+                                        "event_data": {
+                                            "source": "RULE",
+                                            "gate": gate,
+                                            "price": res.get("current_price"),
+                                            "conviction": res.get("conviction_score"),
+                                            "reasons": record_payload.get("rejection_reasons", []),
+                                            "watch_entry_date": stint_entry_date,
+                                            "ttl_sessions": 10,
+                                            "regime_features": regime_features,
+                                            "schema_version": SCHEMA_VERSION,
+                                        },
+                                        "market_regime": macro_regime or "UNKNOWN",
+                                        "logic_version": LOGIC_VERSION,
+                                        "model_version": current_model,
+                                        "schema_version": SCHEMA_VERSION,
+                                    }
+                                )
 
                         update_decision_forward_returns(
+
                             decision_id=dec_id,
                             returns_data={
                                 "symbol": res["symbol"],

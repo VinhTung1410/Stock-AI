@@ -15,7 +15,7 @@
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import date, datetime
 from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
@@ -90,9 +90,47 @@ def is_market_open(dt: datetime) -> bool:
     return morning_session or afternoon_session
 
 
-def is_trading_day(dt: datetime) -> bool:
-    """Check if the given datetime falls on a regular trading day (Mon-Fri)."""
-    return dt.weekday() < 5
+VN_HOLIDAYS_2026 = {
+    date(2026, 1, 1),   # Tết Dương lịch
+    date(2026, 2, 16),  # Tết Nguyên Đán
+    date(2026, 2, 17),
+    date(2026, 2, 18),
+    date(2026, 2, 19),
+    date(2026, 2, 20),
+    date(2026, 4, 26),  # Giỗ Tổ Hùng Vương
+    date(2026, 4, 30),  # Ngày Thống nhất
+    date(2026, 5, 1),   # Quốc tế Lao động
+    date(2026, 9, 2),   # Quốc khánh
+    date(2026, 9, 3),   # Nghỉ bù Quốc khánh
+}
+
+VN_HOLIDAYS_2027 = {
+    date(2027, 1, 1),   # Tết Dương lịch 2027
+    date(2027, 2, 5),   # Tết Nguyên Đán 2027 (29 Tết)
+    date(2027, 2, 8),   # Mùng 3 Tết
+    date(2027, 2, 9),   # Mùng 4 Tết
+    date(2027, 2, 10),  # Mùng 5 Tết
+    date(2027, 2, 11),  # Nghỉ bù Tết
+    date(2027, 2, 12),  # Nghỉ bù Tết
+    date(2027, 4, 16),  # Giỗ Tổ Hùng Vương 2027
+    date(2027, 4, 30),  # Giải phóng Miền Nam
+    date(2027, 5, 3),   # Nghỉ bù Quốc tế Lao động
+    date(2027, 9, 2),   # Quốc khánh 2027
+    date(2027, 9, 3),   # Nghỉ liền kề Quốc khánh
+}
+
+VN_HOLIDAYS_ALL = VN_HOLIDAYS_2026 | VN_HOLIDAYS_2027
+
+
+def is_trading_day(dt: datetime, market_calendar: set[date] | None = None) -> bool:
+    """Check if the given datetime falls on a regular trading day (Mon-Fri, excluding VN holidays)."""
+    d = dt.date() if hasattr(dt, "date") else dt
+    if market_calendar is not None:
+        return d in market_calendar
+    if dt.weekday() >= 5:
+        return False
+    return d not in VN_HOLIDAYS_ALL
+
 
 
 def _handle_gdkhq_shield(symbol: str, curr_price: float, today_str: str, gdkhq_info: dict):
@@ -789,6 +827,98 @@ def trigger_post_market_audit():
         logging.exception("❌ Error in 15:15 post-market audit process")
 
 
+def trigger_canonical_eod_scan() -> dict:
+    """Execute canonical EOD opportunity scan after 15:00 ICT on trading days (Phase 28 / Governance).
+
+    Fallback Rule:
+    If 15:05 scan produces errors or missing records for any canonical symbols in BROAD_MARKET_POOL,
+    fallback to today's latest valid decision record for that symbol (e.g. CLOSE or NOON),
+    marking is_canonical = True and canonical_fallback = True.
+    Reports canonical_fallback_rate_pct daily.
+    """
+    logging.info("🎯 Kích hoạt Quét Chuẩn Cuối Ngày EOD_CANONICAL (sau 15:00)...")
+    fallback_report = {
+        "total_canonical": 0,
+        "successful_1505": 0,
+        "fallback_count": 0,
+        "canonical_fallback_rate_pct": 0.0,
+    }
+    try:
+        from data_engine import (
+            BROAD_MARKET_POOL,
+            scan_market_opportunities,
+        )
+        from db_manager import get_decision_records, save_decision_record
+
+        today_str = datetime.now(VN_TZ).strftime("%Y-%m-%d")
+        results = scan_market_opportunities(extra_symbols=BROAD_MARKET_POOL, session_override="EOD_CANONICAL")
+
+        successful_symbols = {
+            r.get("symbol")
+            for r in (results or [])
+            if r.get("symbol") and r.get("status") not in ("DATA_ERROR", "TECH_FETCH", "TECH_INCOMPLETE")
+        }
+
+        total_canonical = len(BROAD_MARKET_POOL)
+        fallback_count = 0
+
+        # Query all records saved today to find valid fallbacks
+        today_records = get_decision_records(limit=250)
+        recs_by_sym: dict[str, list] = {}
+        for rec in today_records:
+            s_rec = rec.get("symbol")
+            dt_rec = str(rec.get("created_at") or rec.get("decision_date") or "")[:10]
+            if s_rec and dt_rec == today_str:
+                recs_by_sym.setdefault(s_rec, []).append(rec)
+
+        for sym in BROAD_MARKET_POOL:
+            if sym not in successful_symbols:
+                earlier = recs_by_sym.get(sym, [])
+                valid_earlier = next(
+                    (
+                        r for r in earlier
+                        if r.get("primary_rejection_gate") not in ("TECH_FETCH", "TECH_INCOMPLETE", "DATA_ERROR")
+                    ),
+                    None,
+                )
+                if valid_earlier:
+                    fallback_rec = dict(valid_earlier)
+                    fallback_rec["decision_id"] = f"DEC_{sym}_{today_str.replace('-', '')}_EOD_FALLBACK"
+                    fallback_rec["session"] = "EOD_CANONICAL"
+                    if "facts" in fallback_rec and isinstance(fallback_rec["facts"], dict):
+                        facts_copy = dict(fallback_rec["facts"])
+                        facts_copy["is_canonical"] = True
+                        facts_copy["canonical_fallback"] = True
+                        facts_copy["fallback_from_session"] = valid_earlier.get("session")
+                        fallback_rec["facts"] = facts_copy
+                    save_decision_record(fallback_rec)
+                    fallback_count += 1
+                    logging.warning(
+                        "⚠️ [CANONICAL FALLBACK] %s scan 15:05 lỗi; fallback từ phiên %s",
+                        sym,
+                        valid_earlier.get("session"),
+                    )
+
+        fallback_rate = round((fallback_count / total_canonical) * 100.0, 2) if total_canonical > 0 else 0.0
+        fallback_report = {
+            "total_canonical": total_canonical,
+            "successful_1505": len(successful_symbols),
+            "fallback_count": fallback_count,
+            "canonical_fallback_rate_pct": fallback_rate,
+        }
+        logging.info(
+            "✅ Hoàn thành EOD_CANONICAL: %d/%d thành công, %d fallback (tỷ lệ: %.1f%%)",
+            len(successful_symbols),
+            total_canonical,
+            fallback_count,
+            fallback_rate,
+        )
+    except Exception:
+        logging.exception("❌ Lỗi khi thực hiện quét chuẩn EOD_CANONICAL")
+
+    return fallback_report
+
+
 def _clean_expired_daily_keys(today_str: str):
     expired_reports = [k for k in sent_scheduled_reports if k[0] != today_str]
     for k in expired_reports:
@@ -853,6 +983,12 @@ def _check_scheduled_reports(now: datetime, today_str: str, cur_t: dtime):
             sent_scheduled_reports.add(report_key)
             trigger_scheduled_report(title, desc)
 
+    # 15:05: Canonical EOD Market Opportunity Scan (Phase 28 / Governance)
+    key_canonical_1505 = (today_str, "15:05_CANONICAL_EOD")
+    if dtime(15, 0) <= cur_t < dtime(15, 15) and key_canonical_1505 not in sent_scheduled_reports:
+        sent_scheduled_reports.add(key_canonical_1505)
+        trigger_canonical_eod_scan()
+
     key_1515 = (today_str, "15:15")
     if dtime(15, 15) <= cur_t < dtime(16, 0) and key_1515 not in sent_scheduled_reports:
         sent_scheduled_reports.add(key_1515)
@@ -865,8 +1001,9 @@ def run_trading_bot_loop(check_interval_sec: int = 30):
     logging.info("🌟 TRADING BOT DAEMON ĐÃ KHỞI CHẠY THÀNH CÔNG!")
     logging.info(f"🕒 Múi giờ hệ thống: {VN_TZ} (Asia/Ho_Chi_Minh)")
     logging.info(f"⏱️ Tần suất quét rủi ro trong phiên: Mỗi {check_interval_sec} giây")
-    logging.info("📅 Khung giờ báo cáo tự động: 08:45 (ATO) | 11:30 (Trưa) | 14:45 (ATC) | 15:15 (Audit)")
+    logging.info("📅 Khung giờ báo cáo tự động: 08:45 (ATO) | 11:30 (Trưa) | 14:45 (ATC) | 15:05 (Canonical EOD) | 15:15 (Audit)")
     logging.info("=" * 65)
+
 
     last_heartbeat_hour = -1
 
