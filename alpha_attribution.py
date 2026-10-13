@@ -103,11 +103,20 @@ def evaluate_alpha_attribution(
             "alpha_spreads": {},
         }
 
-    # Deduplicate: giữ bản ghi chuẩn cho mỗi (symbol, decision_date)
-    records_to_process = evaluated_records
+    # 0. Loại trừ các bản ghi thử nghiệm ngầm (is_shadow == True)
+    clean_records = [
+        r for r in evaluated_records
+        if not (
+            r.get("is_shadow") is True
+            or (isinstance(r.get("facts"), dict) and r["facts"].get("is_shadow") is True)
+        )
+    ]
+
+    # 1. Deduplicate: giữ bản ghi chuẩn cho mỗi (symbol, decision_date)
+    records_to_process = clean_records
     if deduplicate_symbol_date:
         dedup_dict = {}
-        for r in evaluated_records:
+        for r in clean_records:
             sym = str(r.get("symbol", "")).upper().strip()
             dt = str(r.get("decision_date", ""))[:10]
             if sym and dt:
@@ -127,6 +136,12 @@ def evaluate_alpha_attribution(
     dates = {r.get("decision_date") for r in records_to_process if r.get("decision_date")}
     unique_sessions = len(dates)
     is_sample_sufficient = unique_sessions >= min_clean_sessions
+
+    # Đếm quan sát đã trưởng thành theo từng mốc chân trời
+    matured_counts = {
+        f"t{h}_matured_n": sum(1 for r in records_to_process if r.get(f"fwd_ret_t{h}") is not None)
+        for h in horizons
+    }
 
     cohorts = {COHORT_BUY: [], COHORT_WATCH: [], COHORT_REJECT: [], COHORT_DATA_ERROR: []}
     for r in records_to_process:
@@ -179,6 +194,27 @@ def evaluate_alpha_attribution(
         alpha_spreads[f"alpha_buy_vs_reject_t{h}"] = alpha_buy
         alpha_spreads[f"alpha_watch_vs_reject_t{h}"] = alpha_watch
 
+    # Phân tầng theo ngành (Industry Stratification) để khử nhiễu beta ngành
+    sector_strata = {}
+    sectors = {r.get("sector") for r in records_to_process if r.get("sector")}
+    for sec in sectors:
+        sec_records = [r for r in records_to_process if r.get("sector") == sec]
+        sec_watch = [r for r in sec_records if "WATCH" in str(r.get("decision", "")).upper()]
+        sec_rej = [
+            r for r in sec_records
+            if "REJECT" in str(r.get("decision", "")).upper()
+            and not any(kw in str(r.get("primary_rejection_gate", "")) for kw in DATA_ERROR_KEYWORDS)
+        ]
+        sec_m = {"count": len(sec_records), "watch_count": len(sec_watch), "reject_count": len(sec_rej)}
+        for h in horizons:
+            w_vals = [r[f"fwd_ret_t{h}"] for r in sec_watch if r.get(f"fwd_ret_t{h}") is not None]
+            r_vals = [r[f"fwd_ret_t{h}"] for r in sec_rej if r.get(f"fwd_ret_t{h}") is not None]
+            if w_vals and r_vals:
+                sec_m[f"alpha_watch_vs_reject_t{h}"] = round(float(np.mean(w_vals) - np.mean(r_vals)), 2)
+            else:
+                sec_m[f"alpha_watch_vs_reject_t{h}"] = None
+        sector_strata[sec] = sec_m
+
     status = (
         "SAMPLE_SIZE_OK"
         if is_sample_sufficient
@@ -189,6 +225,90 @@ def evaluate_alpha_attribution(
         "status": status,
         "is_sample_sufficient": is_sample_sufficient,
         "unique_sessions": unique_sessions,
+        "matured_counts": matured_counts,
         "cohort_metrics": cohort_metrics,
         "alpha_spreads": alpha_spreads,
+        "sector_strata": sector_strata,
     }
+
+
+def compute_clustered_bootstrap_alpha(
+    records: List[Dict[str, Any]],
+    cohort_a: str = COHORT_WATCH,
+    cohort_b: str = COHORT_REJECT,
+    horizon: int = 5,
+    n_resamples: int = 1000,
+    random_seed: int = 42,
+) -> Dict[str, Any]:
+    """Tính Khoảng tin cậy Bootstrap theo Cụm Ngày (Clustered Bootstrap by Trading Date).
+
+    Bảo toàn tính tương quan chéo giữa các cổ phiếu được định giá trong cùng một phiên giao dịch.
+    """
+    key = f"fwd_ret_t{horizon}"
+    by_date: Dict[str, Dict[str, List[float]]] = {}
+    for r in records:
+        val = r.get(key)
+        if val is None:
+            continue
+        dt = str(r.get("decision_date") or "")[:10]
+        if not dt:
+            continue
+        dec = str(r.get("decision", "")).upper()
+        rej_gate = str(r.get("primary_rejection_gate", "")).upper()
+        if any(kw in dec or kw in rej_gate for kw in DATA_ERROR_KEYWORDS):
+            continue
+
+        c = COHORT_WATCH if "WATCH" in dec else (COHORT_BUY if "BUY" in dec else COHORT_REJECT)
+        if dt not in by_date:
+            by_date[dt] = {COHORT_BUY: [], COHORT_WATCH: [], COHORT_REJECT: []}
+        by_date[dt][c].append(float(val))
+
+    dates = list(by_date.keys())
+    if len(dates) < 2:
+        return {
+            "status": "INSUFFICIENT_SESSIONS",
+            "alpha_mean": None,
+            "ci_lower": None,
+            "ci_upper": None,
+            "p_value": None,
+            "n_sessions": len(dates),
+        }
+
+    rng = np.random.default_rng(random_seed)
+    sampled_spreads = []
+
+    for _ in range(n_resamples):
+        sampled_dates = rng.choice(dates, size=len(dates), replace=True)
+        vals_a = [v for d in sampled_dates for v in by_date[d][cohort_a]]
+        vals_b = [v for d in sampled_dates for v in by_date[d][cohort_b]]
+
+        if vals_a and vals_b:
+            spread = float(np.mean(vals_a) - np.mean(vals_b))
+            sampled_spreads.append(spread)
+
+    if not sampled_spreads:
+        return {
+            "status": "NO_PAIRED_DATA",
+            "alpha_mean": None,
+            "ci_lower": None,
+            "ci_upper": None,
+            "p_value": None,
+            "n_sessions": len(dates),
+        }
+
+    spreads_arr = np.array(sampled_spreads)
+    ci_lower = float(np.percentile(spreads_arr, 2.5))
+    ci_upper = float(np.percentile(spreads_arr, 97.5))
+    alpha_mean = float(np.mean(spreads_arr))
+    p_val = float(np.mean(spreads_arr <= 0.0))
+
+    return {
+        "status": "BOOTSTRAP_OK",
+        "alpha_mean": round(alpha_mean, 2),
+        "ci_lower": round(ci_lower, 2),
+        "ci_upper": round(ci_upper, 2),
+        "p_value": round(p_val, 4),
+        "n_sessions": len(dates),
+        "n_resamples": n_resamples,
+    }
+

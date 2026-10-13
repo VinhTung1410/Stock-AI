@@ -14,7 +14,7 @@ import re
 import sys
 import urllib.request
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Final
 
 # Guard against Windows AppLocker / WDAC blocking pyarrow DLL
 try:
@@ -34,6 +34,11 @@ except ImportError:
     pass
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Frozen Out-Of-Sample Strategy Constants (TASK-0085 / 2026-10-13 Protocol)
+LOGIC_VERSION: Final[str] = "v15.0_frozen_20261013"
+MODEL_VERSION: Final[str] = "v15.0_post_fix"
+
 
 # Danh sách mã cổ phiếu trụ cột / thanh khoản cao phục vụ quét cơ hội đầu ngày (08:45 sáng)
 TOP_MARKET_SYMBOLS = ["HPG", "SSI", "FPT", "MWG", "TCB", "VHM"]
@@ -2136,6 +2141,15 @@ def scan_market_opportunities(
                 macro_regime = getattr(m_ctx, "market_regime_analyst", getattr(m_ctx, "market_regime_code", None))
         except Exception:
             macro_regime = None
+        if not macro_regime or macro_regime == "UNKNOWN":
+            try:
+                from regime_classifier import get_market_regime
+
+                regime_enum = get_market_regime()
+                macro_regime = regime_enum.value if hasattr(regime_enum, "value") else str(regime_enum)
+            except Exception:
+                macro_regime = "UNKNOWN"
+
 
     # 1. Ingest CafeF RSS and build catalyst map
     catalyst_map = {}
@@ -2636,8 +2650,13 @@ def scan_market_opportunities(
                     "rsi": rsi,
                     "vol_ratio": vol_ratio,
                     "foreign_flow": foreign_flow,
+                    "mos_is_informative": mos_is_informative,
+                    "price_source": tech.get("price_source", "LIVE"),
+                    "price_asof": tech.get("price_asof"),
+                    "input_source": tech.get("input_source", "TCBS_SNAPSHOT"),
                     "rationale": " | ".join(caution_reason) if caution_reason else "Kỹ thuật chưa đạt chuẩn an toàn.",
                 }
+
 
             return {
                 "symbol": sym,
@@ -2686,15 +2705,47 @@ def scan_market_opportunities(
                     decision = "REJECT"
                     gate = res.get("primary_rejection_gate", "UNKNOWN")
 
-                current_session = session_override or ("NOON" if datetime.now().hour < 13 else "CLOSE")
-                current_model = model_version_override or "contrarian_v14.0"
+                from datetime import timezone
+                now_utc = datetime.now(timezone.utc)
+                ict_hour = (now_utc.hour + 7) % 24
+                ict_minute = now_utc.minute
+                if session_override:
+                    current_session = session_override
+                elif ict_hour < 11 or (ict_hour == 11 and ict_minute <= 30):
+                    current_session = "MORNING"
+                elif ict_hour < 13:
+                    current_session = "NOON"
+                elif ict_hour < 15:
+                    current_session = "AFTERNOON"
+                else:
+                    current_session = "EOD_CANONICAL"
+
+                current_model = model_version_override or MODEL_VERSION
                 dec_id_custom = (
                     f"DEC_{res['symbol']}_20261012_{current_session}"
                     if session_override and "EOD_REPLAY" in session_override
                     else None
                 )
 
-                p_asof = res.get("price_asof") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                p_src = res.get("price_source", "LIVE")
+                p_asof = res.get("price_asof") or now_utc.strftime("%Y-%m-%d %H:%M:%S+00:00")
+                if p_asof and "00:00:00" in p_asof and p_src in ("REALTIME", "LIVE"):
+                    p_src = "EOD_CACHE"
+
+                curr_p = res.get("current_price")
+                fv_val = res.get("fair_value")
+                fv_p_ratio = round(float(fv_val) / float(curr_p), 2) if (fv_val and curr_p and curr_p > 0) else None
+                mos_flag = bool(fv_p_ratio and (fv_p_ratio < 0.5 or fv_p_ratio > 2.0))
+                is_canonical_rec = bool(
+                    current_session in ("EOD_CANONICAL", "CLOSE") or (session_override and "EOD" in session_override)
+                )
+
+                failed_gates = [gate] if gate not in ("PASSED", "SHADOW_MODE") else []
+                if res.get("gates_failed"):
+                    for g_item in res.get("gates_failed"):
+                        if g_item not in failed_gates:
+                            failed_gates.append(g_item)
+
                 record_payload = {
                     "symbol": res["symbol"],
                     "session": current_session,
@@ -2707,12 +2758,16 @@ def scan_market_opportunities(
                         "mos_pct": res.get("mos_pct"),
                         "conviction": res.get("conviction_score"),
                         "is_shadow": bool(is_shadow_override or res.get("shadow_mode")),
-                        "input_source": res.get("input_source", "KBS/TCBS"),
-                        "gates_failed": res.get("gates_failed", [gate] if gate not in ("PASSED", "SHADOW_MODE") else []),
+                        "input_source": res.get("input_source", "TCBS_SNAPSHOT"),
+                        "gates_failed": failed_gates,
                         "informative": bool(res.get("mos_is_informative", False)),
-                        "price_source": res.get("price_source", "LIVE"),
+                        "price_source": p_src,
                         "price_asof": p_asof,
+                        "fv_price_ratio": fv_p_ratio,
+                        "mos_review_flag": mos_flag,
+                        "is_canonical": is_canonical_rec,
                     },
+                    "logic_version": LOGIC_VERSION,
                     "model_version": current_model,
                 }
                 if dec_id_custom:
@@ -2728,6 +2783,7 @@ def scan_market_opportunities(
                     try:
                         from db_manager import (
                             EVENT_AI_VETO_EVALUATED,
+                            EVENT_WATCHLIST_ADDED,
                             save_lifecycle_event,
                             update_decision_forward_returns,
                         )
@@ -2751,9 +2807,31 @@ def scan_market_opportunities(
                                     "reasons": record_payload.get("rejection_reasons", []),
                                 },
                                 "market_regime": macro_regime or "UNKNOWN",
+                                "logic_version": LOGIC_VERSION,
                                 "model_version": current_model,
                             }
                         )
+
+                        # Emit audit lifecycle event for WATCH decisions (Audit-only, no operational trigger)
+                        if decision == "WATCH":
+                            save_lifecycle_event(
+                                {
+                                    "symbol": res["symbol"],
+                                    "correlation_id": dec_id,
+                                    "event_type": EVENT_WATCHLIST_ADDED,
+                                    "event_data": {
+                                        "source": "RULE",
+                                        "gate": gate,
+                                        "price": res.get("current_price"),
+                                        "conviction": res.get("conviction_score"),
+                                        "reasons": record_payload.get("rejection_reasons", []),
+                                        "ttl_days": 5,
+                                    },
+                                    "market_regime": macro_regime or "UNKNOWN",
+                                    "logic_version": LOGIC_VERSION,
+                                    "model_version": current_model,
+                                }
+                            )
 
                         update_decision_forward_returns(
                             decision_id=dec_id,
@@ -2767,6 +2845,7 @@ def scan_market_opportunities(
                         )
                     except Exception:
                         logging.exception("Không thể lưu lifecycle event hoặc forward returns cho %s", res.get("symbol"))
+
 
             import time
 
