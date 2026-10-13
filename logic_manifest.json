@@ -1,8 +1,8 @@
 {
   "logic_version": "v15.0_frozen_20261013",
-  "build_hash": "da0bcdbb1d95a8ef6134f530e05e065f858300040736a469dc2cd70e92258e61",
-  "manifest_hash": "da0bcdbb1d95a8ef6134f530e05e065f858300040736a469dc2cd70e92258e61",
-  "short_hash": "da0bcdbb",
+  "build_hash": "b0915219a7c79e5bb66423758477f7ec0b7fcf269513a86d8058404c3a2580b7",
+  "manifest_hash": "b0915219a7c79e5bb66423758477f7ec0b7fcf269513a86d8058404c3a2580b7",
+  "short_hash": "b0915219",
   "effective_config_hash": "afca19ba499e6aa2",
   "universe_hash": "0516b5c7a73de31d",
   "model_version": "v15.0_post_fix",
@@ -10,7 +10,7 @@
   "file_hashes": {
     "ai_analyst.py": "08c7207bbefb301dcb9a4899d51255073221aabffdfb43ab1038e7524bfcb488",
     "contrarian_engine.py": "b0bf616aa29d77040500bf584e0188354eb5e81a05f5c0c1fe933c343fa62235",
-    "data_engine.py": "136cf2d0894f2bafae6c23652c681a11d07b328089bf8a3c7272172acfb4a0f7",
+    "data_engine.py": "139f5b79ee915a6e01c58ed5981890db580e06c4cef49ac435f719451eaf325d",
     "entry_gates.py": "9297ce4c1b4a4f0e576aa36d28a3f3dbdf5381355c12b719a113a1ece6ffe2b7",
     "indicators.py": "adbc3652140c0ee7e5754d0bee5819517c80c5847ceed50d0dcf0420b6a7fde6",
     "policy_constants.py": "4a14f82370e70c6a6eeaeaefeac8a7a1d00a28aa735c4624219f939139ff2b1b",
