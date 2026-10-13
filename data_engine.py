@@ -614,7 +614,7 @@ def check_watchlist_ttl_status(item: dict, as_of_date: str = None) -> tuple[bool
         except Exception:
             age_trading_days = int(np.busday_count(entry_dt, cur_dt))
 
-        ttl_sessions = int(item.get("watch_ttl_sessions") or item.get("ttl_sessions") or 10)
+        ttl_sessions = int(item.get("watch_ttl_sessions") or item.get("ttl_sessions") or item.get("watch_ttl_days") or 10)
 
         if age_trading_days >= ttl_sessions:
             return True, age_trading_days, f"Hết hạn theo dõi TTL ({age_trading_days} phiên >= {ttl_sessions} phiên)"
@@ -828,7 +828,12 @@ def _build_auto_watchlist_candidate(opp: dict, manual_symbols: set) -> dict | No
             "strategy": arch_details["default_strategy"],
             "is_auto": True,
             "watch_entry_date": entry_d,
-            "watch_ttl_sessions": int(opp.get("watch_ttl_sessions") or opp.get("ttl_sessions") or 10),
+            "watch_ttl_sessions": int(
+                opp.get("watch_ttl_sessions") or opp.get("ttl_sessions") or opp.get("watch_ttl_days") or 10
+            ),
+            "watch_ttl_days": int(
+                opp.get("watch_ttl_days") or opp.get("watch_ttl_sessions") or opp.get("ttl_sessions") or 10
+            ),
         }
     return None
 
