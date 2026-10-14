@@ -178,6 +178,7 @@ def test_watchlist_added_idempotency_and_unified_ttl():
     with patch("data_engine.fetch_stock_technical", side_effect=mock_tech_acb), \
          patch("data_engine.get_financial_ratios", return_value={"period": "2026-Q2", "pb": 1.1, "roe": 19.0}), \
          patch("data_engine.fetch_macro_news", return_value=[]), \
+         patch("db_manager.is_watchlist_stint_event_emitted", return_value=False), \
          patch("db_manager.save_lifecycle_event", side_effect=mock_save_evt):
         de_new.scan_market_opportunities(extra_symbols=["ACB"], session_override="TEST_SESSION")
 
@@ -186,11 +187,15 @@ def test_watchlist_added_idempotency_and_unified_ttl():
     assert len(w_events_1) == 1
     assert "ttl_days" not in w_events_1[0]["event_data"]
     assert w_events_1[0]["event_data"]["ttl_sessions"] == 10
+    assert w_events_1[0]["event_data"]["logic_version"].startswith("v15.0")
+    assert w_events_1[0]["correlation_id"].startswith("DEC_")
+    assert w_events_1[0]["event_data"]["decision_id"] == w_events_1[0]["correlation_id"]
 
     # Second scan in same session/date (simulating subsequent scanner loop)
     with patch("data_engine.fetch_stock_technical", side_effect=mock_tech_acb), \
          patch("data_engine.get_financial_ratios", return_value={"period": "2026-Q2", "pb": 1.1, "roe": 19.0}), \
          patch("data_engine.fetch_macro_news", return_value=[]), \
+         patch("db_manager.is_watchlist_stint_event_emitted", return_value=False), \
          patch("db_manager.save_lifecycle_event", side_effect=mock_save_evt):
         de_new.scan_market_opportunities(extra_symbols=["ACB"], session_override="TEST_SESSION")
 

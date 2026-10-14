@@ -904,6 +904,12 @@ def save_decision_record(record: dict) -> str | None:
     now_str = datetime.now(VN_TZ).strftime("%Y%m%d_%H%M%S")
     decision_id = record.get("decision_id") or f"DEC_{symbol}_{now_str}"
 
+    facts_dict = dict(record.get("facts") or {})
+    if "logic_version" not in facts_dict:
+        from logic_manifest import LOGIC_VERSION
+
+        facts_dict["logic_version"] = record.get("logic_version") or LOGIC_VERSION
+
     row = {
         "decision_id": decision_id,
         "symbol": symbol,
@@ -911,7 +917,7 @@ def save_decision_record(record: dict) -> str | None:
         "decision": decision,
         "primary_rejection_gate": record.get("primary_rejection_gate"),
         "rejection_reasons": record.get("rejection_reasons", []),
-        "facts": record.get("facts", {}),
+        "facts": facts_dict,
         "inferences": record.get("inferences", {}),
         "opinions": record.get("opinions", {}),
         "counterfactual": record.get("counterfactual", {}),
@@ -997,12 +1003,18 @@ def save_lifecycle_event(event: dict) -> str | None:
     now_str = datetime.now(VN_TZ).strftime("%Y%m%d_%H%M%S_%f")
     event_id = event.get("event_id") or f"EVT_{symbol}_{now_str}"
 
+    event_data_dict = dict(event.get("event_data") or {})
+    if "logic_version" not in event_data_dict:
+        from logic_manifest import LOGIC_VERSION
+
+        event_data_dict["logic_version"] = event.get("logic_version") or LOGIC_VERSION
+
     row = {
         "event_id": event_id,
         "correlation_id": correlation_id,
         "symbol": symbol,
         "event_type": event_type,
-        "event_data": event.get("event_data", {}),
+        "event_data": event_data_dict,
         "market_regime": event.get("market_regime", "UNKNOWN"),
         "model_version": event.get("model_version", "v15.0_phase28"),
         "git_sha": event.get("git_sha") or get_current_git_sha(),
@@ -1037,6 +1049,7 @@ def is_watchlist_stint_event_emitted(symbol: str, entry_date: str) -> bool:
     sym = str(symbol).upper().strip()
     entry_d = str(entry_date)[:10]
     expected_corr_id = f"WL_{sym}_{entry_d}"
+    expected_evt_id = f"EVT_WL_ADDED_{sym}_{entry_d}"
 
     # Check local in-memory store first
     for e in _IN_MEMORY_LIFECYCLE_EVENTS:
@@ -1044,8 +1057,10 @@ def is_watchlist_stint_event_emitted(symbol: str, entry_date: str) -> bool:
             e.get("symbol") == sym
             and e.get("event_type") == EVENT_WATCHLIST_ADDED
             and (
-                e.get("correlation_id") == expected_corr_id
+                e.get("event_id") == expected_evt_id
+                or e.get("correlation_id") == expected_corr_id
                 or str(e.get("event_data", {}).get("watch_entry_date", ""))[:10] == entry_d
+                or str(e.get("event_data", {}).get("watch_stint_id", "")) == expected_corr_id
             )
         ):
             return True
@@ -1059,7 +1074,7 @@ def is_watchlist_stint_event_emitted(symbol: str, entry_date: str) -> bool:
                 .select("event_id")
                 .eq("symbol", sym)
                 .eq("event_type", EVENT_WATCHLIST_ADDED)
-                .eq("correlation_id", expected_corr_id)
+                .or_(f"event_id.eq.{expected_evt_id},correlation_id.eq.{expected_corr_id}")
                 .limit(1)
                 .execute()
             )
