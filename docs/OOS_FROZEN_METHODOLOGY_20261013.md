@@ -14,9 +14,9 @@
 ## 1. Bản Chất Phương Pháp: Kiểm Định Tiến Tới Đã Đăng Ký Trước (Không Phải OOS Thuần Túy)
 
 > [!IMPORTANT]
-> **Tuyên bố Tính Liêm chính Phương pháp (Methodological Honesty):**  
-> Các quy tắc kỹ thuật và định lượng (như định giá P/B trực tiếp cho nhóm Ngân hàng, bội số chu kỳ 8.5× cho GVR, khiên chắn sàn kẹp Floor-Clamped, v.v.) được hoàn thiện và hiệu chỉnh sau khi quan sát hành vi dữ liệu thực tế từ ngày **08/10 đến 12/10** và các mốc đầu phiên **13/10/2026**.  
-> Do đó, phiên **13/10 được phân định là Mẫu Thí Điểm (Pilot Calibration Sample)**. Giai đoạn kiểm định tiến tới chính thức bắt đầu từ **14/10/2026 (Ngày 1 - Day 1)**. Tuyệt đối **KHÔNG** được báo cáo như bằng chứng ngoài mẫu (Out-Of-Sample - OOS) thuần túy.
+> **Tuyên bố Tính Liêm chính Phương pháp & Khiêm nhường Nhận thức (Epistemic Humility):**  
+> 1. Các quy tắc kỹ thuật và định lượng (như định giá P/B trực tiếp cho nhóm Ngân hàng, bội số chu kỳ 8.5× cho GVR, khiên chắn sàn kẹp Floor-Clamped, v.v.) được hoàn thiện và hiệu chỉnh sau khi quan sát hành vi dữ liệu thực tế từ ngày **08/10 đến 12/10** và các mốc đầu phiên **13/10/2026**. Do đó, phiên **13/10 được phân định là Mẫu Thí Điểm (Pilot Calibration Sample)**. Tuyệt đối **KHÔNG** được báo cáo như bằng chứng ngoài mẫu (Out-Of-Sample - OOS) thuần túy.  
+> 2. **Giới hạn mẫu và khung kiểm định phản nghiệm (Falsification Paradigm):** Mẫu kiểm định tiến tới gồm 55 mã trong cửa sổ 60 phiên (từ 14/10/2026 đến đầu tháng 01/2027) hoàn toàn nằm trong **một chế độ thị trường giảm (Bear Market Regime)**. Do đó, mục tiêu của giai đoạn này **KHÔNG PHẢI ĐỂ CHỨNG MINH ALPHA**, mà là **tìm kiếm xem có hay không có bằng chứng rõ ràng cho thấy hệ thống bị hỏng hóc hoặc mất cân bằng nghiêm trọng**. Mọi kết luận ở mốc 60 phiên chỉ mang tính mô tả và phản nghiệm cho một chế độ thị trường duy nhất.
 
 ### Nguyên Tắc Đóng Băng & Quản Trị `build_hash` vs `logic_version`
 1. **Phân biệt `build_hash` và `logic_version`:**  
@@ -88,10 +88,10 @@ $$\text{Implicit Fair Value} = \frac{\text{Price}}{1 - (\text{MoS} / 100)}$$
 
 ## 6. Hạn Chế Đã Biết & Kiểm Toán Dữ Liệu Ngày 14/10/2026
 
-1. **Kiểm Toán Nhãn `logic_version` Ngày 14/10/2026:**  
-   - Do trường `logic_version` chưa được đưa vào `facts` (JSONB) và chưa có cột top-level trong schema Supabase tại thời điểm vận hành ngày 14/10, toàn bộ 201 bản ghi `decision_records` và 217 sự kiện `decision_lifecycle_events` để trống trường này.
-   - **Cam kết đóng băng bất biến:** Tuân thủ nguyên tắc Event Sourcing và Audit Trail, hệ thống **tuyệt đối không âm thầm UPDATE / sửa dữ liệu gốc** trên Supabase. Bản ghi ngày 14/10 được xác thực thuộc logic `v15.0_frozen_20261013` thông qua dấu vết `git_sha = 8d353f5` và `manifest_hash = b0915219`.
-   - **Khắc phục từ ngày 15/10/2026:** Đã bổ sung trường `logic_version` vào `facts` và `event_data` (và migration `0008_add_logic_version.sql` cho DDL cột), đảm bảo 100% bản ghi mới mang nhãn phiên bản đóng băng đầy đủ.
+1. **Kiểm Toán Nhãn `logic_version` Ngày 14/10/2026 (Pre-Registered Audit Rule):**  
+   - **Thực tế vận hành:** Toàn bộ 201 bản ghi `decision_records` và 217 sự kiện `decision_lifecycle_events` của ngày 14/10/2026 đều được tạo bởi commit `git_sha = 8d353f5` và mang nhãn `logic_version = None`.
+   - **Cam kết hợp lệ phương pháp:** Dữ liệu ngày 14/10 vẫn được tính hợp lệ vào chuỗi kiểm định tiến tới vì kiểm định Replay Zero-Diff đã chứng minh logic ra quyết định của `8d353f5` và bản vá telemetry `c8c4211` là đồng nhất 100% (Zero-Diff trên toàn bộ quyết định, cổng vi phạm, MoS và conviction của 55 mã).
+   - **Mốc khởi điểm đủ metadata:** Phiên giao dịch ngày **15/10/2026** là ngày đầu tiên mang đầy đủ định danh metadata trên production (`c8c4211` với `logic_version = "v15.0_frozen_20261013"` và 100% `correlation_id` cho Watchlist).
 2. **Độ Trễ Phân Vùng Thị Trường (`regime_features.as_of_time`):**  
    - Trong các phiên trong ngày (Morning/Afternoon), `regime_features.as_of_time` phản ánh thanh nến ngày T-1 (`2026-10-13 00:00:00`) do chỉ số VN-Index daily bar chỉ chốt sau khi đóng phiên ATC. Phân loại chế độ thị trường trong phiên mang tính trễ 1 ngày theo thiết kế.
 3. **Danh Sách Đa Cổng Vi Phạm (`gates_failed` vs `primary_rejection_gate`):**  
@@ -102,3 +102,46 @@ $$\text{Implicit Fair Value} = \frac{\text{Price}}{1 - (\text{MoS} / 100)}$$
    - Mỗi chu kỳ 15 phút, bot quét: (1) toàn bộ danh sách Watchlist hiện hữu + (2) xoay vòng 6 mã tiếp theo từ `BROAD_MARKET_POOL` (55 mã). Do `HPG` nằm cố định trong Google Sheet Watchlist do người dùng cài đặt và `FPT` được tự động phát hiện đưa vào Watchlist, cả hai mã luôn có mặt trong mọi lần quét (20 lần/ngày), trong khi các mã khác chỉ xuất hiện 2–3 lần khi tới lượt xoay vòng hoặc tại phiên `EOD_CANONICAL`.
 6. **Độ Nhạy và Biến Động Conviction Score:**  
    - Conviction Score được cấu thành từ 4 trụ cột (MoS 40đ, Technical 25đ, Catalyst 20đ, Flow 15đ). Khi một cổ phiếu vượt hoặc rơi khỏi các ngưỡng nhị phân (như giá cắt qua MA20, rơi vào bẫy giá rơi `-15đ`, hoặc RSI thoát vùng yếu), điểm số có thể dịch chuyển 20–50 điểm giữa hai phiên (ví dụ HPG từ 0 lên 52 khi giá đóng cửa 20.8k vượt lên trên MA20 20.6k). Đây là hiệu ứng ngưỡng phi tuyến cần tiếp tục theo dõi độ ổn định theo chuỗi thời gian.
+
+---
+
+## 7. Tiêu Chí Dừng Đã Đăng Ký Trước (Pre-Registered Stopping Rules)
+
+Để tránh bẫy thiên lệch nhận thức và di chuyển cột gôn trong quá trình kiểm định, hệ thống đăng ký trước 4 tiêu chí cứng kích hoạt trạng thái **Review Khẩn Cấp / Dừng Hệ Thống**:
+
+1. **Quy tắc Kém hiệu quả (Underperformance Rule):** Tỷ suất sinh lời thực tế của nhóm WATCH thua kém danh mục REJECT hoặc VN-Index liên tục trong 30 phiên với mức chênh lệch $> 5\%$ và có ý nghĩa thống kê ($p < 0.05$).
+2. **Quy tắc Giới hạn Rút vốn (Drawdown Breach):** Max Drawdown của danh mục giả lập có ma sát vượt quá **15%**.
+3. **Quy tắc Tê liệt Mô hình (Model Paralysis):** Trạng thái 0 BUY kéo dài liên tục quá **45 phiên giao dịch**, bất chấp VN-Index có nhịp phục hồi kỹ thuật xác nhận $> 10\%$ với độ rộng thị trường (market breadth) đồng thuận.
+4. **Quy tắc Toàn vẹn Dữ liệu (Data Integrity Breach):** Nguồn cấp dữ liệu thô gặp sự cố mất mát, sai lệch định dạng, hoặc trôi giá bất thường không thể khắc phục quá 2 phiên liên tiếp.
+
+---
+
+## 8. Quy Trình Sửa Lỗi Khẩn Cấp (Hotfix & Epoch Split Protocol)
+
+Khi phát sinh lỗi logic nghiêm trọng buộc phải can thiệp mã nguồn trong giai đoạn đóng băng:
+1. Nâng phiên bản `logic_version` (ví dụ từ `v15.0_frozen_20261013` lên `v15.1_frozen_YYYYMMDD`).
+2. **Khởi động lại đồng hồ đo lường (Reset Clock):** Toàn bộ dữ liệu được phân tách thành 2 kỷ nguyên độc lập:
+   - **Epoch 1:** Dữ liệu trước thời điểm hotfix.
+   - **Epoch 2:** Dữ liệu sau thời điểm hotfix.
+3. Tuyệt đối **KHÔNG gộp dữ liệu hai Epoch** để báo cáo hiệu suất chung nhằm tránh sống sót thiên lệch (survivorship bias).
+
+---
+
+## 9. Bản Chụp Dữ Liệu Thô Point-in-time & Chế Độ WORM (Append-Only)
+
+1. **Bản Chụp Dữ Liệu Thô (Point-in-time Raw Snapshot):**  
+   - Bảng lưu trữ bền vững `raw_input_snapshots` (Migration 0009) lưu lại 100% chuỗi phản hồi gốc (raw JSON payloads) của nhà cung cấp tại đúng microsecond ra quyết định (BCTC, giá thị trường, consensus target).
+   - Khóa liên kết chặt chẽ: `(session_date, symbol, decision_id)`.
+2. **Cơ Chế Bất Biến WORM (Write Once, Read Many):**  
+   - Kích hoạt PostgreSQL Trigger `enforce_append_only_audit_log` chặn tuyệt đối mọi thao tác `UPDATE` và `DELETE` trên `decision_records`, `decision_lifecycle_events`, và `raw_input_snapshots`.
+3. **Sao Lưu Ngoại Vi Độc Lập:**  
+   - Cuối mỗi ngày giao dịch, xuất tệp sao lưu nén ra bộ nhớ ngoài Supabase, đi kèm mã kiểm tra toàn vẹn `checksum.sha256`.
+
+---
+
+## 10. Giám Sát Tự Động & Dead-Man's Switch
+
+- Hệ thống giám sát độc lập gửi cảnh báo tự động (qua Webhook/Telegram) nếu:
+  1. Quá 15:15 ICT mà job quét chuẩn `EOD_CANONICAL` chưa hoàn tất ghi nhận.
+  2. Số lượng bản ghi chuẩn trong phiên $\ne 55$ mã thuộc `BROAD_MARKET_POOL`.
+  3. Phát hiện `canonical_fallback_rate_pct > 10%`.
