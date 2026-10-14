@@ -1271,3 +1271,34 @@ def check_evidence_kill_switch(lookback_trades: int = 20) -> dict:
     except Exception:
         logging.exception("Error evaluating evidence kill switch")
         return default_res
+
+
+def save_raw_input_snapshot(
+    session_date: str,
+    symbol: str,
+    decision_id: str,
+    raw_bctc: dict | None = None,
+    raw_price: dict | None = None,
+    raw_consensus: dict | None = None,
+) -> bool:
+    """Save point-in-time raw input data snapshot to Supabase raw_input_snapshots.
+    Fails gracefully if table not yet migrated or connection fails.
+    """
+    client = get_supabase_client()
+    if not client:
+        return True
+
+    row = {
+        "session_date": session_date,
+        "symbol": symbol.upper().strip(),
+        "decision_id": decision_id,
+        "raw_bctc": raw_bctc or {},
+        "raw_price": raw_price or {},
+        "raw_consensus": raw_consensus or {},
+    }
+    try:
+        client.table("raw_input_snapshots").insert(row).execute()
+        return True
+    except Exception as e:
+        logging.warning("Failed to save raw_input_snapshot for %s (%s): %s", symbol, decision_id, e)
+        return False

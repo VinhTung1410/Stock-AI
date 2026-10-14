@@ -240,6 +240,14 @@ def test_metadata_enrichment_and_schema_version_fields():
     assert "effective_config_hash" in hpg["facts"]
     assert "universe_hash" in hpg["facts"]
     assert "gates_failed" in hpg["facts"]
+    assert "fair_value_base" in hpg["facts"]
+    assert "fair_value_bear" in hpg["facts"]
+    assert "fair_value_bull" in hpg["facts"]
+    assert "target_pb" in hpg["facts"]
+    assert "eps_used" in hpg["facts"]
+    assert "bvps_used" in hpg["facts"]
+    assert "consensus_target_used" in hpg["facts"]
+    assert "consensus_gap_pct" in hpg["facts"]
 
 
 def test_implicit_fair_value_invariance_and_drift_detection():
@@ -425,3 +433,44 @@ def test_quant_sanity_check_edge_cases_and_drift_branches():
     is_d, msg = detect_unintended_valuation_drift(r_same1, r_same2)
     assert not is_d
     assert "Invariant preserved" in msg
+
+
+def test_raw_input_snapshot_persistence():
+    """Verify save_raw_input_snapshot executes insert into raw_input_snapshots."""
+    from unittest.mock import MagicMock
+
+    from db_manager import save_raw_input_snapshot
+
+    mock_client = MagicMock()
+    mock_table = MagicMock()
+    mock_client.table.return_value = mock_table
+    mock_table.insert.return_value = mock_table
+    mock_table.execute.return_value = MagicMock(data=[{"id": 1}])
+
+    with patch("db_manager.get_supabase_client", return_value=mock_client):
+        success = save_raw_input_snapshot(
+            session_date="2026-10-15",
+            symbol="HPG",
+            decision_id="DEC_HPG_TEST",
+            raw_bctc={"period": "2026-Q2", "eps": 3.5},
+            raw_price={"current_price": 28.0},
+            raw_consensus={"consensus_target": 32.0},
+        )
+        assert success is True
+        mock_client.table.assert_called_with("raw_input_snapshots")
+        mock_table.insert.assert_called_once()
+        insert_payload = mock_table.insert.call_args[0][0]
+        assert insert_payload["symbol"] == "HPG"
+        assert insert_payload["session_date"] == "2026-10-15"
+        assert insert_payload["decision_id"] == "DEC_HPG_TEST"
+        assert insert_payload["raw_bctc"]["eps"] == 3.5
+
+    # Test error fallback gracefully returns False
+    mock_client.table.side_effect = Exception("DB Connection Error")
+    with patch("db_manager.get_supabase_client", return_value=mock_client):
+        success_err = save_raw_input_snapshot(
+            session_date="2026-10-15",
+            symbol="HPG",
+            decision_id="DEC_HPG_TEST",
+        )
+        assert success_err is False

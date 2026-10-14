@@ -2347,6 +2347,58 @@ def scan_market_opportunities(
             )
             cons_asof = val_res.get("consensus_asof") or val_res.get("consensus_last_updated")
 
+            fv_base = val_res.get("fair_value_base", fv)
+            fv_bear = val_res.get("fair_value_bear")
+            fv_bull = val_res.get("fair_value_bull")
+            archetype_val = val_res.get("archetype")
+            is_bank_sector = (
+                archetype_val == "BANK"
+                or sector in ("Ngân hàng", "BANK", "BANKS")
+                or val_res.get("target_pb_raw") is not None
+            )
+            target_pb_val = (
+                val_res.get("effective_pb") or val_res.get("target_pb_raw")
+            ) if is_bank_sector else None
+
+            eps_val = (
+                fin_ratios.get("eps")
+                or fin_ratios.get("eps_ttm")
+                or val_res.get("normalized_eps")
+            ) if isinstance(fin_ratios, dict) else None
+
+            bvps_val = (
+                fin_ratios.get("bvps")
+                or fin_ratios.get("bvps_mrq")
+            ) if isinstance(fin_ratios, dict) else None
+
+            cons_target_val = val_res.get("consensus_target")
+            cons_gap_pct_val = (
+                round(((cons_target_val - curr_price) / curr_price) * 100, 2)
+                if cons_target_val and curr_price and curr_price > 0
+                else None
+            )
+            raw_cons_dict = {
+                "consensus_target": cons_target_val,
+                "consensus_asof": cons_asof,
+                "consensus_source": val_res.get("consensus_source"),
+            } if cons_target_val else {}
+
+            def _enrich_ret(d: dict) -> dict:
+                d.update({
+                    "fair_value_base": fv_base,
+                    "fair_value_bear": fv_bear,
+                    "fair_value_bull": fv_bull,
+                    "target_pb": target_pb_val,
+                    "eps_used": eps_val,
+                    "bvps_used": bvps_val,
+                    "consensus_target_used": cons_target_val,
+                    "consensus_gap_pct": cons_gap_pct_val,
+                    "raw_bctc": fin_ratios if isinstance(fin_ratios, dict) else {},
+                    "raw_price": tech if isinstance(tech, dict) else {},
+                    "raw_consensus": raw_cons_dict,
+                })
+                return d
+
             hard_gates = evaluate_decision_hard_gates(
                 current_price=curr_price,
                 p_bull=0.35,
@@ -2515,7 +2567,7 @@ def scan_market_opportunities(
                     execution_plan = f"Chia 3 phần: 30% tại {p_high}k, 40% tại {curr_price}k, 30% đón tại {p_low}k (Giá vốn BQ dự kiến: {avg_cost}k)."
 
                 f_badge = foreign_flow.get("badge", "")
-                return {
+                return _enrich_ret({
                     "symbol": sym,
                     "sector": sector,
                     "status": "RECOMMEND_BUY",
@@ -2553,7 +2605,7 @@ def scan_market_opportunities(
                         f"Định giá MoS: {f'{mos_pct:+.1f}%' if mos_pct is not None else 'N/A'} ({val_method}). "
                         f"Kỹ thuật: Trên MA20 ({ma20:.1f}), RSI {rsi:.1f}, Vol x{vol_ratio:.1f}. {f_badge}."
                     ),
-                }
+                })
 
             # A2. CONTRARIAN PANIC BUY ENGINE (ADR-031 / Phase 18 - v8.1)
             # Nếu cổ phiếu không thỏa mãn kỹ thuật Trend Following nhưng rơi vào trạng thái cực đoan,
@@ -2612,7 +2664,7 @@ def scan_market_opportunities(
                 else:
                     conv_tier = "MEDIUM"
 
-                return {
+                return _enrich_ret({
                     "symbol": sym,
                     "sector": sector,
                     "status": final_status,
@@ -2662,7 +2714,7 @@ def scan_market_opportunities(
                         f"Định giá MoS: {f'{contrarian_res.mos_pct:+.1f}%' if contrarian_res.mos_pct is not None else 'N/A'}. "
                         f"F-Score: {contrarian_res.metrics.get('f_score')}/9. Vị thế: {contrarian_res.position_size_nav}."
                     ),
-                }
+                })
 
             # B. MEDIUM CONVICTION (55-69) HOẶC CƠ BẢN TỐT (MOS >= 8%) NHƯNG KỸ THUẬT CHƯA XÁC NHẬN
             # -> ĐƯA VÀO RADAR THEO DÕI (WATCH_CONFIRMATION) CHO LƯỚT SÓNG HOẶC CHỜ NỀN
@@ -2681,7 +2733,7 @@ def scan_market_opportunities(
                 reason_str = ", ".join(watch_reason) if watch_reason else "chờ tín hiệu xác nhận dòng tiền"
 
                 mos_desc = f" (MoS {mos_pct:+.1f}%)" if mos_pct is not None else ""
-                return {
+                return _enrich_ret({
                     "symbol": sym,
                     "sector": sector,
                     "status": "WATCH_CONFIRMATION",
@@ -2708,7 +2760,7 @@ def scan_market_opportunities(
                     "fin_hash": fin_h,
                     "gates_failed": sym_gates_failed,
                     "rationale": f"Cơ bản tốt{mos_desc}, Conviction {conv_score:.0f}/100 nhưng {reason_str}. Ưu tiên theo dõi chờ nến xác nhận ngừng rơi, không mua đuổi.",
-                }
+                })
 
             # C. CÓ TIN HOẶC DÍNH BẪY PHÂN PHỐI / ĐỊNH GIÁ ĐẮT -> CẢNH BÁO BẪY
             elif cat_info or is_trap or conv_score < MEDIUM_CONVICTION_THRESHOLD:
@@ -2726,7 +2778,7 @@ def scan_market_opportunities(
                 if conv_score < MEDIUM_CONVICTION_THRESHOLD:
                     caution_reason.append(f"Điểm Conviction thấp ({conv_score:.0f}/100)")
 
-                return {
+                return _enrich_ret({
                     "symbol": sym,
                     "sector": sector,
                     "status": "CAUTION_TRAP",
@@ -2752,15 +2804,15 @@ def scan_market_opportunities(
                     "fin_hash": fin_h,
                     "gates_failed": sym_gates_failed,
                     "rationale": " | ".join(caution_reason) if caution_reason else "Kỹ thuật chưa đạt chuẩn an toàn.",
-                }
+                })
 
 
-            return {
+            return _enrich_ret({
                 "symbol": sym,
                 "status": "REJECT",
                 "setup_type": "Kỹ thuật không đạt chuẩn mua hoặc theo dõi",
                 "primary_rejection_gate": "TECH_OR_CONVICTION",
-            }
+            })
         except Exception as e:
             logging.exception("Lỗi phân tích %s: %s", sym, e)
             return {
@@ -2875,6 +2927,14 @@ def scan_market_opportunities(
                         "regime_features": regime_features,
                         "schema_version": SCHEMA_VERSION,
                         "logic_version": LOGIC_VERSION,
+                        "fair_value_base": res.get("fair_value_base"),
+                        "fair_value_bear": res.get("fair_value_bear"),
+                        "fair_value_bull": res.get("fair_value_bull"),
+                        "target_pb": res.get("target_pb"),
+                        "eps_used": res.get("eps_used"),
+                        "bvps_used": res.get("bvps_used"),
+                        "consensus_target_used": res.get("consensus_target_used"),
+                        "consensus_gap_pct": res.get("consensus_gap_pct"),
                     },
                     "logic_version": LOGIC_VERSION,
                     "model_version": current_model,
@@ -2890,6 +2950,20 @@ def scan_market_opportunities(
 
                 dec_id = save_decision_record(record_payload)
                 if dec_id:
+                    try:
+                        from db_manager import save_raw_input_snapshot
+
+                        save_raw_input_snapshot(
+                            session_date=today_date_str,
+                            symbol=res["symbol"],
+                            decision_id=dec_id,
+                            raw_bctc=res.get("raw_bctc"),
+                            raw_price=res.get("raw_price"),
+                            raw_consensus=res.get("raw_consensus"),
+                        )
+                    except Exception as e_snap:
+                        logging.warning("Lỗi lưu raw snapshot cho %s: %s", res["symbol"], e_snap)
+
                     try:
                         from db_manager import (
                             EVENT_AI_VETO_EVALUATED,
