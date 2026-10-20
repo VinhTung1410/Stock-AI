@@ -730,14 +730,19 @@ def prune_unsuitable_watchlist(
                 _SESSION_PRUNED_SYMBOLS.add(pruned["symbol"].upper().strip())
                 logging.info(f"🗑️ Đã thanh lọc {pruned['symbol']} khỏi Watchlist: {pruned['reason']}")
                 try:
-                    from db_manager import EVENT_WATCHLIST_EXPIRED, save_lifecycle_event
+                    from db_manager import EVENT_WATCHLIST_EXPIRED, EVENT_WATCHLIST_REMOVED, save_lifecycle_event
 
-                    corr_id = f"WL_EXP_{pruned['symbol']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    reason_text = str(pruned.get("reason", ""))
+                    is_ttl_exp = "TTL" in reason_text or "hết hạn" in reason_text.lower()
+                    evt_type = EVENT_WATCHLIST_EXPIRED if is_ttl_exp else EVENT_WATCHLIST_REMOVED
+                    evt_prefix = "WL_EXP" if is_ttl_exp else "WL_REM"
+
+                    corr_id = f"{evt_prefix}_{pruned['symbol']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                     save_lifecycle_event(
                         {
                             "symbol": pruned["symbol"],
                             "correlation_id": corr_id,
-                            "event_type": EVENT_WATCHLIST_EXPIRED,
+                            "event_type": evt_type,
                             "event_data": {
                                 "reason": pruned.get("reason"),
                                 "current_price": pruned.get("current_price"),
@@ -745,7 +750,7 @@ def prune_unsuitable_watchlist(
                         }
                     )
                 except Exception:
-                    logging.exception("Lỗi khi lưu lifecycle event WATCHLIST_EXPIRED cho %s", pruned.get("symbol"))
+                    logging.exception("Lỗi khi lưu lifecycle event cho %s", pruned.get("symbol"))
             elif retained:
                 retained_items.append(retained)
 
@@ -2347,7 +2352,8 @@ def scan_market_opportunities(
             )
             cons_asof = val_res.get("consensus_asof") or val_res.get("consensus_last_updated")
 
-            fv_base = val_res.get("fair_value_base", fv)
+            raw_fv_base = val_res.get("fair_value_base", fv)
+            fv_base = raw_fv_base if (raw_fv_base is not None and float(raw_fv_base) > 0) else None
             fv_bear = val_res.get("fair_value_bear")
             fv_bull = val_res.get("fair_value_bull")
             archetype_val = val_res.get("archetype")
@@ -2383,6 +2389,17 @@ def scan_market_opportunities(
                 "consensus_source": val_res.get("consensus_source"),
             } if cons_target_val else {}
 
+            from quant_sanity_check import compute_fundamental_input_hash
+
+            fin_h = compute_fundamental_input_hash(
+                eps=fin_ratios.get("eps") if isinstance(fin_ratios, dict) else None,
+                bvps=fin_ratios.get("bvps") if isinstance(fin_ratios, dict) else None,
+                roe=fin_ratios.get("roe") if isinstance(fin_ratios, dict) else None,
+                pe=fin_ratios.get("pe") if isinstance(fin_ratios, dict) else None,
+                consensus_price=val_res.get("price_target") or val_res.get("consensus_target"),
+                bctc_period=bctc_p,
+            )
+
             def _enrich_ret(d: dict) -> dict:
                 d.update({
                     "fair_value_base": fv_base,
@@ -2393,6 +2410,9 @@ def scan_market_opportunities(
                     "bvps_used": bvps_val,
                     "consensus_target_used": cons_target_val,
                     "consensus_gap_pct": cons_gap_pct_val,
+                    "fin_hash": fin_h,
+                    "bctc_period": bctc_p,
+                    "consensus_asof": cons_asof,
                     "raw_bctc": fin_ratios if isinstance(fin_ratios, dict) else {},
                     "raw_price": tech if isinstance(tech, dict) else {},
                     "raw_consensus": raw_cons_dict,
@@ -2417,17 +2437,6 @@ def scan_market_opportunities(
                 tech_data=tech,
             )
             gate_can_buy = hard_gates.get("gate_mos_passed", True) and mos_is_informative
-
-            from quant_sanity_check import compute_fundamental_input_hash
-
-            fin_h = compute_fundamental_input_hash(
-                eps=fin_ratios.get("eps") if isinstance(fin_ratios, dict) else None,
-                bvps=fin_ratios.get("bvps") if isinstance(fin_ratios, dict) else None,
-                roe=fin_ratios.get("roe") if isinstance(fin_ratios, dict) else None,
-                pe=fin_ratios.get("pe") if isinstance(fin_ratios, dict) else None,
-                consensus_price=val_res.get("price_target") or val_res.get("consensus_target"),
-                bctc_period=bctc_p,
-            )
 
             sym_gates_failed = []
             if not hard_gates.get("gate_mos_passed", True):
@@ -2457,7 +2466,7 @@ def scan_market_opportunities(
 
             # Hard gate reject if price conflict or statutory exchange breach detected
             if not reconcile_res.get("gate_passed"):
-                return {
+                return _enrich_ret({
                     "symbol": sym,
                     "sector": sector,
                     "status": "CAUTION_TRAP",
@@ -2475,7 +2484,7 @@ def scan_market_opportunities(
                     "data_quality_score": reconcile_res.get("quality_score", 0.0),
                     "data_badge": reconcile_res.get("badge", "DATA CONFLICT"),
                     "rationale": "; ".join(reconcile_res.get("conflicting_data", ["Xung đột dữ liệu giá"])),
-                }
+                })
 
             # --- KIỂM TRA ĐIỀU KIỆN KỸ THUẬT THỰC CHIẾN ---
             # --- TÍNH ĐIỂM CONVICTION THEO 4 TRỤ CỘT ---

@@ -1,1 +1,7 @@
-[]
+[
+  {
+    "symbol": "HPG",
+    "target_buy": 25.0,
+    "note": "Active candidate"
+  }
+]
