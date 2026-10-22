@@ -1,9 +1,11 @@
 # Quy Tắc Đăng Ký Trước Tín Hiệu Mua & Quản Trị Vị Thế Thực Chiến (Pre-Registered BUY Rules Protocol)
 
 > **Cơ Chế Bảo Chứng Liêm Chính (Cryptographic Integrity):**  
-> Bản quy tắc này được khóa và xác lập hiệu lực bằng **Git Commit Hash thực tế** trên kho mã nguồn, được bảo chứng bởi **Git Annotated Tag `v15.0-buy-protocol`** (chứa dấu thời gian mật mã của Git khi đẩy lên GitHub).  
-> **Logic Nền Đóng Băng:** Commit `106e6c6` (Baseline Production v15.0).  
-> Mọi quy tắc kích hoạt mua, định cỡ vị thế, ngưỡng cắt lỗ neo giá vào, cơ chế thoát lệnh, và ràng buộc danh mục dưới đây là **hoàn toàn xác định (deterministic), không có tham số mơ hồ** và được cố định trước khi xuất hiện bất kỳ tín hiệu MUA (BUY) nào.
+> - **Git Commit Hash Xác Lập:** [`ff1b0cf3144b3abd1fa229fdf533fbe103c108ff`](https://github.com/VinhTung1410/Stock-AI/commit/ff1b0cf3144b3abd1fa229fdf533fbe103c108ff)  
+> - **Git Annotated Tag Bảo Chứng:** `v15.0-buy-protocol`  
+> - **Dấu Thời Gian Commit Thực Tế:** `2026-10-22T23:26:41+02:00` (Khóa chặt trước phiên giao dịch tiếp theo)  
+> - **Mã Nguồn Baseline Được Dẫn Chiếu:** Commit `106e6c6` (Production v15.0)  
+> Mọi quy tắc kích hoạt mua, định cỡ vị thế, ngưỡng cắt lỗ neo giá vào, cơ chế thoát lệnh, và ràng buộc danh mục dưới đây là **hoàn toàn xác định (deterministic), không có tham số mơ hồ**.
 
 ---
 

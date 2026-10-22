@@ -480,6 +480,33 @@ def _calculate_record_payload(
     }
 
 
+def _load_valuation_events_map() -> dict[str, dict[str, Any]]:
+    """Load valuation events and return a mapping by uppercase symbol."""
+    candidates = [
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "valuation_events.csv"),
+        "data/valuation_events.csv",
+    ]
+    path = next((p for p in candidates if os.path.exists(p)), None)
+    if not path:
+        return {}
+    try:
+        vdf = pd.read_csv(path)
+        evt_map = {}
+        for _, vrow in vdf.iterrows():
+            s = str(vrow.get("symbol", "")).upper().strip()
+            if s:
+                evt_map[s] = {
+                    "event_id": vrow.get("event_id"),
+                    "bctc_published_date": str(vrow.get("bctc_published_date", "")).strip()[:10],
+                    "event_date": str(vrow.get("event_date", "")).strip()[:10],
+                    "event_type": vrow.get("event_type"),
+                    "corporate_action": vrow.get("corporate_action"),
+                }
+        return evt_map
+    except Exception:
+        return {}
+
+
 def _assemble_evaluation_row(rec: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     """Assemble a single fully-auditable evaluation row."""
     sym = payload["symbol"]
@@ -526,6 +553,18 @@ def _assemble_evaluation_row(rec: dict[str, Any], payload: dict[str, Any]) -> di
     floor_t3 = floors.get(3) if 3 in matured_set else None
     ceil_t5 = ceilings.get(5) if 5 in matured_set else None
     floor_t5 = floors.get(5) if 5 in matured_set else None
+
+    val_map = _load_valuation_events_map()
+    sym_evt = val_map.get(sym.upper().strip())
+    bctc_pub_date = sym_evt.get("bctc_published_date") if sym_evt else None
+
+    t0_date = str(payload.get("entry_date_signal") or "")[:10]
+    matured_dates = [payload["exit_dates"][h] for h in matured_set if h in payload.get("exit_dates", {})]
+    max_matured_date = max(matured_dates) if matured_dates else None
+
+    crosses_val_evt = False
+    if bctc_pub_date and max_matured_date and t0_date:
+        crosses_val_evt = bool(t0_date < bctc_pub_date <= max_matured_date)
 
     return {
         "decision_id": payload["decision_id"],
@@ -588,6 +627,8 @@ def _assemble_evaluation_row(rec: dict[str, Any], payload: dict[str, Any]) -> di
         "gap_exec_vs_signal_t5_pp": gap_t5_pp,
         "large_overnight_gap": large_gap,
         "est_fee_tax_pct": EST_TRANSACTION_FEE_PCT,
+        "crosses_valuation_event": crosses_val_evt,
+        "bctc_published_date": bctc_pub_date,
     }
 
 

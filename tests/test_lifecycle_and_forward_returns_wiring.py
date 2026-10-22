@@ -262,6 +262,42 @@ class TestLifecycleEventsWiring:
             assert events[0]["event_type"] == EVENT_WATCHLIST_REMOVED
             assert events[0]["event_data"]["current_price"] == 10.5
 
+    def test_save_lifecycle_event_rejects_boolean_correlation_id(self):
+
+        # Must reject boolean True/False, empty string, string "True"/"False", and non-string
+        invalid_corrs = [True, False, "True", "False", "true", "", "   ", 12345, None]
+        for bad_corr in invalid_corrs:
+            evt = {
+                "symbol": "FPT",
+                "correlation_id": bad_corr,
+                "event_type": EVENT_AI_VETO_EVALUATED,
+                "event_data": {"price": 100.0},
+            }
+            res = save_lifecycle_event(evt)
+            assert res is None, f"Expected None for invalid correlation_id: {bad_corr}"
+
+    def test_can_write_to_database_guard(self, monkeypatch):
+        from db_manager import can_write_to_database, is_production_environment
+
+        monkeypatch.setenv("APP_ENV", "production")
+        assert is_production_environment() is True
+        assert can_write_to_database() is True
+
+        monkeypatch.setenv("APP_ENV", "prod")
+        assert is_production_environment() is True
+        assert can_write_to_database() is True
+
+        monkeypatch.setenv("APP_ENV", "development")
+        monkeypatch.delenv("ALLOW_DEV_LIVE_WRITES", raising=False)
+        monkeypatch.delenv("SUPABASE_DEV_URL", raising=False)
+        assert is_production_environment() is False
+        assert can_write_to_database() is False
+
+        monkeypatch.setenv("APP_ENV", "testing")
+        assert is_production_environment() is False
+        assert can_write_to_database() is False
+
+
 
 class TestLeaveOneOutBenchmarksAndLatestHorizons:
     """Test Leave-One-Out sector benchmarks, NaN threshold (< 3 stocks), and *_latest columns."""

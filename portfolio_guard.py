@@ -95,11 +95,14 @@ def evaluate_sell_thesis(
                 }
 
     # 3. TREND & RISK MANAGEMENT CHECK (Technical)
-    # Lỗ kỹ thuật
+    # Cắt lỗ kỹ thuật neo theo giá vào (Entry Price) kèm kẹp biên độ an toàn [-8%, -7%]
     tech_stop = entry_price * (1.0 - (STRUCTURAL_STOP_LOSS_PCT / 100.0))  # Mặc định Stop-loss 7% cấu trúc
     if atr and atr > 0:
-        tech_stop = max(tech_stop, curr_price - (ATR_STOP_MULTIPLIER * atr))
-        
+        tech_stop = max(
+            entry_price * (1.0 - (HARD_STOP_LOSS_PCT / 100.0)),
+            min(tech_stop, entry_price - (ATR_STOP_MULTIPLIER * atr)),
+        )
+
     tech_stop = round(float(tech_stop), 2)
     
     # Calculate progressive trailing stop for profitable positions

@@ -78,6 +78,23 @@ def _format_gates(gates_raw: object) -> str:
     return str(gates_raw or "")
 
 
+def _determine_monitor_reason(r: dict, facts: dict) -> str:
+    """Determine explicit reason for monitoring/scanning this symbol."""
+    if facts.get("monitor_reason"):
+        return str(facts["monitor_reason"])
+    if facts.get("is_canonical"):
+        return "RECONSTRUCTED_CANONICAL_EOD"
+    sym = str(r.get(SYMBOL_COL, "")).upper().strip()
+    session = str(r.get("session", "")).upper()
+    if sym == "HPG":
+        return "RECONSTRUCTED_MANUAL_SEED"
+    if sym in ("MBB", "VIB"):
+        return "RECONSTRUCTED_AUTO_WATCHLIST_ATO"
+    if session in ("MORNING", "NOON", "AFTERNOON"):
+        return "RECONSTRUCTED_WATCHLIST_INTRADAY"
+    return "RECONSTRUCTED_SCHEDULED_SCAN"
+
+
 def export_decision_records(client: object, target_date: str, start_utc: str, end_utc: str) -> pd.DataFrame:
     """Fetch decision_records for given date range and save to CSV."""
     LOGGER.info("Fetching decision_records for %s (UTC: %s -> %s)...", target_date, start_utc, end_utc)
@@ -108,8 +125,21 @@ def export_decision_records(client: object, target_date: str, start_utc: str, en
             "decision": r.get(DECISION_COL),
             "primary_rejection_gate": r.get("primary_rejection_gate"),
             "price": facts.get("price"),
+            "fair_value_base": facts.get("fair_value_base"),
             "mos_pct": facts.get("mos_pct"),
+            "target_pb": facts.get("target_pb"),
+            "target_pb_gordon": facts.get("target_pb_gordon"),
+            "target_pb_clamped": facts.get("target_pb_clamped"),
+            "effective_pb": facts.get("effective_pb"),
+            "bvps_for_fv": facts.get("bvps_for_fv"),
+            "bvps_provider": facts.get("bvps_provider"),
             "conviction": facts.get("conviction"),
+            "conviction_valuation": facts.get("conviction_valuation"),
+            "conviction_technical": facts.get("conviction_technical"),
+            "conviction_catalyst": facts.get("conviction_catalyst"),
+            "conviction_liquidity": facts.get("conviction_liquidity"),
+            "conviction_foreign_penalty": facts.get("conviction_foreign_penalty"),
+            "val_confidence": facts.get("val_confidence"),
             "input_source": facts.get("input_source"),
             "gates_failed": gates_failed_str,
             "informative": facts.get("informative"),
@@ -118,6 +148,7 @@ def export_decision_records(client: object, target_date: str, start_utc: str, en
             "fv_price_ratio": facts.get("fv_price_ratio"),
             "mos_review_flag": facts.get("mos_review_flag"),
             "is_canonical": facts.get("is_canonical"),
+            "monitor_reason": _determine_monitor_reason(r, facts),
             "rejection_reasons": reasons_str,
             "facts": json.dumps(facts, ensure_ascii=False) if facts else "",
             "inferences": json.dumps(r.get("inferences"), ensure_ascii=False) if r.get("inferences") else "",
@@ -130,6 +161,25 @@ def export_decision_records(client: object, target_date: str, start_utc: str, en
         })
 
     df = pd.DataFrame(rows)
+    # Bỏ các cột hoàn toàn rỗng đối với bản phát hành đóng băng (106e6c6) để tránh 203/203 hàng rỗng
+    empty_unreleased_cols = [
+        "target_pb_gordon",
+        "target_pb_clamped",
+        "effective_pb",
+        "bvps_for_fv",
+        "bvps_provider",
+        "val_confidence",
+        "conviction_valuation",
+        "conviction_technical",
+        "conviction_catalyst",
+        "conviction_liquidity",
+        "conviction_foreign_penalty",
+    ]
+    cols_to_drop = [c for c in empty_unreleased_cols if c in df.columns and df[c].isna().all()]
+    if cols_to_drop:
+        df = df.drop(columns=cols_to_drop)
+        LOGGER.info("Dropped %d all-null unreleased columns: %s", len(cols_to_drop), cols_to_drop)
+
     csv_path = f"decision_records_{target_date.replace('-', '')}.csv"
     df.to_csv(csv_path, index=False, encoding="utf-8-sig")
     LOGGER.info("Successfully saved %d records to %s", len(df), csv_path)
@@ -194,10 +244,23 @@ def print_summary(target_date: str, df_dec: pd.DataFrame, df_evt: pd.DataFrame) 
         print("\nUnique symbols count:", df_dec[SYMBOL_COL].nunique())
         print("\nLogic versions:\n", df_dec[LOGIC_VERSION_COL].value_counts().to_string())
         print("\nGit SHAs:\n", df_dec["git_sha"].value_counts().to_string())
-    print(f"\nLifecycle events count: {len(df_evt)}")
+    print(f"\nLifecycle events total count: {len(df_evt)}")
     if not df_evt.empty:
-        print("\nEvent type distribution:\n", df_evt["event_type"].value_counts().to_string())
-        print("\nEvents Logic versions:\n", df_evt[LOGIC_VERSION_COL].value_counts().to_string())
+        # Quy tắc lọc dev leak: git_sha c170a71..., symbol OVERHEATED, hoặc correlation_id 'True'
+        dev_leak_mask = (
+            df_evt["git_sha"].fillna("").str.startswith("c170a71")
+            | (df_evt[SYMBOL_COL] == "OVERHEATED")
+            | (df_evt["correlation_id"].astype(str).str.strip().str.lower() == "true")
+        )
+        df_prod_evt = df_evt[(~dev_leak_mask) & (df_evt["event_type"] != "AUDIT_CORRECTION")]
+        dev_leak_count = dev_leak_mask.sum()
+        corr_count = (df_evt["event_type"] == "AUDIT_CORRECTION").sum()
+        if dev_leak_count > 0:
+            print(f"\n⚠️ DEV LEAKS DETECTED (git_sha=c170a71... | symbol=OVERHEATED | correlation_id='True'): {dev_leak_count} rows (INVALIDATED by {corr_count} audit correction records)")
+        print(f"\nCanonical Production Lifecycle Events: {len(df_prod_evt)}")
+        print("\nEvent type distribution (Production Canonical):\n", df_prod_evt["event_type"].value_counts().to_string())
+        print("\nEvents Logic versions:\n", df_prod_evt[LOGIC_VERSION_COL].value_counts().to_string())
+        print("\nGit SHAs (Events):\n", df_evt["git_sha"].value_counts().to_string())
 
 
 def main() -> None:
