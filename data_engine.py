@@ -14,7 +14,7 @@ import re
 import sys
 import urllib.request
 from datetime import date, datetime, timedelta
-from typing import Any
+from typing import Any, Optional
 
 # Guard against Windows AppLocker / WDAC blocking pyarrow DLL
 try:
@@ -124,8 +124,34 @@ PATH_LAST_KNOWN_PRICES_JSON = "data/last_known_prices.json"
 PATH_LAST_KNOWN_TECH_JSON = "data/last_known_tech.json"
 KEY_SECTOR_CLUSTER = "Cụm ngành"
 
-# Danh sách mã đã bị thanh lọc trong phiên để tránh bị Google Sheet nạp lại
-_SESSION_PRUNED_SYMBOLS: set[str] = set()
+PATH_PRUNED_SYMBOLS_JSON = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "data", ".pruned_symbols.json"
+)
+
+
+def _load_persisted_pruned_symbols() -> set[str]:
+    if os.path.exists(PATH_PRUNED_SYMBOLS_JSON):
+        try:
+            with open(PATH_PRUNED_SYMBOLS_JSON, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return {str(s).upper().strip() for s in data}
+        except Exception:
+            logging.exception("Failed to load persisted pruned symbols from %s", PATH_PRUNED_SYMBOLS_JSON)
+    return set()
+
+
+def _save_persisted_pruned_symbols(symbols: set[str]):
+    try:
+        os.makedirs(os.path.dirname(PATH_PRUNED_SYMBOLS_JSON), exist_ok=True)
+        with open(PATH_PRUNED_SYMBOLS_JSON, "w", encoding="utf-8") as f:
+            json.dump(sorted(list(symbols)), f, ensure_ascii=False, indent=2)
+    except Exception:
+        logging.exception("Failed to save persisted pruned symbols to %s", PATH_PRUNED_SYMBOLS_JSON)
+
+
+# Danh sách mã đã bị thanh lọc (lưu bền vững trên đĩa để không mất trạng thái khi restart)
+_SESSION_PRUNED_SYMBOLS: set[str] = _load_persisted_pruned_symbols()
 
 
 # Cache bộ nhớ tạm để tránh spam request Google Sheets liên tục
@@ -495,6 +521,9 @@ def load_portfolio(filepath: str = PATH_PORTFOLIO_JSON) -> list:
     return p_data
 
 
+FROZEN_OOS_WATCHLIST_SYMBOLS = ("HPG", "MBB", "VIB")
+
+
 def load_watchlist(filepath: str = PATH_WATCHLIST_JSON) -> list:
     """
     Đọc danh sách cổ phiếu đang theo dõi (Watchlist).
@@ -515,10 +544,39 @@ def load_watchlist(filepath: str = PATH_WATCHLIST_JSON) -> list:
     if sheet_url and filepath == PATH_WATCHLIST_JSON:
         _, w_data = fetch_google_sheet_data(sheet_url)
         if w_data:
-            # Lọc bỏ các mã đã bị thanh lọc trong phiên hiện tại
-            sheet_manual_items = [
-                item for item in w_data if item.get("symbol", "").upper().strip() not in _SESSION_PRUNED_SYMBOLS
-            ]
+            # Archive daily snapshot of external Google Sheet data durably
+            try:
+                import datetime
+                today_str = datetime.date.today().isoformat()
+                os.makedirs("data/google_sheet_snapshots", exist_ok=True)
+                snap_path = f"data/google_sheet_snapshots/watchlist_{today_str}.json"
+                if not os.path.exists(snap_path):
+                    with open(snap_path, "w", encoding="utf-8") as f_snap:
+                        json.dump(w_data, f_snap, ensure_ascii=False, indent=2)
+
+                # Persist durable audit record
+                from db_manager import save_lifecycle_event
+                save_lifecycle_event({
+                    "event_type": "WATCHLIST_SNAPSHOT_SAVED",
+                    "symbol": "SYSTEM",
+                    "details": {
+                        "date": today_str,
+                        "symbols": [it.get("symbol") for it in w_data if it.get("symbol")],
+                        "count": len(w_data),
+                    },
+                })
+            except Exception:
+                pass
+
+            # Lọc bỏ các mã đã bị thanh lọc trong phiên hiện tại và gắn thẻ source=GOOGLE_SHEET
+            sheet_manual_items = []
+            for item in w_data:
+                sym_clean = item.get("symbol", "").upper().strip()
+                if sym_clean and sym_clean not in _SESSION_PRUNED_SYMBOLS:
+                    item_copy = dict(item)
+                    item_copy.setdefault("source", "GOOGLE_SHEET")
+                    sheet_manual_items.append(item_copy)
+
             merged_watchlist = list(sheet_manual_items)
             merged_symbols = {m.get("symbol", "").upper().strip() for m in merged_watchlist if m.get("symbol")}
 
@@ -728,6 +786,7 @@ def prune_unsuitable_watchlist(
             if pruned:
                 pruned_items.append(pruned)
                 _SESSION_PRUNED_SYMBOLS.add(pruned["symbol"].upper().strip())
+                _save_persisted_pruned_symbols(_SESSION_PRUNED_SYMBOLS)
                 logging.info(f"🗑️ Đã thanh lọc {pruned['symbol']} khỏi Watchlist: {pruned['reason']}")
                 try:
                     from db_manager import EVENT_WATCHLIST_EXPIRED, EVENT_WATCHLIST_REMOVED, save_lifecycle_event
@@ -883,7 +942,7 @@ def sync_auto_watchlist(
                 merged_watchlist.append(auto_item)
                 existing_merged_symbols.add(auto_item["symbol"])
                 try:
-                    from db_manager import EVENT_WATCHLIST_ADDED, is_watchlist_stint_event_emitted, save_lifecycle_event
+                    from db_manager import EVENT_MONITOR_ADDED, is_watchlist_stint_event_emitted, save_lifecycle_event
 
                     entry_d = str(auto_item.get("watch_entry_date") or auto_item.get("entry_date") or date.today())[:10]
                     stint_key = (auto_item["symbol"], entry_d)
@@ -895,10 +954,10 @@ def sync_auto_watchlist(
                         corr_id = f"WL_{auto_item['symbol']}_{entry_d}"
                         save_lifecycle_event(
                             {
-                                "event_id": f"EVT_WL_ADDED_{auto_item['symbol']}_{entry_d}",
+                                "event_id": f"EVT_MONITOR_ADDED_{auto_item['symbol']}_{entry_d}",
                                 "symbol": auto_item["symbol"],
                                 "correlation_id": corr_id,
-                                "event_type": EVENT_WATCHLIST_ADDED,
+                                "event_type": EVENT_MONITOR_ADDED,
                                 "event_data": {
                                     "target_buy": auto_item.get("target_buy"),
                                     "archetype": auto_item.get("archetype"),
@@ -910,7 +969,7 @@ def sync_auto_watchlist(
                             }
                         )
                 except Exception:
-                    logging.exception("Lỗi khi lưu lifecycle event WATCHLIST_ADDED cho %s", auto_item.get("symbol"))
+                    logging.exception("Lỗi khi lưu lifecycle event MONITOR_ADDED cho %s", auto_item.get("symbol"))
 
         save_watchlist(merged_watchlist, filepath=filepath)
         logging.info(
@@ -1490,6 +1549,75 @@ def detect_gdkhq_event(
             }
 
     return {"is_gdkhq": False, "event_type": "NORMAL", "reason": ""}
+
+
+def get_bctc_cutoff_date(period_str: Optional[str]) -> Optional[str]:
+    """Parse BCTC period string into ISO cut-off date (e.g. '2026-Q2' -> '2026-06-30')."""
+    if not period_str:
+        return None
+    p = str(period_str).upper().strip()
+    year = None
+    quarter = None
+    m = re.search(r"(\d{4})", p)
+    if m:
+        year = int(m.group(1))
+    mq = re.search(r"Q([1-4])", p)
+    if mq:
+        quarter = int(mq.group(1))
+    if not year or not quarter:
+        return None
+    cutoff_month_day = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
+    return f"{year}-{cutoff_month_day.get(quarter, '12-31')}"
+
+
+def detect_and_adjust_post_bctc_dilution(
+    symbol: str,
+    bctc_period: Optional[str],
+    bvps: Optional[float],
+    eps: Optional[float],
+    corporate_actions: Optional[list] = None,
+) -> dict:
+    """Kiểm tra và xử lý lệch pha do chia cổ tức CP / tăng vốn sau ngày chốt kỳ BCTC (Generic Post-BCTC Dilution Shield).
+
+    Khi ngày GDKHQ (cổ tức CP, phát hành thêm, CP thưởng) xảy ra SAU ngày chốt kỳ BCTC nhưng
+    dữ liệu BCTC mới chưa kịp nạp:
+    - Thị giá thị trường sụt giảm ngay lập tức trong phiên GDKHQ.
+    - Dữ liệu BVPS, EPS của nhà cung cấp vẫn dựa trên số lượng CP cũ (chưa pha loãng), khiến FV bị thổi phồng.
+    - Hàm gắn cờ per_share_stale = True và ước tính số liệu BVPS, EPS sau pha loãng lũy kế.
+    """
+    cutoff = get_bctc_cutoff_date(bctc_period)
+    if not cutoff or not corporate_actions:
+        return {
+            "per_share_stale": False,
+            "cumulative_dilution_factor": 1.0,
+            "adjusted_bvps": bvps,
+            "adjusted_eps": eps,
+            "dilution_events": [],
+        }
+
+    dilution_factor = 1.0
+    events = []
+    for ca in corporate_actions:
+        ex_d = ca.get("ex_date") or ca.get("ngay_gdkhq")
+        if not ex_d or str(ex_d)[:10] <= cutoff:
+            continue
+        ev_type = str(ca.get("event_code") or ca.get("action_type") or "").upper()
+        ratio = float(ca.get("exercise_ratio") or ca.get("ratio") or 0.0)
+        if ratio > 0 and any(k in ev_type for k in ("ISS", "DIVIDEND", "BONUS", "RIGHT")):
+            dilution_factor *= (1.0 + ratio)
+            events.append({"ex_date": str(ex_d)[:10], "type": ev_type, "ratio": ratio})
+
+    is_stale = dilution_factor > 1.02 and bool(events)
+    adj_bvps = round(bvps / dilution_factor, 2) if (bvps and is_stale) else bvps
+    adj_eps = round(eps / dilution_factor, 2) if (eps and is_stale) else eps
+
+    return {
+        "per_share_stale": is_stale,
+        "cumulative_dilution_factor": round(dilution_factor, 4),
+        "adjusted_bvps": adj_bvps,
+        "adjusted_eps": adj_eps,
+        "dilution_events": events,
+    }
 
 
 def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
@@ -2238,16 +2366,21 @@ def scan_market_opportunities(
 
     # 3. Tạo danh sách ứng viên (Ưu tiên mã người dùng theo dõi trong extra_symbols + watchlist)
     candidate_symbols = []
+    candidate_origins = {}
     for s in extra_symbols or []:
-        if s and s.upper() not in candidate_symbols:
-            candidate_symbols.append(s.upper())
+        s_up = s.upper() if s else ""
+        if s_up and s_up not in candidate_symbols:
+            candidate_symbols.append(s_up)
+            candidate_origins[s_up] = "CANONICAL_EOD" if (session_override and "EOD" in session_override) else "EXTRA_SYMBOLS"
     for w in watchlist_items:
         ws = w.get("symbol", "").upper()
         if ws and ws not in candidate_symbols:
             candidate_symbols.append(ws)
+            candidate_origins[ws] = "AUTO_WATCHLIST_ATO" if w.get("is_auto") else "MANUAL_SEED"
     for c in list(catalyst_map.keys()):
         if c not in candidate_symbols:
             candidate_symbols.append(c)
+            candidate_origins[c] = "CATALYST_NEWS"
 
     # Nạp thêm các mã xoay vòng từ BROAD_MARKET_POOL vào danh sách quét
     global _market_scanner_cursor
@@ -2258,6 +2391,7 @@ def scan_market_opportunities(
         _market_scanner_cursor += 1
         if sym not in candidate_symbols:
             candidate_symbols.append(sym)
+            candidate_origins[sym] = "BROAD_MARKET_ROTATION"
 
     # Khống chế danh sách quét tối đa 8 mã khi không truyền extra_symbols cụ thể
     pool = [s.upper() for s in extra_symbols if s] if extra_symbols else candidate_symbols[:8]
@@ -2362,9 +2496,10 @@ def scan_market_opportunities(
                 or sector in ("Ngân hàng", "BANK", "BANKS")
                 or val_res.get("target_pb_raw") is not None
             )
-            target_pb_val = (
-                val_res.get("effective_pb") or val_res.get("target_pb_raw")
-            ) if is_bank_sector else None
+            target_pb_gordon = val_res.get("target_pb_gordon") or val_res.get("target_pb_raw")
+            target_pb_clamped = val_res.get("target_pb_clamped") or val_res.get("is_pb_clamped", False)
+            target_pb_val = (val_res.get("target_pb") or target_pb_gordon) if is_bank_sector else None
+            effective_pb_val = val_res.get("effective_pb")
 
             eps_val = (
                 fin_ratios.get("eps")
@@ -2376,6 +2511,11 @@ def scan_market_opportunities(
                 fin_ratios.get("bvps")
                 or fin_ratios.get("bvps_mrq")
             ) if isinstance(fin_ratios, dict) else None
+
+            bvps_for_fv_val = val_res.get("bvps_for_fv") or (
+                val_res.get("reconciled_bvps") if val_res.get("reconciled_bvps") else bvps_val
+            )
+            bvps_provider_val = val_res.get("bvps_provider") or bvps_val
 
             cons_target_val = val_res.get("consensus_target")
             cons_gap_pct_val = (
@@ -2406,8 +2546,14 @@ def scan_market_opportunities(
                     "fair_value_bear": fv_bear,
                     "fair_value_bull": fv_bull,
                     "target_pb": target_pb_val,
+                    "target_pb_gordon": target_pb_gordon,
+                    "target_pb_clamped": target_pb_clamped,
+                    "effective_pb": effective_pb_val,
+                    "bvps_for_fv": bvps_for_fv_val,
+                    "bvps_provider": bvps_provider_val,
                     "eps_used": eps_val,
-                    "bvps_used": bvps_val,
+                    "bvps_used": bvps_for_fv_val,
+                    "val_confidence": val_conf,
                     "consensus_target_used": cons_target_val,
                     "consensus_gap_pct": cons_gap_pct_val,
                     "fin_hash": fin_h,
@@ -2416,6 +2562,9 @@ def scan_market_opportunities(
                     "raw_bctc": fin_ratios if isinstance(fin_ratios, dict) else {},
                     "raw_price": tech if isinstance(tech, dict) else {},
                     "raw_consensus": raw_cons_dict,
+                    "monitor_reason": candidate_origins.get(sym, "WATCHLIST_INTRADAY"),
+                    "watchlist_bonus": 10.0 if (cat_info and "WATCHLIST" in str(cat_info.get("tag", "")).upper()) else 0.0,
+                    "is_in_watchlist": bool(cat_info and "WATCHLIST" in str(cat_info.get("tag", "")).upper()),
                 })
                 return d
 
@@ -2793,6 +2942,7 @@ def scan_market_opportunities(
                     "status": "CAUTION_TRAP",
                     "conviction_score": conv_score,
                     "conviction_tier": conv_tier,
+                    "conviction_breakdown": conv_breakdown,
                     "setup_type": "⚠️ CẢNH BÁO BẪY / CHƯA ĐẠT CHUẨN MUA",
                     "story_tag": story_tag,
                     "story": story_title,
@@ -2919,6 +3069,12 @@ def scan_market_opportunities(
                         "snapshot_price": res.get("current_price"),
                         "mos_pct": res.get("mos_pct"),
                         "conviction": res.get("conviction_score"),
+                        "conviction_valuation": (res.get("conviction_breakdown") or {}).get("valuation"),
+                        "conviction_technical": (res.get("conviction_breakdown") or {}).get("technical"),
+                        "conviction_catalyst": (res.get("conviction_breakdown") or {}).get("catalyst"),
+                        "conviction_liquidity": (res.get("conviction_breakdown") or {}).get("liquidity"),
+                        "conviction_foreign_penalty": (res.get("conviction_breakdown") or {}).get("foreign_penalty"),
+                        "val_confidence": res.get("val_confidence") or res.get("confidence"),
                         "is_shadow": bool(is_shadow_override or res.get("shadow_mode")),
                         "input_source": res.get("input_source", "TCBS_SNAPSHOT"),
                         "gates_failed": failed_gates,
@@ -2928,6 +3084,7 @@ def scan_market_opportunities(
                         "fv_price_ratio": fv_p_ratio,
                         "mos_review_flag": mos_flag,
                         "is_canonical": is_canonical_rec,
+                        "monitor_reason": "CANONICAL_EOD" if is_canonical_rec else res.get("monitor_reason", "WATCHLIST_INTRADAY"),
                         "bctc_period": bctc_period_val,
                         "consensus_asof": cons_asof_val,
                         "fin_hash": res.get("fin_hash"),
@@ -2940,6 +3097,11 @@ def scan_market_opportunities(
                         "fair_value_bear": res.get("fair_value_bear"),
                         "fair_value_bull": res.get("fair_value_bull"),
                         "target_pb": res.get("target_pb"),
+                        "target_pb_gordon": res.get("target_pb_gordon"),
+                        "target_pb_clamped": res.get("target_pb_clamped"),
+                        "effective_pb": res.get("effective_pb"),
+                        "bvps_for_fv": res.get("bvps_for_fv"),
+                        "bvps_provider": res.get("bvps_provider"),
                         "eps_used": res.get("eps_used"),
                         "bvps_used": res.get("bvps_used"),
                         "consensus_target_used": res.get("consensus_target_used"),

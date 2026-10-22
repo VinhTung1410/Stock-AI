@@ -65,15 +65,46 @@ def count_trading_days(start_date: Any, end_date: Any, holidays: set | None = No
     return trading_days
 
 
+def is_production_environment() -> bool:
+    """Check if the current runtime environment is explicitly configured for production writes."""
+    app_env = os.environ.get("APP_ENV", os.environ.get("ENV", "development")).strip().lower()
+    return app_env in ("production", "prod")
+
+
+def can_write_to_database() -> bool:
+    """Guard against non-production environments writing to live production Supabase.
+
+    Returns True if:
+    1. APP_ENV is 'production' (or 'prod'), OR
+    2. SUPABASE_DEV_URL is configured (writes target dedicated non-production database/schema).
+    
+    Notice: ALLOW_DEV_LIVE_WRITES bypass has been completely deprecated to eliminate
+    the risk of accidental developer write leakage into production.
+    """
+    if is_production_environment():
+        return True
+    if os.environ.get("SUPABASE_DEV_URL", "").strip():
+        return True
+    return False
+
+
 def get_supabase_client() -> Client:
-    """Initialize and return the Supabase client (singleton, auto-cleans URL)."""
+    """Initialize and return the Supabase client (singleton, auto-cleans URL).
+
+    If in non-production environment (development/testing), prefers SUPABASE_DEV_URL
+    and SUPABASE_DEV_KEY if configured, preventing accidental connection to production.
+    """
     global _supabase
     if _supabase is None:
-        url = os.environ.get("SUPABASE_URL", "").strip()
-        key = os.environ.get("SUPABASE_KEY", "").strip()
+        if not is_production_environment() and os.environ.get("SUPABASE_DEV_URL", "").strip():
+            url = os.environ.get("SUPABASE_DEV_URL", "").strip()
+            key = os.environ.get("SUPABASE_DEV_KEY", "").strip()
+        else:
+            url = os.environ.get("SUPABASE_URL", "").strip()
+            key = os.environ.get("SUPABASE_KEY", "").strip()
 
         if not url or not key:
-            logging.warning("SUPABASE_URL or SUPABASE_KEY not configured in .env")
+            logging.warning("SUPABASE_URL (or SUPABASE_DEV_URL) not configured in .env")
             return None
 
         # Automatically strip /rest/v1 suffix or trailing slashes
@@ -81,7 +112,7 @@ def get_supabase_client() -> Client:
 
         try:
             _supabase = create_client(clean_url, key)
-        except Exception as e:
+        except Exception:
             logging.exception("Failed to initialize Supabase client")
             return None
     return _supabase
@@ -113,7 +144,9 @@ def save_quant_signal(
         Signal ID (int) on success, or None on failure.
     """
     client = get_supabase_client()
-    if not client:
+    if not client or not can_write_to_database():
+        if not can_write_to_database():
+            logging.warning("Blocked live DB write for quant signal %s (%s): non-production environment.", symbol, action)
         return None
 
     # TASK-0052: Conditional save_quant_signal - chỉ lưu các lệnh MUA thật sự
@@ -808,7 +841,9 @@ def save_signal_lifecycle(signal_data: dict) -> dict | None:
     - initial_stop_price được lưu cố định để tính R-Multiple chuẩn xác, không bị ảnh hưởng bởi trailing stop.
     """
     client = get_supabase_client()
-    if not client:
+    if not client or not can_write_to_database():
+        if not can_write_to_database():
+            logging.warning("Blocked live DB write for signal lifecycle: non-production environment.")
         return None
 
     symbol = str(signal_data.get("symbol", "")).upper().strip()
@@ -935,9 +970,15 @@ def save_decision_record(record: dict) -> str | None:
         **({"created_at": record["created_at"]} if "created_at" in record else {}),
     }
 
-    if not client:
+    if not client or not can_write_to_database():
         _IN_MEMORY_DECISION_RECORDS.append(row)
-        logging.info("Saved local decision record %s for %s (%s)", decision_id, symbol, decision)
+        if not can_write_to_database():
+            logging.warning(
+                "Blocked live DB write for decision record %s for %s (%s): non-production environment. Stored in-memory.",
+                decision_id, symbol, decision,
+            )
+        else:
+            logging.info("Saved local decision record %s for %s (%s)", decision_id, symbol, decision)
         return decision_id
 
     try:
@@ -979,12 +1020,14 @@ def get_decision_records(filters: Optional[dict] = None, limit: int = 50) -> lis
 
 
 EVENT_WATCHLIST_ADDED = "WATCHLIST_ADDED"
+EVENT_MONITOR_ADDED = "MONITOR_ADDED"
 EVENT_TRIGGER_ACTIVATED = "TRIGGER_ACTIVATED"
 EVENT_AI_VETO_EVALUATED = "AI_VETO_EVALUATED"
 EVENT_EXECUTION_ORDERED = "EXECUTION_ORDERED"
 EVENT_EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
 EVENT_WATCHLIST_EXPIRED = "WATCHLIST_EXPIRED"
 EVENT_WATCHLIST_REMOVED = "WATCHLIST_REMOVED"
+EVENT_AUDIT_CORRECTION = "AUDIT_CORRECTION"
 
 _IN_MEMORY_LIFECYCLE_EVENTS: list[dict] = []
 
@@ -993,12 +1036,26 @@ def save_lifecycle_event(event: dict) -> str | None:
     """Save an immutable decision lifecycle event (Phase 28 / TASK-0085)."""
     client = get_supabase_client()
     symbol = event.get("symbol", "").upper().strip()
-    correlation_id = str(event.get("correlation_id", "")).strip()
+    raw_corr_id = event.get("correlation_id")
     event_type = event.get("event_type", "").upper().strip()
 
-    # Chốt chặn bắt buộc correlation_id để tránh sự kiện mồ côi
-    if not correlation_id:
-        logging.error("Rejected lifecycle event for %s: correlation_id is mandatory", symbol)
+    # Chốt chặn nghiêm ngặt kiểm tra kiểu của correlation_id: phải là chuỗi khác rỗng, từ chối boolean
+    if not isinstance(raw_corr_id, str) or isinstance(raw_corr_id, bool):
+        logging.error(
+            "Rejected lifecycle event for %s: correlation_id must be a non-empty string, got %s (%s)",
+            symbol,
+            type(raw_corr_id).__name__,
+            raw_corr_id,
+        )
+        return None
+
+    correlation_id = raw_corr_id.strip()
+    if not correlation_id or correlation_id.lower() in ("true", "false", "none", "null"):
+        logging.error(
+            "Rejected lifecycle event for %s: correlation_id '%s' is invalid or rejected boolean literal",
+            symbol,
+            raw_corr_id,
+        )
         return None
 
     now_str = datetime.now(VN_TZ).strftime("%Y%m%d_%H%M%S_%f")
@@ -1022,9 +1079,17 @@ def save_lifecycle_event(event: dict) -> str | None:
         "created_at": event.get("created_at") or datetime.now(VN_TZ).isoformat(),
     }
 
-    if not client:
+    if not client or not can_write_to_database():
         _IN_MEMORY_LIFECYCLE_EVENTS.append(row)
-        logging.info("Saved local lifecycle event %s for %s (%s)", event_id, symbol, event_type)
+        if not can_write_to_database():
+            logging.warning(
+                "Blocked live DB write for lifecycle event %s (%s, %s): non-production environment. Stored in-memory.",
+                event_id,
+                symbol,
+                event_type,
+            )
+        else:
+            logging.info("Saved local lifecycle event %s for %s (%s)", event_id, symbol, event_type)
         return event_id
 
     try:
@@ -1042,7 +1107,7 @@ def save_lifecycle_event(event: dict) -> str | None:
 
 
 def is_watchlist_stint_event_emitted(symbol: str, entry_date: str) -> bool:
-    """Check if a WATCHLIST_ADDED event has already been emitted for this watch stint (symbol + entry_date).
+    """Check if a WATCHLIST_ADDED or MONITOR_ADDED event has already been emitted for this watch stint (symbol + entry_date).
 
     Survives application restarts by checking both in-memory store and Supabase table.
     Ensures a ticker remaining on the watchlist for multiple days emits strictly ONCE per stint.
@@ -1051,14 +1116,15 @@ def is_watchlist_stint_event_emitted(symbol: str, entry_date: str) -> bool:
     entry_d = str(entry_date)[:10]
     expected_corr_id = f"WL_{sym}_{entry_d}"
     expected_evt_id = f"EVT_WL_ADDED_{sym}_{entry_d}"
+    expected_mon_id = f"EVT_MONITOR_ADDED_{sym}_{entry_d}"
 
     # Check local in-memory store first
     for e in _IN_MEMORY_LIFECYCLE_EVENTS:
         if (
             e.get("symbol") == sym
-            and e.get("event_type") == EVENT_WATCHLIST_ADDED
+            and e.get("event_type") in (EVENT_WATCHLIST_ADDED, EVENT_MONITOR_ADDED)
             and (
-                e.get("event_id") == expected_evt_id
+                e.get("event_id") in (expected_evt_id, expected_mon_id)
                 or e.get("correlation_id") == expected_corr_id
                 or str(e.get("event_data", {}).get("watch_entry_date", ""))[:10] == entry_d
                 or str(e.get("event_data", {}).get("watch_stint_id", "")) == expected_corr_id
@@ -1074,8 +1140,8 @@ def is_watchlist_stint_event_emitted(symbol: str, entry_date: str) -> bool:
                 client.table("decision_lifecycle_events")
                 .select("event_id")
                 .eq("symbol", sym)
-                .eq("event_type", EVENT_WATCHLIST_ADDED)
-                .or_(f"event_id.eq.{expected_evt_id},correlation_id.eq.{expected_corr_id}")
+                .in_("event_type", [EVENT_WATCHLIST_ADDED, EVENT_MONITOR_ADDED])
+                .or_(f"event_id.eq.{expected_evt_id},event_id.eq.{expected_mon_id},correlation_id.eq.{expected_corr_id}")
                 .limit(1)
                 .execute()
             )
@@ -1286,7 +1352,7 @@ def save_raw_input_snapshot(
     Fails gracefully if table not yet migrated or connection fails.
     """
     client = get_supabase_client()
-    if not client:
+    if not client or not can_write_to_database():
         return True
 
     row = {
