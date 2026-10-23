@@ -84,7 +84,7 @@ def evaluate_shadow_graduation(limit: int = 500) -> Dict[str, Any]:
     avg_ret = round(sum(float(r.get("t10_return_pct", 0.0)) for r in with_t10) / sample_count, 2)
 
     if hit_rate <= MIN_HIT_RATE_T10:
-        reasons.append(f"Tỷ lệ thắng T+10 ({hit_rate*100:.1f}%) chưa vượt ngưỡng {MIN_HIT_RATE_T10*100:.0f}%.")
+        reasons.append(f"Tỷ lệ thắng T+10 ({hit_rate * 100:.1f}%) chưa vượt ngưỡng {MIN_HIT_RATE_T10 * 100:.0f}%.")
 
     can_grad = len(reasons) == 0
 
@@ -111,5 +111,5 @@ if __name__ == "__main__":
     print(f"  - Can Graduate: {report['can_graduate']}")
     print(f"  - Total Signals: {report['total_signals']}")
     print(f"  - T+10 Samples: {report['t10_sample_count']}")
-    print(f"  - Hit Rate T+10: {report['hit_rate_t10']*100:.1f}%")
+    print(f"  - Hit Rate T+10: {report['hit_rate_t10'] * 100:.1f}%")
     print(f"  - Reasons: {report['reasons']}")

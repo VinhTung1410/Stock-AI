@@ -410,10 +410,15 @@ def _render_regime_backtest_subtab():
     st.markdown(
         """
     <div style="margin-bottom: 16px;">
-        <h3 style="margin: 0; color: #0f172a; font-weight: 700;">🚀 Engine Backtest Định Lượng Theo Regime Thị Trường</h3>
+        <h3 style="margin: 0; color: #0f172a; font-weight: 700;">🚀 Engine Kiểm Định Kỹ Thuật Theo Regime (Single Ticker)</h3>
         <p style="color: #64748b; font-size: 13.5px; margin-top: 4px;">
-            Mô phỏng chân thực quy chế HOSE: <b>Chặn mua trần (+6.9%+)</b>, <b>Chu kỳ T+2.5</b>, <b>Trượt giá 15 bps</b>, <b>Benchmark VN-Index</b> và <b>Phí/Thuế thực tế</b>.
+            Mô phỏng chân thực quy chế HOSE: <b>Chặn mua trần (+6.9%+)</b>, <b>Chu kỳ T+2.5</b>, <b>Trượt giá linh hoạt</b>, <b>Benchmark VN-Index</b> và <b>Phí/Thuế thực tế</b>.
         </p>
+    </div>
+    <div style="background: #eff6ff; border-left: 4px solid #3b82f6; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px;">
+        <span style="font-size: 13px; color: #1e40af; line-height: 1.5;">
+            💡 <b>Làm rõ bản chất công cụ:</b> Đây là <b>công cụ kiểm định thời điểm kỹ thuật ngắn/trung hạn cho 1 mã riêng lẻ</b> (Technical Swing Timing Simulator) kết hợp Trailing Stop theo đỉnh và Thăm dò RS (Relative Strength). Đây <b>KHÔNG PHẢI</b> thuật toán tối ưu phân bổ danh mục theo giá trị (MoS / Multi-Asset Value Allocation) của hệ thống Quant Core chính.
+        </span>
     </div>
     """,
         unsafe_allow_html=True,
@@ -454,23 +459,40 @@ def _render_regime_backtest_subtab():
         strategy_label = st.selectbox(
             "Chiến lược kiểm định",
             [
-                "Quant Core (FA Health + MoS + Z-Score + RSI - Khuyến nghị)",
+                "Technical Swing Timing (Bộ lọc Kỹ thuật + Trailing Stop + RS Probe - Khuyến nghị)",
                 "MA Crossover (MA20/MA50 Trend Following)",
                 "RSI Mean Reversion (Bắt đáy điều chỉnh)",
             ],
             index=0,
         )
         st.caption(
-            "ℹ️ **Phân loại kiểm định:** *Kiểm định thời điểm kỹ thuật (Technical timing test)*. Thuật toán kiểm định thời điểm vào/ra kỹ thuật trên dữ liệu giá, không thay thế cho định giá FA."
+            "ℹ️ **Phân loại kiểm định:** *Kiểm định thời điểm kỹ thuật 1 mã (Technical timing test)*. Tối ưu điểm vào/ra theo sóng tăng, không thay thế định giá FA MoS đa tài sản."
         )
     with c_method:
         method = st.selectbox("Phương pháp phân loại Regime VN-Index", ["MA200_SLOPE", "MOMENTUM_VOLATILITY"])
 
-    enforce_cash_mode = st.checkbox(
-        "🛡️ Kích hoạt Chốt chặn Vĩ mô Né sập (Macro Circuit Breaker / Cash Mode khi VN-Index Downtrend)",
-        value=True,
-        help="Tự động khóa toàn bộ lệnh MUA mới khi chỉ số VN-Index rơi vào pha Downtrend để bảo toàn 100% vốn trước các đợt sập.",
-    )
+    col_gate1, col_gate2, col_gate3 = st.columns([1.5, 1.5, 1.0])
+    with col_gate1:
+        enforce_cash_mode = st.checkbox(
+            "🛡️ Chốt chặn Vĩ mô Né sập (Cash Mode)",
+            value=True,
+            help="Tự động khóa lệnh MUA khi VN-Index rơi vào Downtrend để bảo toàn 100% vốn.",
+        )
+    with col_gate2:
+        enable_rs_probe = st.checkbox(
+            "⚡ Thăm dò Sức mạnh tương đối (RS Probe)",
+            value=True,
+            help="Nếu cổ phiếu giữ được MA50 khi VN-Index thủng MA200, cho phép giải ngân tỷ trọng nhỏ (25% vốn) bắt đáy siêu cổ phiếu dẫn dắt.",
+        )
+    with col_gate3:
+        trailing_stop_pct = st.number_input(
+            "🎯 Trailing Stop (%)",
+            min_value=5.0,
+            max_value=20.0,
+            value=10.0,
+            step=1.0,
+            help="Bỏ chốt non RSI 75. Chỉ bán chốt lời khi giá từ đỉnh tụt 10-12% để ăn trọn thân sóng tăng.",
+        )
 
     if st.button("⚡ Chạy Backtest Theo Regime", type="primary", width="stretch"):
         with st.spinner(f"Đang kéo dữ liệu {sym_input} & VN-Index để mô phỏng giao dịch định lượng..."):
@@ -498,8 +520,14 @@ def _render_regime_backtest_subtab():
                 strategy=strat_code,
                 regimes=regimes,
                 enforce_regime_gate=enforce_cash_mode,
+                allow_rs_probe=enable_rs_probe,
             )
-            engine = RegimeBacktestEngine(initial_capital=float(initial_cap))
+            engine = RegimeBacktestEngine(
+                initial_capital=float(initial_cap),
+                enable_trailing_stop=True,
+                trailing_stop_pct=float(trailing_stop_pct),
+                allow_rs_probe=enable_rs_probe,
+            )
             result = engine.run_backtest(
                 df_price=df_p,
                 signals=signals,

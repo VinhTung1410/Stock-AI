@@ -1,0 +1,6 @@
+﻿Chiến lược,Tổng Lãi (%),CAGR (%),Max Drawdown,Sharpe,Calmar,Profit Factor,Win Rate,Số Lệnh,Lệnh Thăm Dò
+1. Hard Cash Mode (0% Mua khi VNI < MA200),+73.62%,7.16%,-20.22%,0.28,0.35,1.54x,31.3%,763,0
+2. Thăm dò Nhỏ (Probe 10% khi CP giữ MA50),+33.04%,3.64%,-17.22%,-0.06,0.21,1.29x,30.6%,921,222
+3. Thăm dò Chuẩn (Probe 15% khi CP giữ MA50),+34.93%,3.83%,-17.14%,-0.04,0.22,1.30x,30.6%,921,222
+4. Thăm dò Mạnh (Probe 25% khi CP giữ MA50),+38.74%,4.19%,-17.36%,0.00,0.24,1.32x,30.6%,921,222
+5. Bỏ Cash Mode (100% Full Size mọi lúc),+60.39%,6.10%,-22.99%,0.18,0.27,1.35x,29.8%,970,0

@@ -1,5 +1,15 @@
 [
   {
+    "symbol": "MBB",
+    "target_buy": 0.0,
+    "note": "Theo dõi từ Google Sheet"
+  },
+  {
+    "symbol": "VIX",
+    "target_buy": 0.0,
+    "note": "Theo dõi từ Google Sheet"
+  },
+  {
     "symbol": "GOOD1",
     "target_buy": 40.0,
     "is_auto": true,

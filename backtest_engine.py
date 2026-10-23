@@ -23,10 +23,20 @@ DEFAULT_TAX_RATE: Final[float] = 0.0010  # 0.10% sell tax
 DEFAULT_SLIPPAGE_BPS: Final[float] = 15.0  # 15 basis points
 RISK_FREE_RATE_ANNUAL: Final[float] = 0.045  # 4.5% annual rate
 
-# Strategy Constants (S1192)
 STRATEGY_QUANT_CORE: Final[str] = "QUANT_CORE"
+STRATEGY_TECH_SWING: Final[str] = "TECH_SWING"
 STRATEGY_MA_CROSSOVER: Final[str] = "MA_CROSSOVER"
 STRATEGY_RSI_REVERSION: Final[str] = "RSI_REVERSION"
+
+# Exit Reason Constants (S1192)
+EXIT_STOP_LOSS: Final[str] = "STOP_LOSS"
+EXIT_TRAILING_STOP: Final[str] = "TRAILING_STOP"
+EXIT_SIGNAL: Final[str] = "SIGNAL"
+EXIT_END_OF_DATA: Final[str] = "END_OF_DATA"
+EXIT_UNFILLED_CEILING: Final[str] = "UNFILLED_CEILING"
+
+DEFAULT_TRAILING_STOP_PCT: Final[float] = 10.0
+DEFAULT_PROBE_ALLOCATION_PCT: Final[float] = 0.25
 
 # Walk-Forward Timeline Constants (Phase 3a)
 WALK_FORWARD_WINDOWS: Final[dict[str, tuple[str, str]]] = {
@@ -146,6 +156,8 @@ class TradeRecord:
     mae_pct: float = 0.0  # Max Adverse Excursion
     regime: str = REGIME_SIDEWAYS
     is_filled: bool = True
+    peak_price: float = 0.0
+    is_probe: bool = False
 
 
 @dataclass
@@ -447,7 +459,9 @@ def breakdown_by_regime(
 
     # 2. Per-regime trade subsets
     for reg in (REGIME_UPTREND, REGIME_DOWNTREND, REGIME_SIDEWAYS):
-        sub_trades = [t for t in trades if t.regime == reg]
+        sub_trades = [
+            t for t in trades if t.regime == reg or (reg == REGIME_DOWNTREND and t.regime.startswith(REGIME_DOWNTREND))
+        ]
         if regimes is not None and not equity_curve.empty:
             aligned_regimes = regimes.reindex(equity_curve.index).ffill().bfill()
             mask_np = (aligned_regimes == reg).to_numpy(dtype=bool)
@@ -544,8 +558,12 @@ def _generate_quant_core_signals(
     z_score: float = 2.5,
     regimes: pd.Series | None = None,
     enforce_regime_gate: bool = False,
+    allow_rs_probe: bool = False,
 ) -> pd.Series:
-    """Generate Quant Core Strategy signals based on FA health, MoS, and TA momentum."""
+    """Generate Single-Asset Technical Swing signals based on FA filter, MA trend, and momentum.
+
+    Note: This is a single-ticker technical timing model, not the portfolio MoS allocator.
+    """
     close = df_price["close"].astype(float)
     signals = pd.Series(0, index=close.index)
 
@@ -564,19 +582,27 @@ def _generate_quant_core_signals(
     rs = gain / loss.replace(0, np.nan)
     rsi = 100.0 - (100.0 / (1.0 + rs)).fillna(50.0)
 
-    # Buy: Upward trend, reasonable RSI (not overbought FOMO)
+    # Buy: Upward trend, reasonable RSI (not overbought FOMO > 70 at entry)
     buy_cond = (close >= ma20) & (ma20 >= ma50 * 0.98) & (rsi < 70) & (rsi >= 40)
 
-    # Macro Regime Gate (Cash Mode): Block buys during Downtrend
+    # Macro Regime Gate (Cash Mode vs RS Probe)
     if enforce_regime_gate and regimes is not None:
         aligned_regimes = regimes.reindex(close.index).fillna(REGIME_SIDEWAYS)
-        buy_cond = buy_cond & (aligned_regimes != REGIME_DOWNTREND)
+        in_downtrend = aligned_regimes == REGIME_DOWNTREND
+        if allow_rs_probe:
+            # RS Probe: allow buy if stock holds above MA50
+            holding_ma50 = close >= ma50
+            blocked = in_downtrend & (~holding_ma50)
+            buy_cond = buy_cond & (~blocked)
+        else:
+            buy_cond = buy_cond & (~in_downtrend)
 
     buy_prev = buy_cond.shift(1, fill_value=False)
     buy_trigger = buy_cond & (~buy_prev)
 
-    # Sell: Overbought climax or breakdown below MA20 * 0.95
-    sell_cond = (rsi >= 75) | (close < ma20 * 0.95)
+    # Sell: Bỏ chốt non RSI 75. Nới lỏng biên độ rũ bỏ: chỉ thoát khi gãy MA50 xác nhận đảo chiều xu hướng.
+    # Lợi nhuận trong sóng tăng được Trailing Stop theo đỉnh (10-12%) trong BacktestEngine bảo toàn.
+    sell_cond = close < ma50 * 0.98
     sell_prev = sell_cond.shift(1, fill_value=False)
     sell_trigger = sell_cond & (~sell_prev)
 
@@ -593,6 +619,7 @@ def generate_signals_by_strategy(
     z_score: float = 2.5,
     regimes: pd.Series | None = None,
     enforce_regime_gate: bool = False,
+    allow_rs_probe: bool = False,
 ) -> pd.Series:
     """Generate sequential trade signals according to selected investment strategy."""
     if df_price.empty or "close" not in df_price.columns:
@@ -610,6 +637,7 @@ def generate_signals_by_strategy(
         z_score=z_score,
         regimes=regimes,
         enforce_regime_gate=enforce_regime_gate,
+        allow_rs_probe=allow_rs_probe,
     )
 
 
@@ -623,12 +651,57 @@ class RegimeBacktestEngine:
         tax_rate: float = DEFAULT_TAX_RATE,
         slippage_bps: float = DEFAULT_SLIPPAGE_BPS,
         max_position_adv_pct: float = 0.05,
+        trailing_stop_pct: float = DEFAULT_TRAILING_STOP_PCT,
+        enable_trailing_stop: bool = True,
+        allow_rs_probe: bool = False,
+        probe_allocation_pct: float = DEFAULT_PROBE_ALLOCATION_PCT,
     ) -> None:
         self.initial_capital = initial_capital
         self.fee_rate = fee_rate
         self.tax_rate = tax_rate
         self.slippage_bps = slippage_bps
         self.max_position_adv_pct = max_position_adv_pct
+        self.trailing_stop_pct = trailing_stop_pct
+        self.enable_trailing_stop = enable_trailing_stop
+        self.allow_rs_probe = allow_rs_probe
+        self.probe_allocation_pct = probe_allocation_pct
+
+    def _evaluate_exit_condition(
+        self,
+        active_trade: TradeRecord,
+        curr_close: float,
+        curr_sig: int,
+        entry_idx: int,
+        i: int,
+        total_bars: int,
+    ) -> tuple[bool, str]:
+        """Determine if exit conditions (T+2.5, stop-loss, trailing stop, signal) are met."""
+        pnl_from_entry = ((curr_close - active_trade.entry_price) / active_trade.entry_price) * 100.0
+        active_trade.mfe_pct = max(active_trade.mfe_pct, pnl_from_entry)
+        active_trade.mae_pct = min(active_trade.mae_pct, pnl_from_entry)
+
+        # Track high watermark peak price
+        if active_trade.peak_price <= 0:
+            active_trade.peak_price = active_trade.entry_price
+        active_trade.peak_price = max(active_trade.peak_price, curr_close)
+
+        drop_from_peak = ((curr_close - active_trade.peak_price) / active_trade.peak_price) * 100.0
+
+        stop_loss_hit = pnl_from_entry <= -7.0
+        trailing_stop_hit = self.enable_trailing_stop and (drop_from_peak <= -self.trailing_stop_pct)
+        is_last_bar = i == total_bars - 1
+        is_exit = (curr_sig == -1) or stop_loss_hit or trailing_stop_hit or is_last_bar
+
+        if not (can_execute_t_plus_2(entry_idx, i) and is_exit):
+            return False, ""
+
+        if stop_loss_hit:
+            return True, EXIT_STOP_LOSS
+        if trailing_stop_hit:
+            return True, EXIT_TRAILING_STOP
+        if curr_sig == -1:
+            return True, EXIT_SIGNAL
+        return True, EXIT_END_OF_DATA
 
     def _process_exit(
         self,
@@ -643,14 +716,10 @@ class RegimeBacktestEngine:
         trades: list[TradeRecord],
     ) -> tuple[TradeRecord | None, float]:
         """Evaluate T+2.5 exit conditions and update active trade."""
-        pnl_from_entry = ((curr_close - active_trade.entry_price) / active_trade.entry_price) * 100.0
-        active_trade.mfe_pct = max(active_trade.mfe_pct, pnl_from_entry)
-        active_trade.mae_pct = min(active_trade.mae_pct, pnl_from_entry)
-
-        stop_loss_hit = pnl_from_entry <= -7.0
-        is_exit = (curr_sig == -1) or stop_loss_hit or (i == total_bars - 1)
-
-        if not (can_execute_t_plus_2(entry_idx, i) and is_exit):
+        should_exit, exit_reason = self._evaluate_exit_condition(
+            active_trade, curr_close, curr_sig, entry_idx, i, total_bars
+        )
+        if not should_exit:
             return active_trade, cash
 
         fill_exit = calculate_slippage_price(curr_close, is_buy=False, slippage_bps=self.slippage_bps)
@@ -664,12 +733,7 @@ class RegimeBacktestEngine:
         active_trade.net_pnl = net_pnl
         active_trade.pnl_pct = pnl_pct
         active_trade.holding_days = i - entry_idx
-        if stop_loss_hit:
-            active_trade.exit_reason = "STOP_LOSS"
-        elif curr_sig == -1:
-            active_trade.exit_reason = "SIGNAL"
-        else:
-            active_trade.exit_reason = "END_OF_DATA"
+        active_trade.exit_reason = exit_reason
 
         cash += (fill_exit * active_trade.shares) - exit_fee - exit_tax
         trades.append(active_trade)
@@ -686,6 +750,7 @@ class RegimeBacktestEngine:
         adv20: pd.Series | None,
         symbol: str,
         trades: list[TradeRecord],
+        is_probe: bool = False,
     ) -> tuple[TradeRecord | None, float, int]:
         """Evaluate order execution, HOSE ceiling restrictions, and ADV20 limits."""
         if check_hose_ceiling_unfilled(curr_open, prev_close):
@@ -695,14 +760,15 @@ class RegimeBacktestEngine:
                 entry_price=curr_open,
                 shares=0,
                 is_filled=False,
-                exit_reason="UNFILLED_CEILING",
+                exit_reason=EXIT_UNFILLED_CEILING,
                 regime=curr_regime,
             )
             trades.append(unfilled_record)
             return None, cash, -1
 
         fill_entry = calculate_slippage_price(curr_open, is_buy=True, slippage_bps=self.slippage_bps)
-        allocation_capital = cash * 0.95
+        alloc_ratio = self.probe_allocation_pct if is_probe else 0.95
+        allocation_capital = cash * alloc_ratio
         shares = int(allocation_capital // fill_entry)
 
         if adv20 is not None and i < len(adv20):
@@ -717,14 +783,17 @@ class RegimeBacktestEngine:
         entry_fee = entry_val * self.fee_rate
         cash -= entry_val + entry_fee
 
+        trade_regime = f"{curr_regime}_RS_PROBE" if is_probe else curr_regime
         active_trade = TradeRecord(
             symbol=symbol,
             entry_date=curr_date,
             entry_price=fill_entry,
             shares=shares,
             entry_fee=entry_fee,
-            regime=curr_regime,
+            regime=trade_regime,
             is_filled=True,
+            is_probe=is_probe,
+            peak_price=fill_entry,
         )
         return active_trade, cash, i
 
@@ -736,25 +805,34 @@ class RegimeBacktestEngine:
         signals: pd.Series,
         regimes: pd.Series | None,
         enforce_regime_gate: bool,
-    ) -> tuple[float, float, float, str, int]:
-        """Resolve pricing, market regime, and gated signal for the current simulation bar."""
+        ma50: pd.Series | None = None,
+    ) -> tuple[float, float, float, str, int, bool]:
+        """Resolve pricing, market regime, gated signal, and RS probe for the simulation bar."""
         curr_close = close.iloc[i]
         curr_open = open_p.iloc[i]
         prev_close = close.iloc[i - 1] if i > 0 else curr_open
         curr_regime = regimes.iloc[i] if (regimes is not None and i < len(regimes)) else REGIME_SIDEWAYS
         curr_sig = signals.iloc[i] if i < len(signals) else 0
 
-        # Macro Circuit Breaker (Cash Mode): Suppress buy signals during Downtrend
+        is_rs_probe = False
+        # Macro Circuit Breaker (Cash Mode vs RS Probe)
         if enforce_regime_gate and curr_regime == REGIME_DOWNTREND and curr_sig == 1:
-            curr_sig = 0
+            stock_holds_ma50 = False
+            if ma50 is not None and i < len(ma50) and not pd.isna(ma50.iloc[i]):
+                stock_holds_ma50 = curr_close >= ma50.iloc[i]
 
-        return curr_close, curr_open, prev_close, curr_regime, curr_sig
+            if self.allow_rs_probe and stock_holds_ma50:
+                is_rs_probe = True
+            else:
+                curr_sig = 0
+
+        return curr_close, curr_open, prev_close, curr_regime, curr_sig, is_rs_probe
 
     def _execute_bar_transition(
         self,
         i: int,
         curr_date: Any,
-        bar_ctx: tuple[float, float, float, str, int],
+        bar_ctx: tuple[float, float, float, str, int, bool],
         pos_state: tuple[TradeRecord | None, float, int],
         total_bars: int,
         adv20: pd.Series | None,
@@ -762,7 +840,7 @@ class RegimeBacktestEngine:
         trades: list[TradeRecord],
     ) -> tuple[TradeRecord | None, float, int]:
         """Process exit or entry for active/new position at the current bar."""
-        curr_close, curr_open, prev_close, curr_regime, curr_sig = bar_ctx
+        curr_close, curr_open, prev_close, curr_regime, curr_sig, is_rs_probe = bar_ctx
         active_trade, cash, entry_idx = pos_state
 
         if active_trade is not None:
@@ -773,7 +851,7 @@ class RegimeBacktestEngine:
 
         if curr_sig == 1 and cash > 0:
             new_trade, cash, new_idx = self._process_entry(
-                curr_date, curr_open, prev_close, curr_regime, i, cash, adv20, symbol, trades
+                curr_date, curr_open, prev_close, curr_regime, i, cash, adv20, symbol, trades, is_probe=is_rs_probe
             )
             if new_trade is not None:
                 return new_trade, cash, new_idx
@@ -804,11 +882,12 @@ class RegimeBacktestEngine:
 
         close = df_price["close"].astype(float)
         open_p = df_price["open"].astype(float) if "open" in df_price.columns else close
+        ma50 = close.rolling(50, min_periods=20).mean()
         total_bars = len(df_price)
 
         for i in range(total_bars):
             curr_date = df_price.index[i]
-            bar_ctx = self._resolve_bar_context(i, close, open_p, signals, regimes, enforce_regime_gate)
+            bar_ctx = self._resolve_bar_context(i, close, open_p, signals, regimes, enforce_regime_gate, ma50)
 
             active_trade, cash, entry_idx = self._execute_bar_transition(
                 i, curr_date, bar_ctx, (active_trade, cash, entry_idx), total_bars, adv20, symbol, trades

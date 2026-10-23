@@ -276,3 +276,83 @@ def test_breakdown_by_regime_with_unaligned_benchmark_and_regimes():
     assert REGIME_SIDEWAYS in breakdown
     assert breakdown[REGIME_UPTREND]["total_trades"] == 1
     assert breakdown[REGIME_DOWNTREND]["total_trades"] == 0
+
+
+def test_trailing_stop_exit_on_wave_reversal():
+    """Verify Trailing Stop locks in wave gains when price drops 10% from highest peak."""
+    from backtest_engine import EXIT_TRAILING_STOP
+
+    dates = pd.date_range("2024-01-01", periods=15, freq="B")
+    # Day 0: 50, Day 1: 52 (buy), Day 2: 60, Day 3: 70 (peak), Day 4: 68, Day 5: 62 (-11.4% from 70), Day 6+: 60
+    prices = [50.0, 52.0, 60.0, 70.0, 68.0, 62.0, 60.0, 58.0, 55.0, 52.0, 50.0, 50.0, 50.0, 50.0, 50.0]
+    df_price = pd.DataFrame({"close": prices, "open": prices}, index=dates)
+
+    signals = pd.Series(0, index=dates)
+    signals.iloc[0] = 1  # Buy triggered day 0, executed day 1 at 52
+
+    engine = RegimeBacktestEngine(
+        initial_capital=100_000_000.0,
+        enable_trailing_stop=True,
+        trailing_stop_pct=10.0,
+    )
+    result = engine.run_backtest(df_price, signals, symbol="FPT")
+
+    filled = [t for t in result.trades if t.is_filled]
+    assert len(filled) == 1
+    trade = filled[0]
+    assert trade.exit_reason == EXIT_TRAILING_STOP
+    assert trade.peak_price == 70.0
+    assert trade.net_pnl > 0  # Locked in handsome profit from entry ~52 to exit ~62
+
+
+def test_rs_probe_allocation_in_downtrend():
+    """Verify RS Probe allows 25% allocation when stock holds MA50 despite VN-Index Downtrend."""
+    dates = pd.date_range("2024-01-01", periods=60, freq="B")
+    # Stock consistently above 50, MA50 is ~45
+    prices = [50.0 + i * 0.2 for i in range(60)]
+    df_price = pd.DataFrame({"close": prices, "open": prices}, index=dates)
+
+    signals = pd.Series(0, index=dates)
+    signals.iloc[30] = 1  # Buy signal after MA50 is established
+
+    regimes = pd.Series(REGIME_DOWNTREND, index=dates)
+
+    # 1. With allow_rs_probe=False -> Blocked by Cash Mode
+    engine_strict = RegimeBacktestEngine(allow_rs_probe=False)
+    res_strict = engine_strict.run_backtest(df_price, signals, regimes=regimes, enforce_regime_gate=True)
+    assert len([t for t in res_strict.trades if t.is_filled]) == 0
+
+    # 2. With allow_rs_probe=True -> Probe entry allowed with 25% allocation
+    engine_probe = RegimeBacktestEngine(allow_rs_probe=True, probe_allocation_pct=0.25)
+    res_probe = engine_probe.run_backtest(df_price, signals, regimes=regimes, enforce_regime_gate=True)
+    filled_probe = [t for t in res_probe.trades if t.is_filled]
+    assert len(filled_probe) == 1
+    assert filled_probe[0].is_probe is True
+    assert "RS_PROBE" in filled_probe[0].regime
+
+
+def test_no_premature_cut_at_rsi_75():
+    """Verify strategy does not cap profits at RSI 75 in strong bullish expansion."""
+    from backtest_engine import (
+        STRATEGY_QUANT_CORE,
+        generate_signals_by_strategy,
+    )
+
+    dates = pd.date_range("2024-01-01", periods=80, freq="B")
+    # Aggressive rally: price jumps from 20 to 80 -> RSI > 80
+    prices = [20.0 + (i * 0.8) for i in range(80)]
+    df_price = pd.DataFrame({"close": prices, "open": prices}, index=dates)
+
+    signals = generate_signals_by_strategy(
+        df_price,
+        strategy=STRATEGY_QUANT_CORE,
+        f_score=8,
+        mos_pct=25.0,
+        z_score=3.0,
+    )
+    # Once bought, there should NOT be immediate premature sell signals while still riding above MA50
+    # Sell signals should only happen if price breaks below MA50
+    buy_indices = (signals == 1).to_numpy().nonzero()[0]
+    assert len(buy_indices) > 0
+    # In pure monotonic bull run above MA50, no sell signals (-1) are generated
+    assert (signals == -1).sum() == 0
