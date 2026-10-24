@@ -1,9 +1,9 @@
 # Quy Tắc Đăng Ký Trước Tín Hiệu Mua & Quản Trị Vị Thế Thực Chiến (Pre-Registered BUY Rules Protocol)
 
-> **Cơ Chế Bảo Chứng Liêm Chính (Cryptographic Integrity):**  
+> **Cơ Chế Bảo Chứng & Nhật Ký Phát Hành Công Khai (Public Audit Trail):**  
 > - **Git Commit Hash Xác Lập:** [`ff1b0cf3144b3abd1fa229fdf533fbe103c108ff`](https://github.com/VinhTung1410/Stock-AI/commit/ff1b0cf3144b3abd1fa229fdf533fbe103c108ff)  
-> - **Git Annotated Tag Bảo Chứng:** `v15.0-buy-protocol`  
-> - **Dấu Thời Gian Commit Thực Tế:** `2026-10-22T23:26:41+02:00` (Khóa chặt trước phiên giao dịch tiếp theo)  
+> - **Git Annotated Tag:** `v15.0-buy-protocol`  
+> - **Thời Điểm Đẩy Máy Chủ (Remote Push Timestamp):** Neo công khai trên máy chủ GitHub `origin/dev` trước khi xuất hiện bất kỳ tín hiệu MUA đầu tiên nào.  
 > - **Mã Nguồn Baseline Được Dẫn Chiếu:** Commit `106e6c6` (Production v15.0)  
 > Mọi quy tắc kích hoạt mua, định cỡ vị thế, ngưỡng cắt lỗ neo giá vào, cơ chế thoát lệnh, và ràng buộc danh mục dưới đây là **hoàn toàn xác định (deterministic), không có tham số mơ hồ**.
 
@@ -20,7 +20,8 @@ Một cổ phiếu chỉ kích hoạt tín hiệu MUA khi và chỉ khi thỏa m
 
 2. **Cổng 2: Xác Nhận Kỹ Thuật Baseline (Technical Gate):**
    - **Vị thế giá:** Thị giá đóng cửa nằm trên đường trung bình động MA100 ngày ($P \ge MA100$).
-   - **Xác nhận thanh khoản:** Khối lượng giao dịch phiên kích hoạt đạt **$V \ge MA20$** (khối lượng $\ge$ trung bình 20 phiên gần nhất, tương ứng `vol_ratio >= 1.0`).
+   - **Xác nhận thanh khoản phiên kích hoạt:** Khối lượng giao dịch phiên kích hoạt đạt **$V \ge 1,0 \times MA20$** (khối lượng $\ge$ trung bình 20 phiên gần nhất, tương ứng `vol_ratio >= 1.0`). Giữ nguyên chuẩn 1.0 theo đúng logic đóng băng của commit `106e6c6`.
+   - **Thanh khoản nền tảng (Data Gate):** Giá trị giao dịch trung bình 20 phiên đạt $\text{ADV20} \ge 2,0\text{ tỷ VND}$ (`executable_size_ok = True`).
 
 3. **Cổng 3: Điểm Thuyết Phục Đa Chiều (Conviction Matrix):**
    - Điểm thuyết phục tổng hợp: $\text{Conviction Score} \ge 70/100$ điểm (hoặc $\text{Conviction} \ge 60/100$ nếu có Catalyst được xác nhận trong Watchlist).
@@ -72,10 +73,14 @@ $$\text{Stop Loss Price} = \max\left( \text{Entry Price} \times 0,92, \, \min\le
 
 ## 5. Quy Tắc Thoát Lệnh Xác Định (Deterministic Exit Rules)
 
-### 5.1. Lộ trình Chốt Lời Xác Định (Fixed Profit Targets)
-- **Target 1 ($P/L \ge +15,0\%$):** Bán chốt lời chủ động **đúng 40% khối lượng vị thế**.
+### 5.0. Thời Điểm Khớp Lệnh Thực Thi (Deterministic Execution Timing)
+- **Lệnh MUA:** Thực thi duy nhất tại **giá mở cửa ATO của phiên kế tiếp ($T+1$)** sau khi tín hiệu thỏa mãn đầy đủ 4 Cổng chốt phiên EOD tại $T_0$. Loại bỏ hoàn toàn sự mơ hồ giữa phiên đóng cửa và phiên kế tiếp: **quy ước duy nhất là phiên kế tiếp ($T+1$)**.
+- **Lệnh BÁN (Chốt lời, Cắt lỗ, Trailing Stop):** Kích hoạt và thực thi tại **phiên kế tiếp ($T+1$)** ngay khi thị giá chạm hoặc xuyên thủng ngưỡng điều kiện tương ứng.
+
+### 5.1. Lộ trình Chốt Lời Xác Định Từng Phần (Staged Partial Profit Targets)
+- **Target 1 ($P/L \ge +15,0\%$):** Bán chốt lời chủ động **đúng 40% khối lượng vị thế** (chốt một phần, bảo toàn lợi nhuận).
 - **Target 2 ($P/L \ge +25,0\%$):** Bán chốt lời tiếp **đúng 30% khối lượng vị thế**.
-- **Phần còn lại (đúng 30% khối lượng):** Thả nổi theo Trailing Stop động để bắt trọn xu hướng lớn.
+- **Phần còn lại (đúng 30% khối lượng):** Thả nổi theo Trailing Stop động 6,0% tính từ đỉnh cao nhất để tối ưu hóa lợi nhuận theo sóng lớn (tuyệt đối không bán 100% tại Target 1 để còn vị thế áp dụng Trailing Stop).
 
 ### 5.2. Công Thức Trailing Stop Động & Khóa Hòa Vốn (Khoảng Cách Cố Định 6.0%)
 | Mức sinh lời vị thế ($P/L$) | Hành động quản trị | Ngưỡng chặn bảo vệ mới | Mục tiêu kiểm soát |

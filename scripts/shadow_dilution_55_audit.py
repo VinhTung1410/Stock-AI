@@ -1,13 +1,15 @@
-"""Shadow Dilution Audit on all 55 Canonical Stocks (2026-10-20 EOD).
+"""Shadow Dilution Audit on all 55 Canonical Stocks.
 
 Runs detect_and_adjust_post_bctc_dilution side-by-side with production baseline.
 Computes:
 - Original vs Adjusted BVPS & EPS
 - Cumulative Dilution Factor
 - Original vs Shadow Fair Value & MoS %
-- Decision Impact (Whether WATCH drops to REJECT due to MoS < 15%)
+- Recalculated Conviction Score (reflecting MoS Pillar 1 valuation shifts)
+- Decision Impact (Whether WATCH drops to REJECT when MoS < 8% and Conviction < 55)
 """
 
+import argparse
 import json
 import os
 import sys
@@ -22,138 +24,157 @@ if hasattr(sys.stdout, "reconfigure"):
 import pandas as pd
 
 from data_engine import detect_and_adjust_post_bctc_dilution
-from quant_valuation import calculate_fair_value_and_mos
 
-# 1. Load canonical decisions
-dec_df = pd.read_csv(os.path.join(ROOT_DIR, "decision_records_20261020.csv"))
-dec_map = {}
-for _, r in dec_df[dec_df["is_canonical"].astype(bool)].iterrows():
-    facts = json.loads(r["facts"]) if isinstance(r["facts"], str) else r["facts"]
-    dec_map[r["symbol"]] = {
-        "decision": r["decision"],
-        "price": r["price"],
-        "mos_pct": r["mos_pct"],
-        "conviction": r["conviction"],
-        "fair_value": facts.get("fair_value"),
-        "target_pb": facts.get("target_pb"),
-        "sector": facts.get("sector")
-    }
 
-# 2. Load canonical raw snapshots
-with open(os.path.join(ROOT_DIR, "data", "raw_snapshots_20261020_canonical.json"), "r", encoding="utf-8") as f:
-    snaps = json.load(f)
-snap_map = {s["symbol"]: s for s in snaps}
+def get_valuation_pillar_points(mos_pct: float | None) -> float:
+    """Calculate Pillar 1 (Valuation & MoS) points on 40-pt institutional scale."""
+    if mos_pct is None:
+        return 0.0
+    if mos_pct >= 25.0:
+        return 40.0
+    if mos_pct >= 15.0:
+        return 30.0
+    if mos_pct >= 8.0:
+        return 20.0
+    if mos_pct >= 0.0:
+        return 10.0
+    return 0.0
 
-# 3. Load audited corporate events
-with open(os.path.join(ROOT_DIR, "scratch", "corporate_events_with_prices.json"), "r", encoding="utf-8") as f:
-    ca_audits = json.load(f)
-ca_map = {item["symbol"]: item["events"] for item in ca_audits}
 
-results = []
+def run_audit(target_date: str = "20261023"):
+    dec_file = os.path.join(ROOT_DIR, f"decision_records_{target_date}.csv")
+    if not os.path.exists(dec_file):
+        raise FileNotFoundError(f"Decision records file not found: {dec_file}")
 
-for sym in sorted(dec_map.keys()):
-    dec_info = dec_map[sym]
-    snap_info = snap_map.get(sym, {})
-    fin_raw = snap_info.get("raw_bctc", {})
-    tech_raw = snap_info.get("raw_price", {})
+    dec_df = pd.read_csv(dec_file)
+    canonical_df = dec_df[dec_df["is_canonical"].astype(bool)] if "is_canonical" in dec_df.columns else dec_df
 
-    curr_p = dec_info["price"] or tech_raw.get("current_price") or tech_raw.get("close")
-    orig_bvps = fin_raw.get("bvps")
-    orig_eps = fin_raw.get("eps")
-    period = fin_raw.get("period")
-    orig_dec = dec_info["decision"]
-    orig_mos = dec_info["mos_pct"]
-    orig_fv = dec_info["fair_value"]
-    sector = dec_info.get("sector") or ""
+    # Load corporate events
+    ca_path = os.path.join(ROOT_DIR, "scratch", "corporate_events_with_prices.json")
+    if os.path.exists(ca_path):
+        with open(ca_path, "r", encoding="utf-8") as f:
+            ca_audits = json.load(f)
+        ca_map = {item["symbol"]: item["events"] for item in ca_audits}
+    else:
+        ca_map = {}
 
-    events = ca_map.get(sym, [])
+    results = []
 
-    # Format corporate actions for detect_and_adjust_post_bctc_dilution
-    formatted_ca = []
-    for ev in events:
-        if ev.get("ratio", 0) > 0 and ev.get("ex_date"):
-            formatted_ca.append({
-                "ex_date": ev["ex_date"],
-                "event_code": ev.get("event_code", "ISS"),
-                "exercise_ratio": ev["ratio"]
-            })
+    for _, r in canonical_df.iterrows():
+        sym = r["symbol"]
+        facts = json.loads(r["facts"]) if isinstance(r["facts"], str) else (r["facts"] if isinstance(r["facts"], dict) else {})
+        
+        orig_dec = r["decision"]
+        price = float(r["price"]) if pd.notna(r["price"]) else 0.0
+        orig_mos = float(r["mos_pct"]) if pd.notna(r["mos_pct"]) else None
+        orig_conv = float(r["conviction"]) if pd.notna(r["conviction"]) else 0.0
+        
+        # Primary FV field is fair_value_base
+        orig_fv = r.get("fair_value_base")
+        if pd.isna(orig_fv) or orig_fv is None:
+            orig_fv = facts.get("fair_value_base") or facts.get("fair_value")
+        orig_fv = float(orig_fv) if (orig_fv is not None and pd.notna(orig_fv)) else None
 
-    dil_res = detect_and_adjust_post_bctc_dilution(
-        symbol=sym,
-        bctc_period=period,
-        bvps=orig_bvps,
-        eps=orig_eps,
-        corporate_actions=formatted_ca
-    )
+        orig_bvps = facts.get("bvps_used") or facts.get("bvps_for_fv")
+        orig_eps = facts.get("eps_used")
+        period = facts.get("bctc_period") or "2026-Q2"
+        sector = facts.get("sector") or ""
 
-    factor = dil_res["cumulative_dilution_factor"]
-    adj_bvps = dil_res["adjusted_bvps"]
-    adj_eps = dil_res["adjusted_eps"]
-    is_stale = dil_res["per_share_stale"]
+        events = ca_map.get(sym, [])
+        formatted_ca = []
+        for ev in events:
+            if ev.get("ratio", 0) > 0 and ev.get("ex_date"):
+                formatted_ca.append({
+                    "ex_date": ev["ex_date"],
+                    "event_code": ev.get("event_code", "ISS"),
+                    "exercise_ratio": ev["ratio"]
+                })
 
-    # Re-evaluate valuation with adjusted BVPS & EPS
-    adj_fin = dict(fin_raw) if fin_raw else {}
-    if adj_bvps:
-        adj_fin["bvps"] = adj_bvps
-    if adj_eps:
-        adj_fin["eps"] = adj_eps
-
-    try:
-        val_res = calculate_fair_value_and_mos(
+        dil_res = detect_and_adjust_post_bctc_dilution(
             symbol=sym,
-            current_price=curr_p,
-            fin_dict=adj_fin,
-            sector=sector
+            bctc_period=period,
+            bvps=orig_bvps,
+            eps=orig_eps,
+            corporate_actions=formatted_ca
         )
-        adj_fv = val_res.get("fair_value")
-        adj_mos = val_res.get("mos_pct")
-    except Exception:
-        adj_fv = orig_fv / factor if (orig_fv and factor > 1.0) else orig_fv
-        adj_mos = round(((adj_fv - curr_p) / adj_fv) * 100, 2) if (adj_fv and curr_p) else orig_mos
 
-    # Shadow Decision Logic:
-    # If original was WATCH, does it hold MoS >= 15.0%?
-    shadow_dec = orig_dec
-    note = "STABLE"
+        factor = dil_res["cumulative_dilution_factor"]
+        adj_bvps = dil_res["adjusted_bvps"]
+        adj_eps = dil_res["adjusted_eps"]
+        is_stale = dil_res["per_share_stale"]
 
-    if orig_dec == "WATCH":
-        if adj_mos is not None and adj_mos < 15.0:
-            shadow_dec = "REJECT"
-            note = f"DROPPED_MOS_THRESHOLD (MoS {orig_mos}% -> {adj_mos}%)"
+        # Fair Value scales proportionally with per-share metrics (FV' = FV / factor)
+        if orig_fv and factor > 1.0:
+            adj_fv = round(orig_fv / factor, 2)
+            adj_mos = round(((adj_fv - price) / adj_fv) * 100, 2) if adj_fv > 0 else orig_mos
         else:
-            note = f"WATCH_CONFIRMED (MoS {orig_mos}% -> {adj_mos}%)"
-    elif is_stale:
-        note = f"DILUTED (Factor {factor:.4f})"
+            adj_fv = orig_fv
+            adj_mos = orig_mos
 
-    results.append({
-        "symbol": sym,
-        "sector": sector,
-        "price": curr_p,
-        "period": period,
-        "dilution_factor": factor,
-        "is_stale": is_stale,
-        "orig_bvps": orig_bvps,
-        "adj_bvps": adj_bvps,
-        "orig_fv": orig_fv,
-        "adj_fv": round(adj_fv, 2) if adj_fv else None,
-        "orig_mos": orig_mos,
-        "adj_mos": adj_mos,
-        "orig_decision": orig_dec,
-        "shadow_decision": shadow_dec,
-        "note": note
-    })
+        # Recalculate Conviction: Pillar 1 Valuation score reflects the updated MoS
+        orig_val_pts = get_valuation_pillar_points(orig_mos)
+        adj_val_pts = get_valuation_pillar_points(adj_mos)
+        val_diff = adj_val_pts - orig_val_pts
+        adj_conv = round(max(0.0, min(100.0, orig_conv + val_diff)), 1)
 
-res_df = pd.DataFrame(results)
-out_csv = os.path.join(ROOT_DIR, "scratch", "shadow_dilution_55_audit.csv")
-res_df.to_csv(out_csv, index=False, encoding="utf-8-sig")
+        # Shadow Decision Gatekeeper:
+        # In data_engine.py: stays in WATCH if (conviction >= 55.0) or (mos_pct >= 8.0)
+        shadow_dec = orig_dec
+        note = "STABLE"
 
-print(f"Shadow Dilution Audit completed for {len(res_df)} stocks! Saved to {out_csv}")
+        if orig_dec == "WATCH":
+            stays_watch = (adj_conv >= 55.0) or (adj_mos is not None and adj_mos >= 8.0)
+            if not stays_watch:
+                shadow_dec = "REJECT"
+                note = f"DROPPED_TO_REJECT (MoS {orig_mos}% -> {adj_mos}%, conv {orig_conv} -> {adj_conv})"
+            else:
+                note = f"WATCH_CONFIRMED (MoS {orig_mos}% -> {adj_mos}%, conv {orig_conv} -> {adj_conv})"
+        elif is_stale:
+            note = f"DILUTED (Factor {factor:.4f})"
 
-# Print summary of WATCH stocks affected
-print("\n" + "=" * 90)
-print("TÁC ĐỘNG SHADOW LÊN 16 MÃ WATCH")
-print("=" * 90)
-watch_df = res_df[res_df["orig_decision"] == "WATCH"]
-for _, r in watch_df.iterrows():
-    chg = "==>" if r["orig_decision"] != r["shadow_decision"] else "   "
-    print(f"{r['symbol']:5} | Dilution: {r['dilution_factor']:.4f} | BVPS: {str(r['orig_bvps']):8} -> {str(r['adj_bvps']):8} | MoS: {str(r['orig_mos']):6}% -> {str(r['adj_mos']):6}% | {chg} {r['orig_decision']:5} -> {r['shadow_decision']:6} | {r['note']}")
+        results.append({
+            "symbol": sym,
+            "sector": sector,
+            "price": price,
+            "period": period,
+            "dilution_factor": factor,
+            "is_stale": is_stale,
+            "orig_bvps": orig_bvps,
+            "adj_bvps": adj_bvps,
+            "orig_fv": orig_fv,
+            "adj_fv": adj_fv,
+            "orig_mos": orig_mos,
+            "adj_mos": adj_mos,
+            "orig_conviction": orig_conv,
+            "adj_conviction": adj_conv,
+            "orig_decision": orig_dec,
+            "shadow_decision": shadow_dec,
+            "note": note
+        })
+
+    res_df = pd.DataFrame(results)
+    
+    # Save outputs
+    out_csv = os.path.join(ROOT_DIR, "data", "shadow_dilution_55_audit.csv")
+    res_df.to_csv(out_csv, index=False, encoding="utf-8-sig")
+    
+    scratch_csv = os.path.join(ROOT_DIR, "scratch", f"shadow_dilution_55_audit_{target_date}.csv")
+    res_df.to_csv(scratch_csv, index=False, encoding="utf-8-sig")
+
+    print(f"Shadow Dilution Audit ({target_date}) completed for {len(res_df)} stocks!")
+    print(f"Saved to: {out_csv} and {scratch_csv}")
+
+    print("\n" + "=" * 105)
+    print(f"TÁC ĐỘNG SHADOW LÊN CÁC MÃ WATCH NGÀY {target_date}")
+    print("=" * 105)
+    watch_df = res_df[res_df["orig_decision"] == "WATCH"]
+    for _, r in watch_df.iterrows():
+        chg = "==> DROPPED" if r["orig_decision"] != r["shadow_decision"] else "    KEPT"
+        print(f"{r['symbol']:5} | Dilution: {r['dilution_factor']:.4f} | FV: {str(r['orig_fv']):6} -> {str(r['adj_fv']):6} | MoS: {str(r['orig_mos']):6}% -> {str(r['adj_mos']):6}% | Conv: {r['orig_conviction']:4.1f} -> {r['adj_conviction']:4.1f} | {chg:12} -> {r['shadow_decision']:6}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--date", type=str, default="20261023", help="Target date YYYYMMDD")
+    args = parser.parse_args()
+    run_audit(args.date)

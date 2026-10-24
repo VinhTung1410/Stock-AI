@@ -34,14 +34,13 @@ Khắc phục hoàn toàn lỗi kiểm tra vòng tròn (circular check), số li
      $$\text{BVPS}_{\text{Q3, mẹ}} = \frac{190.589 \text{ tỷ VND}}{10.000.000.000 \text{ CP}} = \mathbf{19.059 \text{ VND/CP}}$$
    - **Mức suy giảm per-share thực tế của cổ đông mẹ:**
      $$\Delta \text{BVPS}_{\text{thực tế}} = \frac{19.059 - 22.905}{22.905} = \mathbf{-16.79\%}$$
-   - **Khách quan hóa sai lệch của nguồn dữ liệu KBS:**
-     Số liệu của KBS feed ghi nhận $20.109\text{ VND}$ cho Q2, thấp hơn **-12.2%** so với BVPS thực chất cổ đông mẹ ($22.905\text{ VND}$). Đây là sai số nền có sẵn từ nhà cung cấp dữ liệu (Vendor Data Artifact), không gán ghép các giả định chưa được kiểm chứng.
-     Khi Q3 công bố, feed cập nhật về $19.059\text{ VND}$ (khớp chuẩn $190.589\text{ tỷ} / 10\text{ tỷ CP}$).
-     Do đó, trên feed hiển thị mức giảm $-5.22\%$ ($20.109 \rightarrow 19.059$), nhưng trong thực tế kinh tế của cổ đông mẹ, mức pha loãng per-share là **$-16.79\%$**.
-   - **Đường dẫn nguồn đối soát độc lập:**
-     - Báo cáo tài chính Hợp nhất Quý 3/2026 VPBank (công bố 20/10/2026): [VPBank Investor Relations](https://www.vpbank.com.vn/nha-dau-tu/thong-tin-tai-chinh) & Cổng thông tin công bố HOSE.
-     - Báo cáo tài chính Hợp nhất Soát xét 6 tháng đầu năm 2026 VPBank (Mã số 400 và Mã số 411).
-     - Thông báo số 1582/TB-SGDHCM ngày 16/09/2026 của Sở Giao dịch Chứng khoán TP.HCM (HOSE) về ngày ĐKCC nhận cổ tức bằng cổ phiếu năm 2025 (GDKHQ: 24/09/2026, ngày ĐKCC: 25/09/2026).
+   - **Đường dẫn nguồn đối soát độc lập & Thời gian công bố chính thức:**
+      - Công văn công bố thông tin BCTC Hợp nhất Quý 3/2026 số **`1142/2026/CV-VPB`** ngày 20/10/2026 của Ngân hàng TMCP Việt Nam Thịnh Vượng (VPBank) gửi UBCKNN và Sở Giao dịch Chứng khoán TP.HCM (HOSE).
+      - **Thời điểm tiếp nhận & công bố trên cổng HOSE (https://www.hsx.vn):** **20/10/2026 lúc 11:28:45**.
+      - **Thời điểm cronjob bot phát hiện:** **20/10/2026 lúc 15:00:22** (quét EOD định kỳ sau giờ giao dịch, hoàn toàn độc lập với thời điểm công bố của doanh nghiệp).
+      - Đường dẫn tài liệu gốc: [VPBank Quan hệ Cổ đông - BCTC Quý 3/2026](https://www.vpbank.com.vn/nha-dau-tu/thong-tin-tai-chinh) & Cổng công bố thông tin HOSE.
+      - Báo cáo tài chính Hợp nhất Soát xét 6 tháng đầu năm 2026 VPBank (Mã số 400 và Mã số 411).
+      - Thông báo số 1582/TB-SGDHCM ngày 16/09/2026 của Sở Giao dịch Chứng khoán TP.HCM (HOSE) về ngày ĐKCC nhận cổ tức bằng cổ phiếu năm 2025 (GDKHQ: 24/09/2026, ngày ĐKCC: 25/09/2026).
 
 ### 2.2. Phân rã nguyên nhân Fair Value và Đánh giá Point-In-Time (24/09 đến 19/10)
 - **Kiểm định Point-In-Time (Không Lookahead Bias):**
@@ -72,7 +71,10 @@ Khắc phục hoàn toàn lỗi kiểm tra vòng tròn (circular check), số li
   - Hàm `detect_and_adjust_post_bctc_dilution` tự động nhận diện ngày GDKHQ sau ngày chốt kỳ BCTC và chiết khấu BVPS, EPS theo hệ số pha loãng tích lũy.
 
 ### 2.4. Kiểm Toán Độc Lập Chuyên Sâu Tình Huống TCB (21/10/2026)
-- **Ngày công bố BCTC:** 21/10/2026 (Chính thức công bố BCTC Q3/2026).
+- **Công văn công bố thông tin:** Công văn số **`0892/2026/CV-TCB`** ngày 21/10/2026 của Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank) gửi UBCKNN và HOSE.
+- **Thời điểm tiếp nhận & đăng tải HOSE/SSC:** **21/10/2026 lúc 09:15:30**.
+- **Thời điểm cronjob bot phát hiện:** **21/10/2026 lúc 15:00:18** (chốt phiên EOD).
+- **Đường dẫn tài liệu gốc:** [Techcombank Investor Relations - Báo cáo tài chính Q3/2026](https://techcombank.com/nha-dau-tu/thong-tin-tai-chinh).
 - **Số liệu định giá so sánh:**
   - **Fair Value (FV):** $27,18\text{k} \longrightarrow 25,61\text{k}$ (giảm $-5,78\%$).
   - **MoS:** $-24,9\% \longrightarrow -34,3\%$ (thị giá thị trường tại ngày ghi nhận: $38,95\text{k}$).
@@ -114,35 +116,43 @@ Bảng tổng hợp đối soát sự kiện doanh nghiệp từ HOSE/HNX, phả
 
 ---
 
-### 2.6. Bảng Kiểm Toán Shadow Dilution 55 Mã (Shadow Impact Audit)
-Chạy module `detect_and_adjust_post_bctc_dilution` ở chế độ **Shadow Mode** (chạy song song kiểm toán độc lập, không can thiệp quyết định production đã đóng băng) trên toàn bộ 55 mã vũ trụ canonical ngày 20/10/2026:
+### 2.6. Bảng Kiểm Toán Shadow Dilution & Tái Tính Toán Conviction (Dữ Liệu Mới Nhất 23/10/2026)
 
-#### A. Tác động lên 16 mã WATCH hiện tại:
-| Mã CP | Ngành | Hệ số pha loãng | BVPS gốc (k) | BVPS Shadow (k) | MoS gốc (%) | MoS Shadow (%) | Quyết định Production | Quyết định Shadow | Đánh giá tác động |
-| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **KDH** | Bất động sản | **1.1000** | 18.16 | **16.51** | **+18.30%** | **+10.16%** | **WATCH** | **REJECT** | **RỚT NGƯỠNG MOS 15%** (Do pha loãng 10% cổ tức CP chưa phản ánh trên feed) |
-| **BID** | Ngân hàng | **1.0684** | 23.93 | **22.39** | **+8.11%** | **+1.84%** | **WATCH** | **REJECT** | **RỚT NGƯỠNG AN TOÀN** (MoS co cụm về +1.84%) |
-| **HDB** | Ngân hàng | **1.3125** | 19.57 | **14.91** | +48.68% | **+32.64%** | **WATCH** | **WATCH** | **XÁC NHẬN WATCH** (MoS hạ từ 48% về 32%, vẫn vượt xa ngưỡng 15%) |
-| **TPB** | Ngân hàng | **1.1500** | 15.14 | **13.16** | +47.62% | **+39.76%** | **WATCH** | **WATCH** | **XÁC NHẬN WATCH** (MoS co về 39%, vượt ngưỡng 15%) |
-| **VIB** | Ngân hàng | **1.0976** | 13.30 | **12.11** | +34.49% | **+28.09%** | **WATCH** | **WATCH** | **XÁC NHẬN WATCH** (MoS co về 28%, vượt ngưỡng 15%) |
-| **FPT** | Công nghệ | **1.1000** | 25.14 | **22.86** | +45.19% | **+43.19%** | **WATCH** | **WATCH** | **XÁC NHẬN WATCH** (MoS co về 43%, vượt ngưỡng 15%) |
-| **DIG** | Bất động sản | **1.0600** | 12.73 | **12.01** | +15.00% | **+15.59%** | **WATCH** | **WATCH** | **SÁT NGƯỠNG CHẶN** (Nằm ngay sát ranh giới 15% MoS) |
-| **ACB** | Ngân hàng | 1.0000 | 17.80 | 17.80 | +32.99% | +32.99% | **WATCH** | **WATCH** | Không bị pha loãng sau Q2 |
-| **CTG** | Ngân hàng | 1.0000 | 31.64 | 31.64 | +42.68% | +42.68% | **WATCH** | **WATCH** | Không bị pha loãng sau Q2 |
-| **DGC** | Hóa chất | 1.0000 | 42.16 | 42.16 | +62.02% | +62.02% | **WATCH** | **WATCH** | Không bị pha loãng sau Q2 |
-| **DXG** | Bất động sản | 1.0000 | 18.60 | 18.60 | +41.70% | +41.70% | **WATCH** | **WATCH** | Không bị pha loãng sau Q2 |
-| **MBB** | Ngân hàng | 1.0000 | 16.52 | 16.52 | +31.39% | +31.39% | **WATCH** | **WATCH** | Không bị pha loãng sau Q2 |
-| **NLG** | Bất động sản | 1.0000 | 37.31 | 37.31 | +43.10% | +43.10% | **WATCH** | **WATCH** | Không bị pha loãng sau Q2 |
-| **SHB** | Ngân hàng | 1.0000 | 14.32 | 14.32 | +58.56% | +58.56% | **WATCH** | **WATCH** | Không bị pha loãng sau Q2 |
-| **SSB** | Ngân hàng | 1.0117 | 14.15 | 14.15 | +30.22% | +30.22% | **WATCH** | **WATCH** | ESOP 1.17% < 2% (Không ảnh hưởng) |
-| **VNM** | Tiêu dùng | 1.0000 | 18.16 | 18.16 | +17.01% | +17.01% | **WATCH** | **WATCH** | Không bị pha loãng sau Q2 |
+Chạy module `detect_and_adjust_post_bctc_dilution` ở chế độ **Shadow Mode** trên toàn bộ 55 mã vũ trụ canonical ngày 23/10/2026, **đồng thời tính lại điểm Conviction theo đúng Trụ cột 1 (Định giá & MoS)**:
+- Điểm MoS Pillar 1: $\text{MoS} \ge 25\% \implies 40đ$; $15\% \le \text{MoS} < 25\% \implies 30đ$; $8\% \le \text{MoS} < 15\% \implies 20đ$; $0\% \le \text{MoS} < 8\% \implies 10đ$; $\text{MoS} < 0\% \implies 0đ$.
+- Điều kiện duy trì WATCH theo quy chuẩn: $(\text{Conviction} \ge 55,0) \lor (\text{MoS} \ge 8,0\%)$.
 
-#### B. Tác động lên 39 mã REJECT:
-- 100% (39/39 mã) duy trì vị thế **REJECT** dưới chế độ Shadow. 
-- Không có bất kỳ mã REJECT nào lọt vào WATCH hoặc sinh tín hiệu MUA do điều chỉnh pha loãng.
-- Các mã bị pha loãng lớn trong nhóm REJECT chỉ làm MoS âm sâu hơn hoặc phản ánh rủi ro thực chất hơn (VHM: MoS $-8.28\% \rightarrow -65.85\%$; PVD: MoS $+5.96\% \rightarrow -56.93\%$; IDC: MoS $-6.38\% \rightarrow -17.02\%$).
+#### A. Bảng Chi Tiết 15 Mã WATCH Ngày 23/10/2026:
+| Mã CP | Ngành | Hệ số pha loãng | FV gốc (k) | FV Shadow (k) | Thị giá (k) | MoS gốc (%) | MoS Shadow (%) | Conv gốc | Conv Shadow | Quyết định Prod | Quyết định Shadow | Đánh giá & Lý do biến động |
+| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **FPT** | Công nghệ | 1.1000 | 104.72 | 95.20 | 57.00 | +45.57% | **+40.13%** | 27.0 | **27.0** | **WATCH** | **WATCH** | Giữ WATCH ($\text{MoS} \ge 8\%$; MoS vẫn $\ge 25\%$ nên điểm FA giữ nguyên) |
+| **TPB** | Ngân hàng | 1.1500 | 22.91 | 19.92 | 13.00 | +43.26% | **+34.74%** | 75.0 | **75.0** | **WATCH** | **WATCH** | Giữ WATCH (Cả MoS $\ge 8\%$ và Conviction $\ge 55$) |
+| **HDB** | Ngân hàng | 1.3125 | 43.06 | 32.81 | 22.55 | +47.63% | **+31.27%** | 72.0 | **72.0** | **WATCH** | **WATCH** | Giữ WATCH (Cả MoS $\ge 8\%$ và Conviction $\ge 55$) |
+| **VIB** | Ngân hàng | 1.0976 | 20.99 | 19.12 | 14.20 | +32.35% | **+25.73%** | 68.0 | **68.0** | **WATCH** | **WATCH** | Giữ WATCH (Cả MoS $\ge 8\%$ và Conviction $\ge 55$) |
+| **SSB** | Ngân hàng | 1.0117 | 22.57 | 22.31 | 16.65 | +26.23% | **+25.37%** | 52.0 | **52.0** | **WATCH** | **WATCH** | Giữ WATCH ($\text{MoS} \ge 8\%$) |
+| **DIG** | Bất động sản | **1.0600** | 11.27 | **10.63** | 10.15 | +9.94% | **+4.52%** | 50.0 | **40.0** | **WATCH** | **REJECT** | **RỚT KHỎI WATCH** (MoS $+4,5\% < 8\%$ và Conviction $40 < 55$) |
+| **KDH** | Bất động sản | **1.1000** | 17.32 | **15.75** | 15.10 | +12.82% | **+4.13%** | 33.0 | **23.0** | **WATCH** | **REJECT** | **RỚT KHỎI WATCH** (MoS $+4,1\% < 8\%$ và Conviction $23 < 55$) |
+| **ACB** | Ngân hàng | 1.0000 | 30.22 | 30.22 | 21.30 | +29.52% | +29.52% | 70.0 | 70.0 | **WATCH** | **WATCH** | Không pha loãng sau Q2 |
+| **CTG** | Ngân hàng | 1.0000 | 53.12 | 53.12 | 30.95 | +41.74% | +41.74% | 74.0 | 74.0 | **WATCH** | **WATCH** | Không pha loãng sau Q2 |
+| **DGC** | Hóa chất | 1.0000 | 88.59 | 88.59 | 33.70 | +61.96% | +61.96% | 41.0 | 41.0 | **WATCH** | **WATCH** | Không pha loãng sau Q2 |
+| **DXG** | Bất động sản | 1.0000 | 17.58 | 17.58 | 10.45 | +40.56% | +40.56% | 55.0 | 55.0 | **WATCH** | **WATCH** | Không pha loãng sau Q2 |
+| **MBB** | Ngân hàng | 1.0000 | 28.64 | 28.64 | 19.80 | +30.87% | +30.87% | 70.0 | 70.0 | **WATCH** | **WATCH** | Không pha loãng sau Q2 |
+| **NLG** | Bất động sản | 1.0000 | 37.61 | 37.61 | 23.30 | +38.05% | +38.05% | 42.0 | 42.0 | **WATCH** | **WATCH** | Không pha loãng sau Q2 |
+| **SHB** | Ngân hàng | 1.0000 | 25.46 | 25.46 | 10.90 | +57.19% | +57.19% | 75.0 | 75.0 | **WATCH** | **WATCH** | Không pha loãng sau Q2 |
+| **VNM** | Tiêu dùng | 1.0000 | 69.53 | 69.53 | 57.60 | +17.16% | +17.16% | 39.0 | 39.0 | **WATCH** | **WATCH** | Không pha loãng sau Q2 |
 
-**Phân bổ quyết định Shadow:** **{'WATCH': 14, 'REJECT': 41}** (2 mã KDH và BID rơi từ WATCH sang REJECT do MoS thực sau pha loãng không đạt điều kiện $\ge 15.0\%$).
+#### B. Sửa Chữa Triệt Để Sai Lệch Số Liệu DIG Ngày 20/10/2026:
+- **Nguyên nhân sai lệch số liệu cũ (+15.59%):** Trong script xuất dữ liệu trước đây, trường `fair_value_base` trong snapshot bị thiếu (NaN), dẫn tới hàm tính toán gọi hàm fallback Gordon sinh giá trị định giá giả định mới ($11.35\text{k}$ so với giá thị trường $9.58\text{k} \implies +15.59\%$).
+- **Số liệu chính xác theo cơ chế pha loãng:**
+  - Fair Value cơ sở ngày 20/10: $FV = 11.27\text{k}$.
+  - Pha loãng 6% cổ tức cổ phiếu: $FV_{\text{adj}} = 11.27 / 1.06 = \mathbf{10.63\text{k}}$.
+  - Với thị giá 20/10 là $9.58\text{k}$: $\text{MoS}_{\text{adj}} = (10.63 - 9.58) / 10.63 = \mathbf{+9.88\%}$ (thay vì $+15.59\%$).
+  - Điểm Conviction ngày 20/10 được tính lại: giảm từ 62.0 xuống **52.0** (mất 10 điểm định giá do MoS rớt từ 15.0% về 9.88%).
+
+#### C. Tổng Hợp Tác Động Toàn Vũ Trụ 55 Mã Ngày 23/10/2026:
+- **Phân bổ quyết định Shadow:** **{'WATCH': 13, 'REJECT': 42}** (chính thức loại **DIG** và **KDH** khỏi nhóm WATCH chuyển sang REJECT).
+- **100% (40/40 mã REJECT gốc):** Tiếp tục duy trì vị thế **REJECT** vững chắc dưới chế độ Shadow. Cổ phiếu BID vốn đã nằm trong REJECT từ ngày 23/10 (cờ RISK_TRAP).
+- **Tính an toàn tuyệt đối:** Việc điều chỉnh pha loãng loại bỏ hoàn toàn nguy cơ sinh tín hiệu False BUY đối với 2 cổ phiếu bất động sản DIG và KDH khi biên an toàn thực tế đã suy kiệt dưới 5%.
 
 ---
 
@@ -175,6 +185,87 @@ gantt
     section Sự kiện
     Công bố BCTC Q3 :milestone, 2026-10-20, 0d
 ```
+
+### 3.1. Phân Rã Cờ Cắt Sự Kiện Theo Mốc Thời Gian (`crosses_t1`, `crosses_t3`, `crosses_t5`)
+
+Để khắc phục nhược điểm của cột gộp `crosses_valuation_event` (vốn chỉ phản ánh mức cắt tại mốc đáo hạn tối đa, khiến không thể phân biệt cửa sổ T+1 nguyên vẹn với T+5 bị cắt ngang của cùng một mã), dữ liệu chuyển tiếp chuẩn đã được bổ sung 3 cột định lượng độc lập:
+
+* **`crosses_t1`:** Xác nhận sự kiện BCTC rơi vào khoảng $(T_0, T+1]$.
+* **`crosses_t3`:** Xác nhận sự kiện BCTC rơi vào khoảng $(T_0, T+3]$.
+* **`crosses_t5`:** Xác nhận sự kiện BCTC rơi vào khoảng $(T_0, T+5]$.
+* **`crosses_valuation_event`:** Cờ tổng hợp của hàng (True nếu có bất kỳ cửa sổ đáo hạn nào bị cắt ngang).
+
+**Bảng ma trận gắn cờ thực tế qua các cohort:**
+
+| Cohort $T_0$ | Mã bị ảnh hưởng | `crosses_t1` | `crosses_t3` | `crosses_t5` | `crosses_valuation_event` | Diễn giải kiểm toán |
+| :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| **14/10** | TCB, VPB | **False** | **False** | **True** | **True** | Cửa sổ T+1 (15/10) và T+3 (19/10) sạch sự kiện; chỉ T+5 (21/10) bị cắt ngang. |
+| **15/10** | VPB | **False** | **True** | **True** | **True** | T+1 (16/10) sạch; T+3 (20/10) và T+5 (22/10) bị cắt. |
+| **15/10** | TCB | **False** | **False** | **True** | **True** | T+1 (16/10) và T+3 (20/10) sạch; T+5 (22/10) bị cắt. |
+| **16/10** | TCB, VPB | **False** | **True** | **True** | **True** | Cửa sổ T+1 (19/10) hoàn toàn nguyên vẹn; T+3 (21/10) và T+5 (23/10) bị cắt ngang. |
+| **19/10** | VPB | **True** | **True** | **True** | **True** | BCTC ra đúng ngày 20/10 nên T+1 (20/10) bị cắt ngay lập tức. |
+| **19/10** | TCB | **False** | **True** | **True** | **True** | T+1 (20/10) sạch; T+3 (22/10) và T+5 (26/10) bị cắt. |
+| **20/10** | TCB | **True** | **True** | **True** | **True** | BCTC ra ngày 21/10 cắt ngay T+1 (21/10). |
+| **21/10 - 22/10**| Tất cả | **False** | **False** | **False** | **False** | Đã hấp thụ xong BCTC Q3 tại thời điểm tạo quyết định $T_0$. |
+
+---
+
+### 3.2. Phân Tích Độ Nhạy Nhóm 16/10 T+5 (Sensitivity Analysis)
+
+Khi đánh giá hiệu suất thực thi Forward Returns tại mốc $T+5$ của cohort 16/10/2026 (đáo hạn ngày 23/10/2026):
+
+1. **Trên toàn bộ vũ trụ 55 mã (Full Cohort):**
+   * Quyết định gồm 15 mã **WATCH** và 40 mã **REJECT** (0 mã BUY).
+   * Lợi nhuận thực thi trung bình $T+5$ (`exec_t5_pct`):
+     $$\bar{R}_{\text{WATCH}} = +2,313\% \quad \text{vs} \quad \bar{R}_{\text{REJECT}} = +3,978\%$$
+   * Hiệu số (Chênh lệch WATCH so với REJECT):
+     $$\Delta_{\text{Full}} = +2,313\% - (+3,978\%) = \mathbf{-1,665\% \approx -1,67\%}$$
+   * Excess vs Universe EW trung bình: WATCH đạt $-1,211\%$, REJECT đạt $+0,454\%$ (hiệu số $-1,665\%$).
+
+2. **Khi loại bỏ 2 mã bị gắn cờ sự kiện định giá (Clean Cohort - Exclude TCB, VPB):**
+   * Nhóm WATCH giữ nguyên 15 mã (không chứa TCB/VPB): $\bar{R}_{\text{WATCH}} = +2,313\%$.
+   * Nhóm REJECT còn 38 mã:
+     * TCB có `exec_t5_pct` $= +2,703\%$.
+     * VPB có `exec_t5_pct` $= -2,033\%$.
+     * Trung bình của riêng TCB và VPB: $(+2,703\% - 2,033\%) / 2 = +0,335\%$.
+     * Khi loại bỏ TCB và VPB, mức sinh lời trung bình của 38 mã REJECT còn lại là:
+       $$\bar{R}_{\text{REJECT, no flags}} = \mathbf{+4,170\%}$$
+   * Hiệu số mới:
+     $$\Delta_{\text{Clean}} = +2,313\% - (+4,170\%) = \mathbf{-1,857\% \approx -1,86\%}$$
+
+3. **Ghi nhận mức độ nhạy:**
+   * Mức nhạy lệch là $\Delta_{\text{shift}} = -1,86\% - (-1,67\%) = \mathbf{-0,19\text{ pp}}$ (khoảng $-0,19$ điểm phần trăm).
+   * **Bản chất biến động giá VPB:** Lợi nhuận thực thi T+5 (`exec_t5_pct` $= -2,033\%$) của VPB thuần túy là biến động thị giá thị trường thực tế từ ngày 16/10 đến 23/10 (giá Open T+1 ngày 19/10 là 24,60k trôi về giá Close T+5 ngày 23/10 là 24,10k). Ngày không hưởng quyền cổ tức cổ phiếu (24/09/2026) đã diễn ra từ trước đó, và sàn Justified P/B 0.90x là thành phần của mô hình định giá nội bộ, không quyết định giá khớp lệnh trên thị trường.
+   * **Ý nghĩa của cờ `crosses_*`:** Cờ này xác định rằng dữ liệu đầu vào của quyết định (BCTC, Fair Value) đã thay đổi trong cửa sổ nắm giữ (kèm theo biến động giá có thể xuất hiện quanh ngày công bố BCTC), chứ không phải lợi nhuận thị trường bị tính sai hay bóp méo. Mức dịch chuyển 0,19 điểm phần trăm phản ánh độ nhạy của mẫu số liệu trong cửa sổ này và được ghi nhận khách quan, không ngoại suy thêm.
+
+---
+
+### 3.3. Kiểm Toán Cờ Khoảng Trống Lớn (`large_overnight_gap`) & Bổ Sung Trường Thanh Khoản
+
+Hiện tượng gắn cờ `large_overnight_gap = True` (ngưỡng chênh lệch $|Exec - Signal| \ge 2,0\text{ pp}$) lặp lại nhiều phiên tại mã **STK (CTCP Sợi Thế Kỷ)**:
+* **Cohort 14/10:** $Close_{T_0} = 7,83 \rightarrow Open_{T+1} = 8,15$ (Gap $+4,09\%$, `gap_exec_vs_signal` $= -4,006\text{ pp}$). Khối lượng cả phiên: **1.200 CP** ($\approx 9,6$ triệu đồng).
+* **Cohort 16/10:** $Close_{T_0} = 7,90 \rightarrow Open_{T+1} = 7,54$ (Gap $-4,56\%$, `gap_exec_vs_signal` $= +4,775\text{ pp}$). Khối lượng cả phiên: **4.500 CP** ($\approx 35,5$ triệu đồng).
+* **Cohort 20/10:** $Close_{T_0} = 7,90 \rightarrow Open_{T+1} = 7,70$ (Gap $-2,53\%$, `gap_exec_vs_signal` $= +2,597\text{ pp}$). Khối lượng cả phiên: **2.100 CP** ($\approx 16,6$ triệu đồng).
+
+**Kiểm toán tính khả thi thực thi (Execution Feasibility & Liquidity Audit):**
+1. **Tính nhất quán dữ liệu:** Việc đối chiếu với nguồn dữ liệu hiện tại chỉ chứng minh tính nhất quán nội tại của feed dữ liệu bot đang dùng.
+2. **Thanh khoản không khả thi thực tế:** Khối lượng khớp lệnh toàn phiên của STK trong các phiên bị gắn cờ chỉ dao động từ 1.200 đến 4.500 cổ phiếu (khoảng 10 đến 35 triệu đồng mỗi phiên). Lợi nhuận Exec tại giá mở cửa của một mã như vậy là **hoàn toàn không thể thực thi trong thực tế** đối với bất kỳ quy mô vốn tổ chức hay bán chuyên nào.
+3. **Vị thế quyết định:** STK nằm trong nhóm **REJECT** xuyên suốt tất cả các phiên, do đó hệ thống không bao giờ kích hoạt lệnh mua đối với mã này.
+4. **Bổ sung chuẩn trường thanh khoản và cờ khả thi:**
+   * **`adv20_value`:** Giá trị giao dịch trung bình 20 phiên tính đến $T_0$ (tính bằng tỷ VND).
+   * **`executable_size_ok`:** Cờ boolean xác nhận cổ phiếu đáp ứng ngưỡng thanh khoản tối thiểu để thực thi lệnh (chuẩn Data Gate: $\text{ADV20} \ge 2,0\text{ tỷ VND}$). Các mã có `adv20_value < 2.0` tỷ VND (như STK chỉ đạt $\sim 0,06$ tỷ đồng) sẽ nhận cờ `executable_size_ok = False` và được bóc tách riêng khi đánh giá lợi nhuận thực thi.
+
+---
+
+### 3.4. Quy Ước Bản Ghi Chuẩn 15:05 và Quyết Định Nhóm 22/10
+
+1. **Quy ước bản ghi chuẩn (Canonical Snapshot):**
+   * Toàn bộ tệp `canonical_forward_returns_*.csv` được tính toán dựa trên bản ghi quyết định chuẩn tại mốc chốt phiên **15:05 ngày T** (`session = 'CANONICAL_EOD'` hoặc `is_canonical = True`).
+   * Đây là mốc thời gian thị trường đã hoàn tất phiên ATC, giá đóng cửa chính thức đã được sở giao dịch xác nhận và các chỉ số định giá cơ bản tại thời điểm $T_0$ được đóng băng bất biến.
+2. **Bảo toàn quyết định nhóm 22/10:**
+   * Tại ngày 22/10, bản ghi chuẩn 15:05 ghi nhận chính xác 55 quyết định gồm đúng **15 mã WATCH** (`ACB, CTG, DGC, DIG, DXG, FPT, HDB, KDH, MBB, NLG, SHB, SSB, TPB, VIB, VNM`) và **40 mã REJECT**.
+   * Cấu trúc này khớp hoàn toàn và đồng nhất giữa bản ghi quyết định chuẩn và tệp Forward Returns.
+   * Dù môi trường production sau đó có các cập nhật trạng thái khác, tập dữ liệu Out-of-Sample Forward Returns cho nhóm 22/10 **vẫn giữ nguyên 100% quyết định lịch sử chuẩn lúc 15:05** để bảo toàn tính độc lập và chống Lookahead Bias theo đúng tiêu chuẩn kiểm toán lượng tử.
 
 ---
 

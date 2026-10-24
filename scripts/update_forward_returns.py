@@ -11,6 +11,7 @@ Adheres to Institutional Evidence Framework:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import math
 import os
@@ -498,6 +499,7 @@ def _load_valuation_events_map() -> dict[str, dict[str, Any]]:
                 evt_map[s] = {
                     "event_id": vrow.get("event_id"),
                     "bctc_published_date": str(vrow.get("bctc_published_date", "")).strip()[:10],
+                    "bctc_detected_date": str(vrow.get("bctc_detected_date", vrow.get("bctc_published_date", ""))).strip()[:10],
                     "event_date": str(vrow.get("event_date", "")).strip()[:10],
                     "event_type": vrow.get("event_type"),
                     "corporate_action": vrow.get("corporate_action"),
@@ -557,10 +559,39 @@ def _assemble_evaluation_row(rec: dict[str, Any], payload: dict[str, Any]) -> di
     val_map = _load_valuation_events_map()
     sym_evt = val_map.get(sym.upper().strip())
     bctc_pub_date = sym_evt.get("bctc_published_date") if sym_evt else None
+    bctc_det_date = sym_evt.get("bctc_detected_date", bctc_pub_date) if sym_evt else None
+
+    adv20_val = facts.get("adv20_value") or facts.get("adv20_billion")
+    if adv20_val is None:
+        tech_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "last_known_tech.json")
+        if os.path.exists(tech_path):
+            try:
+                with open(tech_path, "r", encoding="utf-8") as tf:
+                    tdata = json.load(tf)
+                    adv20_val = float(tdata.get(sym.upper().strip(), {}).get("adv20_billion", 0.0))
+            except Exception:
+                adv20_val = 0.0
+        else:
+            adv20_val = 0.0
 
     t0_date = str(payload.get("entry_date_signal") or "")[:10]
-    matured_dates = [payload["exit_dates"][h] for h in matured_set if h in payload.get("exit_dates", {})]
+    exit_dates = payload.get("exit_dates", {})
+    matured_dates = [exit_dates[h] for h in matured_set if h in exit_dates]
     max_matured_date = max(matured_dates) if matured_dates else None
+
+    crosses_t1 = False
+    crosses_t3 = False
+    crosses_t5 = False
+    if bctc_pub_date and t0_date:
+        d1 = exit_dates.get(1)
+        d3 = exit_dates.get(3)
+        d5 = exit_dates.get(5)
+        if d1:
+            crosses_t1 = bool(t0_date < bctc_pub_date <= d1)
+        if d3:
+            crosses_t3 = bool(t0_date < bctc_pub_date <= d3)
+        if d5:
+            crosses_t5 = bool(t0_date < bctc_pub_date <= d5)
 
     crosses_val_evt = False
     if bctc_pub_date and max_matured_date and t0_date:
@@ -626,9 +657,15 @@ def _assemble_evaluation_row(rec: dict[str, Any], payload: dict[str, Any]) -> di
         "excess_exec_t5_pct": excess_exec_t5,
         "gap_exec_vs_signal_t5_pp": gap_t5_pp,
         "large_overnight_gap": large_gap,
+        "adv20_value": round(float(adv20_val), 3) if adv20_val is not None else None,
+        "executable_size_ok": bool(adv20_val >= 2.0) if adv20_val is not None else False,
         "est_fee_tax_pct": EST_TRANSACTION_FEE_PCT,
+        "crosses_t1": crosses_t1,
+        "crosses_t3": crosses_t3,
+        "crosses_t5": crosses_t5,
         "crosses_valuation_event": crosses_val_evt,
         "bctc_published_date": bctc_pub_date,
+        "bctc_detected_date": bctc_det_date,
     }
 
 
