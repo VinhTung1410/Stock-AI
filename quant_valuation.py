@@ -1285,7 +1285,7 @@ def calculate_fair_value_and_mos(
     if not current_price or current_price <= 0:
         return {
             "fair_value": 0.0,
-            "fair_value_base": None,
+            "fair_value_base": 0.0,
             "fair_value_bear": 0.0,
             "fair_value_bull": 0.0,
             "price_target": None,
@@ -1426,7 +1426,7 @@ def calculate_fair_value_and_mos(
             )
             return {
                 "fair_value": 0.0,
-                "fair_value_base": None,
+                "fair_value_base": 0.0,
                 "fair_value_bear": 0.0,
                 "fair_value_bull": 0.0,
                 "price_target": None,
@@ -1704,7 +1704,7 @@ def calculate_fair_value_and_mos(
 
     return {
         "fair_value": fv_base,
-        "fair_value_base": fv_base if (fv_base and fv_base > 0) else None,
+        "fair_value_base": fv_base,
         "fair_value_bear": fv_bear,
         "fair_value_bull": fv_bull,
         "price_target": price_target,

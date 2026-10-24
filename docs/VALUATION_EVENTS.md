@@ -6,10 +6,14 @@
 
 ## 1. Nhật Ký Sự Kiện Định Giá (Valuation Event Log)
 
-| ID Sự kiện | Mã CP | Ngày ghi nhận | Ngày công bố BCTC thật | Kỳ BCTC cũ | Kỳ BCTC mới | FV cũ (k) | FV mới (k) | Biến động FV (%) | MoS cũ | MoS mới | Quyết định | Loại sự kiện | Tác động Corporate Action | Các cửa sổ đo bị ảnh hưởng |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| `VAL_EVT_VPB_20261020` | **VPB** | 2026-10-20 | **2026-10-20** | `2026-Q2` | `2026-Q3` | **22.90** | **17.15** | **-25.11%** | -4.8% | -39.9% | REJECT | BCTC Q3/2026 | Cổ tức cổ phiếu 26.04% (GDKHQ 24/09/2026) | 14/10: [T+5, T+10, T+20]<br>15/10: [T+3, T+5, T+10, T+20]<br>16/10: [T+2, T+3, T+5, T+10, T+20]<br>19/10: [T+1, T+2, T+3, T+5, T+10, T+20] |
-| `VAL_EVT_TCB_20261021` | **TCB** | 2026-10-21 | **2026-10-21** | `2026-Q2` | `2026-Q3` | **27.18** | **25.61** | **-5.78%** | -24.9% | -34.3% | REJECT | BCTC Q3/2026 | Không có | 14/10:## 2. Kiểm Toán Độc Lập Chuyên Sâu Tình Huống VPB (20/10/2026)
+| ID Sự kiện | Mã CP | Ngày phát hiện bot | Ngày công bố BCTC thật | Nguồn đã xác minh | Kỳ BCTC cũ | Kỳ BCTC mới | FV cũ (k) | FV mới (k) | Biến động FV (%) | MoS cũ | MoS mới | Quyết định | Loại sự kiện | Tác động Corporate Action | Các cửa sổ đo bị ảnh hưởng (theo ngày phát hiện) |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
+| `VAL_EVT_VPB_20261020` | **VPB** | 2026-10-20 | **UNKNOWN** | `False` | `2026-Q2` | `2026-Q3` | **22.90** | **17.15** | **-25.11%** | -4.8% | -39.9% | REJECT | BCTC Q3/2026 | Cổ tức cổ phiếu 26.04% (GDKHQ 24/09/2026) | 14/10: [T+5, T+10, T+20]<br>15/10: [T+3, T+5, T+10, T+20]<br>16/10: [T+2, T+3, T+5, T+10, T+20]<br>19/10: [T+1, T+2, T+3, T+5, T+10, T+20] |
+| `VAL_EVT_TCB_20261021` | **TCB** | 2026-10-21 | **UNKNOWN** | `False` | `2026-Q2` | `2026-Q3` | **27.18** | **25.61** | **-5.78%** | -24.9% | -34.3% | REJECT | BCTC Q3/2026 | Không có | 14/10: [T+5, T+10, T+20]<br>15/10: [T+5, T+10, T+20]<br>16/10: [T+3, T+5, T+10, T+20]<br>19/10: [T+2, T+3, T+5, T+10, T+20]<br>20/10: [T+1, T+2, T+3, T+5, T+10, T+20] |
+
+> **Giả định vận hành cờ `crosses_*`:** Toàn bộ cờ `crosses_*` hiện đang được neo theo **ngày phát hiện của bot (`bctc_detected_date`)**. Nếu doanh nghiệp thực tế công bố sớm hơn mốc bot phát hiện, các cửa sổ có thể bị gắn nhầm; mọi kết quả theo dõi forward returns cần được đọc kèm giả định này cho tới khi có nguồn ngày công bố chính thức từ cổng HOSE.
+
+## 2. Kiểm Toán Độc Lập Chuyên Sâu Tình Huống VPB (20/10/2026)
 
 ### 2.1. Số liệu gốc từ BCTC Hợp nhất Q3 & HOSE
 Khắc phục hoàn toàn lỗi kiểm tra vòng tròn (circular check), số liệu gốc độc lập đối chiếu từ BCTC hợp nhất và công bố thông tin HOSE:
@@ -35,8 +39,8 @@ Khắc phục hoàn toàn lỗi kiểm tra vòng tròn (circular check), số li
    - **Mức suy giảm per-share thực tế của cổ đông mẹ:**
      $$\Delta \text{BVPS}_{\text{thực tế}} = \frac{19.059 - 22.905}{22.905} = \mathbf{-16.79\%}$$
    - **Đường dẫn nguồn đối soát độc lập & Thời gian công bố chính thức:**
-      - Công văn công bố thông tin BCTC Hợp nhất Quý 3/2026 số **`1142/2026/CV-VPB`** ngày 20/10/2026 của Ngân hàng TMCP Việt Nam Thịnh Vượng (VPBank) gửi UBCKNN và Sở Giao dịch Chứng khoán TP.HCM (HOSE).
-      - **Thời điểm tiếp nhận & công bố trên cổng HOSE (https://www.hsx.vn):** **20/10/2026 lúc 11:28:45**.
+       - **Số công văn công bố:** **UNKNOWN** (Chờ đối soát từ cổng công bố thông tin chính thức của HOSE / UBCKNN; source_verified = False).
+       - **Thời điểm công bố chính thức:** **UNKNOWN** (Chờ nguồn đối soát HOSE; đã loại bỏ hoàn toàn các mốc giờ suy đoán).
       - **Thời điểm cronjob bot phát hiện:** **20/10/2026 lúc 15:00:22** (quét EOD định kỳ sau giờ giao dịch, hoàn toàn độc lập với thời điểm công bố của doanh nghiệp).
       - Đường dẫn tài liệu gốc: [VPBank Quan hệ Cổ đông - BCTC Quý 3/2026](https://www.vpbank.com.vn/nha-dau-tu/thong-tin-tai-chinh) & Cổng công bố thông tin HOSE.
       - Báo cáo tài chính Hợp nhất Soát xét 6 tháng đầu năm 2026 VPBank (Mã số 400 và Mã số 411).
@@ -71,8 +75,8 @@ Khắc phục hoàn toàn lỗi kiểm tra vòng tròn (circular check), số li
   - Hàm `detect_and_adjust_post_bctc_dilution` tự động nhận diện ngày GDKHQ sau ngày chốt kỳ BCTC và chiết khấu BVPS, EPS theo hệ số pha loãng tích lũy.
 
 ### 2.4. Kiểm Toán Độc Lập Chuyên Sâu Tình Huống TCB (21/10/2026)
-- **Công văn công bố thông tin:** Công văn số **`0892/2026/CV-TCB`** ngày 21/10/2026 của Ngân hàng TMCP Kỹ Thương Việt Nam (Techcombank) gửi UBCKNN và HOSE.
-- **Thời điểm tiếp nhận & đăng tải HOSE/SSC:** **21/10/2026 lúc 09:15:30**.
+- **Số công văn công bố:** **UNKNOWN** (Chờ đối soát từ cổng công bố thông tin chính thức của HOSE / UBCKNN; `source_verified = False`).
+- **Thời điểm công bố chính thức:** **UNKNOWN** (Chờ nguồn đối soát HOSE; đã loại bỏ hoàn toàn các mốc giờ suy đoán).
 - **Thời điểm cronjob bot phát hiện:** **21/10/2026 lúc 15:00:18** (chốt phiên EOD).
 - **Đường dẫn tài liệu gốc:** [Techcombank Investor Relations - Báo cáo tài chính Q3/2026](https://techcombank.com/nha-dau-tu/thong-tin-tai-chinh).
 - **Số liệu định giá so sánh:**
@@ -152,7 +156,7 @@ Chạy module `detect_and_adjust_post_bctc_dilution` ở chế độ **Shadow Mo
 #### C. Tổng Hợp Tác Động Toàn Vũ Trụ 55 Mã Ngày 23/10/2026:
 - **Phân bổ quyết định Shadow:** **{'WATCH': 13, 'REJECT': 42}** (chính thức loại **DIG** và **KDH** khỏi nhóm WATCH chuyển sang REJECT).
 - **100% (40/40 mã REJECT gốc):** Tiếp tục duy trì vị thế **REJECT** vững chắc dưới chế độ Shadow. Cổ phiếu BID vốn đã nằm trong REJECT từ ngày 23/10 (cờ RISK_TRAP).
-- **Tính an toàn tuyệt đối:** Việc điều chỉnh pha loãng loại bỏ hoàn toàn nguy cơ sinh tín hiệu False BUY đối với 2 cổ phiếu bất động sản DIG và KDH khi biên an toàn thực tế đã suy kiệt dưới 5%.
+- **Giảm thiểu rủi ro sai lệch định giá:** Việc điều chỉnh pha loãng giúp loại bỏ nguy cơ sinh tín hiệu False BUY đối với 2 cổ phiếu bất động sản DIG và KDH khi biên an toàn thực tế đã suy kiệt dưới 5%. Cơ chế fail-closed tại lớp thực thi đảm bảo không phụ thuộc vào một rào chắn đơn lẻ.
 
 ---
 

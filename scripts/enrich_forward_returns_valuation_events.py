@@ -12,8 +12,9 @@ if os.path.exists(VAL_CSV):
         s = str(r.get("symbol", "")).upper().strip()
         pub_d = str(r.get("bctc_published_date", "")).strip()[:10]
         det_d = str(r.get("bctc_detected_date", pub_d)).strip()[:10]
-        if s and pub_d and pub_d != "nan":
-            evt_pub_map[s] = pub_d
+        effective_d = pub_d if (pub_d and pub_d not in ("nan", "UNKNOWN", "")) else det_d
+        if s and effective_d:
+            evt_pub_map[s] = effective_d
             evt_det_map[s] = det_d
 else:
     evt_pub_map = {"VPB": "2026-10-20", "TCB": "2026-10-21"}
