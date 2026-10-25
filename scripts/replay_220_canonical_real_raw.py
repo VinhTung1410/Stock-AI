@@ -60,6 +60,34 @@ CANONICAL_55_SYMBOLS = [
 ]
 
 
+CANONICAL_FIXTURE_HASHES = {
+    "raw_snapshots_20261020_canonical.json": "721864d96b25572e64f249339a96dffa163da8be3499b09a134aa2cc601c13f3",
+    "raw_snapshots_20261021_canonical.json": "611a63df701ffba417375fdc9cd42dfd11e9db74423f4807cb1fbff12673feef",
+    "raw_snapshots_20261022_canonical.json": "f892638d8a949eb0c626474cbd679f0547a6803b145c5f8eaa78e5afd8bca923",
+    "raw_snapshots_20261023_canonical.json": "e488971e3f399cf60abded64cf5bb9ff98c05ed89675efd23e8a7dc62de07f80",
+    "decision_records_20261020.csv": "09153bd6568562c63835b78d118a5fd1e77ba6bf23973cb0bd14fcd39c202f03",
+    "decision_records_20261021.csv": "23b4022d2ec20712a28f751bf8f09ced553a0d877ba379ab3f88250ff113b83a",
+    "decision_records_20261022.csv": "5cf84d242d7b49800fb0952688bc6bda9f2d974c3e28c80e3d3c7fd6a7b525ae",
+    "decision_records_20261023.csv": "33ca2d7e752a78988d7e74ce78c31640e661ecbec9893249035650347ba27899",
+}
+
+
+def _verify_fixture_integrity(filepath: str, filename: str) -> None:
+    expected = CANONICAL_FIXTURE_HASHES.get(filename)
+    if not expected:
+        return
+    import hashlib
+    with open(filepath, "rb") as f:
+        actual = hashlib.sha256(f.read()).hexdigest()
+    if actual != expected:
+        raise RuntimeError(
+            f"FIXTURE INTEGRITY COMPROMISED for {filename}!\n"
+            f"  Expected SHA-256: {expected}\n"
+            f"  Actual SHA-256:   {actual}\n"
+            f"Ground truth fixture has been modified or corrupted."
+        )
+
+
 def run_full_220_replay():
     all_comparison_rows = []
     total_exceptions = 0
@@ -75,11 +103,17 @@ def run_full_220_replay():
     print("=" * 90)
 
     for d, cfg in DATES_CONFIG.items():
-        snap_path = os.path.join(ROOT_DIR, "data", f"raw_snapshots_{d}_canonical.json")
-        dec_path = os.path.join(ROOT_DIR, f"decision_records_{d}.csv")
+        snap_file = f"raw_snapshots_{d}_canonical.json"
+        dec_file = f"decision_records_{d}.csv"
+        snap_path = os.path.join(ROOT_DIR, "data", snap_file)
+        dec_path = os.path.join(ROOT_DIR, dec_file)
 
         if not os.path.exists(snap_path) or not os.path.exists(dec_path):
             raise FileNotFoundError(f"Missing snapshot or decision record for {d}")
+
+        # Strict fixture hash pinning check
+        _verify_fixture_integrity(snap_path, snap_file)
+        _verify_fixture_integrity(dec_path, dec_file)
 
         with open(snap_path, "r", encoding="utf-8") as f:
             snaps = json.load(f)
@@ -286,15 +320,23 @@ def run_full_220_replay():
     print(f"Mã băm SHA-256 tệp CSV kết quả:      {csv_sha256}")
     print("=" * 90 + "\n")
 
-    return (
-        total_exceptions == 0
-        and total_decision_diffs == 0
-        and total_gate_diffs == 0
-        and total_price_diffs == 0
-        and total_mos_diffs == 0
-        and total_conv_diffs == 0
-        and total_fv_diffs == 0
-    )
+    # Strict unbypassable verification (immune to python -O optimization flag)
+    if total_exceptions > 0:
+        raise RuntimeError(f"REPLAY AUDIT FAILED: Encountered {total_exceptions} technical exceptions!")
+    if total_decision_diffs > 0:
+        raise RuntimeError(f"REPLAY AUDIT FAILED: Detected {total_decision_diffs} decision differences!")
+    if total_gate_diffs > 0:
+        raise RuntimeError(f"REPLAY AUDIT FAILED: Detected {total_gate_diffs} gate differences!")
+    if total_price_diffs > 0:
+        raise RuntimeError(f"REPLAY AUDIT FAILED: Detected {total_price_diffs} price differences!")
+    if total_mos_diffs > 0:
+        raise RuntimeError(f"REPLAY AUDIT FAILED: Detected {total_mos_diffs} MoS differences!")
+    if total_conv_diffs > 0:
+        raise RuntimeError(f"REPLAY AUDIT FAILED: Detected {total_conv_diffs} conviction differences!")
+    if total_fv_diffs > 0:
+        raise RuntimeError(f"REPLAY AUDIT FAILED: Detected {total_fv_diffs} fair value differences!")
+
+    return True
 
 
 if __name__ == "__main__":

@@ -80,6 +80,24 @@ def test_zero_diff_replay_106e6c6_production_vs_pending_release(session_date: st
     if not (os.path.exists(snap_path) and os.path.exists(dec_path)):
         pytest.skip(f"Canonical snapshot/decision record missing for {session_date}")
 
+    import hashlib
+    pinned_snap_hashes = {
+        "20261020": "721864d96b25572e64f249339a96dffa163da8be3499b09a134aa2cc601c13f3",
+        "20261021": "611a63df701ffba417375fdc9cd42dfd11e9db74423f4807cb1fbff12673feef",
+        "20261022": "f892638d8a949eb0c626474cbd679f0547a6803b145c5f8eaa78e5afd8bca923",
+        "20261023": "e488971e3f399cf60abded64cf5bb9ff98c05ed89675efd23e8a7dc62de07f80",
+    }
+    pinned_dec_hashes = {
+        "20261020": "09153bd6568562c63835b78d118a5fd1e77ba6bf23973cb0bd14fcd39c202f03",
+        "20261021": "23b4022d2ec20712a28f751bf8f09ced553a0d877ba379ab3f88250ff113b83a",
+        "20261022": "5cf84d242d7b49800fb0952688bc6bda9f2d974c3e28c80e3d3c7fd6a7b525ae",
+        "20261023": "33ca2d7e752a78988d7e74ce78c31640e661ecbec9893249035650347ba27899",
+    }
+    with open(snap_path, "rb") as f_s:
+        assert hashlib.sha256(f_s.read()).hexdigest() == pinned_snap_hashes[session_date]
+    with open(dec_path, "rb") as f_d:
+        assert hashlib.sha256(f_d.read()).hexdigest() == pinned_dec_hashes[session_date]
+
     dates_config = {
         "20261020": {"vnindex": {"current_price": 1691.97, "ma200": 1796.54, "price_asof": "2026-10-20 00:00:00"}},
         "20261021": {"vnindex": {"current_price": 1738.67, "ma200": 1796.58, "price_asof": "2026-10-21 00:00:00"}},

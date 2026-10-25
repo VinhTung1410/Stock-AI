@@ -220,22 +220,9 @@ jobs:
           path: canonical_replay_220_records_20_to_23_oct.csv
 
   # =========================================================================
-  # 6. CONTINUOUS DEPLOYMENT QUALITY GATE (Render.com)
+  # 6. CONTINUOUS DEPLOYMENT QUALITY GATE (Render.com) - DISABLED / MANUAL ONLY
   # =========================================================================
-  deploy:
-    name: Production Deployment Quality Gate
-    runs-on: ubuntu-latest
-    needs: [lint, test, sonarqube, canonical-replay-linux]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    steps:
-      - name: Trigger Live Cloud Deployment
-        env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-        run: |
-          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
-            echo "🚀 All quality gates passed! Dispatching webhook to Render..."
-            curl -X POST -f "$RENDER_DEPLOY_HOOK"
-            echo "✅ Render deployment successfully triggered."
-          else
-            echo "ℹ️ RENDER_DEPLOY_HOOK secret is not configured. Automated hook bypassed (Render Auto-Deploy will handle or manual trigger)."
-          fi
+  # The automated webhook deploy job has been removed to prevent any accidental
+  # redeploy of production. All Render deployments must be triggered manually
+  # from the Render dashboard after passing all verification gates.
+
