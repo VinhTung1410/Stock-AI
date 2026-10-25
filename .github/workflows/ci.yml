@@ -211,7 +211,7 @@ jobs:
 
       - name: Automated Value-Level Semantic Reconciliation Check
         run: |
-          python -c "import pandas as pd; df = pd.read_csv('canonical_replay_220_records_20_to_23_oct.csv'); assert len(df) == 220, f'Expected 220 records, got {len(df)}'; assert df['decision_match'].all(), 'Decision mismatch on Linux!'; assert df['gate_match'].all(), 'Gate mismatch on Linux!'; assert df['price_match'].all(), 'Price mismatch on Linux!'; assert df['mos_match'].all(), 'MoS mismatch on Linux!'; assert df['conviction_match'].all(), 'Conviction mismatch on Linux!'; assert df['fv_match'].all(), 'Fair value mismatch on Linux!'; print('✅ CI VALUE-LEVEL ASSERTION PASSED: 220/220 ZERO-DIFF CONFIRMED ON LINUX')"
+          python -c "import pandas as pd; df = pd.read_csv('canonical_replay_220_records_20_to_23_oct.csv'); assert len(df) == 220, f'Expected 220 records, got {len(df)}'; assert df['decision_match'].all(), 'Decision mismatch on Linux!'; assert df['gate_match'].all(), 'Gate mismatch on Linux!'; assert df['price_match'].all(), 'Price mismatch on Linux!'; assert df['mos_match'].all(), 'MoS mismatch on Linux!'; assert df['conviction_match'].all(), 'Conviction mismatch on Linux!'; assert df['fv_base_match'].all(), 'Fair value mismatch on Linux!'; assert (df['status'] == 'PASS').all(), 'Status mismatch on Linux!'; print('[PASS] CI VALUE-LEVEL ASSERTION PASSED: 220/220 ZERO-DIFF CONFIRMED ON LINUX')"
 
       - name: Upload Canonical Replay CSV Artifact
         if: always()
