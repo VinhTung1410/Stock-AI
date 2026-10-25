@@ -259,9 +259,20 @@ def run_full_220_replay():
     df_out = pd.DataFrame(all_comparison_rows)
     df_out.to_csv(out_csv, index=False, encoding="utf-8-sig")
 
+    import hashlib
+    import subprocess
+    try:
+        head_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+    except Exception:
+        head_commit = "UNKNOWN"
+
+    with open(out_csv, "rb") as f_csv:
+        csv_sha256 = hashlib.sha256(f_csv.read()).hexdigest()
+
     print("\n" + "=" * 90)
     print("TỔNG KẾT KIỂM TOÁN ZERO-DIFF TRÊN TOÀN BỘ 220 BẢN GHI (20/10 - 23/10):")
     print("=" * 90)
+    print(f"Commit Git SHA:                      {head_commit}")
     print(f"Tổng số bản ghi đối chiếu:           {len(df_out)} / 220")
     print(f"Ngoại lệ kỹ thuật (Exceptions):      {total_exceptions}")
     print(f"Số lượng sai lệch Quyết định:        {total_decision_diffs}")
@@ -272,6 +283,7 @@ def run_full_220_replay():
     print(f"Số lượng sai lệch Fair Value Base:   {total_fv_diffs}")
     print(f"Tỷ lệ khớp trường tuyệt đối:         {((df_out['status'] == 'PASS').sum() / len(df_out)) * 100:.2f}%")
     print(f"Đã lưu tệp chi tiết từng mã từng trường: {out_csv}")
+    print(f"Mã băm SHA-256 tệp CSV kết quả:      {csv_sha256}")
     print("=" * 90 + "\n")
 
     return (
