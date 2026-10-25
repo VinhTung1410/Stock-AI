@@ -7,6 +7,7 @@ ablation branches (Quant Only vs Quant + LLM).
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final
@@ -17,6 +18,8 @@ STATUS_FILLED: Final[str] = "FILLED"
 STATUS_UNFILLED_CEILING: Final[str] = "UNFILLED_CEILING"
 STATUS_REJECTED_BUDGET: Final[str] = "REJECTED_BUDGET"
 STATUS_REJECTED_COOLDOWN: Final[str] = "REJECTED_COOLDOWN"
+STATUS_SUPPRESSED_WATCHLIST: Final[str] = "BUY_SUPPRESSED_WATCHLIST"
+STATUS_UNVERIFIED_BUY: Final[str] = "BUY_UNVERIFIED"
 
 # Ablation Branches
 BRANCH_QUANT_ONLY: Final[str] = "QUANT_ONLY"
@@ -113,6 +116,45 @@ class PaperTradingManager:
     ) -> PaperOrder:
         """Submit a new paper order checking daily budget and cooldown."""
         meta = metadata or {}
+
+        # 0. Anti-Reflexive Watchlist Bonus Filter (Pre-Registered Rule - Option 1, Fail-Closed)
+        if side == "BUY":
+            conv_ex = meta.get("conviction_ex_watchlist")
+            try:
+                if conv_ex is None:
+                    raise ValueError("Missing or None")
+                conv_ex_val = float(conv_ex)
+                if not math.isfinite(conv_ex_val) or conv_ex_val < 0.0 or conv_ex_val > 100.0:
+                    raise ValueError(f"Value out of bounds or non-finite: {conv_ex_val}")
+            except (ValueError, TypeError):
+                # Fail-closed: missing, None, NaN, inf, or out-of-range value blocks execution and labels as BUY_UNVERIFIED
+                order = PaperOrder(
+                    symbol=symbol,
+                    decision_time=decision_time,
+                    decision_price=decision_price,
+                    side=side,
+                    branch=branch,
+                    status=STATUS_UNVERIFIED_BUY,
+                    reason=f"BUY blocked: conviction_ex_watchlist invalid/missing ({conv_ex!r}) (fail-closed verification gate)",
+                    metadata=meta,
+                )
+                self.orders.append(order)
+                return order
+
+            if conv_ex_val < 70.0:
+                # Anti-reflexive: conviction without watchlist bonus is insufficient (< 70)
+                order = PaperOrder(
+                    symbol=symbol,
+                    decision_time=decision_time,
+                    decision_price=decision_price,
+                    side=side,
+                    branch=branch,
+                    status=STATUS_SUPPRESSED_WATCHLIST,
+                    reason=f"BUY suppressed: conviction_ex_watchlist ({conv_ex_val:.1f}) < 70.0 (anti-reflexive execution gate)",
+                    metadata=meta,
+                )
+                self.orders.append(order)
+                return order
 
         # 1. Check Cooldown
         if side == "BUY" and self._is_in_cooldown(symbol, decision_time):
