@@ -61,14 +61,15 @@ CANONICAL_55_SYMBOLS = [
 
 
 CANONICAL_FIXTURE_HASHES = {
-    "raw_snapshots_20261020_canonical.json": "721864d96b25572e64f249339a96dffa163da8be3499b09a134aa2cc601c13f3",
-    "raw_snapshots_20261021_canonical.json": "611a63df701ffba417375fdc9cd42dfd11e9db74423f4807cb1fbff12673feef",
-    "raw_snapshots_20261022_canonical.json": "f892638d8a949eb0c626474cbd679f0547a6803b145c5f8eaa78e5afd8bca923",
-    "raw_snapshots_20261023_canonical.json": "e488971e3f399cf60abded64cf5bb9ff98c05ed89675efd23e8a7dc62de07f80",
-    "decision_records_20261020.csv": "09153bd6568562c63835b78d118a5fd1e77ba6bf23973cb0bd14fcd39c202f03",
-    "decision_records_20261021.csv": "23b4022d2ec20712a28f751bf8f09ced553a0d877ba379ab3f88250ff113b83a",
-    "decision_records_20261022.csv": "5cf84d242d7b49800fb0952688bc6bda9f2d974c3e28c80e3d3c7fd6a7b525ae",
-    "decision_records_20261023.csv": "33ca2d7e752a78988d7e74ce78c31640e661ecbec9893249035650347ba27899",
+    # Canonical SHA-256 hashes normalized to LF (POSIX line endings) for cross-platform determinism
+    "raw_snapshots_20261020_canonical.json": "2dbdf6b3009b4b9fc57f6870fa2b3d01af03fa5e2b56f5de145b38cd0d914f93",
+    "raw_snapshots_20261021_canonical.json": "2e0d883df72be088fd25eeee5bace675e22ebb4e1a5df88446ea9351869dd656",
+    "raw_snapshots_20261022_canonical.json": "7eaf858ff34a6fed7a132fe776acf3a2dddcdc8fd76de9fa6efad9104a08e11a",
+    "raw_snapshots_20261023_canonical.json": "2e87d33113f74753472f216cf601a5fc3d3210c7e48a1dd1197c08d105dd0400",
+    "decision_records_20261020.csv": "5fd5b7673281818e1837541fe307c3001fcb0d5269724356a38d245796354389",
+    "decision_records_20261021.csv": "46820f9dfc083aa30c35b4afe069d5f2ceae88f896d7f78a1df909a40c3a6efe",
+    "decision_records_20261022.csv": "5eb7e4dd91c26e911bc57313e6c85165aba52a846309ec759aea68f654281a3c",
+    "decision_records_20261023.csv": "9a2d6e9191a400acc02dee4d8da6ebc4ae6bb30e69a1588ef296632ecaae948c",
 }
 
 
@@ -78,7 +79,9 @@ def _verify_fixture_integrity(filepath: str, filename: str) -> None:
         return
     import hashlib
     with open(filepath, "rb") as f:
-        actual = hashlib.sha256(f.read()).hexdigest()
+        # Normalize CRLF to LF so hash is identical across Windows and Linux
+        content = f.read().replace(b"\r\n", b"\n")
+        actual = hashlib.sha256(content).hexdigest()
     if actual != expected:
         raise RuntimeError(
             f"FIXTURE INTEGRITY COMPROMISED for {filename}!\n"

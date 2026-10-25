@@ -82,21 +82,21 @@ def test_zero_diff_replay_106e6c6_production_vs_pending_release(session_date: st
 
     import hashlib
     pinned_snap_hashes = {
-        "20261020": "721864d96b25572e64f249339a96dffa163da8be3499b09a134aa2cc601c13f3",
-        "20261021": "611a63df701ffba417375fdc9cd42dfd11e9db74423f4807cb1fbff12673feef",
-        "20261022": "f892638d8a949eb0c626474cbd679f0547a6803b145c5f8eaa78e5afd8bca923",
-        "20261023": "e488971e3f399cf60abded64cf5bb9ff98c05ed89675efd23e8a7dc62de07f80",
+        "20261020": "2dbdf6b3009b4b9fc57f6870fa2b3d01af03fa5e2b56f5de145b38cd0d914f93",
+        "20261021": "2e0d883df72be088fd25eeee5bace675e22ebb4e1a5df88446ea9351869dd656",
+        "20261022": "7eaf858ff34a6fed7a132fe776acf3a2dddcdc8fd76de9fa6efad9104a08e11a",
+        "20261023": "2e87d33113f74753472f216cf601a5fc3d3210c7e48a1dd1197c08d105dd0400",
     }
     pinned_dec_hashes = {
-        "20261020": "09153bd6568562c63835b78d118a5fd1e77ba6bf23973cb0bd14fcd39c202f03",
-        "20261021": "23b4022d2ec20712a28f751bf8f09ced553a0d877ba379ab3f88250ff113b83a",
-        "20261022": "5cf84d242d7b49800fb0952688bc6bda9f2d974c3e28c80e3d3c7fd6a7b525ae",
-        "20261023": "33ca2d7e752a78988d7e74ce78c31640e661ecbec9893249035650347ba27899",
+        "20261020": "5fd5b7673281818e1837541fe307c3001fcb0d5269724356a38d245796354389",
+        "20261021": "46820f9dfc083aa30c35b4afe069d5f2ceae88f896d7f78a1df909a40c3a6efe",
+        "20261022": "5eb7e4dd91c26e911bc57313e6c85165aba52a846309ec759aea68f654281a3c",
+        "20261023": "9a2d6e9191a400acc02dee4d8da6ebc4ae6bb30e69a1588ef296632ecaae948c",
     }
     with open(snap_path, "rb") as f_s:
-        assert hashlib.sha256(f_s.read()).hexdigest() == pinned_snap_hashes[session_date]
+        assert hashlib.sha256(f_s.read().replace(b"\r\n", b"\n")).hexdigest() == pinned_snap_hashes[session_date]
     with open(dec_path, "rb") as f_d:
-        assert hashlib.sha256(f_d.read()).hexdigest() == pinned_dec_hashes[session_date]
+        assert hashlib.sha256(f_d.read().replace(b"\r\n", b"\n")).hexdigest() == pinned_dec_hashes[session_date]
 
     dates_config = {
         "20261020": {"vnindex": {"current_price": 1691.97, "ma200": 1796.54, "price_asof": "2026-10-20 00:00:00"}},
