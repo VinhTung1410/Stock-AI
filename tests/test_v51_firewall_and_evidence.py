@@ -196,8 +196,9 @@ class TestPhase1EvidenceAndQuantMetrics:
 class TestSignalLifecyclePersistence:
     """Test suite for Supabase signal_lifecycle persistence functions."""
 
+    @patch("db_manager.can_write_to_database", return_value=True)
     @patch("db_manager.get_supabase_client")
-    def test_save_signal_lifecycle_success(self, mock_get_client):
+    def test_save_signal_lifecycle_success(self, mock_get_client, _mock_can_write):
         """Verify save_signal_lifecycle correctly structures the record."""
         mock_client = MagicMock()
         mock_table = MagicMock()
@@ -222,6 +223,7 @@ class TestSignalLifecyclePersistence:
         res = save_signal_lifecycle(signal_data)
         assert res is not None
         assert res["symbol"] == "FPT"
+        assert mock_get_client.called
         mock_client.table.assert_called_with("signal_lifecycle")
 
     @patch("db_manager.get_supabase_client")

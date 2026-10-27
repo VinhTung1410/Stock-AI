@@ -6,12 +6,56 @@
 
 ## 1. Nhật Ký Sự Kiện Định Giá (Valuation Event Log)
 
-| ID Sự kiện | Mã CP | Ngày phát hiện bot | Ngày công bố BCTC thật | Nguồn đã xác minh | Kỳ BCTC cũ | Kỳ BCTC mới | FV cũ (k) | FV mới (k) | Biến động FV (%) | MoS cũ | MoS mới | Quyết định | Loại sự kiện | Tác động Corporate Action | Các cửa sổ đo bị ảnh hưởng (theo ngày phát hiện) |
+| ID Sự kiện | Mã CP | Ngày phát hiện | Ngày công bố thật | Đã xác minh | Kỳ BCTC cũ | Kỳ BCTC mới | FV cũ (k) | FV mới (k) | ΔFV (%) | MoS cũ | MoS mới | Quyết định | Loại sự kiện | Timing Unknown | Cửa sổ bị ảnh hưởng |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| `VAL_EVT_VPB_20261020` | **VPB** | 2026-10-20 | **UNKNOWN** | `False` | `2026-Q2` | `2026-Q3` | **22.90** | **17.15** | **-25.11%** | -4.8% | -39.9% | REJECT | BCTC Q3/2026 | Cổ tức cổ phiếu 26.04% (GDKHQ 24/09/2026) | 14/10: [T+5, T+10, T+20]<br>15/10: [T+3, T+5, T+10, T+20]<br>16/10: [T+2, T+3, T+5, T+10, T+20]<br>19/10: [T+1, T+2, T+3, T+5, T+10, T+20] |
-| `VAL_EVT_TCB_20261021` | **TCB** | 2026-10-21 | **UNKNOWN** | `False` | `2026-Q2` | `2026-Q3` | **27.18** | **25.61** | **-5.78%** | -24.9% | -34.3% | REJECT | BCTC Q3/2026 | Không có | 14/10: [T+5, T+10, T+20]<br>15/10: [T+5, T+10, T+20]<br>16/10: [T+3, T+5, T+10, T+20]<br>19/10: [T+2, T+3, T+5, T+10, T+20]<br>20/10: [T+1, T+2, T+3, T+5, T+10, T+20] |
+| `VAL_EVT_VPB_20261020` | **VPB** | 2026-10-20 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | 22.90 | 17.15 | -25.11% | -4.8% | -39.9% | REJECT | BCTC Q3/2026 | `True` | 14/10: [T+5, T+10, T+20]<br>15/10: [T+3, T+5, T+10, T+20]<br>16/10: [T+2, T+3, T+5, T+10, T+20]<br>19/10: [T+1, T+2, T+3, T+5, T+10, T+20] |
+| `VAL_EVT_TCB_20261021` | **TCB** | 2026-10-21 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | 27.18 | 25.61 | -5.78% | -24.9% | -34.3% | REJECT | BCTC Q3/2026 | `True` | 14/10: [T+5, T+10, T+20]<br>15/10: [T+5, T+10, T+20]<br>16/10: [T+3, T+5, T+10, T+20]<br>19/10: [T+2, T+3, T+5, T+10, T+20]<br>20/10: [T+1, T+2, T+3, T+5, T+10, T+20] |
+| `VAL_EVT_ANV_20261022` | **ANV** | 2026-10-22 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | 14-20/10: [T+3..T+20]<br>21/10: [T+1..T+20] |
+| `VAL_EVT_FMC_20261022` | **FMC** | 2026-10-22 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | 14-20/10: [T+3..T+20]<br>21/10: [T+1..T+20] |
+| `VAL_EVT_SSI_20261022` | **SSI** | 2026-10-22 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | 14-20/10: [T+3..T+20]<br>21/10: [T+1..T+20] |
+| `VAL_EVT_VND_20261022` | **VND** | 2026-10-22 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | 14-20/10: [T+3..T+20]<br>21/10: [T+1..T+20] |
+| `VAL_EVT_SZC_20261022` | **SZC** | 2026-10-22 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | 14-20/10: [T+3..T+20]<br>21/10: [T+1..T+20] |
+| `VAL_EVT_MSN_20261023` | **MSN** | 2026-10-23 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | 16/10: [T+5]<br>19/10: [T+3, T+5]<br>20/10: [T+3, T+5]<br>21/10: [T+1, T+3, T+5]<br>22/10: [T+1, T+3, T+5] |
+| `VAL_EVT_KBC_20261014` | **KBC** | 2026-10-14 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | 27.47 | - | 6.8% | 0.8% | REJECT | BCTC Q3/2026 | `True` | 14/10: [T+1..T+20] (Đã nạp trước/tại T0=14/10, không gây cờ cắt ngang sau 14/10) |
+| `VAL_EVT_VIX_20261022` | **VIX** | 2026-10-22 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | Rổ Watchlist mở rộng (Ngoài rổ 55 mã Canonical Forward Returns) |
+| `VAL_EVT_VGC_20261026` | **VGC** | 2026-10-26 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | 19-20/10: [T+5]<br>21-22/10: [T+3, T+5]<br>23/10: [T+1, T+3, T+5] |
+| `VAL_EVT_CSV_20261026` | **CSV** | 2026-10-26 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | 19-20/10: [T+5]<br>21-22/10: [T+3, T+5]<br>23/10: [T+1, T+3, T+5] |
+| `VAL_EVT_TNG_20261026` | **TNG** | 2026-10-26 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | 19-20/10: [T+5]<br>21-22/10: [T+3, T+5]<br>23/10: [T+1, T+3, T+5] |
+| `VAL_EVT_HAH_20261026` | **HAH** | 2026-10-26 | UNKNOWN | `False` | 2026-Q2 | 2026-Q3 | - | - | - | - | - | REJECT | BCTC Q3/2026 | `True` | 19-20/10: [T+5]<br>21-22/10: [T+3, T+5]<br>23/10: [T+1, T+3, T+5] |
 
-> **Giả định vận hành cờ `crosses_*`:** Toàn bộ cờ `crosses_*` hiện đang được neo theo **ngày phát hiện của bot (`bctc_detected_date`)**. Nếu doanh nghiệp thực tế công bố sớm hơn mốc bot phát hiện, các cửa sổ có thể bị gắn nhầm; mọi kết quả theo dõi forward returns cần được đọc kèm giả định này cho tới khi có nguồn ngày công bố chính thức từ cổng HOSE.
+> **Nguyên Tắc Kiểm Toán Cờ Sự Kiện Định Giá & Giới Hạn Dữ Liệu (Audit Principles):**
+> 1. **Quan hệ $T_{\text{detected}} \ge T_{\text{published}}$ (Đảm bảo cờ không bật sớm):** Ngày phát hiện của hệ thống (`bctc_detected_date`) luôn trễ hơn hoặc bằng ngày công bố thực tế của doanh nghiệp (`bctc_published_date`). Do đó, cờ chỉ có thể bật muộn, **đảm bảo cờ không bao giờ bật sớm**. Hệ quả là số cửa sổ bị đánh dấu có xu hướng bảo thủ (under-flagged). Tuy nhiên, điều này **không xử lý được sự bất định trước/sau phiên** của ngày sự kiện nếu công bố diễn ra trong phiên giao dịch.
+> 2. **Cờ `event_timing_unknown` (Bật cho mọi sự kiện chỉ có ngày phát hiện):** Áp dụng cờ `event_timing_unknown = True` cho **toàn bộ 14 mã sự kiện** bao gồm: **VPB, TCB, ANV, FMC, SSI, VND, SZC, MSN, KBC, VIX, VGC, CSV, TNG, HAH** do chưa có mốc giờ công bố chính thức được kiểm toán từ cổng HOSE. Cờ boolean này giúp các nghiên cứu định lượng sau này chủ động phân tầng hoặc loại trừ các mã nhạy cảm với thời điểm công bố trong phiên.
+>    * Trong đó, 13 mã (trừ VIX) thuộc rổ 55 mã và có cột `event_timing_unknown = True` trong các tệp CSV tương ứng.
+>    * KBC phát hiện 14/10: có `event_timing_unknown = True` trên cả 9 tệp CSV, nhưng mọi cờ `crosses_*` đều bằng `False` vì sự kiện diễn ra tại hoặc trước $T_0$.
+> 3. **Quy tắc sự kiện cùng ngày ($effective\_date == T_0$):** Nếu ngày hiệu lực của BCTC trùng với ngày chốt phiên $T_0$, sự kiện được coi như đã phản ánh vào giá đóng cửa $Close_{T0}$ (EOD). Do đó, các cờ cắt ngang cửa sổ tương lai (`crosses_t1`, `crosses_t3`, `crosses_t5`) **hoàn toàn bằng `False`** (áp dụng cho KBC tại cohort 14/10 và MSN tại cohort 23/10).
+> 4. **Ranh giới rổ 55 mã chuẩn hóa:** Rổ Canonical Forward Returns đóng băng cố định 55 mã (VN30 + midcap thanh khoản cao). Các mã ngoài rổ như **VIX** dù được bot quét và nạp BCTC vào [data/valuation_events.csv](file:///c:/Users/Window/Desktop/Stock%20-%20learning/data/valuation_events.csv) nhưng không xuất hiện trong 9 tệp `canonical_forward_returns_*.csv`.
+> 5. **Điều tra nguyên nhân gốc mã thiếu snapshot ngày (VTP, NVL, VIC) & Cột `adv20_age_sessions`:**
+>    * **Nguyên nhân gốc rễ (Root Cause):** Trong phiên bản bot chạy production trên Render (commit `106e6c61af`), hàm `analyze_symbol()` tại Pha 0 gọi `reconcile_data()` kiểm tra chốt chặn an toàn P/B (`reconcile_valuation_sanity`). Cả 3 mã đều vi phạm dải an toàn ngành:
+>      * **NVL** (BĐS dân dụng, dải [0.6, 3.0]): BCTC báo cáo P/B = 0.59 < 0.6 -> Kích hoạt `RISK_TRAP`.
+>      * **VIC** (BĐS dân dụng, dải [0.6, 3.0]): BCTC báo cáo P/B = 4.19 > 3.0 -> Kích hoạt `RISK_TRAP`.
+>      * **VTP** (Logistics, dải [0.5, 5.0]): BCTC báo cáo P/B = 6.84 > 5.0 -> Kích hoạt `RISK_TRAP`.
+>    * Khi `gate_passed = False`, `analyze_symbol()` thực hiện return sớm (`CAUTION_TRAP`) trước khi gọi `_enrich_ret()`, dẫn đến dict trả về không chứa key `raw_price` và `raw_bctc`. Khi lệnh `save_raw_input_snapshot()` ghi xuống Supabase, payload nhận `None` và lưu `{}`. **Đây không phải lỗi đứt feed hay ánh xạ mã upstream, thị giá thực tế (`facts.price`) vẫn được ghi nhận chuẩn xác (VIC 209.0, NVL 10.75, VTP 47.35).**
+>    * **Tác động tới Gói (a) Replay 4×55:** Trong bộ snapshot thô 20 đến 23/10 (`data/raw_snapshots_*_canonical.json`), chỉ có 52 mã có `raw_price` mỗi ngày. Ba mã VTP, NVL, VIC được đánh dấu rõ và trong script replay `replay_220_canonical_real_raw.py`, các thông số kỹ thuật được hoàn nguyên từ giá khớp thực tế đã kiểm toán của production.
+>    * **Bổ sung cột `adv20_age_sessions` (Số phiên trễ giao dịch thực tế):**
+>      * Thay vì chỉ dùng boolean `adv20_is_fallback`, hệ thống bổ sung cột số nguyên `adv20_age_sessions` đo chính xác số phiên giao dịch cách biệt giữa `adv20_asof` và $T_0$.
+>      * **Nhóm $\le 19/10$ (Cũ có chủ đích):** Toàn bộ 55 mã dùng baseline 13/10; số phiên trễ lần lượt là 1 phiên (14/10), 2 phiên (15/10), 3 phiên (16/10), 4 phiên (19/10).
+>      * **Nhóm 20/10 – 23/10:** 52 mã có snapshot ngày đạt độ trễ **0 phiên** (`adv20_is_fallback = False`). Ba mã thiếu dữ liệu (VTP, NVL, VIC) fallback về 13/10 có độ trễ lần lượt là **5 phiên (20/10), 6 phiên (21/10), 7 phiên (22/10), 8 phiên (23/10)**.
+>      * **Nhóm 26/10:** 52 mã dùng snapshot 23/10 có độ trễ đúng **1 phiên giao dịch**; riêng 3 mã fallback về 13/10 có độ trễ đúng **9 phiên giao dịch** (trần test đặt ở 9 phiên).
+> 6. **Rút lại toàn bộ số liệu thống kê suy đoán trước đây:**
+>    * Hệ thống chính thức **RÚT LẠI HOÀN TOÀN** các số liệu bịa / lỗi văn bản trong các báo cáo sơ thảo trước (như chuỗi `1.39 / 1.28 / 310.50`, diễn giải "typo 0.64 tỷ").
+>    * Số liệu thực tế được tính toán và in trực tiếp từ tệp dữ liệu trên 52 mã có đủ cả 2 snapshot (20/10 so với 13/10):
+>      * **Min:** `0.6872x` ($\approx 0.69\text{x}$) — Mã **SSB** (37.29 tỷ so với 54.26 tỷ).
+>      * **P25:** `0.8624x`.
+>      * **Median:** `0.9838x`.
+>      * **Mean:** `1.0117x` ($\approx 1.01\text{x}$).
+>      * **P75:** `1.0858x`.
+>      * **Max:** `1.7205x` ($\approx 1.72\text{x}$) — Mã **CSV** (11.08 tỷ so với 6.44 tỷ).
+>      * **STK:** Luôn có ADV20 dao động từ `0.05` đến `0.08` tỷ VND (thực tế: 13/10 = 0.08 tỷ, 20/10 = 0.06 tỷ, 23/10 = 0.05 tỷ, tỷ lệ 20/10 vs 13/10 = 0.7500x), thanh khoản cực mỏng, không bao giờ có mức 0.64 tỷ.
+>      * **FMC:** 13/10 = 0.88 tỷ, 20/10 = 0.93 tỷ (1.0568x), 23/10 = 1.38 tỷ.
+>      * **GIL:** 13/10 = 1.18 tỷ, 20/10 = 0.89 tỷ (0.7542x), 23/10 = 1.07 tỷ.
+>      * **TCB:** 13/10 = 581.73 tỷ, 20/10 = 657.76 tỷ (1.1307x), 23/10 = 607.87 tỷ.
+>      * **FPT:** 13/10 = 335.62 tỷ, 20/10 = 285.08 tỷ (0.8494x), 23/10 = 324.17 tỷ.
 
 ## 2. Kiểm Toán Độc Lập Chuyên Sâu Tình Huống VPB (20/10/2026)
 

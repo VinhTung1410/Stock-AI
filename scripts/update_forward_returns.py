@@ -496,10 +496,17 @@ def _load_valuation_events_map() -> dict[str, dict[str, Any]]:
         for _, vrow in vdf.iterrows():
             s = str(vrow.get("symbol", "")).upper().strip()
             if s:
+                pub_raw = str(vrow.get("bctc_published_date", "")).strip()[:10]
+                pub_d = pub_raw if pub_raw not in ("nan", "UNKNOWN", "") else None
+                det_raw = str(vrow.get("bctc_detected_date", "")).strip()[:10]
+                det_d = det_raw if det_raw not in ("nan", "UNKNOWN", "") else None
+                effective_d = pub_d if pub_d else det_d
                 evt_map[s] = {
                     "event_id": vrow.get("event_id"),
-                    "bctc_published_date": str(vrow.get("bctc_published_date", "")).strip()[:10],
-                    "bctc_detected_date": str(vrow.get("bctc_detected_date", vrow.get("bctc_published_date", ""))).strip()[:10],
+                    "bctc_published_date": pub_d,
+                    "bctc_detected_date": det_d,
+                    "effective_date": effective_d,
+                    "event_timing_unknown": bool(vrow.get("event_timing_unknown", True)),
                     "event_date": str(vrow.get("event_date", "")).strip()[:10],
                     "event_type": vrow.get("event_type"),
                     "corporate_action": vrow.get("corporate_action"),
@@ -559,7 +566,10 @@ def _assemble_evaluation_row(rec: dict[str, Any], payload: dict[str, Any]) -> di
     val_map = _load_valuation_events_map()
     sym_evt = val_map.get(sym.upper().strip())
     bctc_pub_date = sym_evt.get("bctc_published_date") if sym_evt else None
-    bctc_det_date = sym_evt.get("bctc_detected_date", bctc_pub_date) if sym_evt else None
+    bctc_det_date = sym_evt.get("bctc_detected_date") if sym_evt else None
+    effective_date = sym_evt.get("effective_date") if sym_evt else None
+    if not effective_date:
+        effective_date = bctc_pub_date if (bctc_pub_date and str(bctc_pub_date).strip() not in ("nan", "UNKNOWN", "")) else bctc_det_date
 
     adv20_val = facts.get("adv20_value") or facts.get("adv20_billion")
     if adv20_val is None:
@@ -582,20 +592,20 @@ def _assemble_evaluation_row(rec: dict[str, Any], payload: dict[str, Any]) -> di
     crosses_t1 = False
     crosses_t3 = False
     crosses_t5 = False
-    if bctc_pub_date and t0_date:
+    if effective_date and t0_date:
         d1 = exit_dates.get(1)
         d3 = exit_dates.get(3)
         d5 = exit_dates.get(5)
         if d1:
-            crosses_t1 = bool(t0_date < bctc_pub_date <= d1)
+            crosses_t1 = bool(t0_date < effective_date <= d1)
         if d3:
-            crosses_t3 = bool(t0_date < bctc_pub_date <= d3)
+            crosses_t3 = bool(t0_date < effective_date <= d3)
         if d5:
-            crosses_t5 = bool(t0_date < bctc_pub_date <= d5)
+            crosses_t5 = bool(t0_date < effective_date <= d5)
 
     crosses_val_evt = False
-    if bctc_pub_date and max_matured_date and t0_date:
-        crosses_val_evt = bool(t0_date < bctc_pub_date <= max_matured_date)
+    if effective_date and max_matured_date and t0_date:
+        crosses_val_evt = bool(t0_date < effective_date <= max_matured_date)
 
     return {
         "decision_id": payload["decision_id"],
@@ -611,6 +621,9 @@ def _assemble_evaluation_row(rec: dict[str, Any], payload: dict[str, Any]) -> di
         "entry_date_t1": payload["entry_date_exec"],
         "open_t1": payload["open_t1"],
         "close_t1": payload["close_t1"],
+        "exit_date_t1": exit_dates.get(1),
+        "exit_date_t3": exit_dates.get(3),
+        "exit_date_t5": exit_dates.get(5),
         "close_t3": exit_prices.get(3),
         "close_t5": exit_prices.get(5),
         "vn_close_t0": payload.get("vn_close_t0"),
@@ -658,12 +671,15 @@ def _assemble_evaluation_row(rec: dict[str, Any], payload: dict[str, Any]) -> di
         "gap_exec_vs_signal_t5_pp": gap_t5_pp,
         "large_overnight_gap": large_gap,
         "adv20_value": round(float(adv20_val), 3) if adv20_val is not None else None,
+        "adv20_asof": "2026-10-13",
+        "adv20_is_fallback": True,
         "executable_size_ok": bool(adv20_val >= 2.0) if adv20_val is not None else False,
         "est_fee_tax_pct": EST_TRANSACTION_FEE_PCT,
         "crosses_t1": crosses_t1,
         "crosses_t3": crosses_t3,
         "crosses_t5": crosses_t5,
         "crosses_valuation_event": crosses_val_evt,
+        "event_timing_unknown": bool(sym_evt.get("event_timing_unknown", False)) if effective_date else False,
         "bctc_published_date": bctc_pub_date,
         "bctc_detected_date": bctc_det_date,
     }
@@ -884,6 +900,28 @@ def evaluate_date_batch(
     csv_path = f"canonical_forward_returns_{target_date.replace('-', '')}.csv"
     df.to_csv(csv_path, index=False)
     logging.info("Saved %d evaluation rows to %s", len(df), csv_path)
+
+    try:
+        from scripts.enrich_forward_returns_valuation_events import (
+            TARGET_DATES_HORIZONS,
+            TARGET_DATES_MAX_MATURED,
+            enrich_forward_returns_file,
+            load_all_snapshot_caches,
+            load_base_adv20_map,
+            load_valuation_events,
+        )
+
+        d_code = target_date.replace("-", "")
+        h_dates = TARGET_DATES_HORIZONS.get(d_code, {})
+        max_mat = TARGET_DATES_MAX_MATURED.get(d_code)
+        events_m = load_valuation_events()
+        base_adv = load_base_adv20_map()
+        snap_caches = load_all_snapshot_caches()
+        enrich_forward_returns_file(d_code, h_dates, max_mat, events_m, base_adv, snap_caches)
+        df = pd.read_csv(csv_path)
+    except Exception:
+        logging.exception("Failed to enrich canonical forward returns for %s", target_date)
+
     return df
 
 
@@ -963,6 +1001,66 @@ def update_all_decision_forward_returns(limit: int = 2000) -> int:
     return total_processed
 
 
+def sync_canonical_returns_to_supabase(df: pd.DataFrame, client: Any = None) -> int:
+    """Upsert evaluated canonical forward returns into Supabase decision_forward_returns table."""
+    if df.empty or "decision_id" not in df.columns:
+        return 0
+
+    if client is None:
+        client = get_supabase_client()
+    if not client:
+        logging.warning("Supabase client is not available for forward returns sync.")
+        return 0
+
+    rows: list[dict[str, Any]] = []
+    for _, r in df.iterrows():
+        dec_id = str(r.get("decision_id") or "").strip()
+        if not dec_id:
+            continue
+        snap_p = float(r.get("close_t0") or 0.0)
+
+        def _val(col_name: str) -> float | None:
+            v = r.get(col_name)
+            if pd.notna(v):
+                try:
+                    return float(v)
+                except (ValueError, TypeError):
+                    return None
+            return None
+
+        t1_val = _val("exec_t1_pct") if _val("exec_t1_pct") is not None else _val("signal_t1_pct")
+        t3_val = _val("exec_t3_pct") if _val("exec_t3_pct") is not None else _val("signal_t3_pct")
+        t5_val = _val("exec_t5_pct") if _val("exec_t5_pct") is not None else _val("signal_t5_pct")
+        vn_t5_val = _val("vn_exec_t5_pct") if _val("vn_exec_t5_pct") is not None else _val("vn_signal_t5_pct")
+
+        rows.append({
+            "decision_id": dec_id,
+            "symbol": str(r.get("symbol") or ""),
+            "snapshot_price": snap_p,
+            "t1_return_pct": t1_val,
+            "t3_return_pct": t3_val,
+            "t5_return_pct": t5_val,
+            "vnindex_t5_pct": vn_t5_val,
+        })
+
+    if not rows:
+        return 0
+
+    total_synced = 0
+    batch_size = 50
+    for i in range(0, len(rows), batch_size):
+        chunk = rows[i : i + batch_size]
+        try:
+            res = client.table("decision_forward_returns").upsert(chunk, on_conflict="decision_id").execute()
+            if res and res.data:
+                total_synced += len(res.data)
+        except Exception:
+            logging.exception("Error upserting batch %d to Supabase decision_forward_returns", i // batch_size)
+
+    logging.info("[✓] Đã đồng bộ %d/%d bản ghi forward returns lên Supabase cho cohort.", total_synced, len(rows))
+    return total_synced
+
+
 def print_date_summary(target_date: str, df: pd.DataFrame) -> None:
     """Print readable summary of forward returns for a specific date."""
     if df.empty:
@@ -1039,7 +1137,49 @@ def _print_sector_stratified_summary(df: pd.DataFrame) -> None:
         )
 
 
-def run_pipeline(target_dates: list[str] | None = None, sync_db: bool = True) -> None:
+def _discover_canonical_dates(client: Any = None) -> list[str]:
+    """Discover all canonical dates from local CSVs and Supabase DB."""
+    import glob
+
+    dates_set: set[str] = set()
+
+    # 1. Local decision_records_*.csv files
+    cutoff_code = CANONICAL_CUTOFF_DATE.replace("-", "")
+    for f in glob.glob("decision_records_*.csv"):
+        base = os.path.basename(f)
+        parts = base.replace(".csv", "").split("_")
+        if len(parts) >= 3 and parts[2].isdigit() and len(parts[2]) == 8 and parts[2] >= cutoff_code:
+            d_str = f"{parts[2][:4]}-{parts[2][4:6]}-{parts[2][6:]}"
+            dates_set.add(d_str)
+
+    # 2. Supabase DB if available (fetch newest first to avoid being truncated on old records)
+    if client:
+        try:
+            res = (
+                client.table("decision_records")
+                .select("created_at")
+                .gte("created_at", f"{CANONICAL_CUTOFF_DATE}T00:00:00")
+                .order("created_at", desc=True)
+                .limit(5000)
+                .execute()
+            )
+            for r in res.data or []:
+                if r.get("created_at"):
+                    dates_set.add(str(r["created_at"])[:10])
+        except Exception:
+            logging.exception("Failed to query dates from Supabase")
+
+    if not dates_set:
+        dates_set = {"2026-10-14", "2026-10-15"}
+
+    return sorted(list(dates_set))
+
+
+def run_pipeline(
+    target_dates: list[str] | None = None,
+    sync_db: bool = True,
+    up_to_date: str | None = None,
+) -> None:
     """Run full forward returns pipeline, export canonical CSVs, and update DB."""
     client = get_supabase_client()
     if not client:
@@ -1048,16 +1188,11 @@ def run_pipeline(target_dates: list[str] | None = None, sync_db: bool = True) ->
 
     # Determine dates to process
     if not target_dates:
-        res = (
-            client.table("decision_records")
-            .select("created_at")
-            .gte("created_at", f"{CANONICAL_CUTOFF_DATE}T00:00:00")
-            .order("created_at", desc=False)
-            .limit(5000)
-            .execute()
-        )
-        dates_raw = {str(r["created_at"])[:10] for r in (res.data or []) if r.get("created_at")}
-        target_dates = sorted(list(dates_raw))
+        target_dates = _discover_canonical_dates(client)
+
+    if up_to_date:
+        norm_up_to = _normalize_date(up_to_date)
+        target_dates = [d for d in target_dates if d <= norm_up_to]
 
     if not target_dates:
         target_dates = ["2026-10-14", "2026-10-15"]
@@ -1072,9 +1207,8 @@ def run_pipeline(target_dates: list[str] | None = None, sync_db: bool = True) ->
     for d in target_dates:
         df_d = evaluate_date_batch(d, series_map=series_map)
         print_date_summary(d, df_d)
-
-    if sync_db:
-        update_all_decision_forward_returns()
+        if sync_db and not df_d.empty:
+            sync_canonical_returns_to_supabase(df_d, client)
 
 
 def _normalize_date(date_str: str) -> str:
@@ -1099,6 +1233,7 @@ def main() -> None:
         help="Optional date(s) to evaluate (e.g. 2026-10-14 2026-10-15 or 20261014 20261015). If omitted, evaluates all canonical dates.",
     )
     parser.add_argument("--date", type=str, default=None, help="Specific date to evaluate (YYYY-MM-DD or YYYYMMDD)")
+    parser.add_argument("--up-to", type=str, default=None, help="Evaluate all canonical cohorts up to this date (inclusive)")
     parser.add_argument("--skip-db", action="store_true", help="Skip updating Supabase DB table")
     args = parser.parse_args()
 
@@ -1108,7 +1243,11 @@ def main() -> None:
     if args.dates:
         target_dates.extend([_normalize_date(d) for d in args.dates if not d.startswith("-")])
 
-    run_pipeline(target_dates=target_dates if target_dates else None, sync_db=not args.skip_db)
+    run_pipeline(
+        target_dates=target_dates if target_dates else None,
+        sync_db=not args.skip_db,
+        up_to_date=args.up_to,
+    )
 
 
 if __name__ == "__main__":

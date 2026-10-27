@@ -256,7 +256,70 @@ Mỗi tệp `canonical_forward_returns_YYYYMMDD.csv` lưu trữ đầy đủ cá
 | `excess_vs_universe_latest` | Float / Null | Lợi nhuận vượt mức so với Universe tại mốc đáo hạn mới nhất `latest_horizon` |
 | `excess_vs_sector_latest` | Float / Null | Lợi nhuận vượt mức so với Benchmark ngành Leave-One-Out tại mốc đáo hạn mới nhất `latest_horizon` |
 | `large_overnight_gap` | Boolean | $|\text{gap\_exec\_vs\_signal\_pp}| \ge 2,0$ |
+| `adv20_value` | Float | Giá trị khớp lệnh trung bình 20 phiên Point-in-Time (tỷ VND) |
+| `adv20_asof` | Date | Mốc thời gian của dữ liệu ADV20 ($\le T_0$) |
+| `adv20_age_sessions` | Integer | Số phiên giao dịch trễ thực tế giữa `adv20_asof` và $T_0$ |
+| `adv20_is_fallback` | Boolean | Cờ boolean đánh dấu dòng fallback về snapshot cũ hơn ($\text{adv20\_asof} \ne T_0$) |
+| `executable_size_ok` | Boolean | Cờ khả thi thực thi tổ chức ($\text{adv20\_value} \ge 2,0\text{ tỷ VND}$) |
 | `est_fee_tax_pct` | Float | Định mức phí thuế tham chiếu ($0,40\%$) |
+| `crosses_t1` | Boolean | Cờ cắt ngang sự kiện định giá trong cửa sổ $T+1$ |
+| `crosses_t3` | Boolean | Cờ cắt ngang sự kiện định giá trong cửa sổ $T+3$ |
+| `crosses_t5` | Boolean | Cờ cắt ngang sự kiện định giá trong cửa sổ $T+5$ |
+| `crosses_valuation_event` | Boolean | Cờ cắt ngang sự kiện định giá trong toàn bộ cửa sổ đã đáo hạn |
+| `event_timing_unknown` | Boolean | Cờ bất định thời điểm công bố trong phiên (True cho phép phân tầng/loại trừ) |
+| `event_offset_sessions` | Integer / Null | Độ lệch phiên giao dịch giữa ngày hiệu lực BCTC và $T_0$ ($0$ = cùng ngày, $+1$ = sát biên $T+1$, $> 1$ = trong cửa sổ, $< 0$ = quá khứ, Null = không có sự kiện) |
+| `bctc_published_date` | Date / Null | Ngày công bố BCTC chính thức (chờ xác minh HOSE; giữ nguyên rỗng/NaN) |
+| `bctc_detected_date` | Date / Null | Ngày bot ghi nhận BCTC mới ($T_{\text{detected}} \ge T_{\text{published}}$, đảm bảo cờ không bật sớm) |
+
+> **Quy Tắc Quản Trị Độ Tươi Dữ Liệu Thanh Khoản (ADV20 Freshness Audit):**
+> * Không có hiện tượng Lookahead Bias: $\text{adv20\_asof} \le T_0$ trên 100% mẫu quan sát.
+> * **Cột số nguyên `adv20_age_sessions`:** Phản ánh chính xác số phiên giao dịch cách biệt giữa `adv20_asof` và $T_0$, giúp phân biệt rạch ròi giữa "cũ có chủ đích do thiết kế baseline" với "cũ do thiếu dữ liệu snapshot".
+> * **Các cohort $\le 19/10$ (Cũ có chủ đích):** Toàn bộ 55 mã dùng baseline kỹ thuật 13/10. Độ trễ giao dịch lần lượt là 1 phiên (14/10), 2 phiên (15/10), 3 phiên (16/10), 4 phiên (19/10).
+> * **Các cohort 20/10 – 23/10:** 52/55 mã sử dụng snapshot EOD ngày $T_0$ (`adv20_age_sessions = 0`, `adv20_is_fallback = False`). Ba mã **VTP, NVL, VIC** (do return sớm tại Pha 0 khi vi phạm chốt chặn P/B guardrail nên không lưu `raw_price`) fallback về baseline 13/10 với độ trễ lần lượt là **5 phiên (20/10), 6 phiên (21/10), 7 phiên (22/10), 8 phiên (23/10)**.
+> * **Cohort 26/10:** 52/55 mã sử dụng snapshot gần nhất (23/10) với độ trễ đúng **1 phiên giao dịch** (`adv20_age_sessions = 1`). Ba mã VTP, NVL, VIC fallback về 13/10 có độ trễ đúng **9 phiên giao dịch** (`adv20_age_sessions = 9`).
+> * **Ngưỡng trần chung & Trạng thái thanh khoản không rõ (Unknown Liquidity):** Áp dụng trần trễ tối đa 4 phiên cho dữ liệu thanh khoản hợp lệ. Đối với 3 mã VTP, NVL, VIC trong kỷ nguyên snapshot có độ trễ từ 5 đến 9 phiên, cờ `executable_size_ok` được thiết lập về giá trị **`Null` (không rõ)** thay vì giả định True/False.
+> * Bộ 3 mã thanh khoản mỏng cố định trên toàn bộ 9 cohort gồm **FMC, GIL, STK** ($\text{adv20\_value} < 2,0\text{ tỷ VND}$), tự động nhận cờ `executable_size_ok = False`.
+
+### 8.1. Quy Luật Suy Giảm Số Cột Số Liệu Đối Chiếu & Bảng 3 Số Kiểm Toán (Baseline vs Compared vs Newly Matured)
+
+Khi thực hiện đối chiếu hồi quy (Regression Testing) hoặc kiểm toán chênh lệch (Zero-Diff Audit), số lượng cột số liệu số thực (numeric return columns) được điền đầy đủ suy giảm theo đúng cấu trúc đáo hạn thời gian (Maturity Horizons) của từng cohort. Bảng 3 số định lượng minh bạch cho toàn bộ 9 tệp:
+
+| Nhóm Cohort ($T_0$) | (1) Cột có trong Baseline (`878f706`) | (2) Cột đã So Khớp Zero-Diff | (3) Cột Mới Đáo Hạn Hôm Nay (No Baseline) | Chi Tiết Cột Mới & Neo Kiểm Toán Ngoài |
+| :---: | :---: | :---: | :---: | :--- |
+| **14/10** | **51** | **51** | **0** | Đã hoàn tất $T+1, T+3, T+5$ (đóng băng vĩnh viễn) |
+| **15/10** | **51** | **51** | **0** | Đã hoàn tất $T+1, T+3, T+5$ (đóng băng vĩnh viễn) |
+| **16/10** | **51** | **51** | **0** | Đã hoàn tất $T+1, T+3, T+5$ (đóng băng vĩnh viễn) |
+| **19/10** | **36** | **36** | **15** | Đáo hạn kỳ $T+5$ (`close_t5`, `vn_close_t5`, returns, excess); Neo ngoài khớp 100% $Close_{26/10}$ |
+| **20/10** | **36** | **36** | **0** | $T+1, T+3$ đã so khớp; kỳ $T+5$ sẽ đáo hạn ngày 27/10 |
+| **21/10** | **21** | **21** | **15** | Đáo hạn kỳ $T+3$ (`close_t3`, `vn_close_t3`, returns, excess); Neo ngoài khớp 100% $Close_{26/10}$ |
+| **22/10** | **21** | **21** | **0** | $T+1$ đã so khớp; kỳ $T+3$ sẽ đáo hạn ngày 27/10 |
+| **23/10** | **0** *(Tệp mới)* | **0** *(Tệp mới)* | **21** | Đáo hạn kỳ $T+1$ (`close_t1`, `open_t1`, returns, excess); Neo ngoài khớp 100% $Close_{26/10}$ |
+| **26/10** | **0** *(Tệp mới)* | **0** *(Tệp mới)* | **6** | Vừa tạo tại $T_0$ (chỉ có giá tham chiếu $T_0$); Neo ngoài khớp 100% $Close_{26/10}$ |
+   * Điền đủ 100% các cột giá (`close_t0..t5`, `open_t1`, `vn_close_t0..t5`), các cặp tỷ suất sinh lời (`signal_t1..t5`, `exec_t1..t5`), vượt mức (`excess_*`), trần sàn (`locked_*`), và độ lệch (`gap_*`).
+2. **Cohorts Đáo Hạn Đến $T+3$ (Pending $T+5$ — 28 cột số liệu):**
+   * Áp dụng khi cohort mới chỉ hoàn tất $T+1$ và $T+3$, trong khi kỳ $T+5$ chưa đến ngày đóng cửa (ví dụ: cohort 19/10 và 20/10 tại thời điểm chốt phiên 23/10).
+   * Toàn bộ 8 cột thuộc kỳ $T+5$ (`close_t5`, `vn_close_t5`, `signal_t5_pct`, `exec_t5_pct`, `excess_signal_t5_pct`, `excess_exec_t5_pct`, `universe_exec_t5_pct`, `excess_vs_universe_t5_pct`) đều ở trạng thái `NaN` hợp lệ $\implies 36 - 8 = \mathbf{28\text{ cột}}$.
+3. **Cohorts Đáo Hạn Đến $T+1$ (Pending $T+3, T+5$ — 21 cột số liệu):**
+   * Áp dụng khi cohort mới chỉ hoàn tất phiên $T+1$, còn $T+3$ và $T+5$ đang trong tương lai (ví dụ: cohort 21/10, 22/10, 23/10).
+   * Thêm 7 cột thuộc kỳ $T+3$ ở trạng thái `NaN` $\implies 28 - 7 = \mathbf{21\text{ cột}}$.
+4. **Cohorts Vừa Tạo Mới Tại $T_0$ (Unmatured — 0 cột lợi nhuận tương lai):**
+   * Áp dụng cho cohort phiên hôm nay (26/10) khi các mốc thực thi $T+1..T+5$ chưa diễn ra; chỉ có các cột tham chiếu $T_0$.
+
+> **Nguyên tắc đối chiếu Zero-Diff:** Phép so sánh chênh lệch tuyệt đối 0.000000 chỉ được kích hoạt trên **tập giao của các cột đã đáo hạn thực sự** (`notna()`) tại thời điểm tạo baseline. Việc một cột mang giá trị `NaN` do chưa đến hạn thanh toán là hành vi định lượng chuẩn tắc, không phải lỗi thiếu hụt dữ liệu.
+
+### 8.2. Ba Phiên Bản Lọc Nhiễu BCTC Khi Phân Tích Định Lượng (Three-Tier Event Purging Framework)
+
+Để tránh hiện tượng thiên kiến chọn mẫu (selection bias) hoặc suy diễn sau khi thấy dữ liệu (data snooping), ba phiên bản phân tích hiệu suất được đóng băng định nghĩa trước:
+
+1. **Phiên bản 1 (Mẫu Cơ Sở — Unfiltered Baseline):**
+   * Giữ nguyên toàn bộ các mã thuộc phân lớp WATCH và REJECT trong Universe 55 mã.
+   * Không loại trừ bất kỳ sự kiện BCTC nào. Đây là bức tranh thô phản ánh trung thực toàn bộ môi trường thị trường thực tế.
+2. **Phiên bản 2 (Mẫu Loại Sự Kiện Trong Cửa Sổ — Window-Purged / Primary Clean Sample):**
+   * **Quy tắc:** Loại bỏ toàn bộ các mã có `crosses_tN == True` ứng với kỳ hạn $T+N$ đang khảo sát ($N \in \{1, 3, 5\}$).
+   * **Bản chất:** Đây là phép loại trừ chính của phương pháp luận kiểm định Alpha (như trường hợp loại VPB và TCB mang lại hiệu số $-2,53\text{ pp}$ ở $T+5$ nhóm 19/10). Tất cả các mã phát sinh sự kiện BCTC trong bất kỳ phiên nào thuộc cửa sổ giữ vị thế $[T_0+1, T_0+N]$ (dù offset là $+1, +2, +3, +4$ hay $+5$) đều bị loại bỏ nhằm triệt tiêu nhiễu giật giá tức thời từ tin tức cơ bản.
+3. **Phiên bản 3 (Mẫu Kiểm Tra Giả Định Sát Biên — Border-Sensitivity / Conservative Sample):**
+   * **Quy tắc:** Từ Phiên bản 2, loại thêm toàn bộ các mã có `event_offset_sessions in [0, 1]`.
+   * **Bản chất:** Kiểm định giả định biên: "Sự kiện công bố cùng ngày $T_0$ (`event_offset_sessions == 0`, ví dụ KBC nhóm 14/10, MSN nhóm 23/10) coi như đã được thị trường hấp thụ hoàn toàn vào giá đóng cửa $Close_{T0}$". Bằng cách loại bỏ cả nhóm sát biên này, ta chứng minh được kết luận định lượng về chênh lệch lợi nhuận giữa WATCH và REJECT có vững chắc (robust) và độc lập với độ trễ ghi nhận của bot hay không.
 
 ---
 

@@ -6,15 +6,15 @@
     "note": "",
     "_nav": 1333.1999999999998,
     "sector": "Công nghệ / AI",
-    "weight": 0.9059219243706044
+    "weight": 0.14223530917936242
   },
   {
-    "symbol": "MSB",
-    "volume": 13,
-    "cost_price": 10.65,
+    "symbol": "MBB",
+    "volume": 400,
+    "cost_price": 20.1,
     "note": "",
-    "_nav": 138.45000000000002,
+    "_nav": 8040.000000000001,
     "sector": "Ngân hàng",
-    "weight": 0.0940780756293956
+    "weight": 0.8577646908206376
   }
 ]
