@@ -14,6 +14,7 @@ import glob
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -42,6 +43,7 @@ COL_SYMBOL = "symbol"
 GATE_TECH = "TECH_CONFIRMATION"
 GATE_RISK = "RISK_TRAP"
 EVENT_WL_ADDED = "WATCHLIST_ADDED"
+DIGEST_HORIZONS = (1, 3, 5, 10, 20)
 
 
 def get_default_vn_date() -> str:
@@ -174,14 +176,59 @@ def _extract_watchlist_additions(lc_df: pd.DataFrame) -> list[str]:
     return sorted(list(wl_events[COL_SYMBOL].unique())) if not wl_events.empty else []
 
 
+def _get_trading_calendar() -> list[str]:
+    """Extract sorted list of unique canonical trading dates (YYYY-MM-DD) from forward return CSVs."""
+    dates: set[str] = set()
+    for f in glob.glob("canonical_forward_returns_*.csv"):
+        m = re.search(r"\d{8}", f)
+        if m:
+            d_str = m.group(0)
+            formatted = f"{d_str[:4]}-{d_str[4:6]}-{d_str[6:]}"
+            dates.add(formatted)
+    return sorted(list(dates))
+
+
+def _load_target_date_prices(target_date: str) -> dict[str, float]:
+    """Load symbol to close/price map for target_date if available."""
+    d_code = target_date.replace("-", "")
+    fwd_path = f"canonical_forward_returns_{d_code}.csv"
+    if os.path.exists(fwd_path):
+        try:
+            tdf = pd.read_csv(fwd_path)
+            if COL_SYMBOL in tdf.columns and "close_t0" in tdf.columns:
+                return dict(zip(tdf[COL_SYMBOL], tdf["close_t0"].astype(float)))
+        except Exception:
+            LOGGER.exception("Lỗi khi đọc giá tham chiếu từ %s", fwd_path)
+
+    dec_path = f"decision_records_{d_code}.csv"
+    if os.path.exists(dec_path):
+        try:
+            ddf = pd.read_csv(dec_path)
+            if COL_SYMBOL in ddf.columns and "price" in ddf.columns:
+                return dict(zip(ddf[COL_SYMBOL], ddf["price"].astype(float)))
+        except Exception:
+            LOGGER.exception("Lỗi khi đọc giá tham chiếu từ %s", dec_path)
+    return {}
+
+
+def _horizon_sort_key(item: dict[str, Any]) -> int:
+    """Sort key helper to order horizons numerically: T+1, T+3, T+5, T+10, T+20."""
+    h_str = str(item.get("horizon", "T+0")).replace("T+", "").strip()
+    try:
+        return int(h_str)
+    except ValueError:
+        return 999
+
+
 def _is_horizon_maturing_today(
     fwd_df: pd.DataFrame,
     horizon_num: int,
     target_date: str,
     vn_close_today: float | None,
     expected_exit_date: str | None,
+    trading_calendar: list[str] | None = None,
 ) -> bool:
-    """Check if a specific horizon (1, 3, 5) matured on target_date."""
+    """Check if a specific horizon (1, 3, 5, 10, 20) matured on target_date."""
     if not bool(fwd_df.get(f"matured_t{horizon_num}", pd.Series([False])).iloc[0]):
         return False
 
@@ -206,10 +253,25 @@ def _is_horizon_maturing_today(
         if close_val > 0 and abs(close_val - vn_close_today) < 0.05:
             return True
 
+    # 4. Trading calendar offset match (for T+10, T+20 when exit date column is omitted)
+    if trading_calendar and "entry_date_t0" in fwd_df.columns:
+        t0 = str(fwd_df["entry_date_t0"].iloc[0])
+        if t0 in trading_calendar and target_date in trading_calendar:
+            idx_t0 = trading_calendar.index(t0)
+            idx_tgt = trading_calendar.index(target_date)
+            if idx_tgt - idx_t0 == horizon_num:
+                return True
+
     return False
 
 
-def _inspect_cohort_maturity(fwd_df: pd.DataFrame, target_date: str, vn_close_today: float | None) -> list[dict[str, Any]]:
+def _inspect_cohort_maturity(
+    fwd_df: pd.DataFrame,
+    target_date: str,
+    vn_close_today: float | None,
+    calendar: list[str] | None = None,
+    price_map: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
     """Inspect forward returns dataframe to detect which horizons matured on target_date."""
     results: list[dict[str, Any]] = []
     if fwd_df.empty or "entry_date_t0" not in fwd_df.columns:
@@ -226,28 +288,67 @@ def _inspect_cohort_maturity(fwd_df: pd.DataFrame, target_date: str, vn_close_to
     except Exception:
         pass
 
-    for h in (1, 3, 5):
+    for h in DIGEST_HORIZONS:
         exp_d = expected_h_dates.get(h)
-        if _is_horizon_maturing_today(fwd_df, h, target_date, vn_close_today, exp_d):
-            results.append(_calc_cohort_horizon_stats(fwd_df, t0_date, f"T+{h}", f"exec_t{h}_pct", f"excess_vs_universe_t{h}_pct"))
+        if _is_horizon_maturing_today(fwd_df, h, target_date, vn_close_today, exp_d, trading_calendar=calendar):
+            results.append(_calc_cohort_horizon_stats(
+                fwd_df,
+                t0_date,
+                f"T+{h}",
+                f"exec_t{h}_pct",
+                f"excess_vs_universe_t{h}_pct",
+                price_map=price_map,
+            ))
 
     return results
 
 
-def _calc_cohort_horizon_stats(fwd_df: pd.DataFrame, t0_date: str, horizon: str, exec_col: str, excess_col: str) -> dict[str, Any]:
+def _calc_cohort_horizon_stats(
+    fwd_df: pd.DataFrame,
+    t0_date: str,
+    horizon: str,
+    exec_col: str,
+    excess_col: str,
+    price_map: dict[str, float] | None = None,
+) -> dict[str, Any]:
     """Calculate average executable return and universe excess return for a cohort horizon."""
-    watch_sub = fwd_df[fwd_df[COL_DECISION] == DEC_WATCH]
-    rej_sub = fwd_df[fwd_df[COL_DECISION] == DEC_REJECT]
+    watch_mask = fwd_df[COL_DECISION] == DEC_WATCH
+    rej_mask = fwd_df[COL_DECISION] == DEC_REJECT
+
+    has_exec = exec_col in fwd_df.columns and fwd_df[exec_col].notna().any()
+
+    if has_exec:
+        w_exec = float(fwd_df.loc[watch_mask, exec_col].mean()) if watch_mask.any() else None
+        w_excess = float(fwd_df.loc[watch_mask, excess_col].mean()) if watch_mask.any() and excess_col in fwd_df else None
+        r_exec = float(fwd_df.loc[rej_mask, exec_col].mean()) if rej_mask.any() else None
+        r_excess = float(fwd_df.loc[rej_mask, excess_col].mean()) if rej_mask.any() and excess_col in fwd_df else None
+    elif price_map and "open_t1" in fwd_df.columns:
+        curr_p = fwd_df[COL_SYMBOL].map(price_map)
+        open_p = fwd_df["open_t1"]
+        valid = open_p.notna() & curr_p.notna() & (open_p > 0)
+        if valid.any():
+            exec_s = ((curr_p - open_p) / open_p) * 100.0
+            u_mean = float(exec_s[valid].mean())
+            excess_s = exec_s - u_mean
+
+            w_exec = float(exec_s[watch_mask & valid].mean()) if (watch_mask & valid).any() else None
+            w_excess = float(excess_s[watch_mask & valid].mean()) if (watch_mask & valid).any() else None
+            r_exec = float(exec_s[rej_mask & valid].mean()) if (rej_mask & valid).any() else None
+            r_excess = float(excess_s[rej_mask & valid].mean()) if (rej_mask & valid).any() else None
+        else:
+            w_exec, w_excess, r_exec, r_excess = None, None, None, None
+    else:
+        w_exec, w_excess, r_exec, r_excess = None, None, None, None
 
     return {
         "cohort_t0": t0_date,
         "horizon": horizon,
-        "watch_n": len(watch_sub),
-        "watch_exec": float(watch_sub[exec_col].mean()) if not watch_sub.empty and exec_col in watch_sub else None,
-        "watch_excess": float(watch_sub[excess_col].mean()) if not watch_sub.empty and excess_col in watch_sub else None,
-        "rej_n": len(rej_sub),
-        "rej_exec": float(rej_sub[exec_col].mean()) if not rej_sub.empty and exec_col in rej_sub else None,
-        "rej_excess": float(rej_sub[excess_col].mean()) if not rej_sub.empty and excess_col in rej_sub else None,
+        "watch_n": int(watch_mask.sum()),
+        "watch_exec": w_exec,
+        "watch_excess": w_excess,
+        "rej_n": int(rej_mask.sum()),
+        "rej_exec": r_exec,
+        "rej_excess": r_excess,
     }
 
 
@@ -255,17 +356,19 @@ def _find_maturing_cohorts(target_date: str, vn_close_today: float | None) -> li
     """Scan all canonical forward return files and find horizons maturing today."""
     fwd_files = sorted(glob.glob("canonical_forward_returns_*.csv"))
     cohort_stats: list[dict[str, Any]] = []
+    calendar = _get_trading_calendar()
+    price_map = _load_target_date_prices(target_date)
 
     for fpath in fwd_files:
         try:
             df = pd.read_csv(fpath)
-            stats = _inspect_cohort_maturity(df, target_date, vn_close_today)
+            stats = _inspect_cohort_maturity(df, target_date, vn_close_today, calendar=calendar, price_map=price_map)
             cohort_stats.extend(stats)
         except Exception:
             LOGGER.exception("Lỗi khi đọc file forward returns: %s", fpath)
 
-    # Sort so T+1 comes first, then T+3, then T+5
-    cohort_stats.sort(key=lambda x: x.get("horizon", ""))
+    # Sort numerically so T+1 comes first, then T+3, T+5, T+10, T+20
+    cohort_stats.sort(key=_horizon_sort_key)
     return cohort_stats
 
 
