@@ -93,3 +93,23 @@ Tất cả các điều kiện sau phải đồng thời thỏa mãn trong code 
 * **Tách riêng Giai đoạn 2 — Kiểm thử Cổng Regime / `BUY`:**
   * Do `BUY = 0` toàn bộ 22 phiên đầu, 30 phiên này chỉ kiểm định được năng lực phân hạng `WATCH vs REJECT` và trạng thái phòng vệ `Cash (0%)` trong `DOWNTREND`.
   * Sau khi đóng sổ phiên 30, thiết kế riêng một thử nghiệm **Shadow / Paper-trade Cổng `BUY`** (ví dụ kiểm tra phản thực tế các ngưỡng gần `MA200` như `-2%`, `-1%`, `0%`, hoặc xác nhận độ rộng thị trường / `MA20`) mà không làm nhiễu dữ liệu kiểm toán của bản `v15.0_frozen_20261013`.
+
+---
+
+## 5. Addendum: Mối quan hệ giữa Mốc 30 Phiên (v1.1) và Khung Phản nghiệm 60 Phiên (Protocol Gốc)
+
+Nhằm đảm bảo tính minh bạch khoa học tuyệt đối và tránh tranh luận "kết luận chính thức là ở phiên 30 hay phiên 60":
+
+1. **Phán quyết Khóa Phiên 30 (`2026-11-24` / `2026-12-01`):**
+   * Mốc 30 phiên là **kiểm tra chính thức với phán quyết (verdict) đã đóng băng** cho khung kiểm toán v1.1 (đánh giá trên kỳ hạn $T+5$ với 5 chuỗi quan sát không chồng lấn).
+   * Tiêu chí và các ngưỡng số học tại mốc này là bất biến, tuyệt đối **không thay đổi hay di chuyển cột gôn**.
+   * Nếu kết quả phiên 30 trả về `FAIL / INCONCLUSIVE`, nó mang ý nghĩa chuẩn xác là: *"Hệ thống không chứng minh được edge vượt ngưỡng chi phí trong phạm vi 30 phiên"*. Phán quyết này không đóng cửa việc thu thập dữ liệu tiếp theo.
+
+2. **Khung Phản nghiệm Mở rộng 60 Phiên (Protocol Gốc):**
+   * Kỳ 60 phiên trong protocol gốc là khung phản nghiệm dài hạn hơn, có mục tiêu chính là tích lũy đủ cỡ mẫu độc lập cho các kỳ hạn dài hơn ($T+10$ và $T+20$) — vốn không đủ dữ liệu để kết luận tại mốc phiên 30.
+   * Việc chạy tiếp từ phiên 31 đến phiên 60 diễn ra trên cùng một nền tảng đóng băng `v15.0_frozen_20261013` (cùng một epoch, không reset).
+   * **Quy tắc Bất khả Hồi tố (No-Retroactive Overwrite):** Kỳ 60 phiên sẽ có một báo cáo kiểm toán độc lập riêng. Kết quả tại phiên 60 **tuyệt đối không được dùng để lật ngược hay viết lại verdict của phiên 30**. Nếu phiên 60 cho kết quả khác, nó được ghi nhận như một phát hiện nghiên cứu mới của một chân trời thời gian rộng hơn, không thay thế phán quyết phiên 30.
+
+3. **Ghi chú về Quy tắc Dừng 1–3 trong Protocol Gốc:**
+   * *Quy tắc sụt giảm 15% (Drawdown):* Khi `BUY = 0` trong suốt Downtrend, danh mục giữ $100\%$ Tiền mặt (lợi suất $0.00\%$), do đó quy tắc sụt giảm danh mục $15\%$ gần như không thể kích hoạt trong Giai đoạn 1.
+   * *Quy tắc tê liệt 45 phiên:* Việc không phát sinh lệnh mua (`BUY = 0`) suốt 30–45 phiên là hệ quả cấu trúc dự kiến của cổng `GATE_MACRO_REGIME` khi VN-Index nằm dưới `MA200`, không phải sự cố tê liệt hệ thống. Quy tắc này chỉ mang ý nghĩa vận hành đối soát hoặc khi Giai đoạn 2 chạy thử nghiệm giải ngân.

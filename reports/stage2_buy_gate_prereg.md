@@ -72,6 +72,7 @@ Qua phân tích 93 bản ghi có `conviction >= 70` trong 22 phiên (`14/10` →
 * **Định nghĩa Tín hiệu Độc lập:** Một tín hiệu `SHADOW_BUY` được coi là độc lập nếu thỏa mãn quy tắc làm nguội **5 phiên liên tiếp** (`cooldown >= 5` phiên giao dịch) đối với cùng một mã chứng khoán. Các lượt kích hoạt cùng mã trong vòng 5 phiên kế tiếp chỉ được tính là tái xác nhận vị thế, không tính tăng cỡ mẫu $N$.
 * **Số tín hiệu tối thiểu:** Tối thiểu **`20` tín hiệu `SHADOW_BUY` độc lập** đã đáo hạn đủ $T+5$ và $T+10$ cho mỗi nhánh được đánh giá.
 * **Quy tắc Xử lý Thiếu Mẫu (Sample Scarcity Handling):**
+  * **Đồng hồ Thời gian Độc lập:** Quy tắc thời gian '30 phiên mới và gia hạn tối đa 60 phiên' của Giai đoạn 2 là một **đồng hồ đo độc lập hoàn toàn**, bắt đầu đếm $T=1$ kể từ ngày chính thức kích hoạt Giai đoạn 2 (sau khi có báo cáo đóng sổ chính thức của Giai đoạn 1). Tuyệt đối **không nhầm lẫn hay gộp chung** với mốc 30 phiên hoặc kỳ phản nghiệm 60 phiên của Giai đoạn 1.
   * Giai đoạn 2 chạy tối thiểu **30 phiên giao dịch mới**.
   * Nếu sau 30 phiên, số tín hiệu độc lập của một nhánh đạt `< 20`, thời gian thu thập dữ liệu được tự động gia hạn tối đa tới **60 phiên** (theo chuẩn `MIN_SHADOW_SESSIONS = 60` trong `scripts/evaluate_shadow_graduation.py`).
   * Nếu sau 60 phiên vẫn **`< 20` tín hiệu độc lập**, nhánh đó được phân loại chính thức vào trạng thái: **`INSUFFICIENT_SAMPLE` (Hệ thống quá khắt khe / Thiếu mẫu thống kê trong pha suy thoái)**. Đây là một kết quả nghiên cứu hợp lệ, tuyệt đối không cưỡng ép hạ chuẩn để gom thêm tín hiệu.
