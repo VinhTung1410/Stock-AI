@@ -1,5 +1,5 @@
 {
-  "snooping_count": 91,
+  "snooping_count": 93,
   "history": [
     {
       "task_id": "U1",
@@ -645,12 +645,28 @@
       "timestamp": "2026-11-12T15:30:00.000000+00:00"
     },
     {
-      "task_id": "S5_GATE_AUDIT_COOLDOWN",
-      "description": "S5: Khám phá 93 bản ghi conviction >= 70, phân tách 43 chuẩn nội tại vs 50 kẹt MA100, mô phỏng cooldown 5 phiên và lợi suất Exec T+5",
+      "task_id": "S5_GATE_AUDIT_SPLIT",
+      "description": "S5: Khám phá 93 bản ghi conviction >= 70, phân tách 43 chuẩn nội tại vs 50 kẹt MA100/RSI",
       "before": 90,
       "after": 91,
       "type": "khám phá",
       "timestamp": "2026-11-12T21:45:00.000000+00:00"
+    },
+    {
+      "task_id": "S6_RETURN_DESCRIPTIVE",
+      "description": "S6: Đo lường lợi suất mô tả Exec T+5 của nhóm 43 bản ghi (+0.02%) vs nhóm WATCH còn lại (+0.84%)",
+      "before": 91,
+      "after": 92,
+      "type": "khám phá",
+      "timestamp": "2026-11-12T22:00:00.000000+00:00"
+    },
+    {
+      "task_id": "S7_COOLDOWN_SECTOR",
+      "description": "S7: Mô phỏng quy tắc giãn cách cooldown 5 phiên trên 43 bản ghi (thu hẹp còn 16 tín hiệu độc lập) và phát hiện độ tập trung ngành Ngân hàng 14/16 (87.5%)",
+      "before": 92,
+      "after": 93,
+      "type": "khám phá",
+      "timestamp": "2026-11-12T22:15:00.000000+00:00"
     }
   ]
 }

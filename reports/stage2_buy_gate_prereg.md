@@ -8,10 +8,10 @@
 
 ## 1. Công bố Giả thuyết Khám phá Sau Xem Dữ liệu (Post-Hoc Disclosure)
 
-> [!WARNING] Cảnh báo Phương pháp luận & Đếm Thử nghiệm (Snooping Counter #91)
+> [!WARNING] Cảnh báo Phương pháp luận & Đếm Thử nghiệm (Snooping Counter #93)
 > * **Nguồn gốc giả thuyết:** Ý tưởng thiết lập các nhánh thử nghiệm `SHADOW_BUY` xuất phát từ quan sát thực nghiệm khám phá trên **22 phiên giao dịch** (`14/10/2026` → `12/11/2026`) của Giai đoạn 1.
 > * **Tính chất trong mẫu (In-Sample):** 22 phiên này đóng vai trò tập dữ liệu khám phá (exploratory dataset) dùng để hình thành giả thuyết (hypothesis generation). Tuyệt đối **không được trích dẫn** dữ liệu của 22 phiên này như bằng chứng kiểm định ngoài mẫu (out-of-sample validation).
-> * **Kiểm toán Snooping:** Phân tích này đã được ghi nhận vào `data/snooping_counter.json` (mục `S5_GATE_AUDIT_COOLDOWN`, đưa tổng số lần kiểm toán/snooping lên **91**). Mọi kết luận khoa học về Giai đoạn 2 chỉ được rút ra từ các phiên giao dịch phát sinh hoàn toàn mới sau ngày kích hoạt.
+> * **Kiểm toán Snooping:** Chuỗi phân tích này đã được ghi nhận chi tiết thành từng bước riêng biệt vào `data/snooping_counter.json` (từ `S1_SPLIT_23OCT` đến `S7_COOLDOWN_SECTOR`, đưa tổng số lần kiểm toán/snooping từ 86 lên **93**). Mọi kết luận khoa học về Giai đoạn 2 chỉ được rút ra từ các phiên giao dịch phát sinh hoàn toàn mới sau ngày kích hoạt.
 
 ---
 
@@ -61,7 +61,8 @@ Qua phân tích 93 bản ghi có `conviction >= 70` trong 22 phiên (`14/10` →
 3. **Hiệu suất Thực nghiệm Mô tả (Chưa qua kiểm chứng alpha):**
    * Lợi suất khớp lệnh trung bình $T+5$ (`Exec T+5`) của 43 bản ghi này chỉ đạt **`+0.02%`** (trung vị `0.00%`).
    * Con số này **thấp hơn nhiều** so với chi phí giao dịch 2 chiều `0.40%` (lợi suất ròng âm `-0.38%`).
-   * Trong khi đó, phần còn lại của rổ WATCH (những mã trượt kỹ thuật $P < MA100$) lại có lợi suất trung bình `+0.84%` nhờ nhịp nảy kỹ thuật từ vùng quá bán của nhóm BĐS dân dụng.
+   * Trong khi đó, phần còn lại của rổ WATCH (những mã trượt kỹ thuật $P < MA100$ hoặc $RSI < 45$) có lợi suất trung bình `+0.84%` nhờ nhịp nảy kỹ thuật mạnh từ vùng quá bán của nhóm BĐS dân dụng.
+   * **Cảnh báo Diễn giải Thực nghiệm:** Sự chênh lệch giữa nhóm WATCH còn lại (`+0.84%`) và nhóm 43 lượt (`+0.02%`) xuất phát từ đặc tính bất đối xứng độ biến động trong pha Downtrend: nhóm BĐS dân dụng (Beta cao, sụt giảm sâu trước đó) nảy mạnh kỹ thuật trong nửa sau mẫu, trong khi nhóm 43 lượt chủ yếu là Ngân hàng (Beta thấp, dao động hẹp quanh nền tích lũy). Đây là hiện tượng phân kỳ ngành, tuyệt đối **không được diễn giải theo hướng quy kết nguyên nhân rằng 'cổng kỹ thuật làm hại hiệu suất'**.
    * **Kết luận khoa học:** Việc một cổ phiếu đạt chuẩn 6 tầng nội tại trong Downtrend **hoàn toàn chưa chứng minh được nó tạo ra alpha dương**. Nhãn `SHADOW_BUY` chỉ thể hiện trạng thái kỹ thuật và định giá, không đồng nghĩa với lợi nhuận.
 
 ---
@@ -79,11 +80,16 @@ Qua phân tích 93 bản ghi có `conviction >= 70` trong 22 phiên (`14/10` →
 
 ## 5. Báo cáo Kép & Khử Thiên kiến Tập trung Ngành (Dual Reporting)
 
-Do quan sát khám phá cho thấy nhóm Ngân hàng chiếm tới 87.5% số lượt thỏa mãn 6 cổng nội tại, Giai đoạn 2 bắt buộc phải áp dụng chuẩn **Báo cáo Kép (Dual Reporting)**:
+Do quan sát khám phá cho thấy nhóm Ngân hàng chiếm tới 87.5% số lượt thỏa mãn 6 cổng nội tại, Giai đoạn 2 bắt buộc phải áp dụng chuẩn **Báo cáo Kép (Dual Reporting)** với các ràng buộc phương pháp luận rõ ràng:
 
 1. **Chỉ số Toàn bộ Danh mục (Aggregate Performance):** Đánh giá trên toàn bộ các tín hiệu `SHADOW_BUY` độc lập.
-2. **Chỉ số Phân rã Khử Ngân hàng (Ex-Banking Performance):** Đánh giá riêng nhóm phi ngân hàng và kiểm tra chênh lệch hiệu suất giữa Ngân hàng vs Phi ngân hàng.
-3. **Tiêu chí Veto Ngành:** Nếu một nhánh đạt chuẩn tốt nghiệp trên tổng thể nhưng lợi suất dương phụ thuộc hoàn toàn vào một ngành duy nhất (ví dụ riêng Ngân hàng kéo toàn bộ rổ, trong khi các ngành khác âm sau phí), kết quả sẽ bị hạ nhãn xuống **`SECTOR_CONCENTRATED_PROVISIONAL`** và không được phép đưa vào sản xuất nếu chưa có cơ chế giới hạn tỷ trọng ngành.
+2. **Chẩn đoán Phân rã Khử Ngân hàng (Ex-Banking Diagnostic — Chỉ mang tính mô tả):**
+   * Do số lượng tín hiệu độc lập ngoài ngành Ngân hàng trong pha Downtrend rất khan hiếm (ước tính chỉ khoảng $\approx 2$ tín hiệu trên 22 phiên), nhánh Ex-Banking chỉ đóng vai trò **chẩn đoán định tính/mô tả bối cảnh** (contextual diagnostic).
+   * Tuyệt đối **không dùng nhánh Ex-Banking làm tiêu chí định lượng độc lập để quyết định đỗ/trượt tốt nghiệp** nhằm tránh bẫy thống kê cỡ mẫu siêu nhỏ ($N \le 5$).
+3. **Ràng buộc Đa dạng hóa Ngành & Phân loại Tốt nghiệp (Sector Independence Rule):**
+   * Để ngăn chặn rủi ro `SHADOW_BUY` biến tướng thành một "canh bạc đặt cược đơn ngành vào Ngân hàng" dưới danh nghĩa hệ thống đa nhân tố:
+     * **Chuẩn Tốt nghiệp Toàn diện (`GRADUATED_SYSTEM_WIDE`):** Không có ngành đơn lẻ nào chiếm $> 60\%$ tổng số tín hiệu độc lập trong chu kỳ thử nghiệm.
+     * **Chuẩn Tốt nghiệp Chuyên biệt Ngành (`GRADUATED_BANKING_SPECIFIC`):** Nếu nhóm Ngân hàng chiếm $> 60\%$ số tín hiệu độc lập và nhánh thử nghiệm đạt các chỉ số tài chính, nhánh đó chỉ được công nhận tốt nghiệp có điều kiện chuyên biệt cho nhóm cổ phiếu Ngân hàng. Nhánh này **không được phép mở rộng sang các ngành khác** cho đến khi tích lũy đủ tối thiểu $\ge 10$ tín hiệu phi ngân hàng độc lập để kiểm định riêng.
 
 ---
 
