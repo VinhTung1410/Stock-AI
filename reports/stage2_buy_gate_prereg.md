@@ -62,7 +62,7 @@ Qua phân tích 93 bản ghi có `conviction >= 70` trong 22 phiên (`14/10` →
    * Lợi suất khớp lệnh trung bình $T+5$ (`Exec T+5`) của 43 bản ghi này chỉ đạt **`+0.02%`** (trung vị `0.00%`).
    * Con số này **thấp hơn nhiều** so với chi phí giao dịch 2 chiều `0.40%` (lợi suất ròng âm `-0.38%`).
    * Trong khi đó, phần còn lại của rổ WATCH (những mã trượt kỹ thuật $P < MA100$ hoặc $RSI < 45$) có lợi suất trung bình `+0.84%` nhờ nhịp nảy kỹ thuật mạnh từ vùng quá bán của nhóm BĐS dân dụng.
-   * **Cảnh báo Diễn giải Thực nghiệm:** Sự chênh lệch giữa nhóm WATCH còn lại (`+0.84%`) và nhóm 43 lượt (`+0.02%`) xuất phát từ đặc tính bất đối xứng độ biến động trong pha Downtrend: nhóm BĐS dân dụng (Beta cao, sụt giảm sâu trước đó) nảy mạnh kỹ thuật trong nửa sau mẫu, trong khi nhóm 43 lượt chủ yếu là Ngân hàng (Beta thấp, dao động hẹp quanh nền tích lũy). Đây là hiện tượng phân kỳ ngành, tuyệt đối **không được diễn giải theo hướng quy kết nguyên nhân rằng 'cổng kỹ thuật làm hại hiệu suất'**.
+   * **Cảnh báo Diễn giải Thực nghiệm [GIẢ THUYẾT, CHƯA KIỂM CHỨNG]:** Sự chênh lệch giữa nhóm WATCH còn lại (`+0.84%`) và nhóm 43 lượt (`+0.02%`) là một phát hiện mô tả. Một giả thuyết hợp lý là hiện tượng phân kỳ ngành và bất đối xứng độ biến động (nhóm BĐS dân dụng có thể bật nảy kỹ thuật từ vùng quá bán sâu, trong khi nhóm Ngân hàng dao động hẹp quanh nền tích lũy), nhưng cơ chế nhân quả này **chưa được kiểm định chặt chẽ**. Tuyệt đối **không được quy kết nguyên nhân rằng 'cổng kỹ thuật làm hại hiệu suất'**.
    * **Kết luận khoa học:** Việc một cổ phiếu đạt chuẩn 6 tầng nội tại trong Downtrend **hoàn toàn chưa chứng minh được nó tạo ra alpha dương**. Nhãn `SHADOW_BUY` chỉ thể hiện trạng thái kỹ thuật và định giá, không đồng nghĩa với lợi nhuận.
 
 ---
@@ -87,9 +87,15 @@ Do quan sát khám phá cho thấy nhóm Ngân hàng chiếm tới 87.5% số l�
    * Do số lượng tín hiệu độc lập ngoài ngành Ngân hàng trong pha Downtrend rất khan hiếm (ước tính chỉ khoảng $\approx 2$ tín hiệu trên 22 phiên), nhánh Ex-Banking chỉ đóng vai trò **chẩn đoán định tính/mô tả bối cảnh** (contextual diagnostic).
    * Tuyệt đối **không dùng nhánh Ex-Banking làm tiêu chí định lượng độc lập để quyết định đỗ/trượt tốt nghiệp** nhằm tránh bẫy thống kê cỡ mẫu siêu nhỏ ($N \le 5$).
 3. **Ràng buộc Đa dạng hóa Ngành & Phân loại Tốt nghiệp (Sector Independence Rule):**
-   * Để ngăn chặn rủi ro `SHADOW_BUY` biến tướng thành một "canh bạc đặt cược đơn ngành vào Ngân hàng" dưới danh nghĩa hệ thống đa nhân tố:
-     * **Chuẩn Tốt nghiệp Toàn diện (`GRADUATED_SYSTEM_WIDE`):** Không có ngành đơn lẻ nào chiếm $> 60\%$ tổng số tín hiệu độc lập trong chu kỳ thử nghiệm.
-     * **Chuẩn Tốt nghiệp Chuyên biệt Ngành (`GRADUATED_BANKING_SPECIFIC`):** Nếu nhóm Ngân hàng chiếm $> 60\%$ số tín hiệu độc lập và nhánh thử nghiệm đạt các chỉ số tài chính, nhánh đó chỉ được công nhận tốt nghiệp có điều kiện chuyên biệt cho nhóm cổ phiếu Ngân hàng. Nhánh này **không được phép mở rộng sang các ngành khác** cho đến khi tích lũy đủ tối thiểu $\ge 10$ tín hiệu phi ngân hàng độc lập để kiểm định riêng.
+   * **Đánh giá Thực tế Khả thi trong Downtrend:** Với việc dữ liệu 22 phiên cho thấy 14/16 (87.5%) tín hiệu độc lập tập trung ở nhóm Ngân hàng, trong chế độ thị trường Downtrend kéo dài, điều kiện để đạt chuẩn tốt nghiệp toàn hệ thống (`GRADUATED_SYSTEM_WIDE`) thực tế **gần như chắc chắn không thể xảy ra**. Đây là một giới hạn cơ cấu dự kiến trước, không nên kỳ vọng sai; trần phân loại thực tế khả dĩ nhất của Giai đoạn 2 trong môi trường hiện tại là `GRADUATED_BANKING_SPECIFIC` hoặc `INSUFFICIENT_SAMPLE`.
+   * **Chuẩn Tốt nghiệp Toàn diện (`GRADUATED_SYSTEM_WIDE`):** Không có ngành đơn lẻ nào chiếm $> 60\%$ tổng số tín hiệu độc lập trong chu kỳ thử nghiệm (chỉ khả thi nếu thị trường có sự lan tỏa dòng tiền đồng thuận sang các ngành sản xuất/bán lẻ/bất động sản).
+   * **Chuẩn Tốt nghiệp Chuyên biệt Ngành (`GRADUATED_BANKING_SPECIFIC`):** Nếu nhóm Ngân hàng chiếm $> 60\%$ số tín hiệu độc lập, nhánh thử nghiệm chỉ được công nhận tốt nghiệp có điều kiện chuyên biệt cho cổ phiếu Ngân hàng khi và chỉ khi thỏa mãn đầy đủ các ngưỡng số học định lượng:
+     1. $\text{Mean}(\text{SHADOW\_BUY Exec T+5}) - 0.40\% > 0.00\%$
+     2. $\text{Mean}(\text{SHADOW\_BUY Exec T+10}) - 0.40\% > 0.00\%$
+     3. Block Bootstrap 95% $\text{CI}_{\text{low}} > 0.00\%$ (khối $L=5$)
+     4. $\text{Max Drawdown} \le -5.0\%$
+     5. Tỷ lệ thắng ròng $\text{Net Hit Rate} \ge 50\%$
+     6. **Rào cản triển khai:** Kết quả này tuyệt đối **không được phép mở rộng sang các ngành khác** cho đến khi tích lũy đủ tối thiểu $\ge 10$ tín hiệu phi ngân hàng độc lập để kiểm định riêng.
 
 ---
 
