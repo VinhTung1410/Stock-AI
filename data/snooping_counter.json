@@ -1,0 +1,656 @@
+{
+  "snooping_count": 91,
+  "history": [
+    {
+      "task_id": "U1",
+      "description": "Tự kiểm briefing 2026-11-02 bằng script",
+      "before": 0,
+      "after": 1,
+      "timestamp": "2026-11-02T10:11:33.831788+00:00"
+    },
+    {
+      "task_id": "U2",
+      "description": "Thành phần ngành, within-sector và trung hòa ngành",
+      "before": 1,
+      "after": 2,
+      "timestamp": "2026-11-02T10:11:33.901950+00:00"
+    },
+    {
+      "task_id": "U3",
+      "description": "Hiệu chỉnh biến động chung và Cluster Bootstrap",
+      "before": 2,
+      "after": 3,
+      "timestamp": "2026-11-02T10:11:34.006156+00:00"
+    },
+    {
+      "task_id": "U1",
+      "description": "Tự kiểm briefing 2026-11-02 bằng script",
+      "before": 3,
+      "after": 4,
+      "timestamp": "2026-11-02T10:13:06.662518+00:00"
+    },
+    {
+      "task_id": "U2",
+      "description": "Thành phần ngành, within-sector và trung hòa ngành",
+      "before": 4,
+      "after": 5,
+      "timestamp": "2026-11-02T10:13:06.728883+00:00"
+    },
+    {
+      "task_id": "U3",
+      "description": "Hiệu chỉnh biến động chung và Cluster Bootstrap",
+      "before": 5,
+      "after": 6,
+      "timestamp": "2026-11-02T10:13:06.827578+00:00"
+    },
+    {
+      "task_id": "U1",
+      "description": "Tự kiểm briefing 2026-11-02 bằng script",
+      "before": 6,
+      "after": 7,
+      "timestamp": "2026-11-02T10:15:49.438626+00:00"
+    },
+    {
+      "task_id": "U2",
+      "description": "Thành phần ngành, within-sector và trung hòa ngành",
+      "before": 7,
+      "after": 8,
+      "timestamp": "2026-11-02T10:15:49.491684+00:00"
+    },
+    {
+      "task_id": "U3",
+      "description": "Hiệu chỉnh biến động chung và Cluster Bootstrap",
+      "before": 8,
+      "after": 9,
+      "timestamp": "2026-11-02T10:15:49.592876+00:00"
+    },
+    {
+      "task_id": "U4",
+      "description": "Chuỗi cohort tích lũy và kiểm định 30 cohort",
+      "before": 9,
+      "after": 10,
+      "timestamp": "2026-11-02T10:15:50.258800+00:00"
+    },
+    {
+      "task_id": "U5",
+      "description": "Quy kết BUY=0 và kiểm tra mốc thời gian header",
+      "before": 10,
+      "after": 11,
+      "timestamp": "2026-11-02T10:15:50.292167+00:00"
+    },
+    {
+      "task_id": "U6",
+      "description": "Đo lường chu kỳ phòng vệ tiền mặt đầy đủ 2021-2024",
+      "before": 11,
+      "after": 12,
+      "timestamp": "2026-11-02T10:15:50.323861+00:00"
+    },
+    {
+      "task_id": "U7",
+      "description": "Nghiên cứu ngừng rơi theo ngành 2021-2024",
+      "before": 12,
+      "after": 13,
+      "timestamp": "2026-11-02T10:15:51.594093+00:00"
+    },
+    {
+      "task_id": "D1",
+      "description": "Kiểm tra nguồn dữ liệu và nhãn ngành",
+      "before": 13,
+      "after": 14,
+      "timestamp": "2026-11-02T10:34:05.336939+00:00"
+    },
+    {
+      "task_id": "D2",
+      "description": "Ước lượng trung hòa ngành và phân tích chênh lệch",
+      "before": 14,
+      "after": 15,
+      "timestamp": "2026-11-02T10:34:05.404466+00:00"
+    },
+    {
+      "task_id": "D3",
+      "description": "Bootstrap theo cụm và Hoán vị phân tầng",
+      "before": 15,
+      "after": 16,
+      "timestamp": "2026-11-02T10:34:05.514787+00:00"
+    },
+    {
+      "task_id": "D4",
+      "description": "Quy kết cổng và phản thực BUY=0",
+      "before": 16,
+      "after": 17,
+      "timestamp": "2026-11-02T10:34:51.498303+00:00"
+    },
+    {
+      "task_id": "D5",
+      "description": "Đo lường chu kỳ phòng vệ tiền mặt 2021-2024",
+      "before": 17,
+      "after": 18,
+      "timestamp": "2026-11-02T10:34:51.523753+00:00"
+    },
+    {
+      "task_id": "D6",
+      "description": "Ngừng rơi theo ngành và Placebo test",
+      "before": 18,
+      "after": 19,
+      "timestamp": "2026-11-02T10:34:51.932824+00:00"
+    },
+    {
+      "task_id": "D7_D8",
+      "description": "Kiểm toán snooping và điều kiện mẫu cohort",
+      "before": 19,
+      "after": 20,
+      "timestamp": "2026-11-02T10:34:54.755326+00:00"
+    },
+    {
+      "task_id": "F1",
+      "description": "Kiểm toán cách tính T+10 và hạ nhãn ô dữ liệu",
+      "before": 20,
+      "after": 21,
+      "timestamp": "2026-11-02T10:59:09.341349+00:00"
+    },
+    {
+      "task_id": "F2",
+      "description": "Kiểm toán nguồn dữ liệu RECONSTRUCTED, DGC, LIVE và ADV20",
+      "before": 21,
+      "after": 22,
+      "timestamp": "2026-11-02T10:59:09.365307+00:00"
+    },
+    {
+      "task_id": "F3",
+      "description": "Quy kết BUY=0, kiểm toán 8 điều kiện Mua và GATE_TRAP",
+      "before": 22,
+      "after": 23,
+      "timestamp": "2026-11-02T10:59:09.422306+00:00"
+    },
+    {
+      "task_id": "F4",
+      "description": "Đo lường chu kỳ phòng vệ tiền mặt và hiệp phương sai chéo",
+      "before": 23,
+      "after": 24,
+      "timestamp": "2026-11-02T10:59:09.445346+00:00"
+    },
+    {
+      "task_id": "F5",
+      "description": "Hợp nhất sự kiện ngừng rơi theo ngành và kiểm định độ nhạy",
+      "before": 24,
+      "after": 25,
+      "timestamp": "2026-11-02T10:59:11.723854+00:00"
+    },
+    {
+      "task_id": "F5_SENS",
+      "description": "Độ nhạy ngưỡng sụt giảm 2%",
+      "before": 25,
+      "after": 26,
+      "timestamp": "2026-11-02T10:59:13.018297+00:00"
+    },
+    {
+      "task_id": "F5_SENS",
+      "description": "Độ nhạy ngưỡng sụt giảm 3%",
+      "before": 26,
+      "after": 27,
+      "timestamp": "2026-11-02T10:59:13.071095+00:00"
+    },
+    {
+      "task_id": "F5_SENS",
+      "description": "Độ nhạy ngưỡng sụt giảm 5%",
+      "before": 27,
+      "after": 28,
+      "timestamp": "2026-11-02T10:59:13.116186+00:00"
+    },
+    {
+      "task_id": "F6",
+      "description": "Diễn giải thống kê hoán vị và kiểm định giả thuyết không",
+      "before": 28,
+      "after": 29,
+      "timestamp": "2026-11-02T10:59:13.179918+00:00"
+    },
+    {
+      "task_id": "F7",
+      "description": "Tổng kết kiểm toán snooping qua các lần chạy",
+      "before": 29,
+      "after": 30,
+      "timestamp": "2026-11-02T10:59:13.195545+00:00"
+    },
+    {
+      "task_id": "F1",
+      "description": "Kiểm toán cách tính T+10 và hạ nhãn ô dữ liệu",
+      "before": 30,
+      "after": 31,
+      "timestamp": "2026-11-02T11:01:21.519409+00:00"
+    },
+    {
+      "task_id": "F2",
+      "description": "Kiểm toán nguồn dữ liệu RECONSTRUCTED, DGC, LIVE và ADV20",
+      "before": 31,
+      "after": 32,
+      "timestamp": "2026-11-02T11:01:21.543988+00:00"
+    },
+    {
+      "task_id": "F3",
+      "description": "Quy kết BUY=0, kiểm toán 8 điều kiện Mua và GATE_TRAP",
+      "before": 32,
+      "after": 33,
+      "timestamp": "2026-11-02T11:01:21.600321+00:00"
+    },
+    {
+      "task_id": "F4",
+      "description": "Đo lường chu kỳ phòng vệ tiền mặt và hiệp phương sai chéo",
+      "before": 33,
+      "after": 34,
+      "timestamp": "2026-11-02T11:01:21.613852+00:00"
+    },
+    {
+      "task_id": "F5",
+      "description": "Hợp nhất sự kiện ngừng rơi theo ngành và kiểm định độ nhạy",
+      "before": 34,
+      "after": 35,
+      "timestamp": "2026-11-02T11:01:23.713684+00:00"
+    },
+    {
+      "task_id": "F5_SENS",
+      "description": "Độ nhạy ngưỡng sụt giảm 2%",
+      "before": 35,
+      "after": 36,
+      "timestamp": "2026-11-02T11:01:24.873509+00:00"
+    },
+    {
+      "task_id": "F5_SENS",
+      "description": "Độ nhạy ngưỡng sụt giảm 3%",
+      "before": 36,
+      "after": 37,
+      "timestamp": "2026-11-02T11:01:24.953416+00:00"
+    },
+    {
+      "task_id": "F5_SENS",
+      "description": "Độ nhạy ngưỡng sụt giảm 5%",
+      "before": 37,
+      "after": 38,
+      "timestamp": "2026-11-02T11:01:24.994863+00:00"
+    },
+    {
+      "task_id": "F6",
+      "description": "Diễn giải thống kê hoán vị và kiểm định giả thuyết không",
+      "before": 38,
+      "after": 39,
+      "timestamp": "2026-11-02T11:01:25.072229+00:00"
+    },
+    {
+      "task_id": "F7",
+      "description": "Tổng kết kiểm toán snooping qua các lần chạy",
+      "before": 39,
+      "after": 40,
+      "timestamp": "2026-11-02T11:01:25.083738+00:00"
+    },
+    {
+      "task_id": "R4_M1",
+      "description": "Mục 1: Đối chiếu số liệu F6 R-D3, briefing 02/11 và 04/11",
+      "before": 40,
+      "after": 41,
+      "timestamp": "2026-11-04T13:07:08.404153+00:00"
+    },
+    {
+      "task_id": "R4_M2",
+      "description": "Mục 2: Bảng 8 điều kiện BUY và đối chiếu gates_failed",
+      "before": 41,
+      "after": 42,
+      "timestamp": "2026-11-04T13:07:50.897637+00:00"
+    },
+    {
+      "task_id": "R4_M3",
+      "description": "Mục 3: U7 kiểm tra mã, tái tạo và sửa lỗi latching",
+      "before": 42,
+      "after": 43,
+      "timestamp": "2026-11-04T13:07:51.410126+00:00"
+    },
+    {
+      "task_id": "R4_M4",
+      "description": "Mục 4: Nguồn dữ liệu monitor_reason, DGC, ADV20 và EOD 04/11",
+      "before": 43,
+      "after": 44,
+      "timestamp": "2026-11-04T13:07:52.835252+00:00"
+    },
+    {
+      "task_id": "R4_M5",
+      "description": "Mục 5: U6 quy tắc regime 10 chu kỳ, hysteresis, MA200 hợp lệ, phí",
+      "before": 44,
+      "after": 45,
+      "timestamp": "2026-11-04T13:07:52.883375+00:00"
+    },
+    {
+      "task_id": "R4_M6",
+      "description": "Mục 6: Quyết định đứng yên, PDR sát ngưỡng, cập nhật mẫu briefing",
+      "before": 45,
+      "after": 46,
+      "timestamp": "2026-11-04T13:07:54.539441+00:00"
+    },
+    {
+      "task_id": "R4_M7",
+      "description": "Mục 7: Kiểm toán snooping, quyết định sau xem dữ liệu",
+      "before": 46,
+      "after": 47,
+      "timestamp": "2026-11-04T13:07:54.607442+00:00"
+    },
+    {
+      "task_id": "R5_J1",
+      "description": "J1: Kiểm toán số gõ tay và quy trình zero-hand-typed report verification",
+      "before": 47,
+      "after": 48,
+      "timestamp": "2026-11-04T21:03:46.823924+00:00"
+    },
+    {
+      "task_id": "R5_J2",
+      "description": "J2: Tái tạo bảng 55x8 từ canonical CSV và giải thích 10 dòng lệch",
+      "before": 48,
+      "after": 49,
+      "timestamp": "2026-11-04T21:03:46.908501+00:00"
+    },
+    {
+      "task_id": "R5_J3",
+      "description": "J3: Đồng bộ hóa U7 với R-D2 và giải thích sai lệch tín hiệu",
+      "before": 49,
+      "after": 50,
+      "timestamp": "2026-11-04T21:03:47.609562+00:00"
+    },
+    {
+      "task_id": "R5_J4",
+      "description": "J4: Kiểm toán pool quét DGC và kiến trúc scanning xoay vòng",
+      "before": 50,
+      "after": 51,
+      "timestamp": "2026-11-04T21:03:49.040267+00:00"
+    },
+    {
+      "task_id": "R5_J5",
+      "description": "J5: Đồng bộ ngày bắt đầu U6 và phân rã alpha 2021-2024",
+      "before": 51,
+      "after": 52,
+      "timestamp": "2026-11-04T21:03:49.066025+00:00"
+    },
+    {
+      "task_id": "R5_J6",
+      "description": "J6: Bác bỏ MoS tĩnh, phân tích ngưỡng PDR và nguồn định giá FPT/MWG",
+      "before": 52,
+      "after": 53,
+      "timestamp": "2026-11-04T21:03:49.925783+00:00"
+    },
+    {
+      "task_id": "R5_J1",
+      "description": "J1: Kiểm toán số gõ tay và quy trình zero-hand-typed report verification",
+      "before": 53,
+      "after": 54,
+      "timestamp": "2026-11-04T21:04:15.485697+00:00"
+    },
+    {
+      "task_id": "R5_J2",
+      "description": "J2: Tái tạo bảng 55x8 từ canonical CSV và giải thích 10 dòng lệch",
+      "before": 54,
+      "after": 55,
+      "timestamp": "2026-11-04T21:04:15.510313+00:00"
+    },
+    {
+      "task_id": "R5_J3",
+      "description": "J3: Đồng bộ hóa U7 với R-D2 và giải thích sai lệch tín hiệu",
+      "before": 55,
+      "after": 56,
+      "timestamp": "2026-11-04T21:04:16.135824+00:00"
+    },
+    {
+      "task_id": "R5_J4",
+      "description": "J4: Kiểm toán pool quét DGC và kiến trúc scanning xoay vòng",
+      "before": 56,
+      "after": 57,
+      "timestamp": "2026-11-04T21:04:17.591244+00:00"
+    },
+    {
+      "task_id": "R5_J5",
+      "description": "J5: Đồng bộ ngày bắt đầu U6 và phân rã alpha 2021-2024",
+      "before": 57,
+      "after": 58,
+      "timestamp": "2026-11-04T21:04:17.617725+00:00"
+    },
+    {
+      "task_id": "R5_J6",
+      "description": "J6: Bác bỏ MoS tĩnh, phân tích ngưỡng PDR và nguồn định giá FPT/MWG",
+      "before": 58,
+      "after": 59,
+      "timestamp": "2026-11-04T21:04:18.467445+00:00"
+    },
+    {
+      "task_id": "R5_J7",
+      "description": "J7: Bổ sung thống kê 04/11 còn thiếu và giải thích hiệu ứng ngành",
+      "before": 59,
+      "after": 60,
+      "timestamp": "2026-11-04T21:04:18.520956+00:00"
+    },
+    {
+      "task_id": "R5_J1",
+      "description": "J1: Kiểm toán số gõ tay và quy trình zero-hand-typed report verification",
+      "before": 60,
+      "after": 61,
+      "timestamp": "2026-11-04T21:04:47.211422+00:00"
+    },
+    {
+      "task_id": "R5_J2",
+      "description": "J2: Tái tạo bảng 55x8 từ canonical CSV và giải thích 10 dòng lệch",
+      "before": 61,
+      "after": 62,
+      "timestamp": "2026-11-04T21:04:47.228381+00:00"
+    },
+    {
+      "task_id": "R5_J3",
+      "description": "J3: Đồng bộ hóa U7 với R-D2 và giải thích sai lệch tín hiệu",
+      "before": 62,
+      "after": 63,
+      "timestamp": "2026-11-04T21:04:47.885443+00:00"
+    },
+    {
+      "task_id": "R5_J4",
+      "description": "J4: Kiểm toán pool quét DGC và kiến trúc scanning xoay vòng",
+      "before": 63,
+      "after": 64,
+      "timestamp": "2026-11-04T21:04:49.392477+00:00"
+    },
+    {
+      "task_id": "R5_J5",
+      "description": "J5: Đồng bộ ngày bắt đầu U6 và phân rã alpha 2021-2024",
+      "before": 64,
+      "after": 65,
+      "timestamp": "2026-11-04T21:04:49.422221+00:00"
+    },
+    {
+      "task_id": "R5_J6",
+      "description": "J6: Bác bỏ MoS tĩnh, phân tích ngưỡng PDR và nguồn định giá FPT/MWG",
+      "before": 65,
+      "after": 66,
+      "timestamp": "2026-11-04T21:04:50.329306+00:00"
+    },
+    {
+      "task_id": "R5_J7",
+      "description": "J7: Bổ sung thống kê 04/11 còn thiếu và giải thích hiệu ứng ngành",
+      "before": 66,
+      "after": 67,
+      "timestamp": "2026-11-04T21:04:50.385327+00:00"
+    },
+    {
+      "task_id": "R5_J1",
+      "description": "J1: Kiểm toán số gõ tay và quy trình zero-hand-typed report verification",
+      "before": 67,
+      "after": 68,
+      "timestamp": "2026-11-04T21:05:53.440407+00:00"
+    },
+    {
+      "task_id": "R5_J2",
+      "description": "J2: Tái tạo bảng 55x8 từ canonical CSV và giải thích 10 dòng lệch",
+      "before": 68,
+      "after": 69,
+      "timestamp": "2026-11-04T21:05:53.454549+00:00"
+    },
+    {
+      "task_id": "R5_J3",
+      "description": "J3: Đồng bộ hóa U7 với R-D2 và giải thích sai lệch tín hiệu",
+      "before": 69,
+      "after": 70,
+      "timestamp": "2026-11-04T21:05:54.105401+00:00"
+    },
+    {
+      "task_id": "R5_J4",
+      "description": "J4: Kiểm toán pool quét DGC và kiến trúc scanning xoay vòng",
+      "before": 70,
+      "after": 71,
+      "timestamp": "2026-11-04T21:05:55.622779+00:00"
+    },
+    {
+      "task_id": "R5_J5",
+      "description": "J5: Đồng bộ ngày bắt đầu U6 và phân rã alpha 2021-2024",
+      "before": 71,
+      "after": 72,
+      "timestamp": "2026-11-04T21:05:55.647568+00:00"
+    },
+    {
+      "task_id": "R5_J6",
+      "description": "J6: Bác bỏ MoS tĩnh, phân tích ngưỡng PDR và nguồn định giá FPT/MWG",
+      "before": 72,
+      "after": 73,
+      "timestamp": "2026-11-04T21:05:56.547207+00:00"
+    },
+    {
+      "task_id": "R5_J7",
+      "description": "J7: Bổ sung thống kê 04/11 còn thiếu và giải thích hiệu ứng ngành",
+      "before": 73,
+      "after": 74,
+      "timestamp": "2026-11-04T21:05:56.604148+00:00"
+    },
+    {
+      "task_id": "K1_AUDIT",
+      "description": "K1 đối soát nội bộ số liệu R-D5",
+      "before": 74,
+      "after": 75,
+      "timestamp": "2026-11-04T21:59:38.854472+00:00"
+    },
+    {
+      "task_id": "K1b_FIX",
+      "description": "K1b: Sửa và chuẩn hóa đối soát nội bộ",
+      "before": 75,
+      "after": 76,
+      "timestamp": "2026-11-04T22:27:41.429610+00:00"
+    },
+    {
+      "task_id": "K1c_FIX",
+      "description": "K1c: Sửa đối soát nội bộ và kiểm toán dòng",
+      "before": 76,
+      "after": 77,
+      "timestamp": "2026-11-05T09:20:56.067577+00:00"
+    },
+    {
+      "task_id": "K2_RUN",
+      "description": "K2: Bảng 55x8, cổng điều kiện và dọn K1",
+      "before": 77,
+      "after": 78,
+      "type": "đối soát",
+      "timestamp": "2026-11-05T09:53:12.002767+00:00"
+    },
+    {
+      "task_id": "K2b_RUN",
+      "description": "K2b: Sửa B4, B5, A2, A6 và bước kiểm tra",
+      "before": 78,
+      "after": 79,
+      "type": "đối soát",
+      "timestamp": "2026-11-05T10:40:07.367385+00:00"
+    },
+    {
+      "task_id": "K2c_RUN",
+      "description": "K2c: tech_allowed, B4 đọc code thật, dọn script, DGC và pool quét",
+      "before": 79,
+      "after": 80,
+      "type": "đối soát",
+      "timestamp": "2026-11-05T11:25:15.669301+00:00"
+    },
+    {
+      "task_id": "K2d_RUN",
+      "description": "K2d: Đối soát tech_allowed, A4 gross/net, B2 55 mã, B4 cổng 7 tầng, B5 code thật, dọn hằng số",
+      "before": 80,
+      "after": 81,
+      "type": "đối soát",
+      "timestamp": "2026-11-05T12:07:40.730186+00:00"
+    },
+    {
+      "task_id": "K2e_RUN",
+      "description": "K2e: Kiểm toán nguồn dữ liệu A1, đối soát Return và CAGR A4, cơ chế B5 xoay vòng pool và thác cổng B4",
+      "before": 81,
+      "after": 82,
+      "type": "đối soát",
+      "timestamp": "2026-11-06T09:03:05.383209+00:00"
+    },
+    {
+      "task_id": "K5_RUN",
+      "description": "K5: Kiểm toán tuổi dữ liệu 04/11, PDR, MoS FPT/MWG, 3 ngưỡng RISK_TRAP và DGC intraday",
+      "before": 82,
+      "after": 83,
+      "type": "đối soát",
+      "timestamp": "2026-11-06T10:25:41.364716+00:00"
+    },
+    {
+      "task_id": "K6_RUN",
+      "description": "K5b: Sua 5b.1-5b.4 (mau thuan MA/RSI, RISK_TRAP PDR, tru cot conviction)",
+      "before": 83,
+      "after": 84,
+      "type": "doi soat",
+      "timestamp": "2026-11-07T16:38:41.347439+00:00"
+    },
+    {
+      "task_id": "K6_RUN",
+      "description": "K6: Phan tich thong ke briefing 04/11 (T+1/T+3 matured, sector W-R, p-value, Holm/Bonferroni)",
+      "before": 84,
+      "after": 85,
+      "type": "phan tich",
+      "timestamp": "2026-11-07T16:38:41.347439+00:00"
+    },
+    {
+      "task_id": "K7_RUN",
+      "description": "K7: Đóng K6, thống kê dự phòng, snooping và câu hỏi PM",
+      "before": 85,
+      "after": 86,
+      "type": "đối soát",
+      "timestamp": "2026-11-07T17:20:49.009490+00:00"
+    },
+    {
+      "task_id": "S1_SPLIT_23OCT",
+      "description": "S1: Phân tích chia đôi mẫu tại mốc 2026-10-23 và phát hiện đảo chiều dấu W-R",
+      "before": 86,
+      "after": 87,
+      "type": "khám phá",
+      "timestamp": "2026-11-12T14:15:00.000000+00:00"
+    },
+    {
+      "task_id": "S2_LEAVE_RE_OUT",
+      "description": "S2: Phân tích bóc tách phân nhóm BĐS dân dụng khỏi rổ WATCH và REJECT",
+      "before": 87,
+      "after": 88,
+      "type": "khám phá",
+      "timestamp": "2026-11-12T14:30:00.000000+00:00"
+    },
+    {
+      "task_id": "S3_LEAVE_TOP2_OUT",
+      "description": "S3: Phân tích loại trừ top-2 mã đóng góp lợi suất lũy kế (KDH, DIG)",
+      "before": 88,
+      "after": 89,
+      "type": "khám phá",
+      "timestamp": "2026-11-12T15:00:00.000000+00:00"
+    },
+    {
+      "task_id": "S4_SENS_OCT14",
+      "description": "S4: Kiểm tra độ nhạy chuỗi khi loại trừ phiên đầu tiên 2026-10-14",
+      "before": 89,
+      "after": 90,
+      "type": "khám phá",
+      "timestamp": "2026-11-12T15:30:00.000000+00:00"
+    },
+    {
+      "task_id": "S5_GATE_AUDIT_COOLDOWN",
+      "description": "S5: Khám phá 93 bản ghi conviction >= 70, phân tách 43 chuẩn nội tại vs 50 kẹt MA100, mô phỏng cooldown 5 phiên và lợi suất Exec T+5",
+      "before": 90,
+      "after": 91,
+      "type": "khám phá",
+      "timestamp": "2026-11-12T21:45:00.000000+00:00"
+    }
+  ]
+}
