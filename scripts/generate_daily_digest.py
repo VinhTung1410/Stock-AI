@@ -47,6 +47,7 @@ GATE_RISK = "RISK_TRAP"
 EVENT_WL_ADDED = "WATCHLIST_ADDED"
 DIGEST_HORIZONS = (1, 3, 5, 10, 20)
 EXPECTED_UNIVERSE_SIZE = 55
+STAGE2_PROSPECTIVE_START = "2026-11-26"
 
 
 def get_default_vn_date() -> str:
@@ -70,8 +71,14 @@ def _run_sub_step(cmd: list[str], step_name: str) -> bool:
         return False
 
 
-def run_pipeline_sync(target_date: str, skip_export: bool, skip_returns: bool, sync_db: bool = True) -> None:
-    """Run underlying synchronization scripts if not explicitly skipped."""
+def run_pipeline_sync(
+    target_date: str,
+    skip_export: bool,
+    skip_returns: bool,
+    sync_db: bool = True,
+    skip_stage2: bool = False,
+) -> None:
+    """Run underlying synchronization scripts (and Stage 2 shadow logger from 2026-11-26+) if not skipped."""
     py_exec = sys.executable
 
     if not skip_export:
@@ -83,6 +90,12 @@ def run_pipeline_sync(target_date: str, skip_export: bool, skip_returns: bool, s
             returns_cmd.append("--skip-db")
         step_name = "Cập nhật lợi nhuận đa kỳ & đồng bộ Supabase" if sync_db else "Cập nhật lợi nhuận đa kỳ"
         _run_sub_step(returns_cmd, step_name)
+
+    if not skip_stage2 and target_date >= STAGE2_PROSPECTIVE_START:
+        _run_sub_step(
+            [py_exec, os.path.join("scripts", "stage2_shadow_logger.py"), target_date],
+            "Ghi log Raw Score Giai đoạn 2 (cách ly data/stage2_shadow)",
+        )
 
 
 def _load_decision_records(target_date: str) -> pd.DataFrame:
@@ -695,12 +708,19 @@ def generate_digest(
     skip_returns: bool = False,
     sync_db: bool = True,
     output_dir: str = "reports",
+    skip_stage2: bool = False,
 ) -> str:
     """Generate daily research digest end-to-end and save to file."""
     LOGGER.info("=== BẮT ĐẦU TẠO BÁO CÁO DAILY RESEARCH DIGEST CHO NGÀY: %s ===", target_date)
 
     if not skip_sync:
-        run_pipeline_sync(target_date, skip_export=skip_export, skip_returns=skip_returns, sync_db=sync_db)
+        run_pipeline_sync(
+            target_date,
+            skip_export=skip_export,
+            skip_returns=skip_returns,
+            sync_db=sync_db,
+            skip_stage2=skip_stage2,
+        )
 
     dec_df = _load_decision_records(target_date)
 
@@ -764,6 +784,7 @@ def main() -> None:
     parser.add_argument("--skip-sync", action="store_true", help="Skip running export_today_csv and update_forward_returns.")
     parser.add_argument("--skip-export", action="store_true", help="Skip running export_today_csv.")
     parser.add_argument("--skip-returns", action="store_true", help="Skip running update_forward_returns.")
+    parser.add_argument("--skip-stage2", action="store_true", help="Skip running Stage 2 raw-score shadow logger.")
     parser.add_argument("--skip-db", "--no-db", dest="skip_db", action="store_true", help="Bỏ qua cập nhật bảng Supabase DB.")
     parser.add_argument("--sync-db", dest="sync_db", action="store_true", default=None, help="Đồng bộ kết quả forward returns lên Supabase (mặc định bật).")
     parser.add_argument("--output-dir", default="reports", help="Output directory for reports (default: reports).")
@@ -785,6 +806,7 @@ def main() -> None:
         skip_returns=args.skip_returns,
         sync_db=sync_db_flag,
         output_dir=args.output_dir,
+        skip_stage2=args.skip_stage2,
     )
     print("\n" + "=" * 70)
     print(f"BÁO CÁO ĐÃ SẴN SÀNG CHO CLAUDE: {out_path}")

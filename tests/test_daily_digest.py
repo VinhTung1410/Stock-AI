@@ -228,6 +228,18 @@ def test_run_pipeline_sync() -> None:
         run_pipeline_sync("2026-10-27", skip_export=True, skip_returns=True)
         assert mock_step.call_count == 0
 
+        # Prospective Stage 2 date (>= 2026-11-26) automatically invokes stage2_shadow_logger unless --skip-stage2
+        mock_step.reset_mock()
+        run_pipeline_sync("2026-11-26", skip_export=False, skip_returns=False)
+        assert mock_step.call_count == 3
+        stage2_cmd = mock_step.call_args_list[2][0][0]
+        assert "stage2_shadow_logger.py" in stage2_cmd[1]
+        assert "2026-11-26" in stage2_cmd
+
+        mock_step.reset_mock()
+        run_pipeline_sync("2026-11-26", skip_export=False, skip_returns=False, skip_stage2=True)
+        assert mock_step.call_count == 2
+
 
 def test_is_horizon_maturing_today_variants() -> None:
     # Not matured
