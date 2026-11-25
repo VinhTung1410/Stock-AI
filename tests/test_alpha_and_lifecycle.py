@@ -10,6 +10,7 @@ import pytest
 
 from data_engine import detect_gdkhq_event
 from db_manager import (
+    can_write_to_database,
     get_signal_audit_metrics,
     get_supabase_client,
     save_quant_signal,
@@ -87,6 +88,8 @@ class TestSupabaseSignalLifecycle:
         client = get_supabase_client()
         if not client:
             pytest.skip("Supabase not configured — skipping integration tests")
+        if not can_write_to_database():
+            pytest.skip("Live DB writes blocked in non-production environment — skipping live integration tests")
 
     def test_save_and_retrieve_signal(self):
         """Save a test signal, verify immutable snapshot, then clean up."""

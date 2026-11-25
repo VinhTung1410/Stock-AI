@@ -1,1 +1,16 @@
-[]
+[
+  {
+    "symbol": "HPG",
+    "target_buy": 25.0,
+    "watch_entry_date": "2026-10-07",
+    "watch_ttl_days": 10,
+    "is_auto": true,
+    "note": "Active candidate"
+  },
+  {
+    "symbol": "GOOD1",
+    "target_buy": 40.0,
+    "is_auto": true,
+    "note": "[AUTO_DISCOVERY]"
+  }
+]

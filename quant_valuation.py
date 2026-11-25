@@ -625,6 +625,8 @@ def reconcile_pb_triangle_arbitration(
         "calc_pb": calc_pb,
         "effective_pb": effective_pb,
         "reconciled_bvps": reconciled_bvps,
+        "bvps_for_fv": effective_bvps,
+        "bvps_provider": bvps_val,
         "bvps_arbitrated": bvps_arbitrated,
         "pb_discrepancy": round(pb_discrepancy, 4),
         "pb_reconcile_failed": pb_reconcile_failed,
@@ -670,10 +672,12 @@ def evaluate_real_estate_valuation(
 
     # Trọng tài BVPS độc lập từ BCTC mẹ
     pb_val = float(pb) if pb is not None else None
+    bvps_provider = bvps_val
     recon = reconcile_pb_triangle_arbitration(sym, current_price, pb_val, bvps_val, fin)
     if recon.get("reconciled_bvps"):
         bvps_val = recon["reconciled_bvps"]
         has_real_bvps = True
+    bvps_for_fv = bvps_val
 
     if not has_real_bvps or bvps_val <= 0.0:
         return {
@@ -794,6 +798,9 @@ def evaluate_real_estate_valuation(
         "pb_reconcile_failed": pb_reconcile_failed,
         "pb_arbitrated": pb_arbitrated,
         "effective_pb": effective_pb,
+        "target_pb": target_pb,
+        "bvps_for_fv": bvps_for_fv,
+        "bvps_provider": bvps_provider,
         "applied_discounts": round(total_disc, 2),
         "is_informative": has_real_bvps and bvps_val > 0 and not pb_reconcile_failed,
         "recommendation_allowed": not (
@@ -1324,8 +1331,11 @@ def calculate_fair_value_and_mos(
     pb_discrepancy = 0.0
     effective_pb = pb
     target_pb_raw = None
+    target_pb_val = None
     is_pb_clamped = False
     bvps_val = None
+    bvps_for_fv = None
+    bvps_provider = None
 
     # =========================================================================
     # ĐẶC BIỆT: TẬP ĐOÀN ĐA NGÀNH PHỨC TẠP (VIC - VINGROUP)
@@ -1342,6 +1352,9 @@ def calculate_fair_value_and_mos(
         pb_arbitrated = re_eval.get("pb_arbitrated", False)
         effective_pb = re_eval.get("effective_pb", pb)
         pb_reconcile_failed = re_eval.get("pb_reconcile_failed", False)
+        target_pb_val = re_eval.get("target_pb")
+        bvps_for_fv = re_eval.get("bvps_for_fv")
+        bvps_provider = re_eval.get("bvps_provider")
 
     # =========================================================================
     # 1. NHÓM NGÂN HÀNG: MÔ HÌNH JUSTIFIED P/B (Gordon Growth)
@@ -1376,6 +1389,7 @@ def calculate_fair_value_and_mos(
         target_pb_raw = round(justified_pb, 2)
         is_pb_clamped = bool(justified_pb < 0.9 or justified_pb > 2.2)
         target_pb = max(min(justified_pb, 2.2), 0.9)
+        target_pb_val = round(target_pb, 2)
 
         # Chốt chặn kiểm soát tài chính: Kiểm tra P/B có nằm trong Sanity Range của ngành
         sec_key = "bank_soe" if sym_clean in ("VCB", "CTG", "BID") else "bank_private"
@@ -1387,10 +1401,13 @@ def calculate_fair_value_and_mos(
             bvps_raw = float(bvps)
             bvps_val = bvps_raw / 1000.0 if bvps_raw > 500.0 else bvps_raw
 
+        bvps_provider = bvps_val
+
         # Cảnh báo và chốt chặn đối chiếu P/B API vs P/B tự tính từ BCTC thực & Trọng tài Tam giác
         recon_bank = reconcile_pb_triangle_arbitration(sym_clean, current_price, pb, bvps_val, fin_dict)
         if recon_bank.get("reconciled_bvps"):
             bvps_val = recon_bank["reconciled_bvps"]
+        bvps_for_fv = bvps_val
         pb_reconcile_failed = recon_bank["pb_reconcile_failed"]
         pb_arbitrated = recon_bank["pb_arbitrated"]
         pb_discrepancy = recon_bank["pb_discrepancy"]
@@ -1420,10 +1437,15 @@ def calculate_fair_value_and_mos(
                 "consensus_target": cons_target,
                 "consensus_source": cons_source,
                 "archetype": archetype,
+                "target_pb": target_pb_val,
                 "target_pb_raw": target_pb_raw,
+                "target_pb_gordon": target_pb_raw,
+                "target_pb_clamped": is_pb_clamped,
                 "is_pb_clamped": is_pb_clamped,
                 "pb_arbitrated": pb_arbitrated,
                 "effective_pb": effective_pb,
+                "bvps_for_fv": bvps_for_fv,
+                "bvps_provider": bvps_provider,
                 "data_integrity_warning": (
                     f"P/B={pb} vượt ngưỡng hợp lý ({lo}-{hi}). "
                     "Cần xác minh BCTC hợp nhất và số lượng CP lưu hành thực tế."
@@ -1700,10 +1722,15 @@ def calculate_fair_value_and_mos(
         "fv_shadow": fv_shadow,
         "mos_shadow": mos_shadow,
         "model_dispersion_pct": model_dispersion_pct,
+        "target_pb": target_pb_val,
         "target_pb_raw": target_pb_raw,
+        "target_pb_gordon": target_pb_raw,
+        "target_pb_clamped": is_pb_clamped,
         "is_pb_clamped": is_pb_clamped,
         "pb_arbitrated": pb_arbitrated,
         "effective_pb": effective_pb,
+        "bvps_for_fv": bvps_for_fv,
+        "bvps_provider": bvps_provider,
         "sotp_check": re_eval.get("sotp_check") if re_eval else None,
         "earnings_quality": re_eval.get("earnings_quality") if re_eval else None,
         "survival_gate": re_eval.get("survival_gate") if re_eval else None,

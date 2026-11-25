@@ -16,6 +16,7 @@ except (ImportError, Exception):
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Mark test environment explicitly
+os.environ["APP_ENV"] = "testing"
 os.environ["ENV"] = "testing"
 
 
@@ -31,8 +32,10 @@ def prevent_accidental_db_writes(request):
     try:
         with (
             patch("db_manager.save_quant_signal", return_value=999999),
-            patch("db_manager.save_decision_record", return_value=True),
-            patch("db_manager.save_signal_lifecycle", return_value=True),
+            patch("db_manager.save_signal_lifecycle", return_value={"id": "SIG_TEST_MOCK"}),
+            patch("db_manager.save_decision_record", return_value="DEC_TEST_MOCK"),
+            patch("db_manager.save_lifecycle_event", return_value="EVT_TEST_MOCK"),
+            patch("db_manager.save_raw_input_snapshot", return_value=True),
         ):
             yield
     except ImportError:

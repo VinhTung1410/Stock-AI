@@ -45,8 +45,9 @@ class TestSignalIntegrityTASK52To57:
 
         mock_client.table.assert_not_called()
 
+    @patch("db_manager.can_write_to_database", return_value=True)
     @patch("db_manager.get_supabase_client")
-    def test_save_quant_signal_accepts_valid_buy_actions(self, mock_get_client):
+    def test_save_quant_signal_accepts_valid_buy_actions(self, mock_get_client, _mock_can_write):
         """AC-52.1: Valid BUY actions must be saved and create OPEN tracking records."""
         mock_client = MagicMock()
         mock_table = MagicMock()
@@ -68,6 +69,9 @@ class TestSignalIntegrityTASK52To57:
                 hard_gates={"mos_pct": 20.0},
             )
             assert sig_id == 888
+        assert mock_get_client.called
+        mock_client.table.assert_any_call("signals")
+        mock_client.table.assert_any_call("signal_tracking")
 
     # --------------------------------------------------------------------------
     # TASK-0053: Cooldown Key Matching Fix (MUA, TÍCH LŨY, ACCUMULATE, BUY)
@@ -109,8 +113,9 @@ class TestSignalIntegrityTASK52To57:
     # --------------------------------------------------------------------------
     # TASK-0054: save_signal_lifecycle Adapter & Calibration Fields
     # --------------------------------------------------------------------------
+    @patch("db_manager.can_write_to_database", return_value=True)
     @patch("db_manager.get_supabase_client")
-    def test_save_signal_lifecycle_adapter_maps_target_and_stop_price(self, mock_get_client):
+    def test_save_signal_lifecycle_adapter_maps_target_and_stop_price(self, mock_get_client, _mock_can_write):
         """AC-52.3: Adapter maps initial_target_price -> target_price and ensures all calibration fields."""
         mock_client = MagicMock()
         mock_table = MagicMock()
@@ -138,6 +143,8 @@ class TestSignalIntegrityTASK52To57:
         }
         res = save_signal_lifecycle(payload)
         assert res is not None
+        assert mock_get_client.called
+        mock_client.table.assert_called_with("signal_lifecycle")
 
         # Verify the 5 essential calibration fields are properly populated
         assert captured_row.get("entry_price") == 130.0

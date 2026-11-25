@@ -26,11 +26,11 @@ Stock-AI enforces **strict architectural separation**:
 
 ---
 
-## 🆕 Recent Updates (v12.0)
-- **API Caching & TTL:** Introduced a 12-hour TTL cache for `vnstock` financial endpoints to prevent rate-limit blocks and speed up execution.
-- **Webhook 2-Pass Governance:** Enforced Cooldown (5 days), Daily Signal Budget, and Max Open Positions limits directly on Webhook 2-Pass and UI flows.
-- **Data Integrity:** Removed stochastic noise from P/E and P/B market valuations for strictly deterministic reports.
-- **Canonical Regime Tracking:** Implemented Single Source of Truth macro tracking via `get_canonical_regime()` to synchronize portfolio allocation.
+## 🆕 Recent Updates (v15.0 — Stage 1 Audit & Stage 2 Shadow Logger)
+- **Automated Daily Digest Pipeline (`scripts/run_daily_digest.bat` & `scripts/generate_daily_digest.py`):** End-to-end post-EOD runner syncing `decision_records`, computing executable forward returns (`Open_T+1 → Close_T+h` for `T+1..T+20`), generating daily Markdown briefings with Bootstrap 95% CI flags, and enforcing holiday-aware trading calendar alignment.
+- **Stage 1 Frozen 30-Session Audit (`scripts/audit_30_sessions.py` & `reports/audit_30_sessions_final.md`):** Independent read-only audit of `v15.0_frozen_20261013` over 30 sessions (`2026-10-14 → 2026-11-25`, 25 matured `T+5` cohorts) using Moving-Block Bootstrap (`L=5`), within-sector stratification, leave-RE-out, and immutable pre-registration (`pre-reg-v2.1-locked-20261125`).
+- **Stage 2 Prospective Raw Score Logger (`scripts/stage2_shadow_logger.py` & `reports/stage2_buy_gate_prereg.md` v2.1):** Integrated directly into `run_daily_digest.bat` starting `2026-11-26+`. Logs continuous `T0` raw scores across all 55 universe stocks (`rows == 55` guard) and daily regime/Arm `A/B/C` state into an isolated, append-only SHA256-verified store (`data/stage2_shadow/`) with zero look-ahead.
+- **Earlier v12.0 Core Hardening:** 12-hour `vnstock` TTL cache, Webhook 2-Pass Cooldown (5 days) & Signal Budget limits, deterministic P/E & P/B sanitization, and Single Source of Truth macro regime tracking (`get_canonical_regime()`).
 
 ## 🏗️ System Architecture
 
@@ -185,6 +185,13 @@ cp .env.example .env
   python trading_bot.py
   ```
 
+* **Daily Research Digest & Stage 2 Shadow Logger** *(post-EOD integrated runner)*:
+  ```powershell
+  scripts\run_daily_digest.bat
+  # Or specify a date / skip Stage 2:
+  python scripts/generate_daily_digest.py 2026-11-26
+  ```
+
 ---
 
 ## 📁 Repository Structure
@@ -202,8 +209,17 @@ Stock-AI/
 ├── db_manager.py               # Supabase persistence & audit records
 ├── components/                 # TradingView & ECharts visualizations
 ├── tabs/                       # Streamlit UI tabs (Portfolio, Charts, Macro, AI, Alpha)
+├── scripts/                    # Daily digest, OOS audit, and Stage 2 shadow logger
+│   ├── run_daily_digest.bat    # Unified post-EOD Windows pipeline runner
+│   ├── generate_daily_digest.py# Automated EOD sync, forward return table & Stage 2 trigger
+│   ├── audit_30_sessions.py    # Independent Stage 1 OOS audit & block bootstrap engine
+│   └── stage2_shadow_logger.py # Isolated 55-stock raw-score & Arm A/B/C logger (v2.0.0)
+├── reports/                    # Locked pre-registrations, daily digests & final audit
+│   ├── audit_30_sessions_prereg.md  # Stage 1 pre-reg (v1.2.1)
+│   ├── audit_30_sessions_final.md   # Closed Stage 1 30-session audit report
+│   └── stage2_buy_gate_prereg.md    # Stage 2 counterfactual & Rank IC pre-reg (v2.1)
 ├── migrations/                 # PostgreSQL migrations (0003_decision_records.sql)
-├── tests/                      # 289 deterministic unit & integration test cases
+├── tests/                      # Deterministic unit, audit, digest & logger test suites
 │   ├── conftest.py             # Test configuration & automatic DB write shield
 │   └── test_task_*.py          # Task-aligned test suites (Task 1 to 16)
 └── docs/                       # Architecture diagrams, ADRs, and workflows

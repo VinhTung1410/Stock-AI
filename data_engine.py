@@ -2356,10 +2356,6 @@ def scan_market_opportunities(
                 or sector in ("Ngân hàng", "BANK", "BANKS")
                 or val_res.get("target_pb_raw") is not None
             )
-            target_pb_val = (
-                val_res.get("effective_pb") or val_res.get("target_pb_raw")
-            ) if is_bank_sector else None
-
             eps_val = (
                 fin_ratios.get("eps")
                 or fin_ratios.get("eps_ttm")
@@ -2370,6 +2366,15 @@ def scan_market_opportunities(
                 fin_ratios.get("bvps")
                 or fin_ratios.get("bvps_mrq")
             ) if isinstance(fin_ratios, dict) else None
+
+            target_pb_val = (
+                val_res.get("effective_pb") or val_res.get("target_pb_raw")
+            ) if is_bank_sector else None
+            target_pb_gordon = val_res.get("target_pb_gordon")
+            target_pb_clamped = val_res.get("target_pb_clamped")
+            effective_pb_val = val_res.get("effective_pb")
+            bvps_for_fv_val = val_res.get("bvps_for_fv") or bvps_val
+            bvps_provider_val = val_res.get("bvps_provider") or bvps_val
 
             cons_target_val = val_res.get("consensus_target")
             cons_gap_pct_val = (
@@ -2383,19 +2388,45 @@ def scan_market_opportunities(
                 "consensus_source": val_res.get("consensus_source"),
             } if cons_target_val else {}
 
+            from quant_sanity_check import compute_fundamental_input_hash
+
+            fin_h = compute_fundamental_input_hash(
+                eps=fin_ratios.get("eps") if isinstance(fin_ratios, dict) else None,
+                bvps=fin_ratios.get("bvps") if isinstance(fin_ratios, dict) else None,
+                roe=fin_ratios.get("roe") if isinstance(fin_ratios, dict) else None,
+                pe=fin_ratios.get("pe") if isinstance(fin_ratios, dict) else None,
+                consensus_price=val_res.get("price_target") or val_res.get("consensus_target"),
+                bctc_period=bctc_p,
+            )
+
             def _enrich_ret(d: dict) -> dict:
+                c_score = d.get("conviction_score", 0.0)
+                wl_b = 10.0 if (cat_info and "WATCHLIST" in str(cat_info.get("tag", "")).upper()) else 0.0
+                c_score_ex = round(max(0.0, c_score - wl_b), 1) if c_score is not None else None
                 d.update({
                     "fair_value_base": fv_base,
                     "fair_value_bear": fv_bear,
                     "fair_value_bull": fv_bull,
                     "target_pb": target_pb_val,
+                    "target_pb_gordon": target_pb_gordon,
+                    "target_pb_clamped": target_pb_clamped,
+                    "effective_pb": effective_pb_val,
+                    "bvps_for_fv": bvps_for_fv_val,
+                    "bvps_provider": bvps_provider_val,
                     "eps_used": eps_val,
-                    "bvps_used": bvps_val,
+                    "bvps_used": bvps_for_fv_val,
+                    "val_confidence": val_conf,
                     "consensus_target_used": cons_target_val,
                     "consensus_gap_pct": cons_gap_pct_val,
+                    "fin_hash": fin_h,
+                    "bctc_period": bctc_p,
+                    "consensus_asof": cons_asof,
                     "raw_bctc": fin_ratios if isinstance(fin_ratios, dict) else {},
                     "raw_price": tech if isinstance(tech, dict) else {},
                     "raw_consensus": raw_cons_dict,
+                    "watchlist_bonus": wl_b,
+                    "is_in_watchlist": bool(wl_b > 0),
+                    "conviction_ex_watchlist": c_score_ex,
                 })
                 return d
 
@@ -2417,17 +2448,6 @@ def scan_market_opportunities(
                 tech_data=tech,
             )
             gate_can_buy = hard_gates.get("gate_mos_passed", True) and mos_is_informative
-
-            from quant_sanity_check import compute_fundamental_input_hash
-
-            fin_h = compute_fundamental_input_hash(
-                eps=fin_ratios.get("eps") if isinstance(fin_ratios, dict) else None,
-                bvps=fin_ratios.get("bvps") if isinstance(fin_ratios, dict) else None,
-                roe=fin_ratios.get("roe") if isinstance(fin_ratios, dict) else None,
-                pe=fin_ratios.get("pe") if isinstance(fin_ratios, dict) else None,
-                consensus_price=val_res.get("price_target") or val_res.get("consensus_target"),
-                bctc_period=bctc_p,
-            )
 
             sym_gates_failed = []
             if not hard_gates.get("gate_mos_passed", True):
@@ -2784,6 +2804,7 @@ def scan_market_opportunities(
                     "status": "CAUTION_TRAP",
                     "conviction_score": conv_score,
                     "conviction_tier": conv_tier,
+                    "conviction_breakdown": conv_breakdown,
                     "setup_type": "⚠️ CẢNH BÁO BẪY / CHƯA ĐẠT CHUẨN MUA",
                     "story_tag": story_tag,
                     "story": story_title,
@@ -2931,10 +2952,25 @@ def scan_market_opportunities(
                         "fair_value_bear": res.get("fair_value_bear"),
                         "fair_value_bull": res.get("fair_value_bull"),
                         "target_pb": res.get("target_pb"),
+                        "target_pb_gordon": res.get("target_pb_gordon"),
+                        "target_pb_clamped": res.get("target_pb_clamped"),
+                        "effective_pb": res.get("effective_pb"),
+                        "bvps_for_fv": res.get("bvps_for_fv"),
+                        "bvps_provider": res.get("bvps_provider"),
                         "eps_used": res.get("eps_used"),
                         "bvps_used": res.get("bvps_used"),
                         "consensus_target_used": res.get("consensus_target_used"),
                         "consensus_gap_pct": res.get("consensus_gap_pct"),
+                        "conviction_ex_watchlist": res.get("conviction_ex_watchlist"),
+                        "watchlist_bonus": res.get("watchlist_bonus", 0.0),
+                        "is_in_watchlist": res.get("is_in_watchlist", False),
+                        "conviction_valuation": (res.get("conviction_breakdown") or {}).get("valuation"),
+                        "conviction_technical": (res.get("conviction_breakdown") or {}).get("technical"),
+                        "conviction_catalyst": (res.get("conviction_breakdown") or {}).get("catalyst"),
+                        "conviction_liquidity": (res.get("conviction_breakdown") or {}).get("liquidity"),
+                        "conviction_foreign_penalty": (res.get("conviction_breakdown") or {}).get("foreign_penalty"),
+                        "val_confidence": res.get("val_confidence") or res.get("confidence"),
+                        "monitor_reason": "CANONICAL_EOD" if is_canonical_rec else res.get("monitor_reason", "WATCHLIST_INTRADAY"),
                     },
                     "logic_version": LOGIC_VERSION,
                     "model_version": current_model,

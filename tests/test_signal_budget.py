@@ -134,6 +134,109 @@ class TestConvictionScoring:
         assert score_res["score"] < MEDIUM_CONVICTION_THRESHOLD
         assert score_res["tier"] == "LOW"
 
+    @pytest.mark.parametrize(
+        "mos,val_conf,expected_val_pts",
+        [
+            (30.0, "HIGH", 40.0),
+            (25.0, "MEDIUM", 40.0),
+            (24.9, "HIGH", 30.0),
+            (15.0, "HIGH", 30.0),
+            (14.9, "HIGH", 20.0),
+            (8.0, "HIGH", 20.0),
+            (7.9, "HIGH", 10.0),
+            (0.0, "HIGH", 10.0),
+            (-0.1, "HIGH", 0.0),
+            (-15.0, "HIGH", 0.0),
+            (None, "HIGH", 0.0),
+            (26.0, "LOW", 25.0),
+            (20.0, "N/A", 25.0),
+        ],
+    )
+    def test_conviction_valuation_pillar_boundaries(self, mos, val_conf, expected_val_pts):
+        """Verify strict adherence to MoS point tiers and low confidence caps."""
+        score_res = calculate_conviction_score(mos_pct=mos, val_confidence=val_conf)
+        assert score_res["breakdown"]["valuation"] == expected_val_pts
+
+    def test_watchlist_bonus_ten_points_delta(self):
+        """Verify that watchlist tag confers exactly +10 points (15 vs 5 pts)."""
+        score_base = calculate_conviction_score(mos_pct=10.0, cat_info=None)
+        score_wl = calculate_conviction_score(mos_pct=10.0, cat_info={"tag": "WATCHLIST"})
+        assert score_base["breakdown"]["catalyst"] == 5.0
+        assert score_wl["breakdown"]["catalyst"] == 15.0
+        assert round(score_wl["score"] - score_base["score"], 1) == 10.0
+
+    @pytest.mark.parametrize(
+        "is_trap,expected_tech_delta",
+        [
+            (False, 5.0),
+            (True, -15.0),
+        ],
+    )
+    def test_conviction_trap_penalties(self, is_trap, expected_tech_delta):
+        """Verify trap penalty (-15 pts vs +5 pts no-trap bonus)."""
+        score_res = calculate_conviction_score(
+            mos_pct=10.0,
+            curr_price=0.0,
+            ma20=0.0,
+            rsi=50.0,
+            is_trap=is_trap,
+        )
+        assert score_res["breakdown"]["technical"] == 10.0 + expected_tech_delta
+
+    @pytest.mark.parametrize(
+        "f_status,f_net_val,expected_penalty,expected_flow_pts",
+        [
+            ("BUYING", 100.0, 0.0, 12.0),
+            ("NEUTRAL", 0.0, 0.0, 10.0),
+            ("SELLING", 15.0, 0.0, 7.0),
+            ("SELLING", 25.0, 5.0, 7.0),
+            ("SELLING", 60.0, 10.0, 7.0),
+        ],
+    )
+    def test_conviction_foreign_flow_penalties(self, f_status, f_net_val, expected_penalty, expected_flow_pts):
+        """Verify foreign net flow penalties (-5 pts for >=20B, -10 pts for >=50B) and flow scoring."""
+        score_res = calculate_conviction_score(
+            mos_pct=10.0,
+            vol_ratio=1.0,
+            foreign_flow={"status": f_status, "foreign_net_val_bil": f_net_val},
+        )
+        assert score_res["breakdown"]["foreign_penalty"] == expected_penalty
+        assert score_res["breakdown"]["liquidity"] == expected_flow_pts
+
+    def test_conviction_ex_watchlist_prevents_unwarranted_buy(self):
+        """Verify that MBB-style stock at 66 ex-watchlist does NOT trigger BUY even if bonus gives 76."""
+        score_mbb_style = calculate_conviction_score(
+            mos_pct=26.0,
+            val_confidence="HIGH",
+            curr_price=20.0,
+            ma20=20.0,
+            rsi=42.0,
+            vol_ratio=0.8,
+            cat_info=None,
+            is_trap=False,
+        )
+        assert score_mbb_style["score"] == 66.0
+        assert score_mbb_style["tier"] == "MEDIUM"
+
+        score_with_wl = calculate_conviction_score(
+            mos_pct=26.0,
+            val_confidence="HIGH",
+            curr_price=20.0,
+            ma20=20.0,
+            rsi=42.0,
+            vol_ratio=0.8,
+            cat_info={"tag": "WATCHLIST"},
+            is_trap=False,
+        )
+        assert score_with_wl["score"] == 76.0
+        assert score_with_wl["tier"] == "HIGH"
+
+        # Pre-registered rule check:
+        # Stock cannot qualify for BUY based on watchlist bonus!
+        conviction_ex = score_mbb_style["score"]
+        is_eligible_buy = conviction_ex >= HIGH_CONVICTION_THRESHOLD
+        assert not is_eligible_buy, "Must be blocked from BUY because conviction_ex_watchlist < 70"
+
 
 @pytest.mark.offline
 class TestCooldownEngine:
