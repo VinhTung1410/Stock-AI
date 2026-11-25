@@ -18,6 +18,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -770,9 +771,18 @@ def generate_digest(
     if not re.fullmatch(r"\d{8}", d_code):
         raise ValueError(f"Invalid target_date format: {target_date}")
     base_real = os.path.realpath(output_dir)
+    cwd_real = os.path.realpath(os.getcwd())
+    tmp_real = os.path.realpath(tempfile.gettempdir())
+    if not (
+        base_real == cwd_real
+        or base_real.startswith(cwd_real + os.sep)
+        or base_real == tmp_real
+        or base_real.startswith(tmp_real + os.sep)
+    ):
+        raise ValueError(f"Unsafe output_dir: {output_dir}")
     os.makedirs(base_real, exist_ok=True)
     out_file = os.path.realpath(os.path.join(base_real, f"daily_digest_{d_code}.md"))
-    if os.path.commonpath([base_real, out_file]) != base_real:
+    if not out_file.startswith(base_real + os.sep):
         raise ValueError(f"Unsafe output path: {out_file}")
     with open(out_file, "w", encoding="utf-8") as f:
         f.write(report_content)
