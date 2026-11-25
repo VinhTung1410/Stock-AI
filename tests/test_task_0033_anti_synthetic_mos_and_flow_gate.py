@@ -4,6 +4,9 @@
 # =============================================================================
 
 
+from datetime import date
+from unittest.mock import patch
+
 from data_engine import (
     _build_auto_watchlist_candidate,
     calculate_conviction_score,
@@ -144,8 +147,10 @@ def test_mwg_updated_consensus_target_and_freshness():
     freshness = check_institutional_target_freshness("MWG", as_of_date="2026-10-02")
     assert freshness["is_stale"] is False, "Consensus target of MWG should be fresh within 180 days!"
 
-    # Valuation check with fresh target
-    val = calculate_fair_value_and_mos("MWG", current_price=72.6, sector="Bán lẻ")
+    # Valuation check with fresh target (pinned to 2026-10-02 to avoid wall-clock staleness)
+    with patch("quant_valuation.date") as mock_date:
+        mock_date.today.return_value = date(2026, 10, 2)
+        val = calculate_fair_value_and_mos("MWG", current_price=72.6, sector="Bán lẻ")
     assert val["mos_is_informative"] is True, "Fresh consensus target makes MoS informative!"
     assert val["consensus_stale"] is False
     assert val["price_target"] == 83.5

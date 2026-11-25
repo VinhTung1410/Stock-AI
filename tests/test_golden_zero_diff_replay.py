@@ -14,6 +14,7 @@ Validates:
 """
 
 import json
+from datetime import date, datetime
 from unittest.mock import patch
 
 import pytest
@@ -144,8 +145,12 @@ def test_zero_diff_replay_106e6c6_production_vs_pending_release(session_date: st
         return f"DEC_{dec['symbol']}_REPLAY"
 
     wl = wl_by_date.get(session_date, [])
+    replay_dt = datetime(int(session_date[:4]), int(session_date[4:6]), int(session_date[6:]), 15, 0, 0)
+    replay_d = date(int(session_date[:4]), int(session_date[4:6]), int(session_date[6:]))
 
-    with patch("data_engine.fetch_stock_technical", side_effect=mock_tech), \
+    with patch("data_gate.datetime") as mock_dg_dt, \
+         patch("quant_valuation.date") as mock_qv_date, \
+         patch("data_engine.fetch_stock_technical", side_effect=mock_tech), \
          patch("data_engine.get_financial_ratios", side_effect=mock_fin), \
          patch("data_engine.fetch_macro_news", return_value=[]), \
          patch("data_engine.load_watchlist", return_value=wl), \
@@ -153,6 +158,9 @@ def test_zero_diff_replay_106e6c6_production_vs_pending_release(session_date: st
          patch("db_manager.save_raw_input_snapshot", return_value=True), \
          patch("db_manager.save_lifecycle_event", return_value="EVT_REPLAY"), \
          patch("db_manager.update_decision_forward_returns", return_value=True):
+        mock_dg_dt.now.return_value = replay_dt
+        mock_dg_dt.strptime.side_effect = datetime.strptime
+        mock_qv_date.today.return_value = replay_d
         de_new.scan_market_opportunities(
             extra_symbols=CANONICAL_55_SYMBOLS,
             session_override="EOD_CANONICAL",

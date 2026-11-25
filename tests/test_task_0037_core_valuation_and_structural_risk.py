@@ -10,6 +10,9 @@ Verifies:
 6. Data Gate Field-level Freshness & Frozen Data Penalty.
 """
 
+from datetime import date
+from unittest.mock import patch
+
 import pandas as pd
 
 from data_gate import FLAG_DATA_STALE_FREEZE, reconcile_data, reconcile_financial_period
@@ -39,9 +42,11 @@ class TestCompounderIntrinsicValuation:
 
     def test_mwg_valuation_independent_of_price_fluctuations(self):
         """When market price changes, base intrinsic fair value remains stable."""
-        # Test MWG with two completely different prices
-        val_low = calculate_fair_value_and_mos("MWG", current_price=60.0, sector="Bán lẻ")
-        val_high = calculate_fair_value_and_mos("MWG", current_price=80.0, sector="Bán lẻ")
+        # Pin date to 2026-10-02 so hardcoded MWG benchmark remains within 90-day freshness window
+        with patch("quant_valuation.date") as mock_date:
+            mock_date.today.return_value = date(2026, 10, 2)
+            val_low = calculate_fair_value_and_mos("MWG", current_price=60.0, sector="Bán lẻ")
+            val_high = calculate_fair_value_and_mos("MWG", current_price=80.0, sector="Bán lẻ")
 
         # In v7.2, FV was 0.708 * P + 28.39, so FV moved with price.
         # In v7.3, intrinsic base FV is derived from Forward EPS & SOTP.
