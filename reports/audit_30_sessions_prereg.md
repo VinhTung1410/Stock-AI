@@ -1,8 +1,8 @@
 # Pre-Registration: Kiểm toán 30 Phiên Hệ thống Đóng băng (`v15.0_frozen_20261013`)
 
 **Ngày khóa tiêu chí gốc (v1.0):** `2026-11-12` (trước khi có dữ liệu `2026-11-13` → `2026-11-25`)  
-**Bản cập nhật Addendum (v1.1):** `2026-11-12` (đồng bộ 1-1 với `scripts/audit_30_sessions.py` trước khi phát sinh dữ liệu `2026-11-13`)  
-**Bản cập nhật Hành chính (v1.2):** `2026-11-25` *(chỉ điều chỉnh lịch nghỉ lễ `24/11 → 25/11`, định vị mốc 60 phiên là interim check, và ghi tường minh quy tắc bất khả hồi tố cho 5 cohort hậu kiểm `18/11–25/11`; **tuyệt đối không thay đổi bất kỳ ngưỡng số học hay quy tắc verdict nào của v1.1**)*  
+**Bản cập nhật Addendum (v1.1):** `2026-11-12` (đồng bộ 1-1 với `scripts/audit_30_sessions.py` trước khi phát sinh dữ liệu `2026-11-13`, commit `9274daf`; bổ sung Mục 5 Addendum kèm đủ 3 quy tắc dừng 1–3 tại commit `bde3793` trước phiên `13/11`)  
+**Bản cập nhật Hành chính (v1.2 / v1.2.1):** `2026-11-25` *(chỉ điều chỉnh lịch nghỉ lễ `24/11 → 25/11`, định vị mốc 60 phiên là interim check, ghi tường minh quy tắc bất khả hồi tố cho 5 cohort hậu kiểm `18/11–25/11`, phân ranh giới rõ phần văn bản gốc `v1.1` tại Mục 1–4 với phần Addendum tại Mục 5, và xác nhận bản khóa cuối giữ nguyên đủ cả 3 quy tắc dừng 1–3 từ `bde3793`; **tuyệt đối không thay đổi bất kỳ ngưỡng số học hay quy tắc verdict nào của v1.1**)*  
 **Phiên bản hệ thống đóng băng:** Logic `v15.0_frozen_20261013` | Model `v15.0_post_fix` | Commit `106e6c61af`  
 **Quy tắc bất biến:** Không thay đổi logic tín hiệu, bộ lọc ngành, hay ngưỡng cổng `BUY/WATCH/REJECT` trong suốt kỳ quan sát 30 phiên (`2026-10-14` → `2026-11-25`, 30 phiên giao dịch thực tế bỏ qua ngày lễ `24/11`).
 
@@ -40,6 +40,7 @@ Số liệu đối chiếu trực tiếp từ dry-run [audit_30_sessions.py](fil
 ---
 
 ## 2. Bộ Tiêu chí Quyết định Khóa trước (Đồng bộ 1-1 với Code)
+*(Lưu ý cấu trúc tài liệu: Mục 1–4 giữ nguyên ngữ cảnh văn bản gốc `v1.1` soạn ngày `2026-11-12` tại mốc 22 phiên — do đó các cụm như `"8 phiên tới"` hay `"8 phiên cuối"` chỉ giai đoạn `13/11 → 25/11`; phần hiệu chỉnh lịch lễ `24/11` và giải thích hậu kiểm nằm riêng tại Mục 5 Addendum).*
 
 ### Mốc đánh giá & Phụ lục Out-of-Sample thuần
 * **Mốc chính (Phiên 30 — dự kiến `2026-11-24`, thực tế `2026-11-25` do nghỉ lễ `24/11`):** Có `30` cohort `T0`, trong đó `25` cohort đáo hạn `T+5` (`2026-10-14` → `2026-11-17`, 5 quan sát/chuỗi). *(Xem Mục 5 Addendum cập nhật ngày lễ).*

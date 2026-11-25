@@ -1,10 +1,11 @@
-# Pre-Registration Giai đoạn 2: Thử nghiệm Shadow Cổng `BUY` & Bộ lọc Regime (v2.0)
+# Pre-Registration Giai đoạn 2: Thử nghiệm Shadow Cổng `BUY` & Bộ lọc Regime (v2.1)
 
 **Lịch sử Phiên bản Khóa:**
-* **v1.0 (`2026-11-12`):** Bản khởi thảo trước khi đóng sổ Giai đoạn 1 (được lưu nguyên trạng trong lịch sử git tại tag `pre-reg-v1.1-20261112` / commit `bde3793` và `00690d3`).
-* **v2.0 (`2026-11-25` — Bản khóa hiện hành trước Phiên 31):** Cập nhật chính thức sau khi quan sát kết quả đóng sổ 30 phiên Giai đoạn 1 (`2026-10-14 → 2026-11-25`, ghi nhận vào `data/snooping_counter.json` mục `S9_STAGE2_V2_DESIGN`, counter `#95`). Bổ sung nhánh phản thực tế `Counterfactual Pass-6-Gates`, logging `raw score` toàn bộ 55 mã, `Rank IC` (toàn rổ & nội ngành), đối chứng kép, ngưỡng tối thiểu `>= 15` ngày có tín hiệu và quy cách Logger Bảng 1 / Bảng 2.
+* **v1.0 (`2026-11-12`):** Bản khởi thảo trước khi đóng sổ Giai đoạn 1 (lưu nguyên trạng tại tag `pre-reg-v1.1-20261112`).
+* **v2.0 (`2026-11-25`, tag `pre-reg-v2.0-locked-20261125`, commit `ca27c0b67e`):** Bổ sung `Counterfactual Pass-6-Gates`, `raw score` 55 mã, `Rank IC`, đối chứng kép, ngưỡng `>= 15` ngày và quy cách Logger.
+* **v2.1 (`2026-11-25` — Bản khóa cuối trước khi cài Logger):** Làm rõ tách ngưỡng `T+5` (chỉ tiêu chính) vs `T+10` (tốt nghiệp), ghi rõ `Rank IC` không ghi đè kết luận chỉ tiêu chính, quy tắc đồng hồ 30/60 liên tục khi chuyển pha `UPTREND`, và cập nhật trạng thái rà soát thực tế.
 
-**Trạng thái hiện tại:** **CHƯA KÍCH HOẠT** — Phiên 30 của Giai đoạn 1 đã chốt vào ngày `2026-11-25` (do `24/11` nghỉ lễ); 5 cohort hậu kiểm `18/11 → 25/11` đáo hạn `T+5` đầu tháng 12/`2026-12-02`. **Ngày $T_0$ đầu tiên dự kiến của Giai đoạn 2 (Phiên 31): `2026-11-26`** *(nếu phiên `26/11` chưa kịp chạy logger trước giờ mở cửa `T+1`, ngày $T_0$ đầu tiên tự động lùi sang phiên giao dịch kế tiếp — tuyệt đối không backfill đưa vào mẫu chính thức)*.  
+**Trạng thái hiện tại:** **ĐÃ HOÀN TẤT RÀ SOÁT (`2026-11-25`, đối chiếu văn bản qua cố vấn định lượng độc lập trên `v2.0/v2.1`) — SẴN SÀNG TRIỂN KHAI LOGGER (BƯỚC 4)** trước Phiên 31 (`2026-11-26`; nếu chưa kịp chạy logger trước giờ mở cửa `26/11`, ngày $T_0$ đầu tiên tự động lùi sang phiên giao dịch kế tiếp `27/11`, tuyệt đối không backfill đưa vào mẫu chính). Giai đoạn 1 đã chốt sổ phiên 30 ngày `2026-11-25` (5 cohort hậu kiểm `18/11 → 25/11` đáo hạn `T+5` ngày `2026-12-02`).  
 **Mục tiêu nghiên cứu:** Phân tách độc lập giữa *(1) năng lực chọn cổ phiếu của 6 cổng nội tại trong Downtrend* (qua `Counterfactual Pass-6-Gates` & `Raw Score` 55 mã) và *(2) tác động của việc nới lỏng có kiểm soát cổng `GATE_MACRO_REGIME`* (`Arm A, B, C`), đồng thời kiểm soát rủi ro sụt giảm (`Drawdown`).
 
 ---
@@ -66,13 +67,13 @@ Một bản ghi chỉ được gán nhãn `pass_6_internal_gates = True` (`SHADO
 
 * **Đồng hồ Thời gian Độc lập:** Bắt đầu đếm $T=1$ từ **ngày $T_0$ đầu tiên của Giai đoạn 2 (đề xuất `2026-11-26`)**, tách biệt hoàn toàn với đồng hồ 30/60 phiên của Giai đoạn 1.
 * **Cỡ mẫu tối thiểu (khóa kép cả số lệnh lẫn số ngày có tín hiệu):**
-  * Tối thiểu **`20` tín hiệu độc lập** (theo cooldown `5` phiên mỗi mã) đã đáo hạn `T+5` và `T+10`, **VÀ**
+  * Tối thiểu **`20` tín hiệu độc lập** (theo cooldown `5` phiên mỗi mã) đã đáo hạn `T+5` *(**`T+5` là điều kiện bắt buộc cho chỉ tiêu chính; riêng `T+10` chỉ cần cho xét tốt nghiệp toàn phần**, không chặn việc đánh giá chỉ tiêu chính `T+5`)*, **VÀ**
   * Tối thiểu **`>= 15` ngày $T_0$ phát sinh tín hiệu** đã đáo hạn `T+5` (vì với ~30 ngày và khối `L=5` chỉ có ~6 khối, quá ít ngày có tín hiệu sẽ làm bootstrap suy biến và các lệnh Ngân hàng cùng ngày tương quan mạnh).
 * **Đơn vị khối Bootstrap:** Mọi suy diễn thống kê (`Moving-Block Bootstrap`, `L=5`) bắt buộc dùng **ngày giao dịch $T_0$** làm đơn vị khối (block unit) nhằm xử lý tương quan chéo cùng phiên của nhóm Ngân hàng.
 * **Gia hạn & Trạng thái `INSUFFICIENT_SAMPLE`:** Chạy tối thiểu `30` phiên mới; nếu chưa đạt ngưỡng mẫu có thể gia hạn tối đa tới `60` phiên (`MIN_SHADOW_SESSIONS = 60`). Nếu sau `60` phiên vẫn `< 20` tín hiệu độc lập **HOẶC** `< 15` ngày có tín hiệu (hoặc cổng Macro không mở), nhánh đó nhận kết luận chính thức **`INSUFFICIENT_SAMPLE`** — là kết quả hợp lệ, **tuyệt đối không hạ ngưỡng**.
 * **Cảnh báo Chế độ Thị trường & Quy tắc Chuyển tiếp Pha Tăng (`UPTREND`):**
   * Nếu toàn kỳ Giai đoạn 2 vẫn nằm trong `DOWNTREND`, mọi kết luận chỉ có giá trị **có điều kiện (`Downtrend-Only Conditional`)**.
-  * **Nếu thị trường chuyển sang `UPTREND` trong lúc đang chạy (`VN-Index >= MA200`, `Slope(MA200) >= -0.5%`):** `Arm 0` (sản xuất) sẽ bắt đầu giải ngân theo quy tắc đóng băng. Toàn bộ các nhánh `SHADOW` và `raw score` vẫn tiếp tục được ghi nhận và tính toán liên tục, nhưng kết quả bắt buộc phải **bóc tách báo cáo có điều kiện riêng theo từng pha (`DOWNTREND` vs `UPTREND`)**, không gộp chung thành một con số hỗn hợp duy nhất.
+  * **Nếu thị trường chuyển sang `UPTREND` trong lúc đang chạy (`VN-Index >= MA200`, `Slope(MA200) >= -0.5%`):** `Arm 0` (sản xuất) sẽ bắt đầu giải ngân theo quy tắc đóng băng. **Đồng hồ `30/60` phiên của Giai đoạn 2 vẫn tiếp tục đếm liên tục (không reset)**, toàn bộ các nhánh `SHADOW` và `raw score` vẫn tiếp tục được ghi nhận bình thường, nhưng kết quả bắt buộc phải **bóc tách báo cáo có điều kiện riêng theo từng pha (`DOWNTREND` vs `UPTREND`)**, không gộp chung thành một con số hỗn hợp duy nhất.
 
 ---
 
@@ -102,7 +103,7 @@ Một bản ghi chỉ được gán nhãn `pass_6_internal_gates = True` (`SHADO
 1. **`Spearman Rank IC` toàn rổ & theo ngành (`Sector-Neutral`):**
    * Tính hệ số tương quan thứ hạng Spearman hàng ngày tại $T_0$ giữa **`conviction`** (và riêng **`mos_pct`**) với `Exec T+5` (phụ trợ `T+10`) trên **toàn bộ 55 mã**.
    * Bắt buộc báo cáo song song **`Sector-Neutral Rank IC`** (tính tương quan thứ hạng trong nội bộ từng nhóm ngành, đặc biệt nội bộ 10 mã Ngân hàng và nhóm Phi ngân hàng) để loại bỏ nhiễu xếp hạng liên ngành.
-   * **Vai trò quyết định & Cách đọc:** `Rank IC` đóng vai trò **chỉ tiêu chẩn đoán phụ trợ (Diagnostic Evidence — không ghi đè Primary Metric)**. Được công nhận là có bằng chứng năng lực xếp hạng tích cực khi và chỉ khi **`Mean Daily Rank IC > 0.00` VÀ cận dưới `95% Block Bootstrap CI (L=5 theo ngày T0) > 0.00`** trên cả chuỗi **`Sector-Neutral Rank IC`**. Nếu trượt điều kiện này trong khi `Counterfactual Pass-6-Gates` dương, ghi nhận kết quả phụ thuộc vào ngưỡng cắt nhị phân chứ chưa chứng minh được tính đơn điệu toàn rổ.
+   * **Vai trò quyết định & Cách đọc:** `Rank IC` đóng vai trò **chỉ tiêu chẩn đoán phụ trợ (Diagnostic Evidence)**. Khóa trước quy tắc: **việc `Rank IC` không đạt tuyệt đối không làm thay đổi kết luận đỗ/trượt của chỉ tiêu chính `Counterfactual Pass-6-Gates`**. `Rank IC` chỉ được công nhận là có bằng chứng xếp hạng tích cực khi `Mean Daily Rank IC > 0.00` **VÀ** cận dưới `95% Block Bootstrap CI (L=5 theo ngày T0) > 0.00` trên cả chuỗi **`Sector-Neutral Rank IC`**. Nếu `Rank IC` trượt trong khi `Counterfactual Pass-6-Gates` dương, ghi nhận kết quả phụ thuộc vào ngưỡng cắt nhị phân chứ chưa chứng minh được tính đơn điệu toàn rổ.
 2. **Quy tắc Chống `Threshold Mining`:**
    * Giữ cố định toàn bộ ngưỡng (`conviction >= 70`, `MoS >= 15%`, `RSI >= 45`). Nếu dùng kho `raw score` 55 mã để tìm ngưỡng tối ưu mới, **bắt buộc chia mẫu theo thời gian**: tập khám phá ban đầu và tập kiểm định ngoài mẫu hoàn toàn mới trên các phiên sau.
 
@@ -111,7 +112,7 @@ Một bản ghi chỉ được gán nhãn `pass_6_internal_gates = True` (`SHADO
 
 ---
 
-## 7. Quy cách Kỹ thuật Logger `Raw Score` Giai đoạn 2 (Bước 4 — Chỉ Cài Sau Khi Rà Soát Xong)
+## 7. Quy cách Kỹ thuật Logger `Raw Score` Giai đoạn 2 (Bước 4 — Quy cách Khóa trước khi Triển khai)
 
 ### Nguyên tắc Vận hành & Chống Look-Ahead
 1. **Neo theo lịch giao dịch thực:** Chỉ chạy vào ngày giao dịch thực sự có khớp lệnh EOD hợp lệ; **từ chối chạy vào ngày nghỉ lễ / cuối tuần**.
