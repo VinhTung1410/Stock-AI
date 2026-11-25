@@ -41,8 +41,11 @@ def test_evaluate_portfolio_uses_last_known_price_when_tech_fails():
 
     portfolio = [{"symbol": "FPT", "volume": 220, "cost_price": 66.66}]
 
-    # Giả lập fetch_stock_technical trả về rỗng hoàn toàn {}
-    with mock.patch("data_engine.fetch_stock_technical", return_value={}):
+    # Giả lập fetch_stock_technical trả về rỗng hoàn toàn {} và get_financial_ratios trả về {} (như trên CI)
+    with (
+        mock.patch("data_engine.fetch_stock_technical", return_value={}),
+        mock.patch("data_engine.get_financial_ratios", return_value={}),
+    ):
         df_eval = evaluate_portfolio(portfolio)
         assert not df_eval.empty
         # Thị giá phải là 63.50 (từ cache), TUYỆT ĐỐI không được fallback về giá vốn 66.66

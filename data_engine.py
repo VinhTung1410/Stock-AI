@@ -1563,8 +1563,9 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
         val_res = calculate_fair_value_and_mos(
             symbol=symbol, current_price=curr_price, fin_dict=fin_dict_p, sector=note
         )
-        fair_val = val_res.get("fair_value", curr_price)
-        mos_pct = val_res.get("mos_pct", 0.0)
+        fair_val = val_res.get("fair_value")
+        fair_val = curr_price if fair_val is None else fair_val
+        mos_pct = val_res.get("mos_pct")
 
         # Đánh giá vị thế nắm giữ V2
         row_dict = {"symbol": symbol, "avg_price": cost_price, "volume": volume, "market_price": curr_price}
@@ -1583,7 +1584,7 @@ def evaluate_portfolio(portfolio: list) -> pd.DataFrame:
                 "Lãi/Lỗ (%)": round(pnl_pct, 2),
                 "Lãi/Lỗ (VND)": int(pnl_vnd),
                 "Fair Value (k)": round(fair_val, 2),
-                "MoS (%)": round(mos_pct, 1),
+                "MoS (%)": round(mos_pct, 1) if mos_pct is not None else None,
                 "Chặn lãi/Cắt lỗ (k)": defense_target,
                 "Hành động V2": action_v2,
                 "Vị thế MA20": tech.get("status_ma20", "N/A"),
@@ -1669,8 +1670,9 @@ def evaluate_watchlist(watchlist: list) -> pd.DataFrame:
         val_res = calculate_fair_value_and_mos(
             symbol=symbol, current_price=curr_price, fin_dict=fin_dict_w, sector=note
         )
-        fair_val = val_res.get("fair_value", curr_price)
-        mos_pct = val_res.get("mos_pct", 0.0)
+        fair_val = val_res.get("fair_value")
+        fair_val = curr_price if fair_val is None else fair_val
+        mos_pct = val_res.get("mos_pct")
 
         from quant_valuation import get_stock_archetype_details
 
