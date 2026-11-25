@@ -767,8 +767,13 @@ def generate_digest(
         missing_data_symbols=missing_data_symbols,
     )
 
-    os.makedirs(output_dir, exist_ok=True)
-    out_file = os.path.join(output_dir, f"daily_digest_{d_code}.md")
+    if not re.fullmatch(r"\d{8}", d_code):
+        raise ValueError(f"Invalid target_date format: {target_date}")
+    base_real = os.path.realpath(output_dir)
+    os.makedirs(base_real, exist_ok=True)
+    out_file = os.path.realpath(os.path.join(base_real, f"daily_digest_{d_code}.md"))
+    if os.path.commonpath([base_real, out_file]) != base_real:
+        raise ValueError(f"Unsafe output path: {out_file}")
     with open(out_file, "w", encoding="utf-8") as f:
         f.write(report_content)
 
@@ -796,6 +801,12 @@ def main() -> None:
         target_date = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}"
     else:
         target_date = raw_date
+    datetime.strptime(target_date, "%Y-%m-%d")
+
+    cwd_real = os.path.realpath(os.getcwd())
+    safe_out_dir = os.path.realpath(os.path.join(cwd_real, args.output_dir))
+    if os.path.commonpath([cwd_real, safe_out_dir]) != cwd_real:
+        raise ValueError(f"Unsafe output directory: {args.output_dir}")
 
     sync_db_flag = False if args.skip_db else True
 
@@ -805,7 +816,7 @@ def main() -> None:
         skip_export=args.skip_export,
         skip_returns=args.skip_returns,
         sync_db=sync_db_flag,
-        output_dir=args.output_dir,
+        output_dir=safe_out_dir,
         skip_stage2=args.skip_stage2,
     )
     print("\n" + "=" * 70)
