@@ -1,9 +1,10 @@
 # Pre-Registration: Kiểm toán 30 Phiên Hệ thống Đóng băng (`v15.0_frozen_20261013`)
 
-**Ngày khóa tiêu chí gốc (v1.0):** `2026-11-12` (trước khi có dữ liệu `2026-11-13` → `2026-11-24`)  
-**Bản cập nhật Addendum (v1.1):** `2026-11-12` (đồng bộ 1-1 với `scripts/audit_30_sessions.py` trước khi phát sinh dữ liệu `2026-11-13`; sau thời điểm có dữ liệu `13/11` sẽ **không sửa tiêu chí nữa**)  
+**Ngày khóa tiêu chí gốc (v1.0):** `2026-11-12` (trước khi có dữ liệu `2026-11-13` → `2026-11-25`)  
+**Bản cập nhật Addendum (v1.1):** `2026-11-12` (đồng bộ 1-1 với `scripts/audit_30_sessions.py` trước khi phát sinh dữ liệu `2026-11-13`)  
+**Bản cập nhật Hành chính (v1.2):** `2026-11-25` *(chỉ điều chỉnh lịch nghỉ lễ `24/11 → 25/11`, định vị mốc 60 phiên là interim check, và ghi tường minh quy tắc bất khả hồi tố cho 5 cohort hậu kiểm `18/11–25/11`; **tuyệt đối không thay đổi bất kỳ ngưỡng số học hay quy tắc verdict nào của v1.1**)*  
 **Phiên bản hệ thống đóng băng:** Logic `v15.0_frozen_20261013` | Model `v15.0_post_fix` | Commit `106e6c61af`  
-**Quy tắc bất biến:** Không thay đổi logic tín hiệu, bộ lọc ngành, hay ngưỡng cổng `BUY/WATCH/REJECT` trong suốt kỳ quan sát 30 phiên (`2026-10-14` → `2026-11-24`).
+**Quy tắc bất biến:** Không thay đổi logic tín hiệu, bộ lọc ngành, hay ngưỡng cổng `BUY/WATCH/REJECT` trong suốt kỳ quan sát 30 phiên (`2026-10-14` → `2026-11-25`, 30 phiên giao dịch thực tế bỏ qua ngày lễ `24/11`).
 
 ---
 

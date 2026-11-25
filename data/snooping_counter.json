@@ -1,5 +1,5 @@
 {
-  "snooping_count": 93,
+  "snooping_count": 95,
   "history": [
     {
       "task_id": "U1",
@@ -667,6 +667,22 @@
       "after": 93,
       "type": "khám phá",
       "timestamp": "2026-11-12T22:15:00.000000+00:00"
+    },
+    {
+      "task_id": "S8_STAGE1_30S_AUDIT_RUN",
+      "description": "S8: Chạy kiểm toán đóng sổ 30 phiên Giai đoạn 1 (25 cohort T+5 14/10–17/11), phát hiện ngoại lệ tệp 24/11 và chuỗi OOS thuần âm (-0.43%)",
+      "before": 93,
+      "after": 94,
+      "type": "đối soát",
+      "timestamp": "2026-11-25T09:30:00.000000+00:00"
+    },
+    {
+      "task_id": "S9_STAGE2_V2_DESIGN",
+      "description": "S9: Thiết kế Stage 2 Pre-Reg v2.0 dựa trên quan sát 30 phiên (Counterfactual Pass-6-Gates, 55-mã Raw Score, Rank IC, Sector-Neutral IC, tối thiểu 15 ngày có tín hiệu)",
+      "before": 94,
+      "after": 95,
+      "type": "khám phá",
+      "timestamp": "2026-11-25T09:40:00.000000+00:00"
     }
   ]
 }

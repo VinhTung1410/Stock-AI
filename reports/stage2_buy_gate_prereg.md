@@ -1,23 +1,26 @@
-# Pre-Registration Giai đoạn 2: Thử nghiệm Shadow Cổng `BUY` & Bộ lọc Regime
+# Pre-Registration Giai đoạn 2: Thử nghiệm Shadow Cổng `BUY` & Bộ lọc Regime (v2.0)
 
-**Ngày khóa tiêu chí:** `2026-11-12` *(Bản bổ sung trước Phiên 31 ngày `2026-11-25`: đồng bộ mốc ngày lễ `24/11` và khóa định nghĩa `raw score` 55 mã, `Rank IC`, đối chứng kép và chỉ tiêu chính duy nhất)*  
-**Trạng thái hiện tại:** **CHƯA KÍCH HOẠT** — chỉ bắt đầu thu thập dữ liệu sau khi hoàn tất đóng sổ Giai đoạn 1 (`v15.0_frozen_20261013`, mốc phiên 30 rơi vào **`2026-11-25`** do ngày `24/11` nghỉ lễ; 5 cohort hậu kiểm `18/11 → 25/11` đáo hạn `T+5` đầu tháng 12/`2026-12-02`).  
-**Mục tiêu nghiên cứu:** Đánh giá xem việc nới lỏng có kiểm soát cổng `GATE_MACRO_REGIME` đối với các mã đã vượt qua toàn bộ 6 cổng nội tại (kèm theo dõi `raw score` liên tục toàn rổ 55 mã) có mang lại alpha thực nghiệm dương sau chi phí hay không, đồng thời kiểm soát rủi ro sụt giảm (drawdown).
+**Lịch sử Phiên bản Khóa:**
+* **v1.0 (`2026-11-12`):** Bản khởi thảo trước khi đóng sổ Giai đoạn 1 (được lưu nguyên trạng trong lịch sử git tại tag `pre-reg-v1.1-20261112` / commit `bde3793` và `00690d3`).
+* **v2.0 (`2026-11-25` — Bản khóa hiện hành trước Phiên 31):** Cập nhật chính thức sau khi quan sát kết quả đóng sổ 30 phiên Giai đoạn 1 (`2026-10-14 → 2026-11-25`, ghi nhận vào `data/snooping_counter.json` mục `S9_STAGE2_V2_DESIGN`, counter `#95`). Bổ sung nhánh phản thực tế `Counterfactual Pass-6-Gates`, logging `raw score` toàn bộ 55 mã, `Rank IC` (toàn rổ & nội ngành), đối chứng kép, ngưỡng tối thiểu `>= 15` ngày có tín hiệu và quy cách Logger Bảng 1 / Bảng 2.
+
+**Trạng thái hiện tại:** **CHƯA KÍCH HOẠT** — Phiên 30 của Giai đoạn 1 đã chốt vào ngày `2026-11-25` (do `24/11` nghỉ lễ); 5 cohort hậu kiểm `18/11 → 25/11` đáo hạn `T+5` đầu tháng 12/`2026-12-02`. **Ngày $T_0$ đầu tiên dự kiến của Giai đoạn 2 (Phiên 31): `2026-11-26`** (chỉ chạy ghi log sau khi bản v2.0 này được commit/tag và rà soát xong).  
+**Mục tiêu nghiên cứu:** Phân tách độc lập giữa *(1) năng lực chọn cổ phiếu của 6 cổng nội tại trong Downtrend* (qua `Counterfactual Pass-6-Gates` & `Raw Score` 55 mã) và *(2) tác động của việc nới lỏng có kiểm soát cổng `GATE_MACRO_REGIME`* (`Arm A, B, C`), đồng thời kiểm soát rủi ro sụt giảm (`Drawdown`).
 
 ---
 
 ## 1. Công bố Giả thuyết Khám phá Sau Xem Dữ liệu (Post-Hoc Disclosure)
 
-> [!WARNING] Cảnh báo Phương pháp luận & Đếm Thử nghiệm (Snooping Counter #93)
-> * **Nguồn gốc giả thuyết:** Ý tưởng thiết lập các nhánh thử nghiệm `SHADOW_BUY` xuất phát từ quan sát thực nghiệm khám phá trên **22 phiên giao dịch** (`14/10/2026` → `12/11/2026`) của Giai đoạn 1.
-> * **Tính chất trong mẫu (In-Sample):** 22 phiên này đóng vai trò tập dữ liệu khám phá (exploratory dataset) dùng để hình thành giả thuyết (hypothesis generation). Tuyệt đối **không được trích dẫn** dữ liệu của 22 phiên này như bằng chứng kiểm định ngoài mẫu (out-of-sample validation).
-> * **Kiểm toán Snooping:** Chuỗi phân tích này đã được ghi nhận chi tiết thành từng bước riêng biệt vào `data/snooping_counter.json` (từ `S1_SPLIT_23OCT` đến `S7_COOLDOWN_SECTOR`, đưa tổng số lần kiểm toán/snooping từ 86 lên **93**). Mọi kết luận khoa học về Giai đoạn 2 chỉ được rút ra từ các phiên giao dịch phát sinh hoàn toàn mới sau ngày kích hoạt.
+> [!WARNING] Cảnh báo Phương pháp luận & Đếm Thử nghiệm (Snooping Counter #95)
+> * **Nguồn gốc giả thuyết:** Thiết kế v1.0 (`12/11`) dựa trên 22 phiên đầu và thiết kế v2.0 (`25/11`) được điều chỉnh sau khi đã quan sát đủ **30 phiên giao dịch** (`14/10/2026 → 25/11/2026`) của Giai đoạn 1 (đã ghi nhận thêm `S8`, `S9` vào [snooping_counter.json](file:///c:/Users/Window/Desktop/Stock%20-%20learning/data/snooping_counter.json), đưa tổng số lên **95**).
+> * **Tính chất trong mẫu (In-Sample):** Mọi dữ liệu lịch sử hoặc backfill giai đoạn `14/10/2026 → 25/11/2026` chỉ được gắn nhãn **`EXPLORATORY_IN_SAMPLE`**, tuyệt đối **không tính vào bằng chứng kiểm định Giai đoạn 2**.
+> * **Ranh giới sạch:** Mọi kết luận Giai đoạn 2 chỉ tính trên dữ liệu mới phát sinh hoàn toàn từ ngày $T_0$ đầu tiên của Giai đoạn 2 (**đề xuất `2026-11-26`**) trở đi.
 
 ---
 
-## 2. Định nghĩa Mã nguồn Tường minh của `SHADOW_BUY`
+## 2. Định nghĩa Mã nguồn Tường minh của `SHADOW_BUY` & Luồng `Raw Score`
 
-Để tránh hiện tượng nới lỏng tùy tiện hoặc lẫn lộn khái niệm, một bản ghi chỉ được gán nhãn `SHADOW_BUY` cho một nhánh thử nghiệm khi thỏa mãn **toàn bộ 6 tầng cổng nội tại** trong kiến trúc 7 cổng sản xuất, duy nhất cổng `GATE_MACRO_REGIME` được đánh giá theo tiêu chí riêng của từng nhánh:
+Một bản ghi chỉ được gán nhãn `pass_6_internal_gates = True` (`SHADOW_BUY` nội tại) khi thỏa mãn **toàn bộ 6 tầng cổng nội tại** trong kiến trúc 7 cổng sản xuất; cổng `GATE_MACRO_REGIME` được tách riêng theo từng nhánh:
 
 ```
 [KIẾN TRÚC 7 CỔNG KIỂM SOÁT]
@@ -30,119 +33,99 @@
    - Chỉ số RSI(14) >= 45.0
    - Khối lượng V >= 1.0 * MA20_Volume
 5. GATE_QUANT_CONVICTION: Điểm định lượng Conviction >= 70 / 100
-6. GATE_PM_VETO: Không vướng bẫy rủi ro (No Bull Trap, No Falling Knife, No Veto)
+6. GATE_PM_VETO: Không vướng bẫy rủi ro (Bull Trap, Falling Knife, Veto)
 ---------------------------------------------------------------------------------
-7. GATE_MACRO_REGIME: Cổng vĩ mô duy nhất được thử nghiệm nới lỏng (tùy theo Arm)
+7. GATE_MACRO_REGIME: Cổng vĩ mô được đánh giá riêng theo Arm 0 / A / B / C hoặc bỏ qua ở nhánh Phản thực tế
 ```
 
-### Chi tiết các Nhánh Thử nghiệm (Candidate Arms — Chỉ chạy Shadow)
+### Chi tiết các Nhánh Thử nghiệm
 
-| Nhánh | Định nghĩa điều kiện mở cổng `SHADOW_BUY` | Quy mô vị thế giả định | Ràng buộc kỹ thuật |
+| Nhánh | Định nghĩa điều kiện kích hoạt tại $T_0$ | Quy mô vị thế giả định | Phạm vi kết luận hợp lệ |
 | :--- | :--- | :--- | :--- |
 | **Arm 0 (Baseline)** | Theo logic đóng băng `v15.0`: `UPTREND` chuẩn (`VN-Index >= MA200`, `Slope(MA200) >= -0.5%`). | `0%` khi `DOWNTREND`; `100%` trần khi `UPTREND` | Nhánh đối chứng giữ `100% Cash (0.00%)` trong `DOWNTREND`. |
-| **Arm A (MA200 Proximity Buffer)** | `vs MA200 >= -2.0%` **VÀ** `VN-Index > MA20` **VÀ** `Slope(MA20) > 0` duy trì tối thiểu `2` phiên liên tiếp. | Tối đa `50%` ngân sách vị thế (nửa Kelly) | Vùng đệm sát dưới `MA200` khi động lượng ngắn hạn đã xác nhận hồi phục. |
-| **Arm B (Hysteresis & Volume Confirm)** | Áp dụng `classify_regime_ma200_hysteresis` (`reentry_pct = +1.0%`, `confirmation_sessions = 2`, `vol_surge_mult = 1.3`) từ `regime_classifier.py`. | `75%–100%` ngân sách vị thế | Kiểm tra hàm giảm nhiễu whipsaw đã tích hợp trong codebase. |
-| **Arm C (Breadth + MA200 Floor)** | `vs MA200 >= -3.0%` **VÀ** tỷ lệ mã trong Universe 55 mã đóng cửa trên `MA20 >= 40%` trong `>= 2` phiên liên tiếp. | Tối đa `50%` ngân sách vị thế | Đòi hỏi độ rộng thị trường đồng thuận trước khi mở mua sớm dưới `MA200`. |
+| **Arm A (MA200 Buffer)** | `vs MA200 >= -2.0%` **VÀ** `VN-Index > MA20` **VÀ** `Slope(MA20) > 0` tối thiểu `2` phiên liên tiếp (kèm 6 cổng nội tại). | Tối đa `50%` ngân sách (nửa Kelly) | Kiểm định nới cổng Macro sát `MA200`. |
+| **Arm B (Hysteresis + Vol)** | `classify_regime_ma200_hysteresis` (`reentry_pct = +1.0%`, `confirmation_sessions = 2`, `vol_surge_mult = 1.3`) từ `regime_classifier.py` (kèm 6 cổng nội tại). | `75%–100%` ngân sách | Kiểm định hàm giảm whipsaw quanh `MA200`. |
+| **Arm C (Breadth Floor)** | `vs MA200 >= -3.0%` **VÀ** tỷ lệ mã trên `MA20 >= 40%` tối thiểu `2` phiên liên tiếp (kèm 6 cổng nội tại). | Tối đa `50%` ngân sách | Kiểm định độ rộng thị trường dưới `MA200`. |
+| **Counterfactual Pass-6-Gates** | Bỏ qua hoàn toàn `GATE_MACRO_REGIME`; kích hoạt mọi mã thỏa mãn `pass_6_internal_gates = True`, **kể cả khi cổng Macro đóng**. | Giả lập `Open_T+1 → Close_T+h` | **Chỉ đo năng lực chọn mã trong Downtrend**, **KHÔNG** đo việc nới cổng Macro (xem ràng buộc bên dưới). |
 
-> **Ràng buộc đóng băng bậc tự do:** Cố định đúng `3` nhánh thử (`Arm A, B, C`) so với `Arm 0`. Tuyệt đối không điều chỉnh tham số, không thêm các mức đệm tùy biến (`-1.5%`, `-2.5%`) trong suốt quá trình thử nghiệm.
-
-### Quy tắc Đo lường Phản thực tế (`Counterfactual Execution`) & Ghi Log `Raw Score` 55 Mã
-1. **Nhánh Phản thực tế Toàn phần (`Counterfactual Pass-6-Gates`):**
-   * Vì `VN-Index` đang ở `-5.35%` dưới `MA200` (`25/11`), `Arm A` (`>= -2%`) và `Arm C` (`>= -3%`) có nguy cơ tiếp tục phát sinh `0` lệnh trong suốt 60 phiên nếu thị trường vẫn suy thoái sâu.
-   * Nếu một nhánh Macro (`Arm A/B/C`) không mở cổng trong 60 phiên, kết luận chính thức cho nhánh đó là **`INSUFFICIENT_SAMPLE (do cổng Macro đóng)`** — **tuyệt đối không hạ ngưỡng**.
-   * Do đó, Giai đoạn 2 đồng thời đo lường nhánh phản thực tế **`Counterfactual Pass-6-Gates`**: mọi mã thỏa mãn 6 cổng nội tại tại $T_0$ đều được giả định vào lệnh tại giá **`Open_T+1`** và đóng tại **`Close_T+h`**, **kể cả vào những ngày cổng Macro vẫn đóng**, nhằm tích lũy đủ dữ liệu phân tách chất lượng chọn cổ phiếu với cổng thị trường.
-2. **Bắt buộc Ghi Log `Raw Score` Liên tục cho Toàn bộ 55 Mã Mỗi Ngày:**
-   * Mỗi phiên từ ngày kích hoạt Giai đoạn 2, lưu tách riêng toàn bộ trạng thái và điểm số thô tại $T_0$ cho **toàn bộ 55 mã trong Universe** (không chỉ các mã qua cổng) vào tệp/bảng riêng biệt hoàn toàn với Giai đoạn 1: `symbol`, `sector`, `decision`, `conviction`, `mos_pct`, `rsi_14`, `pct_vs_ma20`, `pct_vs_ma100`, `vol_vs_ma20`, `vnindex_vs_ma200_pct`, cờ đỗ/trượt từng cổng `1..6`, và cờ `pass_6_internal_gates`.
-   * Dữ liệu 55 mã này là **sản phẩm khoa học cốt lõi** của Giai đoạn 2 trong trường hợp các nhánh `Arm A/B/C` tiếp tục cho `0` lệnh.
+> **Giới hạn diễn giải bắt buộc đối với `Counterfactual Pass-6-Gates`:**
+> Vì nhánh này bỏ qua hoàn toàn cổng vĩ mô, nó chỉ kiểm định hiệu quả chọn cổ phiếu trong pha suy thoái chứ không kiểm định quy tắc mở cổng Macro. Nếu `Counterfactual Pass-6-Gates` đạt chỉ tiêu chính, kết luận đúng chỉ là: *"các mã qua 6 cổng nội tại có lãi ròng dương trong Downtrend"*. **Kết quả đó chưa đủ căn cứ để tự động mở cổng `BUY` khi `VN-Index` đang cách `-5%` dưới `MA200`** — việc mở cổng vĩ mô vẫn đòi hỏi kiểm định qua `Arm A/B/C` hoặc pha chuyển tiếp riêng.
 
 ---
 
-## 3. Thực tế Mẫu Khám phá 22 Phiên (Baseline Mô tả Khách quan)
+## 3. Thực tế Mẫu Khám phá 22–30 Phiên (Baseline Mô tả — In-Sample)
 
-Qua phân tích 93 bản ghi có `conviction >= 70` trong 22 phiên (`14/10` → `12/11/2026`):
-
-1. **Phân tách 43 vs 50 bản ghi:**
-   * **43 bản ghi (46.2%):** Thỏa mãn đầy đủ toàn bộ 6 cổng nội tại (`P >= MA100`, `P >= MA20`, `RSI >= 45`, `MoS >= 15%`, `conviction >= 70`, `watch_reason == []`). Nhóm này bị chặn duy nhất bởi `GATE_MACRO_REGIME` và rơi về lý do mô tả `"chờ tín hiệu xác nhận dòng tiền"`.
-   * **50 bản ghi (53.8%):** Dù có `conviction >= 70` và `MoS >= 15%`, nhóm này vẫn trượt ít nhất một tiêu chí kỹ thuật nội tại (chủ yếu là $P < MA100$ hoặc $RSI < 45$).
-2. **Hiệu ứng Cooldown 5 Phiên & Độ tập trung ngành:**
-   * Khi áp dụng quy tắc giãn cách tối thiểu 5 phiên (`cooldown = 5`) cho mỗi cổ phiếu để tránh trùng lặp tín hiệu, 43 bản ghi này cô đọng lại thành đúng **16 tín hiệu độc lập**.
-   * Độ tập trung ngành ở mức cực đoan: **14/16 tín hiệu (87.5%) là Ngân hàng** (`HDB`, `TPB`, `VIB`, `MBB`, `CTG`), chỉ có **2/16 tín hiệu (12.5%) là BĐS dân dụng** (`DXG`, `NLG`).
-3. **Hiệu suất Thực nghiệm Mô tả (Chưa qua kiểm chứng alpha):**
-   * Lợi suất khớp lệnh trung bình $T+5$ (`Exec T+5`) của 43 bản ghi này chỉ đạt **`+0.02%`** (trung vị `0.00%`).
-   * Con số này **thấp hơn nhiều** so với chi phí giao dịch 2 chiều `0.40%` (lợi suất ròng âm `-0.38%`).
-   * Trong khi đó, phần còn lại của rổ WATCH (những mã trượt kỹ thuật $P < MA100$ hoặc $RSI < 45$) có lợi suất trung bình `+0.84%` nhờ nhịp nảy kỹ thuật mạnh từ vùng quá bán của nhóm BĐS dân dụng.
-   * **Cảnh báo Diễn giải Thực nghiệm [GIẢ THUYẾT, CHƯA KIỂM CHỨNG]:** Sự chênh lệch giữa nhóm WATCH còn lại (`+0.84%`) và nhóm 43 lượt (`+0.02%`) là một phát hiện mô tả. Một giả thuyết hợp lý là hiện tượng phân kỳ ngành và bất đối xứng độ biến động (nhóm BĐS dân dụng có thể bật nảy kỹ thuật từ vùng quá bán sâu, trong khi nhóm Ngân hàng dao động hẹp quanh nền tích lũy), nhưng cơ chế nhân quả này **chưa được kiểm định chặt chẽ**. Tuyệt đối **không được quy kết nguyên nhân rằng 'cổng kỹ thuật làm hại hiệu suất'**.
-   * **Kết luận khoa học:** Việc một cổ phiếu đạt chuẩn 6 tầng nội tại trong Downtrend **hoàn toàn chưa chứng minh được nó tạo ra alpha dương**. Nhãn `SHADOW_BUY` chỉ thể hiện trạng thái kỹ thuật và định giá, không đồng nghĩa với lợi nhuận.
+* Trên `22` phiên đầu (`14/10–12/11`, `93` bản ghi `conviction >= 70`): `43` lượt thỏa mãn 6 cổng nội tại (chặn bởi Macro) thu hẹp sau cooldown 5 phiên còn `16` tín hiệu (`14/16` Ngân hàng, `2/16` BĐS dân dụng) với `Exec T+5 = +0.02%` (`-0.38%` sau phí); `50` lượt còn lại trượt kỹ thuật ($P < MA100$ hoặc $RSI < 45$).
+* Trên trọn `30` phiên Giai đoạn 1 (`14/10–25/11`): `BUY = 0` cả `30/30` phiên; `25` cohort `T+5` (`14/10–17/11`) cho verdict `FAIL / INCONCLUSIVE` (`W−R` 5 chuỗi = `+0.28%`, `WATCH` sau phí `-0.72%`); `VN-Index` kết phiên `25/11` ở `-5.35%` dưới `MA200`.
+* Nếu trong 60 phiên Giai đoạn 2 `VN-Index` vẫn nằm dưới `-2% / -3%`, `Arm A` và `Arm C` nhiều khả năng cho `0` lệnh (`INSUFFICIENT_SAMPLE` do cổng Macro đóng). Khi đó, **bộ log `raw score` 55 mã + dòng `Counterfactual Pass-6-Gates`** là sản phẩm khoa học trung tâm của Giai đoạn 2.
 
 ---
 
-## 4. Quy mô Mẫu & Quy tắc Cooldown trong Thử nghiệm
+## 4. Quy mô Mẫu, Số Ngày Tối thiểu & Quy tắc Độc lập
 
-* **Định nghĩa Tín hiệu Độc lập & Đơn vị Khối Bootstrap:** Một tín hiệu `SHADOW_BUY` được coi là độc lập trên phương diện tần suất cổ phiếu nếu thỏa mãn quy tắc làm nguội **5 phiên liên tiếp** (`cooldown >= 5` phiên giao dịch) đối với cùng một mã chứng khoán. Tuy nhiên, quy tắc cooldown theo mã **không loại bỏ được tương quan cùng chiều giữa các cổ phiếu Ngân hàng xuất hiện trong cùng một phiên**. Vì vậy, trong mọi kiểm định suy diễn thống kê (`Moving-Block Bootstrap`, `L=5`), **đơn vị khối (block unit) bắt buộc là ngày giao dịch $T_0$**, không coi từng lệnh cổ phiếu trong cùng một ngày là các quan sát độc lập.
-* **Số tín hiệu tối thiểu:** Tối thiểu **`20` tín hiệu `SHADOW_BUY` độc lập** đã đáo hạn đủ $T+5$ và $T+10$ cho mỗi nhánh được đánh giá (lưu ý `20` tín hiệu phần lớn là Ngân hàng thực chất tương ứng vài cụm tương quan theo ngày).
-* **Quy tắc Xử lý Thiếu Mẫu (Sample Scarcity Handling):**
-  * **Đồng hồ Thời gian Độc lập:** Quy tắc thời gian '30 phiên mới và gia hạn tối đa 60 phiên' của Giai đoạn 2 là một **đồng hồ đo độc lập hoàn toàn**, bắt đầu đếm $T=1$ kể từ ngày chính thức kích hoạt Giai đoạn 2 (sau khi có báo cáo đóng sổ chính thức của Giai đoạn 1). Tuyệt đối **không nhầm lẫn hay gộp chung** với mốc 30 phiên hoặc kỳ phản nghiệm 60 phiên của Giai đoạn 1.
-  * Giai đoạn 2 chạy tối thiểu **30 phiên giao dịch mới**.
-  * Nếu sau 30 phiên, số tín hiệu độc lập của một nhánh đạt `< 20`, thời gian thu thập dữ liệu được tự động gia hạn tối đa tới **60 phiên** (theo chuẩn `MIN_SHADOW_SESSIONS = 60` trong `scripts/evaluate_shadow_graduation.py`).
-  * Nếu sau 60 phiên vẫn **`< 20` tín hiệu độc lập** (hoặc cổng Macro không mở), nhánh đó được phân loại chính thức vào trạng thái: **`INSUFFICIENT_SAMPLE`**. Đây là **kết quả nghiên cứu hợp lệ**, tuyệt đối **không kích hoạt việc hạ ngưỡng** hay nới tiêu chí để gom thêm tín hiệu.
-* **Cảnh báo Chế độ Thị trường (`Regime Conditionality`):** Nếu toàn bộ giai đoạn thu thập dữ liệu chỉ nằm trong pha `DOWNTREND`, mọi kết luận về `SHADOW_BUY` và `Rank IC` đều chỉ mang tính **có điều kiện (`Downtrend-Only Conditional`)**, không được khái quát hóa sang pha `UPTREND`.
-
----
-
-## 5. Báo cáo Kép & Khử Thiên kiến Tập trung Ngành (Dual Reporting)
-
-Do quan sát khám phá cho thấy nhóm Ngân hàng chiếm tới 87.5% số lượt thỏa mãn 6 cổng nội tại, Giai đoạn 2 bắt buộc phải áp dụng chuẩn **Báo cáo Kép (Dual Reporting)** với các ràng buộc phương pháp luận rõ ràng:
-
-1. **Chỉ số Toàn bộ Danh mục (Aggregate Performance):** Đánh giá trên toàn bộ các tín hiệu `SHADOW_BUY` độc lập.
-2. **Chẩn đoán Phân rã Khử Ngân hàng (Ex-Banking Diagnostic — Chỉ mang tính mô tả):**
-   * Do số lượng tín hiệu độc lập ngoài ngành Ngân hàng trong pha Downtrend rất khan hiếm (ước tính chỉ khoảng $\approx 2$ tín hiệu trên 22 phiên), nhánh Ex-Banking chỉ đóng vai trò **chẩn đoán định tính/mô tả bối cảnh** (contextual diagnostic).
-   * Tuyệt đối **không dùng nhánh Ex-Banking làm tiêu chí định lượng độc lập để quyết định đỗ/trượt tốt nghiệp** nhằm tránh bẫy thống kê cỡ mẫu siêu nhỏ ($N \le 5$).
-3. **Ràng buộc Đa dạng hóa Ngành & Phân loại Tốt nghiệp (Sector Independence Rule):**
-   * **Đánh giá Thực tế Khả thi trong Downtrend:** Với việc dữ liệu 22 phiên cho thấy 14/16 (87.5%) tín hiệu độc lập tập trung ở nhóm Ngân hàng, trong chế độ thị trường Downtrend kéo dài, điều kiện để đạt chuẩn tốt nghiệp toàn hệ thống (`GRADUATED_SYSTEM_WIDE`) thực tế **gần như chắc chắn không thể xảy ra**. Đây là một giới hạn cơ cấu dự kiến trước, không nên kỳ vọng sai; trần phân loại thực tế khả dĩ nhất của Giai đoạn 2 trong môi trường hiện tại là `GRADUATED_BANKING_SPECIFIC` hoặc `INSUFFICIENT_SAMPLE`.
-   * **Chuẩn Tốt nghiệp Toàn diện (`GRADUATED_SYSTEM_WIDE`):** Không có ngành đơn lẻ nào chiếm $> 60\%$ tổng số tín hiệu độc lập trong chu kỳ thử nghiệm (chỉ khả thi nếu thị trường có sự lan tỏa dòng tiền đồng thuận sang các ngành sản xuất/bán lẻ/bất động sản).
-   * **Chuẩn Tốt nghiệp Chuyên biệt Ngành (`GRADUATED_BANKING_SPECIFIC`):** Nếu nhóm Ngân hàng chiếm $> 60\%$ số tín hiệu độc lập, nhánh thử nghiệm chỉ được công nhận tốt nghiệp có điều kiện chuyên biệt cho cổ phiếu Ngân hàng khi và chỉ khi thỏa mãn đầy đủ các ngưỡng số học định lượng:
-     1. $\text{Mean}(\text{SHADOW\_BUY Exec T+5}) - 0.40\% > 0.00\%$
-     2. $\text{Mean}(\text{SHADOW\_BUY Exec T+10}) - 0.40\% > 0.00\%$
-     3. Block Bootstrap 95% $\text{CI}_{\text{low}} > 0.00\%$ (khối $L=5$)
-     4. $\text{Max Drawdown} \le -5.0\%$
-     5. Tỷ lệ thắng ròng $\text{Net Hit Rate} \ge 50\%$
-     6. **Rào cản triển khai:** Kết quả này tuyệt đối **không được phép mở rộng sang các ngành khác** cho đến khi tích lũy đủ tối thiểu $\ge 10$ tín hiệu phi ngân hàng độc lập để kiểm định riêng.
+* **Đồng hồ Thời gian Độc lập:** Bắt đầu đếm $T=1$ từ **ngày $T_0$ đầu tiên của Giai đoạn 2 (đề xuất `2026-11-26`)**, tách biệt hoàn toàn với đồng hồ 30/60 phiên của Giai đoạn 1.
+* **Cỡ mẫu tối thiểu (khóa kép cả số lệnh lẫn số ngày có tín hiệu):**
+  * Tối thiểu **`20` tín hiệu độc lập** (theo cooldown `5` phiên mỗi mã) đã đáo hạn `T+5` và `T+10`, **VÀ**
+  * Tối thiểu **`>= 15` ngày $T_0$ phát sinh tín hiệu** đã đáo hạn `T+5` (vì với ~30 ngày và khối `L=5` chỉ có ~6 khối, quá ít ngày có tín hiệu sẽ làm bootstrap suy biến và các lệnh Ngân hàng cùng ngày tương quan mạnh).
+* **Đơn vị khối Bootstrap:** Mọi suy diễn thống kê (`Moving-Block Bootstrap`, `L=5`) bắt buộc dùng **ngày giao dịch $T_0$** làm đơn vị khối (block unit) nhằm xử lý tương quan chéo cùng phiên của nhóm Ngân hàng.
+* **Gia hạn & Trạng thái `INSUFFICIENT_SAMPLE`:** Chạy tối thiểu `30` phiên mới; nếu chưa đạt ngưỡng mẫu có thể gia hạn tối đa tới `60` phiên (`MIN_SHADOW_SESSIONS = 60`). Nếu sau `60` phiên vẫn `< 20` tín hiệu độc lập **HOẶC** `< 15` ngày có tín hiệu (hoặc cổng Macro không mở), nhánh đó nhận kết luận chính thức **`INSUFFICIENT_SAMPLE`** — là kết quả hợp lệ, **tuyệt đối không hạ ngưỡng**.
+* **Cảnh báo Chế độ Thị trường (`Regime Conditionality`):** Nếu toàn kỳ Giai đoạn 2 vẫn nằm trong `DOWNTREND`, mọi kết luận chỉ có giá trị **có điều kiện (`Downtrend-Only Conditional`)**.
 
 ---
 
-## 6. Chỉ số Đánh giá, Đối chứng Kép & Tiêu chuẩn Tốt nghiệp
+## 5. Báo cáo Kép & Kiểm soát Tập trung Ngành
 
-### Chỉ tiêu Chính Duy nhất (Single Primary Metric — Chống Lạm phát Đa kiểm định)
-Để tránh bẫy đa kiểm định khi thử đồng thời 3 nhánh $\times$ 2 kỳ hạn $\times$ nhiều chỉ số, chỉ tiêu quyết định chính duy nhất được khóa trước là:
-* **Primary Metric:** **`Net Excess Return ở kỳ hạn T+5` (`Open_T+1 → Close_T+5` trừ `0.40%` phí)** của nhánh **`Counterfactual Pass-6-Gates`** (và của nhánh Macro kích hoạt chính `Arm B` nếu phát sinh đủ mẫu), kiểm định qua **`Moving-Block Bootstrap (L=5)` theo ngày $T_0$** với yêu cầu:
-  * $\text{Mean}(\text{Net Exec T+5}) > 0.00\%$ **VÀ** cận dưới 95% Block Bootstrap $\text{CI}_{\text{low}} > 0.00\%$.
-* Mọi cặp nhánh/kỳ hạn phụ khác ($T+10$, `Arm A`, `Arm C`) chỉ mang tính chẩn đoán phụ trợ; nếu trích dẫn thành phát hiện mới bắt buộc hiệu chỉnh đa kiểm định (Holm-Bonferroni).
+1. **Đối chứng Kép Bắt buộc (`Dual Benchmark Control` — cùng Cohort $T_0$):**
+   Mỗi cohort $T_0$ có tín hiệu `SHADOW_BUY` / `Counterfactual Pass-6-Gates` phải đối chiếu song song với cả hai rổ trong đúng ngày $T_0$ đó:
+   * **`Universe (55 mã)`** (`SHADOW − Universe`)
+   * **`WATCH-không-qua-cổng`** (`SHADOW − WATCH_Failed_Internal`, tức nhóm `WATCH` trượt ít nhất 1 cổng kỹ thuật/MoS/conviction) để biết 6 cổng nội tại có tăng thêm giá trị chọn mã ngoài hiệu ứng Ngân hàng/vốn hóa hay không.
+2. **Hiệu chỉnh Ngành / Thị trường (`Market & Sector Adjusted`):** Báo cáo thêm lợi suất vượt **trung bình ngành cùng ngày** (`Excess vs Same-Day Sector Mean`) và **trung bình Universe cùng ngày** (`Excess vs Same-Day Universe`) nhằm tách riêng yếu tố beta.
+3. **Chẩn đoán `Ex-Banking` (chỉ mô tả):** Do tín hiệu ngoài Ngân hàng trong Downtrend rất khan hiếm, nhánh `Ex-Banking` chỉ mang tính chẩn đoán mô tả, **không dùng làm tiêu chí đỗ/trượt định lượng**.
+4. **Ràng buộc Phân loại Tốt nghiệp (Sector Independence):**
+   * **`GRADUATED_SYSTEM_WIDE`:** Không ngành đơn lẻ nào chiếm `> 60%` số tín hiệu độc lập.
+   * **`GRADUATED_BANKING_SPECIFIC`:** Nếu Ngân hàng chiếm `> 60%` và nhánh đạt đủ ngưỡng định lượng (Chỉ tiêu chính Net $T+5 > 0\%$ với Block CI low $> 0\%$, Net $T+10 > 0\%$, Net Hit Rate $\ge 50\%$, Max Drawdown mô tả $\le -5.0\%$), chỉ công nhận có điều kiện riêng cho Ngân hàng và **cấm mở rộng sang ngành khác** cho tới khi tích lũy đủ $\ge 10$ tín hiệu phi ngân hàng độc lập.
 
-### Chỉ tiêu Liên tục trên 55 Mã (`Rank IC`) & Quy tắc Chống `Threshold Mining`
-1. **Đo lường Sức mạnh Xếp hạng (`Spearman Rank IC`):**
-   * Tính hệ số tương quan thứ hạng Spearman hàng ngày giữa điểm thô **`conviction`** (và riêng **`mos_pct`**) tại $T_0$ trên **toàn bộ 55 mã** với lợi suất khớp lệnh **`Exec T+5`** (và phụ trợ `Exec T+10`).
-   * Báo cáo chuỗi IC theo ngày: Mean IC, tỷ lệ phiên `IC > 0`, và 95% Block Bootstrap CI ($L=5$) theo ngày $T_0$.
+---
+
+## 6. Chỉ số Đánh giá, `Rank IC` & Chống `Threshold Mining`
+
+### Chỉ tiêu Chính Duy nhất (Single Primary Metric — Chống Đa kiểm định)
+* **Primary Metric:** **`Net Excess Return` ở kỳ hạn `T+5` (`Open_T+1 → Close_T+5` trừ `0.40%` phí)** của nhánh **`Counterfactual Pass-6-Gates`** (với điều kiện đạt đủ `>= 15` ngày $T_0$ có tín hiệu), kiểm định bằng **`Moving-Block Bootstrap (L=5)` theo ngày $T_0$**:
+  * Yêu cầu: `Mean(Net Exec T+5) > 0.00%` **VÀ** `Block 95% CI_low > 0.00%`.
+* Mọi nhánh/kỳ hạn khác (`Arm A/B/C`, `T+10`) là chẩn đoán phụ trợ (hoặc phải hiệu chỉnh Holm-Bonferroni nếu nêu như phát hiện mới).
+
+### Chỉ tiêu Liên tục (`Rank IC` Toàn rổ & Nội ngành) + Chống `Threshold Mining`
+1. **`Spearman Rank IC` toàn rổ & theo ngành (`Sector-Neutral`):**
+   * Tính hệ số tương quan thứ hạng Spearman hàng ngày tại $T_0$ giữa **`conviction`** (và riêng **`mos_pct`**) với `Exec T+5` (phụ trợ `T+10`) trên **toàn bộ 55 mã**.
+   * Bắt buộc báo cáo song song **`Sector-Neutral Rank IC`** (tính tương quan thứ hạng trong nội bộ từng nhóm ngành, đặc biệt nội bộ 10 mã Ngân hàng và nhóm Phi ngân hàng) để loại bỏ nhiễu xếp hạng liên ngành.
 2. **Quy tắc Chống `Threshold Mining`:**
-   * Nghiêm cấm thay đổi hay dò lại các ngưỡng (`conviction >= 70`, `MoS >= 15%`, `RSI >= 45`) sau khi đã nhìn thấy dữ liệu phân tích.
-   * Nếu muốn nghiên cứu tối ưu ngưỡng từ kho `raw score` 55 mã, **bắt buộc tách đôi mẫu theo trục thời gian**: một nửa đầu để khám phá ngưỡng mới và nửa sau hoàn toàn mới (chưa từng quan sát khi đặt ngưỡng) để kiểm định Out-of-Sample.
+   * Giữ cố định toàn bộ ngưỡng (`conviction >= 70`, `MoS >= 15%`, `RSI >= 45`). Nếu dùng kho `raw score` 55 mã để tìm ngưỡng tối ưu mới, **bắt buộc chia mẫu theo thời gian**: tập khám phá ban đầu và tập kiểm định ngoài mẫu hoàn toàn mới trên các phiên sau.
 
-### Đối chứng Kép (`Dual Benchmark Control` — Tính trên cùng Cohort $T_0$)
-Mỗi cohort $T_0$ có tín hiệu `SHADOW_BUY` (qua 6 cổng nội tại) bắt buộc phải đối chiếu song song với **cả hai rổ đối chứng** trong đúng cùng ngày $T_0$ đó:
-1. **`Universe (55 mã)`:** Kiểm tra `SHADOW_BUY − Universe T+5` để đo lợi thế tuyệt đối so với mặt bằng thị trường chung.
-2. **`WATCH-không-qua-cổng` (nhóm `WATCH` trượt ít nhất 1 cổng kỹ thuật/MoS/conviction):** Kiểm tra `SHADOW_BUY − WATCH_Failed_Internal T+5` để cô lập xem 6 cổng nội tại có thực sự tăng thêm giá trị chọn lọc ngoài việc chỉ nghiêng về cổ phiếu Ngân hàng / vốn hóa lớn hay không.
-
-### Chỉ số Phụ & Định nghĩa `Max Drawdown` (Chỉ tiêu Mô tả ở Mẫu Nhỏ)
-1. **Lợi suất $T+10$ & Tỷ lệ Thắng Sau Phí (`Net Hit Rate`):**
-   * $\text{Mean}(\text{SHADOW\_BUY Exec T+10}) - 0.40\% > 0.00\%$; `Net Hit Rate` $\ge 50\%$ ở $T+5$ và $\ge 55\%$ ở $T+10$.
-2. **Đánh giá `Max Drawdown` (`-5.0%` — Chỉ tiêu Mô tả):**
-   * **Cách tính tường minh:** Tính trên đường NAV giả lập của **danh mục đều trọng số theo cohort ngày** (với chu kỳ nắm giữ 5 phiên, mỗi ngày $T_0$ kích hoạt được cấp tối đa `1/5` vốn, chia đều cho các mã `SHADOW_BUY` trong ngày đó; ngày không có tín hiệu giữ Tiền mặt `0%`).
-   * **Vai trò diễn giải:** Với mẫu nhỏ vài chục lệnh, chỉ cần một nhịp giảm đồng pha của cụm Ngân hàng là đủ chạm ngưỡng `-5.0%`. Do đó `Max Drawdown` được ghi nhận là **chỉ tiêu mô tả/cảnh báo rủi ro** cho tới khi tích lũy đủ số cụm ngày $T_0$ độc lập.
-3. **Tỷ lệ Nhiễu Đảo Pha (`Whipsaw Rate`):**
-   * Tỷ lệ lần mở cổng `SHADOW_BUY` (trên các nhánh `Arm A/B/C`) nhưng điều kiện `Regime` lại sập dưới ngưỡng trong vòng $\le 5$ phiên kế tiếp $\le 25\%$.
+### Định nghĩa `Max Drawdown` (Chỉ tiêu Mô tả)
+* Tính trên chuỗi NAV giả lập của **danh mục đều trọng số theo cohort ngày** (giữ 5 phiên, mỗi ngày $T_0$ kích hoạt cấp tối đa `1/5` vốn chia đều cho các mã kích hoạt trong ngày; ngày không có tín hiệu giữ `0%`). Coi ngưỡng `-5.0%` là **chỉ tiêu mô tả/cảnh báo rủi ro** cho tới khi đủ số cụm ngày độc lập.
 
 ---
 
-## 7. Rào cản Kích hoạt & Kỷ luật Cách ly Dữ liệu
+## 7. Quy cách Kỹ thuật Logger `Raw Score` Giai đoạn 2 (Bước 4 — Chỉ Cài Sau Khi Rà Soát Xong)
 
-* Tuyệt đối không viết code thực thi hay kích hoạt cờ chạy `SHADOW_BUY` trước khi có báo cáo đóng sổ chính thức của Giai đoạn 1 (`reports/audit_30_sessions_final.md`).
-* Mọi dữ liệu thử nghiệm của Giai đoạn 2 phải được ghi nhận độc lập dưới nhãn `decision = SHADOW_BUY`, tuyệt đối không ghi đè hay sửa đổi các tệp `canonical_forward_returns_*.csv` thuộc Giai đoạn 1.
+### Nguyên tắc Vận hành & Chống Look-Ahead
+1. **Neo theo lịch giao dịch thực:** Chỉ chạy vào ngày giao dịch thực sự có khớp lệnh EOD hợp lệ; **từ chối chạy vào ngày nghỉ lễ / cuối tuần**.
+2. **Dấu thời gian chống nhìn trước (`No Look-Ahead`):** Chỉ đọc dữ liệu tính đến `Close_T0`, ghi nhận trường `logged_at` (ISO timestamp **trước giờ mở cửa `T+1`**) làm bằng chứng không biết kết quả tương lai.
+3. **Append-only & Toàn vẹn:** Ghi tách biệt hoàn toàn khỏi `canonical_forward_returns_*.csv` (thư mục/tệp riêng), chỉ nối thêm (append-only), xuất mã băm `SHA256` và commit sau mỗi phiên.
+4. **Nối lợi suất tương lai tách rời:** Logger tại $T_0$ **không** chứa cột lợi suất tương lai; các giá trị `exec_t1..t20` được ghép nối sau bởi một job hậu kiểm độc lập khi các kỳ hạn đáo hạn.
+5. **Quy ước giá:** Ghi rõ giá là giá điều chỉnh hay chưa điều chỉnh (`price_adjusted`), nhất quán với bảng canonical.
+6. **Gắn nhãn Backfill:** Nếu chạy backfill dữ liệu `2026-10-14 → 2026-11-25`, bắt buộc gắn nhãn `sample_role = EXPLORATORY_IN_SAMPLE` và tuyệt đối tách khỏi mẫu Giai đoạn 2 (`sample_role = STAGE2_PROSPECTIVE`).
+
+### Bảng 1: Chi tiết Theo Mã (`55` dòng mỗi ngày giao dịch, không bỏ dòng thiếu dữ liệu)
+* **Định danh:** `date_t0`, `entry_date_t1`, `symbol`, `sector`, `logic_version`, `commit`, `logged_at`, `price_adjusted`, `sample_role`.
+* **Quyết định sản xuất:** `decision`, `watch_reason` *(nguyên văn)*, `rejection_gate`.
+* **Điểm thô & Chỉ báo $T_0$:** `conviction`, `mos_pct`, `rsi_14`, `close`, `ma20`, `ma100`, `volume`, `ma20_volume`, `pct_vs_ma20`, `pct_vs_ma100`, `vol_vs_ma20`.
+* **Cổng kiểm soát `1..6`:** cờ đỗ/trượt tường minh cho từng cổng (bao gồm `gate_data_health`, `gate_financial_health`, `gate_mos`, `gate_tech_momentum`, `gate_conviction`, `gate_pm_veto`, cùng các cờ chi tiết `flag_bull_trap`, `flag_falling_knife`, `flag_veto`) và cờ tổng hợp `pass_6_internal_gates`.
+* **Phân nhóm đối chứng:** `group ∈ {SHADOW, WATCH_FAILED_INTERNAL, REJECT}`.
+* **Xử lý thiếu dữ liệu:** Luôn ghi đủ cả `55` dòng (kể cả mã tạm ngừng giao dịch / thiếu chỉ báo) kèm cột `missing_reason`, tuyệt đối không bỏ qua âm thầm.
+
+### Bảng 2: Trạng thái Thị trường Theo Ngày (`1` dòng mỗi ngày giao dịch)
+* **Chỉ số VN-Index:** `date_t0`, `vn_close`, `vn_ma20`, `vn_ma200`, `vn_vs_ma200_pct`, `slope_ma20`, `slope_ma200`.
+* **Độ rộng thị trường:** `breadth_pct_above_ma20` (tỷ lệ mã trong Universe 55 mã đóng cửa trên `MA20`).
+* **Trạng thái các nhánh Macro:** cờ mở cổng tại $T_0$ (`arm_a_open`, `arm_b_open`, `arm_c_open`) và bộ đếm số phiên xác nhận liên tiếp (`arm_a_streak`, `arm_b_streak`, `arm_c_streak`) được ghi nguyên giá trị thời gian thực, không tính lại hồi tố.
+* **Kiểm tra toàn vẹn:** `is_trading_day`, `universe_hash`, `logged_at`.
