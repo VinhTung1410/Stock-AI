@@ -344,11 +344,46 @@ def test_sync_canonical_returns_to_supabase_mock() -> None:
     mock_table.upsert.assert_called_once()
 
 
-def test_regime_extraction_4_days() -> None:
+def _write_synthetic_decision_csv(
+    target_dir: str,
+    date_str: str,
+    watch_syms: list[str],
+    price: float = 1750.0,
+    ma200: float = 1795.0,
+    vs_ma200_pct: float = -2.5,
+) -> None:
+    """Write a minimal EOD_CANONICAL decision_records CSV for self-contained CI testing."""
+    facts = json.dumps({
+        "regime_features": {
+            "regime": "DOWNTREND",
+            "vnindex_price": price,
+            "vnindex_ma200": ma200,
+            "vnindex_vs_ma200_pct": vs_ma200_pct,
+        }
+    })
+    rows = [
+        {
+            "session": "EOD_CANONICAL",
+            "symbol": f"SYM_{i:02d}" if i >= len(watch_syms) else watch_syms[i],
+            "decision": "WATCH" if i < len(watch_syms) else "REJECT",
+            "primary_rejection_gate": "TECH_CONFIRMATION" if i < len(watch_syms) else "RISK_TRAP",
+            "facts": facts,
+            "logic_version": "v15.0_frozen_20261013",
+            "model_version": "v15.0_post_fix",
+            "git_sha": "106e6c61af",
+        }
+        for i in range(55)
+    ]
+    d_code = date_str.replace("-", "")
+    pd.DataFrame(rows).to_csv(os.path.join(target_dir, f"decision_records_{d_code}.csv"), index=False)
+
+
+def test_regime_extraction_4_days(tmp_path: object, monkeypatch: object) -> None:
     """A2 test: Verify regime extraction across 4 days (27-30/10) takes EOD canonical price and MA200."""
     from scripts.generate_daily_digest import _extract_regime_and_version, _load_decision_records
 
-    # Expected closing prices, MA200, and vs_ma200_pct for EOD canonical session
+    work_dir = str(tmp_path)
+    monkeypatch.chdir(work_dir)
     expected = {
         "2026-10-27": {"price": 1761.87, "ma200": 1796.41, "vs_ma200_pct": -1.92},
         "2026-10-28": {"price": 1766.65, "ma200": 1796.16, "vs_ma200_pct": -1.64},
@@ -356,19 +391,27 @@ def test_regime_extraction_4_days() -> None:
         "2026-10-30": {"price": 1741.62, "ma200": 1795.06, "vs_ma200_pct": -2.98},
     }
     for date_str, exp in expected.items():
+        _write_synthetic_decision_csv(work_dir, date_str, ["ACB", "CTG"], exp["price"], exp["ma200"], exp["vs_ma200_pct"])
         df = _load_decision_records(date_str)
         assert not df.empty, f"Missing decision records for {date_str}"
         reg = _extract_regime_and_version(df)
-        assert abs(reg["vnindex_price"] - exp["price"]) < 0.01, f"{date_str} got {reg['vnindex_price']}, expected {exp['price']}"
-        assert abs(reg["vnindex_ma200"] - exp["ma200"]) < 0.01, f"{date_str} got {reg['vnindex_ma200']}, expected {exp['ma200']}"
-        assert abs(reg["vnindex_vs_ma200_pct"] - exp["vs_ma200_pct"]) < 0.01, f"{date_str} got {reg['vnindex_vs_ma200_pct']}, expected {exp['vs_ma200_pct']}"
+        assert abs(reg["vnindex_price"] - exp["price"]) < 0.01
+        assert abs(reg["vnindex_ma200"] - exp["ma200"]) < 0.01
+        assert abs(reg["vnindex_vs_ma200_pct"] - exp["vs_ma200_pct"]) < 0.01
         assert reg["regime"] == "DOWNTREND"
 
 
-def test_watchlist_delta_computation() -> None:
+def test_watchlist_delta_computation(tmp_path: object, monkeypatch: object) -> None:
     """B1 test: Verify watchlist delta correctly identifies TCB addition and BID transitions."""
     from scripts.generate_daily_digest import _compute_eod_decisions, _compute_watchlist_delta, _load_decision_records
-    
+
+    work_dir = str(tmp_path)
+    monkeypatch.chdir(work_dir)
+    base15 = [f"W{i:02d}" for i in range(15)]
+    _write_synthetic_decision_csv(work_dir, "2026-10-28", base15 + ["BID"])
+    _write_synthetic_decision_csv(work_dir, "2026-10-29", base15 + ["TCB"])
+    _write_synthetic_decision_csv(work_dir, "2026-10-30", base15 + ["TCB", "BID"])
+
     dec29 = _load_decision_records("2026-10-29")
     stats29 = _compute_eod_decisions(dec29)
     delta29 = _compute_watchlist_delta("2026-10-29", stats29["watch_symbols"])
@@ -408,24 +451,60 @@ def test_extreme_return_guardrail_5_sessions() -> None:
             assert spikes.empty, f"Unrealistic upward return spike in {f} ({col}): {spikes[['symbol', col]].to_dict(orient='records')}"
 
 
-def test_post_holiday_and_normal_day_digest_regression(tmp_path: object) -> None:
+def test_post_holiday_and_normal_day_digest_regression(tmp_path: object, monkeypatch: object) -> None:
     """Regression test: post-holiday session (2026-11-25 after 2026-11-24 holiday) vs normal session (2026-11-23).
 
-    Verifies that:
-    1. Holiday orphan canonical CSV (20261124 pointing to 2026-11-25) does not hijack Watchlist diff
-       or shift T+10 / T+20 maturity on 2026-11-25.
-    2. Normal trading day (2026-11-23) compares against 2026-11-20 and outputs all matured horizons.
+    Self-contained in tmp_path (works identically on GitHub Actions CI without untracked local CSVs).
     """
     from scripts.generate_daily_digest import _compute_eod_decisions, _compute_watchlist_delta, _load_decision_records
 
-    out_dir = str(tmp_path)
+    work_dir = str(tmp_path)
+    out_dir = os.path.join(work_dir, "reports")
+    monkeypatch.chdir(work_dir)
+
+    bdays = [d.strftime("%Y-%m-%d") for d in pd.bdate_range("2026-10-26", "2026-11-25")]
+    trading_days = [d for d in bdays if d != "2026-11-24"]  # 22 sessions: 2026-10-27 is idx -21, 2026-11-10 is idx -11
+
+    base17 = [f"W{i:02d}" for i in range(17)]
+    _write_synthetic_decision_csv(work_dir, "2026-11-20", base17)
+    _write_synthetic_decision_csv(work_dir, "2026-11-23", base17)
+    _write_synthetic_decision_csv(work_dir, "2026-11-25", base17 + ["PDR"])
+
+    # Create canonical_forward_returns for all genuine trading days
+    for idx, dt in enumerate(trading_days):
+        d_code = dt.replace("-", "")
+        rows = [
+            {
+                "symbol": f"W{i:02d}" if i < 17 else f"SYM_{i:02d}",
+                "decision": "WATCH" if i < 17 else "REJECT",
+                "entry_date_t0": dt,
+                "entry_date_t1": trading_days[idx + 1] if idx + 1 < len(trading_days) else None,
+                "close_t0": 20.0 + i * 0.1,
+                "open_t1": 20.0 + i * 0.1,
+                "vn_close_t0": 1700.0,
+                "matured_t1": idx + 1 < len(trading_days),
+                "matured_t3": idx + 3 < len(trading_days),
+                "matured_t5": idx + 5 < len(trading_days),
+                "matured_t10": idx + 10 < len(trading_days),
+                "matured_t20": idx + 20 < len(trading_days),
+                "exec_t1_pct": -0.5 if i < 17 else -0.8,
+                "exec_t3_pct": -0.3 if i < 17 else -0.1,
+                "exec_t5_pct": -2.5 if i < 17 else -2.0,
+            }
+            for i in range(55)
+        ]
+        pd.DataFrame(rows).to_csv(os.path.join(work_dir, f"canonical_forward_returns_{d_code}.csv"), index=False)
+
+    # Inject holiday orphan canonical_forward_returns_20261124.csv pointing to 2026-11-25
+    orphan_df = pd.read_csv(os.path.join(work_dir, "canonical_forward_returns_20261125.csv"))
+    orphan_df.to_csv(os.path.join(work_dir, "canonical_forward_returns_20261124.csv"), index=False)
 
     # 1. Post-holiday session: 2026-11-25 (2026-11-24 was holiday, previous trading session was 2026-11-23)
     dec25 = _load_decision_records("2026-11-25")
     stats25 = _compute_eod_decisions(dec25)
     delta25 = _compute_watchlist_delta("2026-11-25", stats25["watch_symbols"])
-    assert delta25["prev_date"] == "2026-11-23", f"Expected prev trading date 2026-11-23, got {delta25['prev_date']}"
-    assert delta25["added"] == ["PDR"], f"Expected only PDR added vs 2026-11-23, got {delta25['added']}"
+    assert delta25["prev_date"] == "2026-11-23"
+    assert delta25["added"] == ["PDR"]
     assert delta25["removed"] == []
 
     digest25_path = generate_digest("2026-11-25", skip_sync=True, output_dir=out_dir)
