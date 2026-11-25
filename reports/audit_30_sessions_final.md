@@ -3,7 +3,7 @@
 - **Số phiên canonical:** `30` ngày giao dịch thực (`2026-10-14` → `2026-11-25`, bỏ qua tệp ngoại lệ `canonical_forward_returns_20261124.csv` có `entry_date_t0 = 2026-11-25`) | **Digest:** `30` tệp tương ứng đúng `30` ngày giao dịch khác nhau | **Số phiên BUY > 0:** `0`
 - **KẾT LUẬN THEO TIÊU CHÍ KHÓA TRƯỚC:** **`FAIL / INCONCLUSIVE (Không chứng minh được edge vượt ngưỡng trong 30 phiên)`**
 - **Kiểm chứng tính bất biến của Script Kiểm toán (`pre-reg-v1.1-20261112` vs `00690d31fb`):** Đã chạy đối chiếu trực tiếp hai phiên bản script trên cùng dữ liệu đến `2026-11-25` (chi tiết tại Mục 5.4) — **toàn bộ Lớp 1, Lớp 2, Lớp 3, Phụ lục OOS và Verdict đều trùng khớp 100% (không đổi)**.
-- **Dấu vết Khóa Thời gian (Pre-Reg Lock Chain):** Stage 1 `v1.1` khóa tại tag `pre-reg-v1.1-20261112` (commit `9274daf093d1fad64a75ab55e7f5169dcb1e572f`); Stage 1 `v1.2` & Stage 2 `v2.0` khóa trước Phiên 31 (`2026-11-26`) tại tag **`pre-reg-v2.0-locked-20261125`** (commit **`ca27c0b67efb9c16e4a9ed78c59c5656a088f5f0`**).
+- **Dấu vết Khóa Thời gian (Pre-Reg Lock Chain):** Stage 1 `v1.1` khóa tại tag `pre-reg-v1.1-20261112` (commit `9274daf093d1fad64a75ab55e7f5169dcb1e572f`); Stage 1 `v1.2` & Stage 2 `v2.0` khóa tại tag `pre-reg-v2.0-locked-20261125` (commit `ca27c0b67efb9c16e4a9ed78c59c5656a088f5f0`); bản hoàn thiện cuối trước khi cài Logger (`Stage 1 v1.2.1` & `Stage 2 v2.1`) khóa tại tag **`pre-reg-v2.1-locked-20261125`** (commit **`393e00eaec6068e9c3e227165003a8c489e18cc8`**).
 
 ### 1. LỚP 1 — 5 CHUỖI T+5 KHÔNG CHỒNG LẤN & BLOCK BOOTSTRAP
 | Chuỗi | Số điểm | Các ngày T0 | Mean W−R (%) | Vượt phí 0.40% |
