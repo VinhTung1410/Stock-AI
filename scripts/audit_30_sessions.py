@@ -21,6 +21,7 @@ import math
 import os
 import re
 import sys
+import tempfile
 import unicodedata
 from typing import Any
 
@@ -87,14 +88,31 @@ def validate_sector_integrity(df: pd.DataFrame, min_bank_symbols: int = MIN_BANK
         raise ValueError(f"Không tìm thấy bất kỳ mã nào thuộc ngành '{SECTOR_BANK}'.")
 
 
+def _resolve_safe_cli_path(raw_path: str) -> str:
+    """Resolve CLI path and verify it stays inside cwd or system temp directory."""
+    target_real = os.path.realpath(raw_path)
+    allowed_roots = [os.path.realpath(os.getcwd()), os.path.realpath(tempfile.gettempdir())]
+    for root in allowed_roots:
+        try:
+            if os.path.commonpath([root, target_real]) == root:
+                return target_real
+        except ValueError:
+            continue
+    raise ValueError(f"Unsafe path outside allowed directories: {raw_path}")
+
+
 def load_canonical_returns(data_dir: str = ".") -> pd.DataFrame:
     """Load and concatenate canonical_forward_returns_*.csv files with NFC normalization and holiday deduplication."""
-    pattern = os.path.join(data_dir, "canonical_forward_returns_*.csv")
+    base_real = os.path.realpath(data_dir)
+    pattern = os.path.join(base_real, "canonical_forward_returns_*.csv")
     files = sorted(glob.glob(pattern))
     frames: list[pd.DataFrame] = []
     for fpath in files:
+        safe_fpath = os.path.realpath(fpath)
+        if os.path.commonpath([base_real, safe_fpath]) != base_real:
+            continue
         try:
-            df = pd.read_csv(fpath)
+            df = pd.read_csv(safe_fpath)
             if not df.empty:
                 m = re.search(r"(\d{8})", os.path.basename(fpath))
                 if m and COL_ENTRY_T0 in df.columns:
@@ -118,15 +136,19 @@ def load_canonical_returns(data_dir: str = ".") -> pd.DataFrame:
 
 def parse_digest_reports(reports_dir: str = "reports") -> dict[str, Any]:
     """Parse horizon spreads, statistical flags, and BUY counts from daily_digest_*.md files."""
-    pattern = os.path.join(reports_dir, "daily_digest_2026*.md")
+    base_real = os.path.realpath(reports_dir)
+    pattern = os.path.join(base_real, "daily_digest_2026*.md")
     files = sorted(glob.glob(pattern))
     horizon_rows: list[dict[str, Any]] = []
     buy_counts: list[int] = []
     gaps: list[float] = []
 
     for fpath in files:
+        safe_fpath = os.path.realpath(fpath)
+        if os.path.commonpath([base_real, safe_fpath]) != base_real:
+            continue
         try:
-            with open(fpath, encoding="utf-8") as fh:
+            with open(safe_fpath, encoding="utf-8") as fh:
                 content = fh.read()
         except Exception:
             LOGGER.exception("Lỗi khi đọc digest: %s", fpath)
@@ -142,7 +164,7 @@ def parse_digest_reports(reports_dir: str = "reports") -> dict[str, Any]:
 
         for line in content.splitlines():
             m = re.match(
-                r"\|\s*\*\*T\+(\d+)\*\*\s*\((\d{4}-\d{2}-\d{2})\)\s*\|\s*\*\*([+\-\d.]+)%\*\*\s*\|.*\|\s*(.+?)\s*\|$",
+                r"\|\s*\*\*T\+(\d+)\*\*\s*\((\d{4}-\d{2}-\d{2})\)\s*\|\s*\*\*([+\-\d.]+)%\*\*\s*\|[^|]*\|\s*([^|\r\n]+?)\s*\|$",
                 line,
             )
             if m:
@@ -697,10 +719,12 @@ def main() -> None:
     parser.add_argument("--block-len", type=int, default=DEFAULT_BLOCK_LEN, help="Block length for moving-block bootstrap")
     parser.add_argument("--max-primary-t0", default=None, help="Optional cutoff date YYYY-MM-DD locking primary verdict cohorts")
     args = parser.parse_args()
+    safe_data_dir = _resolve_safe_cli_path(args.data_dir)
+    safe_reports_dir = _resolve_safe_cli_path(args.reports_dir)
 
     summary = run_audit(
-        data_dir=args.data_dir,
-        reports_dir=args.reports_dir,
+        data_dir=safe_data_dir,
+        reports_dir=safe_reports_dir,
         exclude_date=args.exclude_date,
         fee_pct=args.fee,
         block_len=args.block_len,
@@ -708,10 +732,11 @@ def main() -> None:
     )
     md = format_audit_markdown(summary, fee_pct=args.fee)
     if args.output:
-        os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
-        with open(args.output, "w", encoding="utf-8") as fh:
+        safe_output = _resolve_safe_cli_path(args.output)
+        os.makedirs(os.path.dirname(safe_output) or os.getcwd(), exist_ok=True)
+        with open(safe_output, "w", encoding="utf-8") as fh:
             fh.write(md)
-        LOGGER.info("Đã xuất báo cáo kiểm toán: %s", args.output)
+        LOGGER.info("Đã xuất báo cáo kiểm toán: %s", safe_output)
     print(md)
 
 

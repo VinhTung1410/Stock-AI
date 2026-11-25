@@ -68,10 +68,20 @@ ARM_C_BREADTH_MIN = 40.0
 MIN_CONFIRM_STREAK = 2
 
 
+def _resolve_safe_path(base_dir: str, relative_path: str | None = None) -> str:
+    """Resolve a path and enforce containment within base_dir to prevent path traversal."""
+    base_real = os.path.realpath(base_dir)
+    target_real = os.path.realpath(os.path.join(base_real, relative_path)) if relative_path else base_real
+    if os.path.commonpath([base_real, target_real]) != base_real:
+        raise ValueError(f"Unsafe path outside base directory: {target_real}")
+    return target_real
+
+
 def _compute_file_sha256(fpath: str) -> str:
     """Compute SHA256 hex digest of a file."""
+    safe_path = os.path.realpath(fpath)
     h = hashlib.sha256()
-    with open(fpath, "rb") as fh:
+    with open(safe_path, "rb") as fh:
         for chunk in iter(lambda: fh.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
@@ -99,8 +109,8 @@ def _compute_wilder_rsi(closes: pd.Series, period: int = 14) -> float | None:
     for g, l_val in zip(gain.iloc[period:], loss.iloc[period:]):
         avg_gain = (avg_gain * (period - 1) + float(g)) / period
         avg_loss = (avg_loss * (period - 1) + float(l_val)) / period
-    if avg_loss == 0.0:
-        return 100.0 if avg_gain > 0.0 else 50.0
+    if avg_loss <= 1e-12:
+        return 100.0 if avg_gain > 1e-12 else 50.0
     rs = avg_gain / avg_loss
     return 100.0 - (100.0 / (1.0 + rs))
 
@@ -329,7 +339,9 @@ def _append_idempotent(csv_path: str, new_df: pd.DataFrame, date_t0: str) -> boo
 
 def _update_sha256_manifest(output_dir: str, stock_path: str, market_path: str, date_t0: str, logged_at: str) -> str:
     """Write or update append-only SHA256 verification manifest."""
-    manifest_path = os.path.join(output_dir, MANIFEST_FILENAME)
+    manifest_path = _resolve_safe_path(output_dir, MANIFEST_FILENAME)
+    safe_stock = _resolve_safe_path(output_dir, os.path.basename(stock_path))
+    safe_market = _resolve_safe_path(output_dir, os.path.basename(market_path))
     manifest: dict[str, Any] = {"schema_version": SCHEMA_VERSION, "entries": []}
     if os.path.exists(manifest_path):
         try:
@@ -343,8 +355,8 @@ def _update_sha256_manifest(output_dir: str, stock_path: str, market_path: str, 
         manifest.setdefault("entries", []).append({
             "date_t0": date_t0,
             "logged_at": logged_at,
-            "stock_csv_sha256": _compute_file_sha256(stock_path),
-            "market_csv_sha256": _compute_file_sha256(market_path),
+            "stock_csv_sha256": _compute_file_sha256(safe_stock),
+            "market_csv_sha256": _compute_file_sha256(safe_market),
         })
         with open(manifest_path, "w", encoding="utf-8") as fh:
             json.dump(manifest, fh, ensure_ascii=False, indent=2)
@@ -438,9 +450,10 @@ def run_stage2_shadow_logger(
     if len(stock_rows) != EXPECTED_UNIVERSE_SIZE:
         raise AssertionError(f"Từ chối ghi Bảng 1: len(stock_rows)={len(stock_rows)} != {EXPECTED_UNIVERSE_SIZE}.")
 
-    os.makedirs(output_dir, exist_ok=True)
-    stock_path = os.path.join(output_dir, STOCK_LOG_FILENAME)
-    market_path = os.path.join(output_dir, MARKET_LOG_FILENAME)
+    safe_out_dir = _resolve_safe_path(output_dir)
+    os.makedirs(safe_out_dir, exist_ok=True)
+    stock_path = _resolve_safe_path(safe_out_dir, STOCK_LOG_FILENAME)
+    market_path = _resolve_safe_path(safe_out_dir, MARKET_LOG_FILENAME)
 
     prev_market_row: dict[str, Any] | None = None
     if os.path.exists(market_path):
@@ -478,12 +491,16 @@ def main() -> None:
     parser.add_argument("--data-dir", default=".", help="Directory containing decision_records_*.csv")
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR, help="Isolated Stage 2 output directory")
     args = parser.parse_args()
+    datetime.strptime(args.date, "%Y-%m-%d")
+    cwd = os.getcwd()
+    safe_data_dir = _resolve_safe_path(cwd, args.data_dir)
+    safe_output_dir = _resolve_safe_path(cwd, args.output_dir)
 
     res = run_stage2_shadow_logger(
         date_t0=args.date,
         entry_date_t1=args.entry_t1,
-        data_dir=args.data_dir,
-        output_dir=args.output_dir,
+        data_dir=safe_data_dir,
+        output_dir=safe_output_dir,
     )
     LOGGER.info("Stage 2 logger hoàn tất: %s", res)
 
