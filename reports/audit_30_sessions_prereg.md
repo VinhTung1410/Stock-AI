@@ -92,17 +92,17 @@ Tất cả các điều kiện sau phải đồng thời thỏa mãn trong code 
   2. Chủ động sửa logic/tham số hệ thống — khi đó bắt buộc **reset bộ đếm về 0** và không gộp mẫu cũ với mẫu mới.
 * **Cách ly các khám phá mới:** Từ sau thời điểm commit & tag bản khóa trước phiên `2026-11-13`, chỉ chạy nguyên trạng `scripts/audit_30_sessions.py` và đọc kết quả; mọi ý tưởng/giả thuyết phát sinh thêm phải đưa vào mục khám phá riêng và **không** được phép chỉnh sửa tiêu chí hay ảnh hưởng đến phán quyết của kỳ 30 phiên này.
 * **Tách riêng Giai đoạn 2 — Kiểm thử Cổng Regime / `BUY`:**
-  * Do `BUY = 0` toàn bộ 22 phiên đầu, 30 phiên này chỉ kiểm định được năng lực phân hạng `WATCH vs REJECT` và trạng thái phòng vệ `Cash (0%)` trong `DOWNTREND`.
-  * Sau khi đóng sổ phiên 30, thiết kế riêng một thử nghiệm **Shadow / Paper-trade Cổng `BUY`** (ví dụ kiểm tra phản thực tế các ngưỡng gần `MA200` như `-2%`, `-1%`, `0%`, hoặc xác nhận độ rộng thị trường / `MA20`) mà không làm nhiễu dữ liệu kiểm toán của bản `v15.0_frozen_20261013`.
+  * Do `BUY = 0` toàn bộ `22` phiên đầu (tại thời điểm khóa `12/11`, và tiếp tục `0/30` đến hết phiên `30` ngày `25/11`), `30` phiên này chỉ kiểm định được năng lực phân hạng `WATCH vs REJECT` và trạng thái phòng vệ `Cash (0%)` trong `DOWNTREND`.
+  * Sau khi đóng sổ phiên 30, thiết kế riêng một thử nghiệm **Shadow / Paper-trade Cổng `BUY`** (xem `stage2_buy_gate_prereg.md` v2.0) mà không làm nhiễu dữ liệu kiểm toán của bản `v15.0_frozen_20261013`.
 
 ---
 
-## 5. Addendum: Mối quan hệ giữa Mốc 30 Phiên (v1.1) và Khung Phản nghiệm 60 Phiên (Protocol Gốc)
+## 5. Addendum: Mối quan hệ giữa Mốc 30 Phiên (v1.1/v1.2) và Khung Phản nghiệm 60 Phiên (Protocol Gốc)
 
 Nhằm đảm bảo tính minh bạch khoa học tuyệt đối và tránh tranh luận "kết luận chính thức là ở phiên 30 hay phiên 60":
 
-1. **Phán quyết Khóa Phiên 30 (`2026-11-24` / `2026-12-01`):**
-   * Mốc 30 phiên là **kiểm tra chính thức với phán quyết (verdict) đã đóng băng** cho khung kiểm toán v1.1 (đánh giá trên kỳ hạn $T+5$ với 5 chuỗi quan sát không chồng lấn).
+1. **Phán quyết Khóa Phiên 30 (`2026-11-25` thực tế thay cho `2026-11-24` nghỉ lễ / Hậu kiểm `2026-12-02`):**
+   * Mốc 30 phiên là **kiểm tra chính thức với phán quyết (verdict) đã đóng băng** cho khung kiểm toán v1.1/v1.2 (đánh giá trên `25` cohort `T+5` `14/10 → 17/11` với 5 chuỗi quan sát không chồng lấn). *(Do ngày `24/11` nghỉ lễ, phiên 30 dịch sang `25/11` và mốc hậu kiểm 5 cohort cuối `18/11–25/11` dịch sang đầu tháng 12/`2026-12-02`)*.
    * Tiêu chí và các ngưỡng số học tại mốc này là bất biến, tuyệt đối **không thay đổi hay di chuyển cột gôn**.
    * Nếu kết quả phiên 30 trả về `FAIL / INCONCLUSIVE`, nó mang ý nghĩa chuẩn xác là: *"Hệ thống không chứng minh được edge vượt ngưỡng chi phí trong phạm vi 30 phiên"*. Phán quyết này không đóng cửa việc thu thập dữ liệu tiếp theo.
 
