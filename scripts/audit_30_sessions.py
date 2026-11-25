@@ -91,14 +91,16 @@ def validate_sector_integrity(df: pd.DataFrame, min_bank_symbols: int = MIN_BANK
 def _resolve_safe_cli_path(raw_path: str) -> str:
     """Resolve CLI path and verify it stays inside cwd or system temp directory."""
     target_real = os.path.realpath(raw_path)
-    allowed_roots = [os.path.realpath(os.getcwd()), os.path.realpath(tempfile.gettempdir())]
-    for root in allowed_roots:
-        try:
-            if os.path.commonpath([root, target_real]) == root:
-                return target_real
-        except ValueError:
-            continue
-    raise ValueError(f"Unsafe path outside allowed directories: {raw_path}")
+    cwd_real = os.path.realpath(os.getcwd())
+    tmp_real = os.path.realpath(tempfile.gettempdir())
+    if not (
+        target_real == cwd_real
+        or target_real.startswith(cwd_real + os.sep)
+        or target_real == tmp_real
+        or target_real.startswith(tmp_real + os.sep)
+    ):
+        raise ValueError(f"Unsafe path outside allowed directories: {raw_path}")
+    return target_real
 
 
 def load_canonical_returns(data_dir: str = ".") -> pd.DataFrame:
@@ -109,8 +111,8 @@ def load_canonical_returns(data_dir: str = ".") -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
     for fpath in files:
         safe_fpath = os.path.realpath(fpath)
-        if os.path.commonpath([base_real, safe_fpath]) != base_real:
-            continue
+        if not safe_fpath.startswith(base_real + os.sep):
+            raise ValueError(f"Unsafe file path outside data_dir: {fpath}")
         try:
             df = pd.read_csv(safe_fpath)
             if not df.empty:
@@ -145,8 +147,8 @@ def parse_digest_reports(reports_dir: str = "reports") -> dict[str, Any]:
 
     for fpath in files:
         safe_fpath = os.path.realpath(fpath)
-        if os.path.commonpath([base_real, safe_fpath]) != base_real:
-            continue
+        if not safe_fpath.startswith(base_real + os.sep):
+            raise ValueError(f"Unsafe file path outside reports_dir: {fpath}")
         try:
             with open(safe_fpath, encoding="utf-8") as fh:
                 content = fh.read()
