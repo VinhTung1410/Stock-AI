@@ -9,6 +9,9 @@ Covers:
 - Causal Chains: entry gate failure chain logged (VALUATION_MOS -> QUANT_CONVICTION).
 """
 
+from datetime import date
+from unittest.mock import patch
+
 from entry_gates import GATE_QUANT_CONVICTION, GATE_VALUATION_MOS, evaluate_entry_gates
 from quant_valuation import (
     calculate_fair_value_and_mos,
@@ -89,7 +92,9 @@ def test_stb_pb_clamp_tracking():
 
 def test_fpt_model_dispersion_detection():
     """Verify FPT detects model dispersion between primary and shadow models."""
-    val_fpt = calculate_fair_value_and_mos("FPT", current_price=57.9, fin_dict={}, sector="Công nghệ")
+    with patch("quant_valuation.date") as mock_date:
+        mock_date.today.return_value = date(2026, 10, 2)
+        val_fpt = calculate_fair_value_and_mos("FPT", current_price=57.9, fin_dict={}, sector="Công nghệ")
     assert val_fpt["archetype"] == "GROWTH_COMPOUNDER"
     assert val_fpt["model_dispersion_pct"] is not None
     assert val_fpt["model_dispersion_pct"] > 15.0
