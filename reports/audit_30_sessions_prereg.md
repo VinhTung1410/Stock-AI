@@ -41,9 +41,9 @@ Số liệu đối chiếu trực tiếp từ dry-run [audit_30_sessions.py](fil
 ## 2. Bộ Tiêu chí Quyết định Khóa trước (Đồng bộ 1-1 với Code)
 
 ### Mốc đánh giá & Phụ lục Out-of-Sample thuần
-* **Mốc chính (Phiên 30 — `2026-11-24`):** Có `30` cohort `T0`, trong đó `25` cohort đáo hạn `T+5` (5 quan sát/chuỗi).
-* **Mốc hậu kiểm (`2026-12-01`):** Cập nhật đủ `30/30` cohort `T+5` (gồm 5 cohort cuối `18/11 → 24/11`).
-* **Phụ lục Out-of-Sample thuần (`T0 >= 2026-11-13`):** Vì bộ tiêu chí khóa vào ngày `2026-11-12` sau khi đã quan sát 22 phiên, `22` phiên đầu là mẫu **in-sample đối với việc đặt ngưỡng**. Chỉ nhóm cohort có `T0 >= 2026-11-13` (~`6` cohort `T+5` đáo hạn đến `01/12`) là dữ liệu **out-of-sample thuần** và bắt buộc phải báo cáo tách riêng thành phụ lục độc lập.
+* **Mốc chính (Phiên 30 — dự kiến `2026-11-24`, thực tế `2026-11-25` do nghỉ lễ `24/11`):** Có `30` cohort `T0`, trong đó `25` cohort đáo hạn `T+5` (`2026-10-14` → `2026-11-17`, 5 quan sát/chuỗi). *(Xem Mục 5 Addendum cập nhật ngày lễ).*
+* **Mốc hậu kiểm (dự kiến `2026-12-01`, thực tế đầu tháng 12/`2026-12-02`):** 5 cohort cuối (`18/11, 19/11, 20/11, 23/11, 25/11`) đáo hạn nốt `T+5`. **Quy tắc bắt buộc:** 5 cohort cuối này chỉ được báo cáo trong **Phụ lục Hậu kiểm riêng (Out-of-window Check)** nhằm kiểm tra độ ổn định kết luận, **tuyệt đối không gộp ngược vào mẫu chính 25 cohort để tính lại p-value hay lật ngược verdict phiên 30**.
+* **Phụ lục Out-of-Sample thuần (`T0 >= 2026-11-13`):** Vì bộ tiêu chí khóa vào ngày `2026-11-12` sau khi đã quan sát 22 phiên, `22` phiên đầu là mẫu **in-sample đối với việc đặt ngưỡng**. Nhóm cohort có `T0 >= 2026-11-13` (gồm `3` cohort `T+5` tại mốc chính: `13/11, 16/11, 17/11`) là dữ liệu **out-of-sample thuần**. Do cỡ mẫu nhỏ và sức mạnh thống kê rất thấp, phụ lục này **chỉ mang tính mô tả**, không dùng để lật ngược phán quyết chính.
 
 ### Lưu ý về Sức mạnh Thống kê (Statistical Power)
 * Với ~`5` khối quan sát hiệu dụng không chồng lấn (`SD ~ 1.5%`, block length `L=5`), nửa độ rộng của `95% CI` vào khoảng `1.2–1.5%`. Để `CI_low > 0%`, trung bình mẫu thực tế phải đạt cỡ `> +1.2%`.
@@ -105,10 +105,11 @@ Nhằm đảm bảo tính minh bạch khoa học tuyệt đối và tránh tranh
    * Tiêu chí và các ngưỡng số học tại mốc này là bất biến, tuyệt đối **không thay đổi hay di chuyển cột gôn**.
    * Nếu kết quả phiên 30 trả về `FAIL / INCONCLUSIVE`, nó mang ý nghĩa chuẩn xác là: *"Hệ thống không chứng minh được edge vượt ngưỡng chi phí trong phạm vi 30 phiên"*. Phán quyết này không đóng cửa việc thu thập dữ liệu tiếp theo.
 
-2. **Khung Phản nghiệm Mở rộng 60 Phiên (Protocol Gốc):**
-   * Kỳ 60 phiên trong protocol gốc là khung phản nghiệm dài hạn hơn, có mục tiêu chính là tích lũy đủ cỡ mẫu độc lập cho các kỳ hạn dài hơn ($T+10$ và $T+20$) — vốn không đủ dữ liệu để kết luận tại mốc phiên 30.
+2. **Khung Phản nghiệm Mở rộng 60 Phiên (Điểm Kiểm tra Giữa kỳ cho $\sigma$):**
+   * Kỳ 60 phiên trong protocol gốc là khung phản nghiệm mở rộng đóng vai trò **điểm kiểm tra giữa kỳ (interim statistical power check)** nhằm ước lượng lại độ lệch chuẩn $\sigma$ tin cậy hơn và tích lũy mẫu cho các kỳ hạn dài hơn ($T+10$ và $T+20$) — lưu ý ước tính thô cho thấy để đủ sức mạnh thống kê đầy đủ cho $T+5/T+10$ thường cần tới `~190–250` phiên, nên mốc 60 phiên dùng để đánh giá lại độ lớn $\sigma$ trước khi quyết định độ dài tiếp theo, không phải ngưỡng kết luận cuối cùng.
    * Việc chạy tiếp từ phiên 31 đến phiên 60 diễn ra trên cùng một nền tảng đóng băng `v15.0_frozen_20261013` (cùng một epoch, không reset).
-   * **Quy tắc Bất khả Hồi tố (No-Retroactive Overwrite):** Kỳ 60 phiên sẽ có một báo cáo kiểm toán độc lập riêng. Kết quả tại phiên 60 **tuyệt đối không được dùng để lật ngược hay viết lại verdict của phiên 30**. Nếu phiên 60 cho kết quả khác, nó được ghi nhận như một phát hiện nghiên cứu mới của một chân trời thời gian rộng hơn, không thay thế phán quyết phiên 30.
+   * **Quy tắc Bất khả Hồi tố (No-Retroactive Overwrite):** Cả 5 cohort hậu kiểm (`18/11 → 25/11`) lẫn kỳ 60 phiên đều có báo cáo/phụ lục độc lập riêng. Kết quả tại hai mốc này **tuyệt đối không được dùng để lật ngược hay viết lại verdict đã khóa trên 25 cohort `T+5` (`14/10 → 17/11`) tại phiên 30**. Nếu các mốc sau cho kết quả khác, ghi nhận như thông tin/phát hiện mới của khung thời gian dài hơn, không thay thế phán quyết phiên 30.
+   * **Ghi chú điều chỉnh ngày lễ `2026-11-24`:** Vì `2026-11-24` là ngày lễ thị trường Việt Nam đóng cửa, phiên 30 thực tế rơi vào ngày **`2026-11-25`**, và 5 cohort hậu kiểm cuối kỳ là **`18/11, 19/11, 20/11, 23/11, 25/11`**. Toàn bộ ngưỡng số học và logic kiểm định vẫn giữ nguyên bất biến.
 
 3. **Ghi chú về Quy tắc Dừng 1–3 trong Protocol Gốc:**
    * *Quy tắc 1 (Kém hiệu quả thống kê W−R lệch âm > −5% với p < 0.05):* Với độ lệch chuẩn cấp cohort ~1.5%–2.0% và W−R thực tế dao động quanh 0%, biên lệch âm tới −5% mang tính giả định cực đoan và gần như không thể kích hoạt trên thực tế trong 30–60 phiên.

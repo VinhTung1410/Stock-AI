@@ -88,7 +88,7 @@ def validate_sector_integrity(df: pd.DataFrame, min_bank_symbols: int = MIN_BANK
 
 
 def load_canonical_returns(data_dir: str = ".") -> pd.DataFrame:
-    """Load and concatenate canonical_forward_returns_*.csv files with NFC sector normalization."""
+    """Load and concatenate canonical_forward_returns_*.csv files with NFC normalization and holiday deduplication."""
     pattern = os.path.join(data_dir, "canonical_forward_returns_*.csv")
     files = sorted(glob.glob(pattern))
     frames: list[pd.DataFrame] = []
@@ -96,6 +96,14 @@ def load_canonical_returns(data_dir: str = ".") -> pd.DataFrame:
         try:
             df = pd.read_csv(fpath)
             if not df.empty:
+                m = re.search(r"(\d{8})", os.path.basename(fpath))
+                if m and COL_ENTRY_T0 in df.columns:
+                    d_str = m.group(1)
+                    fname_date = f"{d_str[:4]}-{d_str[4:6]}-{d_str[6:]}"
+                    entry_t0 = str(df[COL_ENTRY_T0].iloc[0]).strip()
+                    if entry_t0 != fname_date:
+                        LOGGER.warning("Bỏ qua tệp ngoại lệ/ngày lễ %s (entry_date_t0=%s != %s)", fpath, entry_t0, fname_date)
+                        continue
                 if COL_SECTOR in df.columns:
                     df[COL_SECTOR] = df[COL_SECTOR].map(_normalize_nfc)
                 frames.append(df)
@@ -510,12 +518,24 @@ def run_audit(
     exclude_date: str = DEFAULT_EXCLUDE_DATE,
     fee_pct: float = DEFAULT_FEE_PCT,
     block_len: int = DEFAULT_BLOCK_LEN,
+    max_primary_t0: str | None = None,
 ) -> dict[str, Any]:
     """Execute full read-only audit across canonical CSVs and daily digest reports."""
     raw_df = load_canonical_returns(data_dir=data_dir)
     digest_info = parse_digest_reports(reports_dir=reports_dir)
 
-    spread_t5 = compute_cohort_spread_df(raw_df, horizon=5)
+    primary_df = (
+        raw_df[raw_df[COL_ENTRY_T0] <= max_primary_t0].copy()
+        if (max_primary_t0 and not raw_df.empty and COL_ENTRY_T0 in raw_df.columns)
+        else raw_df
+    )
+    post_window_df = (
+        raw_df[raw_df[COL_ENTRY_T0] > max_primary_t0].copy()
+        if (max_primary_t0 and not raw_df.empty and COL_ENTRY_T0 in raw_df.columns)
+        else pd.DataFrame()
+    )
+
+    spread_t5 = compute_cohort_spread_df(primary_df, horizon=5)
     chains_t5 = compute_non_overlapping_chains(
         spread_t5["diff_w_r"] if not spread_t5.empty else pd.Series(dtype=float),
         step=block_len,
@@ -526,7 +546,7 @@ def run_audit(
         block_len=block_len,
     )
 
-    sens_df = raw_df[raw_df[COL_ENTRY_T0] != exclude_date] if not raw_df.empty else raw_df
+    sens_df = primary_df[primary_df[COL_ENTRY_T0] != exclude_date] if not primary_df.empty else primary_df
     sens_spread = compute_cohort_spread_df(sens_df, horizon=5)
     sens_chains = []
     for c in chains_t5:
@@ -546,7 +566,7 @@ def run_audit(
 
     abs_returns: dict[str, dict[str, float | int | None]] = {}
     for h in (1, 3, 5):
-        sp = compute_cohort_spread_df(raw_df, horizon=h)
+        sp = compute_cohort_spread_df(primary_df, horizon=h)
         if not sp.empty:
             abs_returns[f"T+{h}"] = {
                 "n": len(sp),
@@ -556,6 +576,12 @@ def run_audit(
                 "diff_mean": float(sp["diff_w_r"].mean()),
             }
 
+    post_window_t5 = compute_post_prereg_appendix(
+        compute_cohort_spread_df(post_window_df, horizon=5),
+        start_date=max_primary_t0 or DEFAULT_POST_PREREG_START,
+        fee_pct=fee_pct,
+    )
+
     summary: dict[str, Any] = {
         "n_canonical_dates": int(raw_df[COL_ENTRY_T0].nunique()) if not raw_df.empty else 0,
         "date_range": (
@@ -563,13 +589,14 @@ def run_audit(
             if not raw_df.empty
             else (None, None)
         ),
+        "max_primary_t0": max_primary_t0,
         "digest_info": digest_info,
         "chains_t5": chains_t5,
         "bootstrap_t5": boot_t5,
         "half_sample_t5": compute_half_sample_stats(spread_t5),
-        "sector_t5": compute_within_sector_stats(raw_df, horizon=5),
-        "leave_re_t5": compute_leave_sector_out(raw_df, sector_name=SECTOR_RES_RE, horizon=5),
-        "concentration_t5": compute_concentration_sensitivity(raw_df, horizon=5, top_k=2),
+        "sector_t5": compute_within_sector_stats(primary_df, horizon=5),
+        "leave_re_t5": compute_leave_sector_out(primary_df, sector_name=SECTOR_RES_RE, horizon=5),
+        "concentration_t5": compute_concentration_sensitivity(primary_df, horizon=5, top_k=2),
         "sensitivity_no_14": {
             "excluded_date": exclude_date,
             "n_cohorts": len(sens_spread),
@@ -580,6 +607,7 @@ def run_audit(
             "passed_mean": sens_l1["passed_mean"],
         },
         "post_prereg_t5": compute_post_prereg_appendix(spread_t5, fee_pct=fee_pct),
+        "post_window_t5": post_window_t5,
         "absolute_returns": abs_returns,
         "watchlist_churn": compute_watchlist_churn(raw_df),
     }
@@ -667,6 +695,7 @@ def main() -> None:
     parser.add_argument("--exclude-date", default=DEFAULT_EXCLUDE_DATE, help="Version-mismatch date for sensitivity check")
     parser.add_argument("--fee", type=float, default=DEFAULT_FEE_PCT, help="Round-trip transaction fee pct (default 0.40)")
     parser.add_argument("--block-len", type=int, default=DEFAULT_BLOCK_LEN, help="Block length for moving-block bootstrap")
+    parser.add_argument("--max-primary-t0", default=None, help="Optional cutoff date YYYY-MM-DD locking primary verdict cohorts")
     args = parser.parse_args()
 
     summary = run_audit(
@@ -675,6 +704,7 @@ def main() -> None:
         exclude_date=args.exclude_date,
         fee_pct=args.fee,
         block_len=args.block_len,
+        max_primary_t0=args.max_primary_t0,
     )
     md = format_audit_markdown(summary, fee_pct=args.fee)
     if args.output:
